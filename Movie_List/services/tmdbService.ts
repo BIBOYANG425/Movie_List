@@ -106,6 +106,7 @@ function interleave(a: TMDBMovie[], b: TMDBMovie[]): TMDBMovie[] {
 export async function getGenericSuggestions(
   excludeIds: Set<string> = new Set(),
   page: number = 1,
+  excludeTitles: Set<string> = new Set(),
 ): Promise<TMDBMovie[]> {
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
   if (!apiKey) return [];
@@ -143,7 +144,8 @@ export async function getGenericSuggestions(
       classicRes.json(),
     ]);
 
-    const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id);
+    const isExcluded = (m: TMDBMovie) =>
+      excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
 
     const newFilms = (recentData.results as any[])
       .map(mapTmdbResult)
@@ -171,6 +173,7 @@ export async function getPersonalizedFills(
   topGenreNames: string[],
   excludeIds: Set<string> = new Set(),
   page: number = 1,
+  excludeTitles: Set<string> = new Set(),
 ): Promise<TMDBMovie[]> {
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
   if (!apiKey || topGenreNames.length === 0) return [];
@@ -213,7 +216,8 @@ export async function getPersonalizedFills(
       classicRes.json(),
     ]);
 
-    const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id);
+    const isExcluded = (m: TMDBMovie) =>
+      excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
 
     const newFilms = (recentData.results as any[])
       .map(mapTmdbResult)

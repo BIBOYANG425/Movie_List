@@ -52,6 +52,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     ...(watchlistIds ?? []),
   ]);
 
+  const getExcludeTitles = () => new Set<string>(
+    currentItems.map(i => i.title.toLowerCase()),
+  );
+
   const getTopGenres = () => {
     const genreCounts = new Map<string, number>();
     for (const item of currentItems) {
@@ -65,11 +69,11 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       .map(([name]) => name);
   };
 
-  const prefetchBackfillPool = (excludeIds: Set<string>, page?: number) => {
+  const prefetchBackfillPool = (excludeIds: Set<string>, excludeTitles: Set<string>, page?: number) => {
     const topGenres = getTopGenres();
     if (topGenres.length === 0) return;
     const usePage = page ?? backfillPageRef.current;
-    getPersonalizedFills(topGenres, excludeIds, usePage).then((results) => {
+    getPersonalizedFills(topGenres, excludeIds, usePage, excludeTitles).then((results) => {
       backfillPoolRef.current = results;
     });
   };
@@ -93,7 +97,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         }
         if (backfillPoolRef.current.length < 3) {
           backfillPageRef.current += 1;
-          prefetchBackfillPool(getExcludeIds(), backfillPageRef.current);
+          prefetchBackfillPool(getExcludeIds(), getExcludeTitles(), backfillPageRef.current);
         }
       }
       return without;
@@ -106,15 +110,16 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setHasBackfillMixed(false);
 
     const excludeIds = getExcludeIds();
+    const excludeTitles = getExcludeTitles();
 
-    getGenericSuggestions(excludeIds, page).then((results) => {
+    getGenericSuggestions(excludeIds, page, excludeTitles).then((results) => {
       setSuggestions(results);
       setSuggestionsLoading(false);
     });
 
     backfillPageRef.current = 1;
     backfillPoolRef.current = [];
-    prefetchBackfillPool(excludeIds, 1);
+    prefetchBackfillPool(excludeIds, excludeTitles, 1);
   };
 
   const handleRefreshSuggestions = () => {
@@ -184,14 +189,17 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   if (!isOpen) return null;
 
-  // IDs of movies the user already has ranked
+  // IDs and titles of movies the user already has ranked
   const rankedIds = new Set(currentItems.map(i => i.id));
+  const rankedTitles = new Set(currentItems.map(i => i.title.toLowerCase()));
 
   const getTierItems = (tier: Tier) =>
     currentItems.filter(i => i.tier === tier).sort((a, b) => a.rank - b.rank);
 
-  // Filter search results: remove already-ranked movies
-  const filteredSearchResults = searchResults.filter(m => !rankedIds.has(m.id));
+  // Filter search results: remove already-ranked movies (by ID or title)
+  const filteredSearchResults = searchResults.filter(
+    m => !rankedIds.has(m.id) && !rankedTitles.has(m.title.toLowerCase())
+  );
 
   const handleSelectMovie = (movie: TMDBMovie, fromSuggestion = false) => {
     if (fromSuggestion) consumeSuggestion(movie.id);
@@ -241,7 +249,6 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         tier: selectedTier!,
         rank: 0,
         notes: notes.trim() || undefined,
-        id: Math.random().toString(36).substr(2, 9),
       });
       onClose();
     } else {
@@ -260,7 +267,6 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         tier: selectedTier,
         rank: rankIndex,
         notes: notes.trim() || undefined,
-        id: Math.random().toString(36).substr(2, 9),
       };
 
       onAdd(finalItem);

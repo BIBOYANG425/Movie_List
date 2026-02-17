@@ -29,7 +29,7 @@ export const TIER_SCORE_RANGES = {
 // Initial Seed Data
 export const INITIAL_RANKINGS: RankedItem[] = [
   {
-    id: '1',
+    id: 'tmdb_693134',
     title: 'Dune: Part Two',
     year: '2024',
     posterUrl: 'https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg',
@@ -40,7 +40,7 @@ export const INITIAL_RANKINGS: RankedItem[] = [
     rank: 0
   },
   {
-    id: '3',
+    id: 'tmdb_496243',
     title: 'Parasite',
     year: '2019',
     posterUrl: 'https://image.tmdb.org/t/p/w500/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg',
@@ -51,7 +51,7 @@ export const INITIAL_RANKINGS: RankedItem[] = [
     rank: 0
   },
   {
-    id: '4',
+    id: 'tmdb_545611',
     title: 'Everything Everywhere All At Once',
     year: '2022',
     posterUrl: 'https://image.tmdb.org/t/p/w500/w3LxiVYdWWRvEVdn5RYq6jIqkb1.jpg',
@@ -61,7 +61,7 @@ export const INITIAL_RANKINGS: RankedItem[] = [
     rank: 1
   },
   {
-    id: '5',
+    id: 'tmdb_446807',
     title: 'Cats',
     year: '2019',
     posterUrl: 'https://image.tmdb.org/t/p/w500/xXBnM6uSTk6qqCf0SRZKXcga9Ba.jpg',
@@ -71,7 +71,7 @@ export const INITIAL_RANKINGS: RankedItem[] = [
     rank: 0
   },
     {
-    id: '6',
+    id: 'tmdb_76341',
     title: 'Mad Max: Fury Road',
     year: '2015',
     posterUrl: 'https://image.tmdb.org/t/p/w500/8tZYtuWezp8JbcsvHYO0O46tFbo.jpg',
@@ -84,7 +84,7 @@ export const INITIAL_RANKINGS: RankedItem[] = [
 
 export const MOCK_SEARCH_RESULTS: RankedItem[] = [
   {
-    id: '101',
+    id: 'tmdb_238',
     title: 'The Godfather',
     year: '1972',
     posterUrl: 'https://image.tmdb.org/t/p/w500/3bhkrj58Vtu7enYsRolD1fZdja1.jpg',
@@ -94,7 +94,7 @@ export const MOCK_SEARCH_RESULTS: RankedItem[] = [
     rank: 0
   },
   {
-    id: '103',
+    id: 'tmdb_157336',
     title: 'Interstellar',
     year: '2014',
     posterUrl: 'https://image.tmdb.org/t/p/w500/gEU2QniL6C8ztDDXLOx9TpBomvs.jpg',
