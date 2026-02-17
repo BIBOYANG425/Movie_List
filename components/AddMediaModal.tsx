@@ -27,7 +27,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
   const [suggestions, setSuggestions] = useState<TMDBMovie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
 
@@ -72,11 +72,31 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         setStep('search');
       }
 
-      // Load suggestions (cached after first load)
-      if (!suggestionsLoaded && hasTmdbKey()) {
-        getSuggestions().then((results) => {
+      // Load personalized suggestions every time the modal opens
+      if (hasTmdbKey()) {
+        setSuggestionsLoading(true);
+
+        // Compute user's top genres from ranked + watchlist items
+        const genreCounts = new Map<string, number>();
+        for (const item of currentItems) {
+          for (const g of item.genres) {
+            genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
+          }
+        }
+        const topGenres = [...genreCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([name]) => name);
+
+        // Build exclude set: all ranked IDs + all watchlist IDs
+        const excludeIds = new Set<string>([
+          ...currentItems.map(i => i.id),
+          ...(watchlistIds ?? []),
+        ]);
+
+        getSuggestions(topGenres, excludeIds).then((results) => {
           setSuggestions(results);
-          setSuggestionsLoaded(true);
+          setSuggestionsLoading(false);
         });
       }
     }
@@ -107,8 +127,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   if (!isOpen) return null;
 
+  // IDs of movies the user already has ranked
+  const rankedIds = new Set(currentItems.map(i => i.id));
+
   const getTierItems = (tier: Tier) =>
     currentItems.filter(i => i.tier === tier).sort((a, b) => a.rank - b.rank);
+
+  // Filter search results: remove already-ranked movies
+  const filteredSearchResults = searchResults.filter(m => !rankedIds.has(m.id));
 
   const handleSelectMovie = (movie: TMDBMovie) => {
     const asRankedItem: RankedItem = {
@@ -268,8 +294,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           </div>
         )}
 
-        {/* Search results */}
-        {!isSearching && searchResults.map((movie) => (
+        {/* Search results (excludes already-ranked movies) */}
+        {!isSearching && filteredSearchResults.map((movie) => (
           <div
             key={movie.id}
             className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors group"
@@ -334,7 +360,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         ))}
 
         {/* Empty state */}
-        {!isSearching && searchTerm.trim() && searchResults.length === 0 && (
+        {!isSearching && searchTerm.trim() && filteredSearchResults.length === 0 && (
           <div className="text-center py-12 text-zinc-500 text-sm">
             <Film size={32} className="mx-auto mb-3 opacity-30" />
             <p>No results for "{searchTerm}"</p>
@@ -345,10 +371,21 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {/* Suggestions — shown when search is empty */}
         {!isSearching && !searchTerm.trim() && (
           <>
-            {suggestions.length > 0 ? (
+            {suggestionsLoading && (
+              <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3, 4, 5, 6].map(i => (
+                  <div key={i} className="animate-pulse p-2">
+                    <div className="w-full aspect-[2/3] bg-zinc-800 rounded-lg" />
+                    <div className="h-3 bg-zinc-800 rounded mt-2 w-3/4 mx-auto" />
+                    <div className="h-2 bg-zinc-800 rounded mt-1 w-1/2 mx-auto" />
+                  </div>
+                ))}
+              </div>
+            )}
+            {!suggestionsLoading && suggestions.length > 0 ? (
               <div>
                 <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3 px-1">
-                  Suggested for you
+                  Based on your taste
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   {suggestions.map((movie) => (
@@ -384,12 +421,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                   ))}
                 </div>
               </div>
-            ) : (
+            ) : !suggestionsLoading ? (
               <div className="text-center py-12 text-zinc-600 text-sm">
                 <Search size={32} className="mx-auto mb-3 opacity-30" />
                 <p>Type a movie title to search</p>
               </div>
-            )}
+            ) : null}
           </>
         )}
       </div>

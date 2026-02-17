@@ -32,6 +32,11 @@ const GENRE_MAP: Record<number, string> = {
   37:    'Western',
 };
 
+// Reverse map: genre name → TMDB genre ID
+const GENRE_NAME_TO_ID: Record<string, number> = Object.fromEntries(
+  Object.entries(GENRE_MAP).map(([id, name]) => [name, Number(id)])
+);
+
 export interface TMDBMovie {
   id: string;
   tmdbId: number;
@@ -66,38 +71,77 @@ function mapTmdbResult(m: any): TMDBMovie | null {
   };
 }
 
+/** Convert genre names (e.g. "Action") to TMDB genre IDs */
+export function genreNamesToIds(names: string[]): number[] {
+  return names
+    .map(n => GENRE_NAME_TO_ID[n])
+    .filter((id): id is number => id !== undefined);
+}
+
 /**
- * Fetch suggested movies: 50% new releases (trending this week),
- * 50% classics (top-rated of all time).
- * Returns up to 12 mixed results, alternating new/classic.
+ * Fetch personalized suggestions:
+ *  - 50% popular new releases, 50% top-rated classics
+ *  - Filtered to the user's favourite genres (via TMDB discover)
+ *  - Movies already in the user's collection are excluded
+ *
+ * @param topGenreNames  The user's most-common genre names (e.g. ["Sci-Fi", "Drama"])
+ * @param excludeIds     Set of movie IDs (e.g. "tmdb_123") already ranked or on the watchlist
  */
-export async function getSuggestions(): Promise<TMDBMovie[]> {
+export async function getSuggestions(
+  topGenreNames: string[] = [],
+  excludeIds: Set<string> = new Set(),
+): Promise<TMDBMovie[]> {
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
   if (!apiKey) return [];
 
+  const genreIds = genreNamesToIds(topGenreNames);
+  const genreParam = genreIds.length > 0 ? genreIds.join(',') : '';
+
+  const currentYear = new Date().getFullYear();
+
   try {
-    // Fetch both in parallel
-    const [trendingRes, classicsRes] = await Promise.all([
-      fetch(`${TMDB_BASE}/trending/movie/week?api_key=${apiKey}&language=en-US`),
-      fetch(`${TMDB_BASE}/movie/top_rated?api_key=${apiKey}&language=en-US&page=1`),
+    // Build two discover URLs: recent popular + all-time top-rated
+    const recentUrl = new URL(`${TMDB_BASE}/discover/movie`);
+    recentUrl.searchParams.set('api_key', apiKey);
+    recentUrl.searchParams.set('language', 'en-US');
+    recentUrl.searchParams.set('sort_by', 'popularity.desc');
+    recentUrl.searchParams.set('include_adult', 'false');
+    recentUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
+    recentUrl.searchParams.set('vote_count.gte', '50');
+    if (genreParam) recentUrl.searchParams.set('with_genres', genreParam);
+
+    const classicUrl = new URL(`${TMDB_BASE}/discover/movie`);
+    classicUrl.searchParams.set('api_key', apiKey);
+    classicUrl.searchParams.set('language', 'en-US');
+    classicUrl.searchParams.set('sort_by', 'vote_average.desc');
+    classicUrl.searchParams.set('include_adult', 'false');
+    classicUrl.searchParams.set('primary_release_date.lte', `${currentYear - 5}-12-31`);
+    classicUrl.searchParams.set('vote_count.gte', '1000');
+    if (genreParam) classicUrl.searchParams.set('with_genres', genreParam);
+
+    const [recentRes, classicRes] = await Promise.all([
+      fetch(recentUrl.toString()),
+      fetch(classicUrl.toString()),
     ]);
 
-    if (!trendingRes.ok || !classicsRes.ok) return [];
+    if (!recentRes.ok || !classicRes.ok) return [];
 
-    const [trendingData, classicsData] = await Promise.all([
-      trendingRes.json(),
-      classicsRes.json(),
+    const [recentData, classicData] = await Promise.all([
+      recentRes.json(),
+      classicRes.json(),
     ]);
 
-    const newFilms: TMDBMovie[] = (trendingData.results as any[])
-      .map(mapTmdbResult)
-      .filter((m): m is TMDBMovie => m !== null)
-      .slice(0, 6);
+    const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id);
 
-    const classics: TMDBMovie[] = (classicsData.results as any[])
+    const newFilms: TMDBMovie[] = (recentData.results as any[])
       .map(mapTmdbResult)
-      .filter((m): m is TMDBMovie => m !== null)
-      .slice(0, 6);
+      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
+      .slice(0, 8);
+
+    const classics: TMDBMovie[] = (classicData.results as any[])
+      .map(mapTmdbResult)
+      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
+      .slice(0, 8);
 
     // Interleave: new, classic, new, classic...
     const mixed: TMDBMovie[] = [];
