@@ -1,29 +1,20 @@
 import React from 'react';
 import { Tier, RankedItem } from '../types';
 import { MediaCard } from './MediaCard';
-import { TIER_COLORS, TIER_LABELS, TIER_SCORE_RANGES } from '../constants';
+import { TIER_COLORS, TIER_LABELS } from '../constants';
 
 interface TierRowProps {
   tier: Tier;
   items: RankedItem[];
+  scoreMap: Map<string, number>;
   onDrop: (e: React.DragEvent, tier: Tier) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDelete: (id: string) => void;
 }
 
-export const TierRow: React.FC<TierRowProps> = ({ tier, items, onDrop, onDragStart, onDelete }) => {
+export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, onDrop, onDragStart, onDelete }) => {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-  };
-
-  const calculateScore = (index: number, total: number) => {
-    const range = TIER_SCORE_RANGES[tier];
-    if (total <= 1) return range.max;
-    
-    // Linearly interpolate between max and min based on rank
-    const step = (range.max - range.min) / (total - 1);
-    const score = range.max - (index * step);
-    return score;
   };
 
   return (
@@ -41,9 +32,12 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, onDrop, onDragSta
           </span>
         </div>
         <div className="flex gap-2">
-           <div className="text-xs font-mono opacity-50 px-2 py-1 bg-black/20 rounded">
-             {TIER_SCORE_RANGES[tier].min}-{TIER_SCORE_RANGES[tier].max} pts
-           </div>
+           {items.length > 0 && (
+             <div className="text-xs font-mono opacity-50 px-2 py-1 bg-black/20 rounded">
+               {Math.min(...items.map(i => scoreMap.get(i.id) ?? 0)).toFixed(1)}–
+               {Math.max(...items.map(i => scoreMap.get(i.id) ?? 0)).toFixed(1)} pts
+             </div>
+           )}
            <div className="text-xs font-mono opacity-50 px-2 py-1 bg-black/20 rounded">
             {items.length} items
           </div>
@@ -62,7 +56,7 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, onDrop, onDragSta
               key={item.id}
               item={item}
               rank={index}
-              score={calculateScore(index, items.length)}
+              score={scoreMap.get(item.id) ?? 0}
               onDragStart={onDragStart}
               onDelete={onDelete}
             />

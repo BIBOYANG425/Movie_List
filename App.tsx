@@ -1,7 +1,54 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { LayoutGrid, Plus, BarChart2, RotateCcw } from 'lucide-react';
 import { Tier, RankedItem } from './types';
 import { INITIAL_RANKINGS, TIERS } from './constants';
+
+// ── Dynamic scoring ──────────────────────────────────────────────────────────
+// Each item gets a score from 10.0 (best) to 1.0 (worst) based on its
+// global rank position across all tiers, with tier boundaries enforced.
+const TIER_BOUNDS: Record<Tier, { min: number; max: number }> = {
+  [Tier.S]: { min: 9.0, max: 10.0 },
+  [Tier.A]: { min: 7.5, max: 8.9 },
+  [Tier.B]: { min: 5.5, max: 7.4 },
+  [Tier.C]: { min: 3.5, max: 5.4 },
+  [Tier.D]: { min: 1.0, max: 3.4 },
+};
+
+/**
+ * Compute a score map for all items. Each item's score is calculated by:
+ * 1. Sorting all items globally: S first, then A, B, C, D — within each tier by rank.
+ * 2. Within each tier, distributing scores evenly between that tier's max and min.
+ *    - The #1 item in the tier gets the max score.
+ *    - The last item gets the min score.
+ *    - Single items get the midpoint of the range.
+ * This means scores shift dynamically as items are added/removed/moved.
+ */
+function computeScores(items: RankedItem[]): Map<string, number> {
+  const scoreMap = new Map<string, number>();
+
+  for (const tier of TIERS) {
+    const tierItems = items
+      .filter(i => i.tier === tier)
+      .sort((a, b) => a.rank - b.rank);
+
+    if (tierItems.length === 0) continue;
+
+    const { min, max } = TIER_BOUNDS[tier];
+
+    if (tierItems.length === 1) {
+      scoreMap.set(tierItems[0].id, Math.round(((min + max) / 2) * 10) / 10);
+      continue;
+    }
+
+    for (let i = 0; i < tierItems.length; i++) {
+      // Linear interpolation: #1 gets max, last gets min
+      const score = max - (i / (tierItems.length - 1)) * (max - min);
+      scoreMap.set(tierItems[i].id, Math.round(score * 10) / 10);
+    }
+  }
+
+  return scoreMap;
+}
 import { TierRow } from './components/TierRow';
 import { AddMediaModal } from './components/AddMediaModal';
 import { StatsView } from './components/StatsView';
@@ -113,6 +160,9 @@ const App = () => {
     });
   };
 
+  // Recompute scores whenever rankings change
+  const scoreMap = useMemo(() => computeScores(items), [items]);
+
   const filteredItems = filterType === 'all'
     ? items
     : items.filter(i => i.type === filterType);
@@ -200,6 +250,7 @@ const App = () => {
                     key={tier}
                     tier={tier}
                     items={filteredItems.filter((i) => i.tier === tier).sort((a, b) => a.rank - b.rank)}
+                    scoreMap={scoreMap}
                     onDrop={handleDrop}
                     onDragStart={handleDragStart}
                     onDelete={removeItem}
