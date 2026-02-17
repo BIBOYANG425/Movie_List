@@ -6,7 +6,7 @@ export enum Tier {
   D = 'D'
 }
 
-export type MediaType = 'movie' | 'theater';
+export type MediaType = 'movie';
 
 export interface MediaItem {
   id: string;
@@ -30,7 +30,3 @@ export interface StatsData {
   fill: string;
 }
 
-export interface AiRecommendation {
-  title: string;
-  reason: string;
-}

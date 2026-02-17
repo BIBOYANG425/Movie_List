@@ -53,7 +53,7 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, onDrop, onDragSta
       <div className="flex overflow-x-auto gap-4 pb-4 items-start hide-scrollbar">
         {items.length === 0 ? (
           <div className="flex items-center justify-center w-full h-40 border-2 border-dashed border-current opacity-20 rounded-lg">
-            <span className="text-sm font-medium">Drag items here</span>
+            <span className="text-sm font-medium">Nothing here yet</span>
           </div>
         ) : (
           items.map((item, index) => (

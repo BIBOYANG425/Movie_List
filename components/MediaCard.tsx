@@ -1,6 +1,6 @@
 import React from 'react';
 import { RankedItem } from '../types';
-import { GripVertical, Film, Theater, Star } from 'lucide-react';
+import { GripVertical, Film, Star } from 'lucide-react';
 
 interface MediaCardProps {
   item: RankedItem;
@@ -42,7 +42,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, onDragS
       <div className="absolute bottom-0 left-0 right-0 p-3 pt-6">
         <h3 className="text-sm font-semibold text-white leading-tight truncate">{item.title}</h3>
         <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-400">
-          {item.type === 'movie' ? <Film size={12} /> : <Theater size={12} />}
+          <Film size={12} />
           <span>{item.year}</span>
         </div>
       </div>

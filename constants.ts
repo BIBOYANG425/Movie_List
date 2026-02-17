@@ -40,17 +40,6 @@ export const INITIAL_RANKINGS: RankedItem[] = [
     rank: 0
   },
   {
-    id: '2',
-    title: 'Hamilton',
-    year: '2015',
-    posterUrl: 'https://upload.wikimedia.org/wikipedia/en/8/83/Hamilton-poster.jpg',
-    type: 'theater',
-    genres: ['Musical', 'History'],
-    director: 'Thomas Kail',
-    tier: Tier.S,
-    rank: 1
-  },
-  {
     id: '3',
     title: 'Parasite',
     year: '2019',
@@ -89,7 +78,7 @@ export const INITIAL_RANKINGS: RankedItem[] = [
     type: 'movie',
     genres: ['Action', 'Sci-Fi'],
     tier: Tier.S,
-    rank: 2
+    rank: 1
   }
 ];
 
@@ -102,16 +91,6 @@ export const MOCK_SEARCH_RESULTS: RankedItem[] = [
     type: 'movie',
     genres: ['Crime', 'Drama'],
     tier: Tier.B, // Default placeholder
-    rank: 0
-  },
-  {
-    id: '102',
-    title: 'Wicked',
-    year: '2003',
-    posterUrl: 'https://upload.wikimedia.org/wikipedia/en/b/b4/Wicked-poster.jpg',
-    type: 'theater',
-    genres: ['Musical', 'Fantasy'],
-    tier: Tier.B,
     rank: 0
   },
   {
