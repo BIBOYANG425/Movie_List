@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Search, Plus, ArrowLeft, Loader2, Film } from 'lucide-react';
+import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight } from 'lucide-react';
 import { RankedItem, Tier } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
 import { searchMovies, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
@@ -11,7 +11,7 @@ interface AddMediaModalProps {
   currentItems: RankedItem[];
 }
 
-type Step = 'search' | 'tier' | 'compare';
+type Step = 'search' | 'tier' | 'notes' | 'compare';
 
 interface CompareSnapshot {
   low: number;
@@ -25,6 +25,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [isSearching, setIsSearching] = useState(false);
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
+
+  // Notes state
+  const [notes, setNotes] = useState('');
 
   // Binary search comparison state
   const [compLow, setCompLow] = useState(0);
@@ -42,6 +45,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       setIsSearching(false);
       setSelectedItem(null);
       setSelectedTier(null);
+      setNotes('');
       setCompLow(0);
       setCompHigh(0);
       setCompHistory([]);
@@ -94,11 +98,24 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const handleSelectTier = (tier: Tier) => {
     setSelectedTier(tier);
-    const tierItems = getTierItems(tier);
+    // Always go to notes step first, regardless of tier size
+    setStep('notes');
+  };
+
+  const proceedFromNotes = () => {
+    const tierItems = getTierItems(selectedTier!);
     if (tierItems.length === 0) {
-      onAdd({ ...selectedItem!, tier, rank: 0, id: Math.random().toString(36).substr(2, 9) });
+      // No existing items in tier — insert immediately
+      onAdd({
+        ...selectedItem!,
+        tier: selectedTier!,
+        rank: 0,
+        notes: notes.trim() || undefined,
+        id: Math.random().toString(36).substr(2, 9),
+      });
       onClose();
     } else {
+      // Start head-to-head comparison
       setCompLow(0);
       setCompHigh(tierItems.length);
       setCompHistory([]);
@@ -108,12 +125,19 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const handleInsertAt = (rankIndex: number) => {
     if (selectedItem && selectedTier) {
-      onAdd({
+      const finalItem: RankedItem = {
         ...selectedItem,
         tier: selectedTier,
         rank: rankIndex,
+        notes: notes.trim() || undefined,
         id: Math.random().toString(36).substr(2, 9),
-      });
+      };
+
+      onAdd(finalItem);
+
+      // TODO (Day 4): POST finalItem to backend /rankings endpoint
+      // fetch('/api/rankings', { method: 'POST', body: JSON.stringify(finalItem) })
+
       onClose();
     }
   };
@@ -301,6 +325,78 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     </div>
   );
 
+  // ─── Render: Notes ────────────────────────────────────────────────────────
+  const MAX_NOTES = 280;
+
+  const renderNotesStep = () => (
+    <div className="flex flex-col gap-5 animate-fade-in">
+      {/* Movie preview */}
+      <div className="flex items-center gap-4 bg-zinc-800/50 p-4 rounded-xl border border-zinc-700/50">
+        {selectedItem?.posterUrl ? (
+          <img
+            src={selectedItem.posterUrl}
+            alt=""
+            className="w-12 h-[72px] object-cover rounded-lg shadow-md flex-shrink-0"
+          />
+        ) : (
+          <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Film size={18} className="text-zinc-600" />
+          </div>
+        )}
+        <div>
+          <p className="font-bold text-white leading-tight">{selectedItem?.title}</p>
+          <p className="text-zinc-500 text-xs mt-0.5">{selectedItem?.year}</p>
+          <span className={`inline-block mt-2 text-xs font-bold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]}`}>
+            {selectedTier} — {TIER_LABELS[selectedTier!]}
+          </span>
+        </div>
+      </div>
+
+      {/* Notes textarea */}
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
+          <StickyNote size={15} className="text-amber-400" />
+          Your thoughts
+          <span className="text-zinc-600 font-normal text-xs">(optional)</span>
+        </label>
+        <div className="relative">
+          <textarea
+            autoFocus
+            rows={4}
+            maxLength={MAX_NOTES}
+            placeholder="What stood out? A scene, a feeling, why it deserves this tier..."
+            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/60 transition-colors resize-none text-sm leading-relaxed"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+          {/* Character count */}
+          <span className={`absolute bottom-3 right-3 text-xs tabular-nums transition-colors ${
+            notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-zinc-600'
+          }`}>
+            {notes.length}/{MAX_NOTES}
+          </span>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex flex-col gap-2 pt-1">
+        <button
+          onClick={proceedFromNotes}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-white text-black font-semibold text-sm hover:bg-zinc-200 transition-colors"
+        >
+          Continue
+          <ChevronRight size={16} />
+        </button>
+        <button
+          onClick={() => { setNotes(''); proceedFromNotes(); }}
+          className="w-full py-2.5 rounded-xl text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+        >
+          Skip — add without notes
+        </button>
+      </div>
+    </div>
+  );
+
   // ─── Render: Compare ──────────────────────────────────────────────────────
   const renderCompareStep = () => {
     const tierItems = getTierItems(selectedTier!);
@@ -411,12 +507,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     switch (step) {
       case 'search':  return 'Add to Marquee';
       case 'tier':    return 'Assign Tier';
+      case 'notes':   return 'Add a Note';
       case 'compare': return 'Head-to-Head';
     }
   };
 
   const handleBack = () => {
-    if (step === 'compare') setStep('tier');
+    if (step === 'compare') setStep('notes');
+    else if (step === 'notes') setStep('tier');
     else if (step === 'tier') setStep('search');
   };
 
@@ -442,6 +540,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         <div className="p-5 overflow-y-auto flex-1">
           {step === 'search'  && renderSearchStep()}
           {step === 'tier'    && renderTierStep()}
+          {step === 'notes'   && renderNotesStep()}
           {step === 'compare' && renderCompareStep()}
         </div>
       </div>
