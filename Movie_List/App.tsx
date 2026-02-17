@@ -1,19 +1,49 @@
-import React, { useState } from 'react';
-import { LayoutGrid, Plus, BarChart2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutGrid, Plus, BarChart2, RotateCcw } from 'lucide-react';
 import { Tier, RankedItem } from './types';
 import { INITIAL_RANKINGS, TIERS } from './constants';
 import { TierRow } from './components/TierRow';
 import { AddMediaModal } from './components/AddMediaModal';
 import { StatsView } from './components/StatsView';
 
+const STORAGE_KEY = 'marquee_rankings_v1';
+
+// Load saved rankings from localStorage, fall back to seed data
+function loadRankings(): RankedItem[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved) as RankedItem[];
+  } catch {
+    // Corrupted data — fall back to defaults
+  }
+  return INITIAL_RANKINGS;
+}
+
 const App = () => {
-  const [items, setItems] = useState<RankedItem[]>(INITIAL_RANKINGS);
+  // Lazy initialiser — only runs once on mount
+  const [items, setItems] = useState<RankedItem[]>(loadRankings);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'ranking' | 'stats'>('ranking');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   
+  // Persist to localStorage whenever rankings change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } catch {
+      // Storage full or unavailable — fail silently
+    }
+  }, [items]);
+
   // Drag State
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+
+  const handleReset = () => {
+    if (window.confirm('Reset your list to the default seed data? This cannot be undone.')) {
+      localStorage.removeItem(STORAGE_KEY);
+      setItems(INITIAL_RANKINGS);
+    }
+  };
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggedItemId(id);
@@ -135,6 +165,13 @@ const App = () => {
                     className={`p-2 rounded-lg transition-colors ${activeTab === 'stats' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'}`}
                  >
                     <BarChart2 size={20} />
+                </button>
+                <button
+                    onClick={handleReset}
+                    title="Reset to defaults"
+                    className="p-2 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900 transition-colors"
+                >
+                    <RotateCcw size={18} />
                 </button>
             </div>
         </header>
