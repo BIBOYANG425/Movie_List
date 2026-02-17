@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { X, Search, Plus, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Search, Plus, ArrowLeft, Loader2, Film } from 'lucide-react';
 import { RankedItem, Tier } from '../types';
-import { MOCK_SEARCH_RESULTS, TIER_COLORS, TIER_LABELS } from '../constants';
+import { TIER_COLORS, TIER_LABELS } from '../constants';
+import { searchMovies, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
 
 interface AddMediaModalProps {
   isOpen: boolean;
@@ -20,6 +21,8 @@ interface CompareSnapshot {
 export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, currentItems }) => {
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
 
@@ -28,11 +31,15 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [compHigh, setCompHigh] = useState(0);
   const [compHistory, setCompHistory] = useState<CompareSnapshot[]>([]);
 
-  // Reset state when modal opens/closes
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset on open/close
   useEffect(() => {
     if (isOpen) {
       setStep('search');
       setSearchTerm('');
+      setSearchResults([]);
+      setIsSearching(false);
       setSelectedItem(null);
       setSelectedTier(null);
       setCompLow(0);
@@ -41,13 +48,47 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     }
   }, [isOpen]);
 
+  // Debounced TMDB search
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (!searchTerm.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+
+    debounceRef.current = setTimeout(async () => {
+      const results = await searchMovies(searchTerm);
+      setSearchResults(results);
+      setIsSearching(false);
+    }, 350);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchTerm]);
+
   if (!isOpen) return null;
 
   const getTierItems = (tier: Tier) =>
     currentItems.filter(i => i.tier === tier).sort((a, b) => a.rank - b.rank);
 
-  const handleSelectMovie = (item: RankedItem) => {
-    setSelectedItem(item);
+  const handleSelectMovie = (movie: TMDBMovie) => {
+    // Convert TMDBMovie → RankedItem (tier/rank are placeholders, set in next steps)
+    const asRankedItem: RankedItem = {
+      id: movie.id,
+      title: movie.title,
+      year: movie.year,
+      posterUrl: movie.posterUrl ?? '',
+      type: 'movie',
+      genres: movie.genres,
+      tier: Tier.B,  // placeholder — overwritten in handleSelectTier
+      rank: 0,
+    };
+    setSelectedItem(asRankedItem);
     setStep('tier');
   };
 
@@ -55,11 +96,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setSelectedTier(tier);
     const tierItems = getTierItems(tier);
     if (tierItems.length === 0) {
-      // No items in tier — insert immediately at rank 0
       onAdd({ ...selectedItem!, tier, rank: 0, id: Math.random().toString(36).substr(2, 9) });
       onClose();
     } else {
-      // Start binary search
       setCompLow(0);
       setCompHigh(tierItems.length);
       setCompHistory([]);
@@ -87,17 +126,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       return;
     }
 
-    // Save snapshot for Undo
     setCompHistory(prev => [...prev, { low: compLow, high: compHigh }]);
 
     let newLow = compLow;
     let newHigh = compHigh;
 
     if (choice === 'new') {
-      // New item is better → it belongs above the pivot (lower index)
       newHigh = mid;
     } else {
-      // Existing is better → new item belongs below the pivot
       newLow = mid + 1;
     }
 
@@ -119,68 +155,138 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   // ─── Render: Search ───────────────────────────────────────────────────────
   const renderSearchStep = () => (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
+      {/* Search input */}
       <div className="relative">
-        <Search className="absolute left-3 top-3 text-zinc-500" size={20} />
+        <Search className="absolute left-3 top-3.5 text-zinc-500" size={18} />
         <input
           type="text"
           autoFocus
-          placeholder="Search movies..."
+          placeholder="Search any movie..."
           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
+        {isSearching && (
+          <Loader2 className="absolute right-3 top-3.5 text-zinc-500 animate-spin" size={18} />
+        )}
       </div>
 
-      <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
-        {MOCK_SEARCH_RESULTS.filter(i =>
-          i.title.toLowerCase().includes(searchTerm.toLowerCase())
-        ).map((item) => (
+      {/* No API key warning */}
+      {!hasTmdbKey() && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 text-sm text-yellow-300">
+          <p className="font-semibold mb-1">TMDB API key not configured</p>
+          <p className="text-yellow-400/70 text-xs">
+            Add <code className="bg-black/30 px-1 rounded">VITE_TMDB_API_KEY</code> to your Vercel environment variables to enable live search.
+          </p>
+        </div>
+      )}
+
+      {/* Results */}
+      <div className="space-y-1 max-h-[55vh] overflow-y-auto pr-1">
+        {/* Loading skeleton */}
+        {isSearching && (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex items-center gap-3 p-2 rounded-lg animate-pulse">
+                <div className="w-12 h-16 bg-zinc-800 rounded flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 bg-zinc-800 rounded w-3/4" />
+                  <div className="h-2 bg-zinc-800 rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Search results */}
+        {!isSearching && searchResults.map((movie) => (
           <button
-            key={item.id}
-            onClick={() => handleSelectMovie(item)}
-            className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-zinc-800 transition-colors group text-left"
+            key={movie.id}
+            onClick={() => handleSelectMovie(movie)}
+            className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors group text-left"
           >
-            <img src={item.posterUrl} alt="" className="w-12 h-16 object-cover rounded bg-zinc-800 shadow-sm" />
-            <div className="flex-1">
-              <div className="font-semibold text-white group-hover:text-indigo-400 transition-colors">{item.title}</div>
-              <div className="text-xs text-zinc-500">{item.year} · {item.genres.join(', ')}</div>
+            {/* Poster */}
+            {movie.posterUrl ? (
+              <img
+                src={movie.posterUrl}
+                alt={movie.title}
+                className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 flex-shrink-0 shadow-md"
+              />
+            ) : (
+              <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Film size={20} className="text-zinc-600" />
+              </div>
+            )}
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-white group-hover:text-indigo-400 transition-colors truncate leading-tight">
+                {movie.title}
+              </p>
+              <p className="text-xs text-zinc-500 mt-0.5">{movie.year}</p>
+              {movie.genres.length > 0 && (
+                <div className="flex gap-1 mt-1.5 flex-wrap">
+                  {movie.genres.map(g => (
+                    <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">
+                      {g}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="text-zinc-600 group-hover:text-white">
-              <Plus size={20} />
+
+            <div className="text-zinc-700 group-hover:text-zinc-300 flex-shrink-0 transition-colors">
+              <Plus size={18} />
             </div>
           </button>
         ))}
-        {searchTerm &&
-          MOCK_SEARCH_RESULTS.filter(i =>
-            i.title.toLowerCase().includes(searchTerm.toLowerCase())
-          ).length === 0 && (
-            <div className="text-center py-12 text-zinc-500 text-sm">
-              No results found.<br />
-              <span className="text-xs opacity-50">(This is a mock search)</span>
-            </div>
-          )}
+
+        {/* Empty state */}
+        {!isSearching && searchTerm.trim() && searchResults.length === 0 && (
+          <div className="text-center py-12 text-zinc-500 text-sm">
+            <Film size={32} className="mx-auto mb-3 opacity-30" />
+            <p>No results for "{searchTerm}"</p>
+            <p className="text-xs mt-1 opacity-60">Try a different title or check spelling</p>
+          </div>
+        )}
+
+        {/* Initial prompt */}
+        {!isSearching && !searchTerm.trim() && (
+          <div className="text-center py-12 text-zinc-600 text-sm">
+            <Search size={32} className="mx-auto mb-3 opacity-30" />
+            <p>Type a movie title to search</p>
+          </div>
+        )}
       </div>
     </div>
   );
 
-  // ─── Render: Tier ────────────────────────────────────────────────────────
+  // ─── Render: Tier ─────────────────────────────────────────────────────────
   const renderTierStep = () => (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
+      {/* Selected movie preview */}
       <div className="flex items-center gap-4 bg-zinc-800/50 p-4 rounded-xl border border-zinc-700/50">
-        <img src={selectedItem?.posterUrl} alt="" className="w-16 h-24 object-cover rounded shadow-lg" />
+        {selectedItem?.posterUrl ? (
+          <img src={selectedItem.posterUrl} alt="" className="w-14 h-20 object-cover rounded-lg shadow-lg flex-shrink-0" />
+        ) : (
+          <div className="w-14 h-20 bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Film size={20} className="text-zinc-600" />
+          </div>
+        )}
         <div>
           <h3 className="font-bold text-lg leading-tight">{selectedItem?.title}</h3>
-          <p className="text-zinc-400 text-sm mt-1">How does this tier feel to you?</p>
+          <p className="text-zinc-500 text-sm mt-0.5">{selectedItem?.year}</p>
+          <p className="text-zinc-400 text-sm mt-1">How does this tier feel?</p>
         </div>
       </div>
 
-      <div className="grid gap-3">
+      <div className="grid gap-2.5">
         {Object.values(Tier).map((tier) => (
           <button
             key={tier}
             onClick={() => handleSelectTier(tier)}
-            className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${TIER_COLORS[tier]} bg-opacity-10 hover:bg-opacity-20`}
+            className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${TIER_COLORS[tier]}`}
           >
             <div className="flex items-center gap-4">
               <span className="text-2xl font-black">{tier}</span>
@@ -195,7 +301,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     </div>
   );
 
-  // ─── Render: Compare ─────────────────────────────────────────────────────
+  // ─── Render: Compare ──────────────────────────────────────────────────────
   const renderCompareStep = () => {
     const tierItems = getTierItems(selectedTier!);
     const mid = Math.floor((compLow + compHigh) / 2);
@@ -204,8 +310,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     const currentRound = compHistory.length + 1;
 
     return (
-      <div className="flex flex-col gap-6 animate-fade-in">
-        {/* Round indicator */}
+      <div className="flex flex-col gap-5 animate-fade-in">
+        {/* Progress */}
         <div className="flex items-center justify-between">
           <p className="text-zinc-400 text-sm">
             Round <span className="text-white font-semibold">{currentRound}</span>
@@ -216,31 +322,26 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               <div
                 key={i}
                 className={`h-1.5 w-6 rounded-full transition-colors ${
-                  i < compHistory.length
-                    ? 'bg-indigo-500'
-                    : i === compHistory.length
-                    ? 'bg-zinc-500'
-                    : 'bg-zinc-800'
+                  i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'
                 }`}
               />
             ))}
           </div>
         </div>
 
-        {/* Question */}
         <h3 className="text-center text-lg font-bold text-white">Which do you prefer?</h3>
 
-        {/* Head-to-head cards */}
+        {/* Head-to-head */}
         <div className="flex items-stretch gap-3">
-          {/* New item (left) */}
+          {/* New item */}
           <button
             onClick={() => handleCompareChoice('new')}
-            className="flex-1 flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-indigo-500 hover:bg-indigo-500/5 transition-all group active:scale-[0.97]"
+            className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-zinc-700 hover:border-indigo-500 hover:bg-indigo-500/5 transition-all group active:scale-[0.97]"
           >
             <img
               src={selectedItem?.posterUrl}
               alt={selectedItem?.title}
-              className="w-full aspect-[2/3] object-cover rounded-lg shadow-lg group-hover:shadow-indigo-500/20"
+              className="w-full aspect-[2/3] object-cover rounded-xl shadow-lg"
             />
             <div className="text-center">
               <p className="font-bold text-white text-sm leading-tight">{selectedItem?.title}</p>
@@ -258,27 +359,27 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             </div>
           </div>
 
-          {/* Pivot item (right) */}
+          {/* Pivot item */}
           <button
             onClick={() => handleCompareChoice('existing')}
-            className="flex-1 flex flex-col items-center gap-3 p-4 rounded-2xl border-2 border-zinc-700 hover:border-zinc-400 hover:bg-zinc-400/5 transition-all group active:scale-[0.97]"
+            className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-zinc-700 hover:border-zinc-400 hover:bg-zinc-400/5 transition-all group active:scale-[0.97]"
           >
             <img
               src={pivotItem?.posterUrl}
               alt={pivotItem?.title}
-              className="w-full aspect-[2/3] object-cover rounded-lg shadow-lg"
+              className="w-full aspect-[2/3] object-cover rounded-xl shadow-lg"
             />
             <div className="text-center">
               <p className="font-bold text-white text-sm leading-tight">{pivotItem?.title}</p>
               <p className="text-xs text-zinc-500 mt-0.5">{pivotItem?.year}</p>
               <span className={`inline-block mt-2 text-xs font-semibold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]}`}>
-                {selectedTier} Tier · #{mid + 1}
+                {selectedTier} · #{mid + 1}
               </span>
             </div>
           </button>
         </div>
 
-        {/* Action buttons */}
+        {/* Actions */}
         <div className="flex items-center justify-between mt-1">
           <button
             onClick={handleUndo}
@@ -288,14 +389,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             <ArrowLeft size={15} />
             Undo
           </button>
-
           <button
             onClick={() => handleCompareChoice('too_tough')}
             className="px-4 py-2 rounded-full border border-zinc-700 text-sm font-semibold text-zinc-300 hover:bg-zinc-800 hover:border-zinc-500 transition-all"
           >
             Too tough
           </button>
-
           <button
             onClick={() => handleCompareChoice('skip')}
             className="flex items-center gap-1.5 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
@@ -308,11 +407,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     );
   };
 
-  // ─── Step title ───────────────────────────────────────────────────────────
   const getStepTitle = () => {
     switch (step) {
-      case 'search': return 'Add to Marquee';
-      case 'tier':   return 'Assign Tier';
+      case 'search':  return 'Add to Marquee';
+      case 'tier':    return 'Assign Tier';
       case 'compare': return 'Head-to-Head';
     }
   };
@@ -325,9 +423,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
       <div className="bg-zinc-950 border border-zinc-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-zinc-800 bg-zinc-900/50">
+        <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/50 flex-shrink-0">
           <div className="flex items-center gap-3">
             {step !== 'search' && (
               <button onClick={handleBack} className="text-zinc-400 hover:text-white transition-colors">
@@ -342,7 +439,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto">
+        <div className="p-5 overflow-y-auto flex-1">
           {step === 'search'  && renderSearchStep()}
           {step === 'tier'    && renderTierStep()}
           {step === 'compare' && renderCompareStep()}
