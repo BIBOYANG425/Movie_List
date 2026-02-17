@@ -189,17 +189,23 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   if (!isOpen) return null;
 
-  // IDs and titles of movies the user already has ranked
+  // IDs and titles of movies the user already has ranked or saved
   const rankedIds = new Set(currentItems.map(i => i.id));
   const rankedTitles = new Set(currentItems.map(i => i.title.toLowerCase()));
+  const allExcludedIds = new Set([...rankedIds, ...(watchlistIds ?? [])]);
+
+  const isAlreadyOwned = (m: { id: string; title: string }) =>
+    allExcludedIds.has(m.id) || rankedTitles.has(m.title.toLowerCase());
 
   const getTierItems = (tier: Tier) =>
     currentItems.filter(i => i.tier === tier).sort((a, b) => a.rank - b.rank);
 
   // Filter search results: remove already-ranked movies (by ID or title)
-  const filteredSearchResults = searchResults.filter(
-    m => !rankedIds.has(m.id) && !rankedTitles.has(m.title.toLowerCase())
-  );
+  const filteredSearchResults = searchResults.filter(m => !isAlreadyOwned(m));
+
+  // Filter suggestions client-side as a safety net (covers old localStorage IDs,
+  // bookmarks made during this session, and any API-level filtering misses)
+  const filteredSuggestions = suggestions.filter(m => !isAlreadyOwned(m));
 
   const handleSelectMovie = (movie: TMDBMovie, fromSuggestion = false) => {
     if (fromSuggestion) consumeSuggestion(movie.id);
@@ -447,7 +453,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 ))}
               </div>
             )}
-            {!suggestionsLoading && suggestions.length > 0 ? (
+            {!suggestionsLoading && filteredSuggestions.length > 0 ? (
               <div>
                 <div className="flex items-center justify-between mb-3 px-1">
                   <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
@@ -463,7 +469,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                   </button>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {suggestions.map((movie) => (
+                  {filteredSuggestions.map((movie) => (
                     <div key={movie.id} className="relative group">
                       <button
                         onClick={() => handleSelectMovie(movie, true)}
