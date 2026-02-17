@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight } from 'lucide-react';
 import { RankedItem, Tier } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
-import { searchMovies, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
+import { searchMovies, getSuggestions, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
 
 interface AddMediaModalProps {
   isOpen: boolean;
@@ -22,7 +22,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
+  const [suggestions, setSuggestions] = useState<TMDBMovie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false);
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
 
@@ -49,6 +51,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       setCompLow(0);
       setCompHigh(0);
       setCompHistory([]);
+
+      // Load suggestions (cached after first load)
+      if (!suggestionsLoaded && hasTmdbKey()) {
+        getSuggestions().then((results) => {
+          setSuggestions(results);
+          setSuggestionsLoaded(true);
+        });
+      }
     }
   }, [isOpen]);
 
@@ -275,12 +285,41 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           </div>
         )}
 
-        {/* Initial prompt */}
+        {/* Suggestions — shown when search is empty */}
         {!isSearching && !searchTerm.trim() && (
-          <div className="text-center py-12 text-zinc-600 text-sm">
-            <Search size={32} className="mx-auto mb-3 opacity-30" />
-            <p>Type a movie title to search</p>
-          </div>
+          <>
+            {suggestions.length > 0 ? (
+              <div>
+                <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3 px-1">
+                  Suggested for you
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {suggestions.map((movie) => (
+                    <button
+                      key={movie.id}
+                      onClick={() => handleSelectMovie(movie)}
+                      className="flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors group"
+                    >
+                      <img
+                        src={movie.posterUrl!}
+                        alt={movie.title}
+                        className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-shadow"
+                      />
+                      <p className="text-xs font-medium text-zinc-300 mt-2 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                        {movie.title}
+                      </p>
+                      <p className="text-[10px] text-zinc-600 mt-0.5">{movie.year}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-zinc-600 text-sm">
+                <Search size={32} className="mx-auto mb-3 opacity-30" />
+                <p>Type a movie title to search</p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -48,6 +48,78 @@ export function hasTmdbKey(): boolean {
   return !!import.meta.env.VITE_TMDB_API_KEY;
 }
 
+// ── Shared response mapper ──────────────────────────────────────────────────
+function mapTmdbResult(m: any): TMDBMovie | null {
+  if (!m.poster_path) return null;
+  return {
+    id: `tmdb_${m.id}`,
+    tmdbId: m.id,
+    title: m.title,
+    year: m.release_date ? m.release_date.slice(0, 4) : '—',
+    posterUrl: `${TMDB_IMAGE_BASE}${m.poster_path}`,
+    type: 'movie' as const,
+    genres: (m.genre_ids as number[])
+      .map((gid: number) => GENRE_MAP[gid])
+      .filter(Boolean)
+      .slice(0, 3),
+    overview: m.overview ?? '',
+  };
+}
+
+/**
+ * Fetch suggested movies: 50% new releases (trending this week),
+ * 50% classics (top-rated of all time).
+ * Returns up to 12 mixed results, alternating new/classic.
+ */
+export async function getSuggestions(): Promise<TMDBMovie[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    // Fetch both in parallel
+    const [trendingRes, classicsRes] = await Promise.all([
+      fetch(`${TMDB_BASE}/trending/movie/week?api_key=${apiKey}&language=en-US`),
+      fetch(`${TMDB_BASE}/movie/top_rated?api_key=${apiKey}&language=en-US&page=1`),
+    ]);
+
+    if (!trendingRes.ok || !classicsRes.ok) return [];
+
+    const [trendingData, classicsData] = await Promise.all([
+      trendingRes.json(),
+      classicsRes.json(),
+    ]);
+
+    const newFilms: TMDBMovie[] = (trendingData.results as any[])
+      .map(mapTmdbResult)
+      .filter((m): m is TMDBMovie => m !== null)
+      .slice(0, 6);
+
+    const classics: TMDBMovie[] = (classicsData.results as any[])
+      .map(mapTmdbResult)
+      .filter((m): m is TMDBMovie => m !== null)
+      .slice(0, 6);
+
+    // Interleave: new, classic, new, classic...
+    const mixed: TMDBMovie[] = [];
+    const maxLen = Math.max(newFilms.length, classics.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < newFilms.length) mixed.push(newFilms[i]);
+      if (i < classics.length) mixed.push(classics[i]);
+    }
+
+    // Deduplicate by tmdbId
+    const seen = new Set<number>();
+    return mixed.filter(m => {
+      if (seen.has(m.tmdbId)) return false;
+      seen.add(m.tmdbId);
+      return true;
+    }).slice(0, 12);
+  } catch (err) {
+    console.error('TMDB suggestions failed:', err);
+    return [];
+  }
+}
+
 /**
  * Search TMDB for movies matching *query*.
  * Returns up to 10 results with real posters and metadata.
@@ -75,21 +147,9 @@ export async function searchMovies(query: string): Promise<TMDBMovie[]> {
     const data = await res.json();
 
     return (data.results as any[])
-      .filter((m) => m.poster_path) // skip movies without a poster
-      .slice(0, 12)
-      .map((m) => ({
-        id: `tmdb_${m.id}`,
-        tmdbId: m.id,
-        title: m.title,
-        year: m.release_date ? m.release_date.slice(0, 4) : '—',
-        posterUrl: `${TMDB_IMAGE_BASE}${m.poster_path}`,
-        type: 'movie' as const,
-        genres: (m.genre_ids as number[])
-          .map((id) => GENRE_MAP[id])
-          .filter(Boolean)
-          .slice(0, 3),
-        overview: m.overview ?? '',
-      }));
+      .map(mapTmdbResult)
+      .filter((m): m is TMDBMovie => m !== null)
+      .slice(0, 12);
   } catch (err) {
     console.error('TMDB search failed:', err);
     return [];
