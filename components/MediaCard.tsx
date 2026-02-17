@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { RankedItem } from '../types';
-import { GripVertical, Film, Star, StickyNote } from 'lucide-react';
+import { GripVertical, Film, Star, StickyNote, Trash2 } from 'lucide-react';
 
 interface MediaCardProps {
   item: RankedItem;
   rank: number;
   score: number;
   onDragStart: (e: React.DragEvent, id: string) => void;
+  onDelete: (id: string) => void;
 }
 
-export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, onDragStart }) => {
+export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, onDragStart, onDelete }) => {
   const [showNote, setShowNote] = useState(false);
 
   return (
@@ -75,6 +76,20 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, onDragS
           <p className="text-[10px] text-zinc-600 mt-auto">tap to close</p>
         </div>
       )}
+
+      {/* Delete button — appears on hover, bottom-left */}
+      <button
+        draggable={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          onDelete(item.id);
+        }}
+        className="absolute bottom-2 left-2 z-20 p-1.5 rounded-full bg-red-500/0 text-transparent group-hover:bg-red-500/20 group-hover:text-red-400 border border-transparent group-hover:border-red-500/30 hover:!bg-red-500/40 transition-all pointer-events-auto"
+        title="Remove from list"
+      >
+        <Trash2 size={12} />
+      </button>
 
       {/* Hover Drag Handle */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-white/80 bg-black/60 p-2 rounded-full backdrop-blur-sm pointer-events-none">

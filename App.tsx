@@ -96,6 +96,23 @@ const App = () => {
     });
   };
 
+  const removeItem = (id: string) => {
+    setItems((prev) => {
+      const without = prev.filter((i) => i.id !== id);
+      // Re-normalize ranks within the affected tier
+      const tiers = new Set(without.map(i => i.tier));
+      let result: RankedItem[] = [];
+      tiers.forEach((tier) => {
+        const tierItems = without
+          .filter(i => i.tier === tier)
+          .sort((a, b) => a.rank - b.rank)
+          .map((item, idx) => ({ ...item, rank: idx }));
+        result = [...result, ...tierItems];
+      });
+      return result;
+    });
+  };
+
   const filteredItems = filterType === 'all'
     ? items
     : items.filter(i => i.type === filterType);
@@ -185,6 +202,7 @@ const App = () => {
                     items={filteredItems.filter((i) => i.tier === tier).sort((a, b) => a.rank - b.rank)}
                     onDrop={handleDrop}
                     onDragStart={handleDragStart}
+                    onDelete={removeItem}
                     />
                 ))}
             </div>

@@ -8,9 +8,10 @@ interface TierRowProps {
   items: RankedItem[];
   onDrop: (e: React.DragEvent, tier: Tier) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
+  onDelete: (id: string) => void;
 }
 
-export const TierRow: React.FC<TierRowProps> = ({ tier, items, onDrop, onDragStart }) => {
+export const TierRow: React.FC<TierRowProps> = ({ tier, items, onDrop, onDragStart, onDelete }) => {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
@@ -63,6 +64,7 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, onDrop, onDragSta
               rank={index}
               score={calculateScore(index, items.length)}
               onDragStart={onDragStart}
+              onDelete={onDelete}
             />
           ))
         )}
