@@ -86,10 +86,12 @@ export function genreNamesToIds(names: string[]): number[] {
  *
  * @param topGenreNames  The user's most-common genre names (e.g. ["Sci-Fi", "Drama"])
  * @param excludeIds     Set of movie IDs (e.g. "tmdb_123") already ranked or on the watchlist
+ * @param page           TMDB page number (1-based). Increment to get fresh results on refresh.
  */
 export async function getSuggestions(
   topGenreNames: string[] = [],
   excludeIds: Set<string> = new Set(),
+  page: number = 1,
 ): Promise<TMDBMovie[]> {
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
   if (!apiKey) return [];
@@ -100,7 +102,6 @@ export async function getSuggestions(
   const currentYear = new Date().getFullYear();
 
   try {
-    // Build two discover URLs: recent popular + all-time top-rated
     const recentUrl = new URL(`${TMDB_BASE}/discover/movie`);
     recentUrl.searchParams.set('api_key', apiKey);
     recentUrl.searchParams.set('language', 'en-US');
@@ -108,6 +109,7 @@ export async function getSuggestions(
     recentUrl.searchParams.set('include_adult', 'false');
     recentUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
     recentUrl.searchParams.set('vote_count.gte', '50');
+    recentUrl.searchParams.set('page', String(page));
     if (genreParam) recentUrl.searchParams.set('with_genres', genreParam);
 
     const classicUrl = new URL(`${TMDB_BASE}/discover/movie`);
@@ -115,6 +117,7 @@ export async function getSuggestions(
     classicUrl.searchParams.set('language', 'en-US');
     classicUrl.searchParams.set('sort_by', 'vote_average.desc');
     classicUrl.searchParams.set('include_adult', 'false');
+    classicUrl.searchParams.set('page', String(page));
     classicUrl.searchParams.set('primary_release_date.lte', `${currentYear - 5}-12-31`);
     classicUrl.searchParams.set('vote_count.gte', '1000');
     if (genreParam) classicUrl.searchParams.set('with_genres', genreParam);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark } from 'lucide-react';
+import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, WatchlistItem } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
 import { searchMovies, getSuggestions, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
@@ -31,6 +31,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
 
+  // Track which TMDB page to fetch so "refresh" shows new results
+  const suggestionPageRef = useRef(1);
+
   // Notes state
   const [notes, setNotes] = useState('');
 
@@ -40,6 +43,39 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [compHistory, setCompHistory] = useState<CompareSnapshot[]>([]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadSuggestions = (page?: number) => {
+    if (!hasTmdbKey()) return;
+    setSuggestionsLoading(true);
+
+    const genreCounts = new Map<string, number>();
+    for (const item of currentItems) {
+      for (const g of item.genres) {
+        genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
+      }
+    }
+    const topGenres = [...genreCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name]) => name);
+
+    const excludeIds = new Set<string>([
+      ...currentItems.map(i => i.id),
+      ...(watchlistIds ?? []),
+    ]);
+
+    const usePage = page ?? suggestionPageRef.current;
+
+    getSuggestions(topGenres, excludeIds, usePage).then((results) => {
+      setSuggestions(results);
+      setSuggestionsLoading(false);
+    });
+  };
+
+  const handleRefreshSuggestions = () => {
+    suggestionPageRef.current += 1;
+    loadSuggestions(suggestionPageRef.current);
+  };
 
   // Reset on open/close
   useEffect(() => {
@@ -72,33 +108,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         setStep('search');
       }
 
-      // Load personalized suggestions every time the modal opens
-      if (hasTmdbKey()) {
-        setSuggestionsLoading(true);
-
-        // Compute user's top genres from ranked + watchlist items
-        const genreCounts = new Map<string, number>();
-        for (const item of currentItems) {
-          for (const g of item.genres) {
-            genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
-          }
-        }
-        const topGenres = [...genreCounts.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 3)
-          .map(([name]) => name);
-
-        // Build exclude set: all ranked IDs + all watchlist IDs
-        const excludeIds = new Set<string>([
-          ...currentItems.map(i => i.id),
-          ...(watchlistIds ?? []),
-        ]);
-
-        getSuggestions(topGenres, excludeIds).then((results) => {
-          setSuggestions(results);
-          setSuggestionsLoading(false);
-        });
-      }
+      // Reset page counter and load fresh suggestions
+      suggestionPageRef.current = 1;
+      loadSuggestions(1);
     }
   }, [isOpen]);
 
@@ -384,9 +396,19 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             )}
             {!suggestionsLoading && suggestions.length > 0 ? (
               <div>
-                <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3 px-1">
-                  Based on your taste
-                </p>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                    Based on your taste
+                  </p>
+                  <button
+                    onClick={handleRefreshSuggestions}
+                    className="flex items-center gap-1 text-[10px] font-semibold text-zinc-600 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800"
+                    title="Show different suggestions"
+                  >
+                    <RefreshCw size={11} />
+                    Refresh
+                  </button>
+                </div>
                 <div className="grid grid-cols-3 gap-2">
                   {suggestions.map((movie) => (
                     <div key={movie.id} className="relative group">
