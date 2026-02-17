@@ -4,47 +4,42 @@ import { Tier, RankedItem } from './types';
 import { INITIAL_RANKINGS, TIERS } from './constants';
 
 // ── Dynamic scoring ──────────────────────────────────────────────────────────
-// Each item gets a score from 10.0 (best) to 1.0 (worst) based on its
-// global rank position across all tiers, with tier boundaries enforced.
-const TIER_BOUNDS: Record<Tier, { min: number; max: number }> = {
-  [Tier.S]: { min: 9.0, max: 10.0 },
-  [Tier.A]: { min: 7.5, max: 8.9 },
-  [Tier.B]: { min: 5.5, max: 7.4 },
-  [Tier.C]: { min: 3.5, max: 5.4 },
-  [Tier.D]: { min: 1.0, max: 3.4 },
-};
+// Scores go from 10.0 (#1 overall) to 1.0 (last overall).
+// Position is GLOBAL across all tiers: S items first, then A, B, C, D.
+// Adding/removing a movie anywhere shifts everyone's score.
+//
+// Example: 3 in S, 3 in A, 1 in B = 7 movies total
+//   S#1=10.0, S#2=8.5, S#3=7.0, A#1=5.5, A#2=4.0, A#3=2.5, B#1=1.0
+// Add 1 to D → 8 movies total, all scores redistribute:
+//   S#1=10.0, S#2=8.7, S#3=7.4, A#1=6.1, A#2=4.9, A#3=3.6, B#1=2.3, D#1=1.0
 
-/**
- * Compute a score map for all items. Each item's score is calculated by:
- * 1. Sorting all items globally: S first, then A, B, C, D — within each tier by rank.
- * 2. Within each tier, distributing scores evenly between that tier's max and min.
- *    - The #1 item in the tier gets the max score.
- *    - The last item gets the min score.
- *    - Single items get the midpoint of the range.
- * This means scores shift dynamically as items are added/removed/moved.
- */
+const SCORE_MAX = 10.0;
+const SCORE_MIN = 1.0;
+
 function computeScores(items: RankedItem[]): Map<string, number> {
   const scoreMap = new Map<string, number>();
 
+  // Build global ordered list: S → A → B → C → D, within each tier by rank
+  const globalOrder: RankedItem[] = [];
   for (const tier of TIERS) {
     const tierItems = items
       .filter(i => i.tier === tier)
       .sort((a, b) => a.rank - b.rank);
+    globalOrder.push(...tierItems);
+  }
 
-    if (tierItems.length === 0) continue;
+  const total = globalOrder.length;
+  if (total === 0) return scoreMap;
 
-    const { min, max } = TIER_BOUNDS[tier];
+  if (total === 1) {
+    scoreMap.set(globalOrder[0].id, SCORE_MAX);
+    return scoreMap;
+  }
 
-    if (tierItems.length === 1) {
-      scoreMap.set(tierItems[0].id, Math.round(((min + max) / 2) * 10) / 10);
-      continue;
-    }
-
-    for (let i = 0; i < tierItems.length; i++) {
-      // Linear interpolation: #1 gets max, last gets min
-      const score = max - (i / (tierItems.length - 1)) * (max - min);
-      scoreMap.set(tierItems[i].id, Math.round(score * 10) / 10);
-    }
+  // Distribute evenly from 10.0 down to 1.0 based on global position
+  for (let i = 0; i < total; i++) {
+    const score = SCORE_MAX - (i / (total - 1)) * (SCORE_MAX - SCORE_MIN);
+    scoreMap.set(globalOrder[i].id, Math.round(score * 10) / 10);
   }
 
   return scoreMap;
