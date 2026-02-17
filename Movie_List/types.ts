@@ -30,7 +30,3 @@ export interface StatsData {
   fill: string;
 }
 
-export interface AiRecommendation {
-  title: string;
-  reason: string;
-}

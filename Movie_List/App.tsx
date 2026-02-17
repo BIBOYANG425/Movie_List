@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { LayoutGrid, Plus, Sparkles, Filter, BarChart2 } from 'lucide-react';
-import { Tier, RankedItem, AiRecommendation } from './types';
+import React, { useState } from 'react';
+import { LayoutGrid, Plus, BarChart2 } from 'lucide-react';
+import { Tier, RankedItem } from './types';
 import { INITIAL_RANKINGS, TIERS } from './constants';
 import { TierRow } from './components/TierRow';
 import { AddMediaModal } from './components/AddMediaModal';
 import { StatsView } from './components/StatsView';
-import { GeminiService } from './services/geminiService';
 
 const App = () => {
   const [items, setItems] = useState<RankedItem[]>(INITIAL_RANKINGS);
@@ -13,22 +12,8 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<'ranking' | 'stats'>('ranking');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   
-  // AI State
-  const [apiKey, setApiKey] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiRoast, setAiRoast] = useState<string | null>(null);
-  const [recommendations, setRecommendations] = useState<AiRecommendation[]>([]);
-  const [showAiModal, setShowAiModal] = useState(false);
-
   // Drag State
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Load API Key from env if available for dev
-    if (process.env.API_KEY) {
-        setApiKey(process.env.API_KEY);
-    }
-  }, []);
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggedItemId(id);
@@ -79,22 +64,6 @@ const App = () => {
 
       return [...otherItems, ...updatedTierList];
     });
-  };
-
-  const generateAiInsights = async () => {
-    if (!apiKey) {
-      alert("Please enter a Google Gemini API Key to use this feature.");
-      setShowAiModal(true);
-      return;
-    }
-    
-    setAiLoading(true);
-    setShowAiModal(true);
-    const service = new GeminiService(apiKey);
-    const result = await service.getRoastAndRecommendations(items);
-    setAiRoast(result.roast);
-    setRecommendations(result.recommendations);
-    setAiLoading(false);
   };
 
   const filteredItems = filterType === 'all'
@@ -167,13 +136,6 @@ const App = () => {
                  >
                     <BarChart2 size={20} />
                 </button>
-                <button 
-                    onClick={generateAiInsights}
-                    className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-900 to-indigo-900 border border-indigo-700/50 rounded-lg text-indigo-100 text-sm font-medium hover:from-purple-800 hover:to-indigo-800 transition-all shadow-lg shadow-purple-900/20"
-                >
-                    <Sparkles size={16} />
-                    <span>AI Insights</span>
-                </button>
             </div>
         </header>
 
@@ -202,67 +164,6 @@ const App = () => {
         currentItems={items}
       />
 
-      {/* AI Modal (Simple Overlay for Demo) */}
-      {showAiModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <div className="bg-zinc-900 border border-zinc-800 w-full max-w-2xl rounded-2xl shadow-2xl p-6 relative">
-                 <button onClick={() => setShowAiModal(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-white"><Plus className="rotate-45" size={24}/></button>
-                 
-                 <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-purple-500/10 rounded-lg">
-                        <Sparkles className="text-purple-400" size={24} />
-                    </div>
-                    <h2 className="text-xl font-bold">Curator Intelligence</h2>
-                 </div>
-
-                 {!apiKey && !process.env.API_KEY ? (
-                     <div className="space-y-4">
-                         <p className="text-zinc-400">To use AI features, please provide a Gemini API Key. The app does not store this permanently.</p>
-                         <input 
-                            type="password" 
-                            placeholder="Enter API Key" 
-                            className="w-full bg-black border border-zinc-700 rounded p-2"
-                            onChange={(e) => setApiKey(e.target.value)}
-                        />
-                        <button 
-                            onClick={generateAiInsights}
-                            className="w-full bg-white text-black font-bold py-2 rounded"
-                        >
-                            Analyze My Taste
-                        </button>
-                     </div>
-                 ) : aiLoading ? (
-                     <div className="py-12 flex flex-col items-center justify-center text-zinc-500 gap-4">
-                         <div className="animate-spin w-8 h-8 border-2 border-current border-t-transparent rounded-full"></div>
-                         <p>Judging your taste...</p>
-                     </div>
-                 ) : (
-                     <div className="space-y-6 animate-fade-in">
-                         {aiRoast && (
-                             <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 p-4 rounded-xl border border-white/5">
-                                 <h3 className="text-xs font-bold uppercase tracking-wider text-purple-400 mb-2">The Vibe Check</h3>
-                                 <p className="text-lg italic font-medium leading-relaxed">"{aiRoast}"</p>
-                             </div>
-                         )}
-
-                         {recommendations.length > 0 && (
-                            <div>
-                                <h3 className="text-xs font-bold uppercase tracking-wider text-green-400 mb-3">Recommended for You</h3>
-                                <div className="space-y-3">
-                                    {recommendations.map((rec, idx) => (
-                                        <div key={idx} className="bg-zinc-800/50 p-3 rounded-lg flex flex-col gap-1">
-                                            <span className="font-bold text-white">{rec.title}</span>
-                                            <span className="text-sm text-zinc-400">{rec.reason}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                         )}
-                     </div>
-                 )}
-            </div>
-        </div>
-      )}
     </div>
   );
 };
