@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, WatchlistItem } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
-import { searchMovies, getSuggestions, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
+import { searchMovies, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
 
 interface AddMediaModalProps {
   isOpen: boolean;
@@ -31,8 +31,11 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
 
-  // Track which TMDB page to fetch so "refresh" shows new results
+  // Two-pool suggestion system
   const suggestionPageRef = useRef(1);
+  const backfillPoolRef = useRef<TMDBMovie[]>([]);
+  const backfillPageRef = useRef(1);
+  const [hasBackfillMixed, setHasBackfillMixed] = useState(false);
 
   // Notes state
   const [notes, setNotes] = useState('');
@@ -44,37 +47,79 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadSuggestions = (page?: number) => {
-    if (!hasTmdbKey()) return;
-    setSuggestionsLoading(true);
+  const getExcludeIds = () => new Set<string>([
+    ...currentItems.map(i => i.id),
+    ...(watchlistIds ?? []),
+  ]);
 
+  const getTopGenres = () => {
     const genreCounts = new Map<string, number>();
     for (const item of currentItems) {
       for (const g of item.genres) {
         genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
       }
     }
-    const topGenres = [...genreCounts.entries()]
+    return [...genreCounts.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([name]) => name);
+  };
 
-    const excludeIds = new Set<string>([
-      ...currentItems.map(i => i.id),
-      ...(watchlistIds ?? []),
-    ]);
+  const prefetchBackfillPool = (excludeIds: Set<string>, page?: number) => {
+    const topGenres = getTopGenres();
+    if (topGenres.length === 0) return;
+    const usePage = page ?? backfillPageRef.current;
+    getPersonalizedFills(topGenres, excludeIds, usePage).then((results) => {
+      backfillPoolRef.current = results;
+    });
+  };
 
-    const usePage = page ?? suggestionPageRef.current;
+  const consumeSuggestion = (movieId: string) => {
+    setSuggestions(prev => {
+      const without = prev.filter(m => m.id !== movieId);
+      if (backfillPoolRef.current.length > 0) {
+        const existingIds = new Set(without.map(m => m.id));
+        let fill: TMDBMovie | undefined;
+        while (backfillPoolRef.current.length > 0) {
+          const candidate = backfillPoolRef.current.shift()!;
+          if (!existingIds.has(candidate.id)) {
+            fill = candidate;
+            break;
+          }
+        }
+        if (fill) {
+          setHasBackfillMixed(true);
+          without.push(fill);
+        }
+        if (backfillPoolRef.current.length < 3) {
+          backfillPageRef.current += 1;
+          prefetchBackfillPool(getExcludeIds(), backfillPageRef.current);
+        }
+      }
+      return without;
+    });
+  };
 
-    getSuggestions(topGenres, excludeIds, usePage).then((results) => {
+  const loadInitialSuggestions = (page: number) => {
+    if (!hasTmdbKey()) return;
+    setSuggestionsLoading(true);
+    setHasBackfillMixed(false);
+
+    const excludeIds = getExcludeIds();
+
+    getGenericSuggestions(excludeIds, page).then((results) => {
       setSuggestions(results);
       setSuggestionsLoading(false);
     });
+
+    backfillPageRef.current = 1;
+    backfillPoolRef.current = [];
+    prefetchBackfillPool(excludeIds, 1);
   };
 
   const handleRefreshSuggestions = () => {
     suggestionPageRef.current += 1;
-    loadSuggestions(suggestionPageRef.current);
+    loadInitialSuggestions(suggestionPageRef.current);
   };
 
   // Reset on open/close
@@ -108,9 +153,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         setStep('search');
       }
 
-      // Reset page counter and load fresh suggestions
+      // Reset page counters and load fresh generic suggestions + prefetch backfill
       suggestionPageRef.current = 1;
-      loadSuggestions(1);
+      loadInitialSuggestions(1);
     }
   }, [isOpen]);
 
@@ -148,7 +193,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   // Filter search results: remove already-ranked movies
   const filteredSearchResults = searchResults.filter(m => !rankedIds.has(m.id));
 
-  const handleSelectMovie = (movie: TMDBMovie) => {
+  const handleSelectMovie = (movie: TMDBMovie, fromSuggestion = false) => {
+    if (fromSuggestion) consumeSuggestion(movie.id);
     const asRankedItem: RankedItem = {
       id: movie.id,
       title: movie.title,
@@ -163,8 +209,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setStep('tier');
   };
 
-  const handleBookmark = (movie: TMDBMovie) => {
+  const handleBookmark = (movie: TMDBMovie, fromSuggestion = false) => {
     if (!onSaveForLater) return;
+    if (fromSuggestion) consumeSuggestion(movie.id);
     const watchItem: WatchlistItem = {
       id: movie.id,
       title: movie.title,
@@ -398,7 +445,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               <div>
                 <div className="flex items-center justify-between mb-3 px-1">
                   <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                    Based on your taste
+                    {hasBackfillMixed ? 'Based on your taste' : 'Popular right now'}
                   </p>
                   <button
                     onClick={handleRefreshSuggestions}
@@ -413,7 +460,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                   {suggestions.map((movie) => (
                     <div key={movie.id} className="relative group">
                       <button
-                        onClick={() => handleSelectMovie(movie)}
+                        onClick={() => handleSelectMovie(movie, true)}
                         className="flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors w-full"
                       >
                         <img
@@ -428,7 +475,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                       </button>
                       {onSaveForLater && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleBookmark(movie); }}
+                          onClick={(e) => { e.stopPropagation(); handleBookmark(movie, true); }}
                           title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
                           className={`absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md ${
                             isBookmarked(movie.id)

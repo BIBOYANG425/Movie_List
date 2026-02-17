@@ -78,26 +78,37 @@ export function genreNamesToIds(names: string[]): number[] {
     .filter((id): id is number => id !== undefined);
 }
 
+// ── Shared helpers for discover fetching ─────────────────────────────────────
+
+function dedup(movies: TMDBMovie[]): TMDBMovie[] {
+  const seen = new Set<number>();
+  return movies.filter(m => {
+    if (seen.has(m.tmdbId)) return false;
+    seen.add(m.tmdbId);
+    return true;
+  });
+}
+
+function interleave(a: TMDBMovie[], b: TMDBMovie[]): TMDBMovie[] {
+  const mixed: TMDBMovie[] = [];
+  const maxLen = Math.max(a.length, b.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (i < a.length) mixed.push(a[i]);
+    if (i < b.length) mixed.push(b[i]);
+  }
+  return mixed;
+}
+
 /**
- * Fetch personalized suggestions:
- *  - 50% popular new releases, 50% top-rated classics
- *  - Filtered to the user's favourite genres (via TMDB discover)
- *  - Movies already in the user's collection are excluded
- *
- * @param topGenreNames  The user's most-common genre names (e.g. ["Sci-Fi", "Drama"])
- * @param excludeIds     Set of movie IDs (e.g. "tmdb_123") already ranked or on the watchlist
- * @param page           TMDB page number (1-based). Increment to get fresh results on refresh.
+ * Fetch GENERIC suggestions: 50% popular new releases + 50% all-time classics.
+ * No genre filter -- this is the initial batch shown when the modal opens.
  */
-export async function getSuggestions(
-  topGenreNames: string[] = [],
+export async function getGenericSuggestions(
   excludeIds: Set<string> = new Set(),
   page: number = 1,
 ): Promise<TMDBMovie[]> {
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
   if (!apiKey) return [];
-
-  const genreIds = genreNamesToIds(topGenreNames);
-  const genreParam = genreIds.length > 0 ? genreIds.join(',') : '';
 
   const currentYear = new Date().getFullYear();
 
@@ -110,17 +121,15 @@ export async function getSuggestions(
     recentUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
     recentUrl.searchParams.set('vote_count.gte', '50');
     recentUrl.searchParams.set('page', String(page));
-    if (genreParam) recentUrl.searchParams.set('with_genres', genreParam);
 
     const classicUrl = new URL(`${TMDB_BASE}/discover/movie`);
     classicUrl.searchParams.set('api_key', apiKey);
     classicUrl.searchParams.set('language', 'en-US');
     classicUrl.searchParams.set('sort_by', 'vote_average.desc');
     classicUrl.searchParams.set('include_adult', 'false');
-    classicUrl.searchParams.set('page', String(page));
     classicUrl.searchParams.set('primary_release_date.lte', `${currentYear - 5}-12-31`);
     classicUrl.searchParams.set('vote_count.gte', '1000');
-    if (genreParam) classicUrl.searchParams.set('with_genres', genreParam);
+    classicUrl.searchParams.set('page', String(page));
 
     const [recentRes, classicRes] = await Promise.all([
       fetch(recentUrl.toString()),
@@ -136,33 +145,87 @@ export async function getSuggestions(
 
     const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id);
 
-    const newFilms: TMDBMovie[] = (recentData.results as any[])
+    const newFilms = (recentData.results as any[])
       .map(mapTmdbResult)
       .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
-      .slice(0, 8);
+      .slice(0, 6);
 
-    const classics: TMDBMovie[] = (classicData.results as any[])
+    const classics = (classicData.results as any[])
       .map(mapTmdbResult)
       .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
-      .slice(0, 8);
+      .slice(0, 6);
 
-    // Interleave: new, classic, new, classic...
-    const mixed: TMDBMovie[] = [];
-    const maxLen = Math.max(newFilms.length, classics.length);
-    for (let i = 0; i < maxLen; i++) {
-      if (i < newFilms.length) mixed.push(newFilms[i]);
-      if (i < classics.length) mixed.push(classics[i]);
-    }
-
-    // Deduplicate by tmdbId
-    const seen = new Set<number>();
-    return mixed.filter(m => {
-      if (seen.has(m.tmdbId)) return false;
-      seen.add(m.tmdbId);
-      return true;
-    }).slice(0, 12);
+    return dedup(interleave(newFilms, classics)).slice(0, 12);
   } catch (err) {
-    console.error('TMDB suggestions failed:', err);
+    console.error('TMDB generic suggestions failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch PERSONALIZED fills: genre-filtered discover results used to
+ * backfill slots when the user ranks or bookmarks a generic suggestion.
+ * Returns a larger buffer (~20 movies) so we rarely need to re-fetch.
+ */
+export async function getPersonalizedFills(
+  topGenreNames: string[],
+  excludeIds: Set<string> = new Set(),
+  page: number = 1,
+): Promise<TMDBMovie[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || topGenreNames.length === 0) return [];
+
+  const genreParam = genreNamesToIds(topGenreNames).join(',');
+  if (!genreParam) return [];
+
+  const currentYear = new Date().getFullYear();
+
+  try {
+    const recentUrl = new URL(`${TMDB_BASE}/discover/movie`);
+    recentUrl.searchParams.set('api_key', apiKey);
+    recentUrl.searchParams.set('language', 'en-US');
+    recentUrl.searchParams.set('sort_by', 'popularity.desc');
+    recentUrl.searchParams.set('include_adult', 'false');
+    recentUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
+    recentUrl.searchParams.set('vote_count.gte', '50');
+    recentUrl.searchParams.set('with_genres', genreParam);
+    recentUrl.searchParams.set('page', String(page));
+
+    const classicUrl = new URL(`${TMDB_BASE}/discover/movie`);
+    classicUrl.searchParams.set('api_key', apiKey);
+    classicUrl.searchParams.set('language', 'en-US');
+    classicUrl.searchParams.set('sort_by', 'vote_average.desc');
+    classicUrl.searchParams.set('include_adult', 'false');
+    classicUrl.searchParams.set('primary_release_date.lte', `${currentYear - 5}-12-31`);
+    classicUrl.searchParams.set('vote_count.gte', '1000');
+    classicUrl.searchParams.set('with_genres', genreParam);
+    classicUrl.searchParams.set('page', String(page));
+
+    const [recentRes, classicRes] = await Promise.all([
+      fetch(recentUrl.toString()),
+      fetch(classicUrl.toString()),
+    ]);
+
+    if (!recentRes.ok || !classicRes.ok) return [];
+
+    const [recentData, classicData] = await Promise.all([
+      recentRes.json(),
+      classicRes.json(),
+    ]);
+
+    const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id);
+
+    const newFilms = (recentData.results as any[])
+      .map(mapTmdbResult)
+      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
+
+    const classics = (classicData.results as any[])
+      .map(mapTmdbResult)
+      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
+
+    return dedup(interleave(newFilms, classics));
+  } catch (err) {
+    console.error('TMDB personalized fills failed:', err);
     return [];
   }
 }
