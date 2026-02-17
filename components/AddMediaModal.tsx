@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight } from 'lucide-react';
-import { RankedItem, Tier } from '../types';
+import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark } from 'lucide-react';
+import { RankedItem, Tier, WatchlistItem } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
 import { searchMovies, getSuggestions, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
 
@@ -8,7 +8,10 @@ interface AddMediaModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (item: RankedItem) => void;
+  onSaveForLater?: (item: WatchlistItem) => void;
   currentItems: RankedItem[];
+  watchlistIds?: Set<string>;
+  preselectedItem?: WatchlistItem | null;
 }
 
 type Step = 'search' | 'tier' | 'notes' | 'compare';
@@ -18,7 +21,7 @@ interface CompareSnapshot {
   high: number;
 }
 
-export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, currentItems }) => {
+export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem }) => {
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
@@ -41,16 +44,33 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   // Reset on open/close
   useEffect(() => {
     if (isOpen) {
-      setStep('search');
       setSearchTerm('');
       setSearchResults([]);
       setIsSearching(false);
-      setSelectedItem(null);
       setSelectedTier(null);
       setNotes('');
       setCompLow(0);
       setCompHigh(0);
       setCompHistory([]);
+
+      // If a watchlist item was pre-selected, skip to tier step
+      if (preselectedItem) {
+        const asRankedItem: RankedItem = {
+          id: preselectedItem.id,
+          title: preselectedItem.title,
+          year: preselectedItem.year,
+          posterUrl: preselectedItem.posterUrl,
+          type: 'movie',
+          genres: preselectedItem.genres,
+          tier: Tier.B,
+          rank: 0,
+        };
+        setSelectedItem(asRankedItem);
+        setStep('tier');
+      } else {
+        setSelectedItem(null);
+        setStep('search');
+      }
 
       // Load suggestions (cached after first load)
       if (!suggestionsLoaded && hasTmdbKey()) {
@@ -91,7 +111,6 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     currentItems.filter(i => i.tier === tier).sort((a, b) => a.rank - b.rank);
 
   const handleSelectMovie = (movie: TMDBMovie) => {
-    // Convert TMDBMovie → RankedItem (tier/rank are placeholders, set in next steps)
     const asRankedItem: RankedItem = {
       id: movie.id,
       title: movie.title,
@@ -99,12 +118,28 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       posterUrl: movie.posterUrl ?? '',
       type: 'movie',
       genres: movie.genres,
-      tier: Tier.B,  // placeholder — overwritten in handleSelectTier
+      tier: Tier.B,
       rank: 0,
     };
     setSelectedItem(asRankedItem);
     setStep('tier');
   };
+
+  const handleBookmark = (movie: TMDBMovie) => {
+    if (!onSaveForLater) return;
+    const watchItem: WatchlistItem = {
+      id: movie.id,
+      title: movie.title,
+      year: movie.year,
+      posterUrl: movie.posterUrl ?? '',
+      type: 'movie',
+      genres: movie.genres,
+      addedAt: new Date().toISOString(),
+    };
+    onSaveForLater(watchItem);
+  };
+
+  const isBookmarked = (movieId: string) => watchlistIds?.has(movieId) ?? false;
 
   const handleSelectTier = (tier: Tier) => {
     setSelectedTier(tier);
@@ -235,10 +270,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
         {/* Search results */}
         {!isSearching && searchResults.map((movie) => (
-          <button
+          <div
             key={movie.id}
-            onClick={() => handleSelectMovie(movie)}
-            className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors group text-left"
+            className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors group"
           >
             {/* Poster */}
             {movie.posterUrl ? (
@@ -253,8 +287,11 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               </div>
             )}
 
-            {/* Info */}
-            <div className="flex-1 min-w-0">
+            {/* Info — clickable to rank */}
+            <button
+              onClick={() => handleSelectMovie(movie)}
+              className="flex-1 min-w-0 text-left"
+            >
               <p className="font-semibold text-white group-hover:text-indigo-400 transition-colors truncate leading-tight">
                 {movie.title}
               </p>
@@ -268,12 +305,32 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                   ))}
                 </div>
               )}
-            </div>
+            </button>
 
-            <div className="text-zinc-700 group-hover:text-zinc-300 flex-shrink-0 transition-colors">
-              <Plus size={18} />
+            {/* Actions: Bookmark + Rank */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {onSaveForLater && (
+                <button
+                  onClick={() => handleBookmark(movie)}
+                  title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    isBookmarked(movie.id)
+                      ? 'text-emerald-400 bg-emerald-500/10'
+                      : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'
+                  }`}
+                >
+                  <Bookmark size={16} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
+                </button>
+              )}
+              <button
+                onClick={() => handleSelectMovie(movie)}
+                className="p-1.5 rounded-lg text-zinc-700 group-hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors"
+                title="Rank this movie"
+              >
+                <Plus size={18} />
+              </button>
             </div>
-          </button>
+          </div>
         ))}
 
         {/* Empty state */}
@@ -295,21 +352,35 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   {suggestions.map((movie) => (
-                    <button
-                      key={movie.id}
-                      onClick={() => handleSelectMovie(movie)}
-                      className="flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors group"
-                    >
-                      <img
-                        src={movie.posterUrl!}
-                        alt={movie.title}
-                        className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-shadow"
-                      />
-                      <p className="text-xs font-medium text-zinc-300 mt-2 leading-tight line-clamp-2 group-hover:text-white transition-colors">
-                        {movie.title}
-                      </p>
-                      <p className="text-[10px] text-zinc-600 mt-0.5">{movie.year}</p>
-                    </button>
+                    <div key={movie.id} className="relative group">
+                      <button
+                        onClick={() => handleSelectMovie(movie)}
+                        className="flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors w-full"
+                      >
+                        <img
+                          src={movie.posterUrl!}
+                          alt={movie.title}
+                          className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-shadow"
+                        />
+                        <p className="text-xs font-medium text-zinc-300 mt-2 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                          {movie.title}
+                        </p>
+                        <p className="text-[10px] text-zinc-600 mt-0.5">{movie.year}</p>
+                      </button>
+                      {onSaveForLater && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleBookmark(movie); }}
+                          title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
+                          className={`absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md ${
+                            isBookmarked(movie.id)
+                              ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
+                              : 'bg-black/60 text-zinc-500 border border-zinc-700 opacity-0 group-hover:opacity-100 hover:text-emerald-400 hover:bg-emerald-500/20'
+                          }`}
+                        >
+                          <Bookmark size={12} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

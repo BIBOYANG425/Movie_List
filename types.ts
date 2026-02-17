@@ -24,6 +24,10 @@ export interface RankedItem extends MediaItem {
   notes?: string;
 }
 
+export interface WatchlistItem extends MediaItem {
+  addedAt: string; // ISO date string
+}
+
 export interface StatsData {
   name: string;
   value: number;

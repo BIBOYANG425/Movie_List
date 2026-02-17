@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutGrid, Plus, BarChart2, RotateCcw } from 'lucide-react';
-import { Tier, RankedItem } from './types';
+import { LayoutGrid, Plus, BarChart2, RotateCcw, Bookmark } from 'lucide-react';
+import { Tier, RankedItem, WatchlistItem } from './types';
 import { INITIAL_RANKINGS, TIERS } from './constants';
 
 // ── Dynamic scoring ──────────────────────────────────────────────────────────
@@ -47,35 +47,46 @@ function computeScores(items: RankedItem[]): Map<string, number> {
 import { TierRow } from './components/TierRow';
 import { AddMediaModal } from './components/AddMediaModal';
 import { StatsView } from './components/StatsView';
+import { Watchlist } from './components/Watchlist';
 
 const STORAGE_KEY = 'marquee_rankings_v1';
+const WATCHLIST_KEY = 'marquee_watchlist_v1';
 
-// Load saved rankings from localStorage, fall back to seed data
 function loadRankings(): RankedItem[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) return JSON.parse(saved) as RankedItem[];
-  } catch {
-    // Corrupted data — fall back to defaults
-  }
+  } catch { /* fall back */ }
   return INITIAL_RANKINGS;
 }
 
+function loadWatchlist(): WatchlistItem[] {
+  try {
+    const saved = localStorage.getItem(WATCHLIST_KEY);
+    if (saved) return JSON.parse(saved) as WatchlistItem[];
+  } catch { /* fall back */ }
+  return [];
+}
+
 const App = () => {
-  // Lazy initialiser — only runs once on mount
   const [items, setItems] = useState<RankedItem[]>(loadRankings);
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>(loadWatchlist);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'stats'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist'>('ranking');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
-  
-  // Persist to localStorage whenever rankings change
+
+  // When "Rank it" is tapped on a watchlist item, we pre-select it in the modal
+  const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | null>(null);
+
+  // Persist rankings
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch {
-      // Storage full or unavailable — fail silently
-    }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* */ }
   }, [items]);
+
+  // Persist watchlist
+  useEffect(() => {
+    try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist)); } catch { /* */ }
+  }, [watchlist]);
 
   // Drag State
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -155,6 +166,35 @@ const App = () => {
     });
   };
 
+  // ── Watchlist handlers ───────────────────────────────────────────────────
+  const addToWatchlist = (item: WatchlistItem) => {
+    setWatchlist(prev => {
+      if (prev.some(w => w.id === item.id)) return prev; // already saved
+      return [item, ...prev]; // newest first
+    });
+  };
+
+  const removeFromWatchlist = (id: string) => {
+    setWatchlist(prev => prev.filter(w => w.id !== id));
+  };
+
+  const rankFromWatchlist = (item: WatchlistItem) => {
+    setPreselectedForRank(item);
+    setIsModalOpen(true);
+  };
+
+  // After a watchlist item is ranked, remove it from the watchlist
+  const handleAddItem = (newItem: RankedItem) => {
+    addItem(newItem);
+    // If the item came from the watchlist, remove it
+    if (preselectedForRank) {
+      removeFromWatchlist(preselectedForRank.id);
+      setPreselectedForRank(null);
+    }
+  };
+
+  const watchlistIds = useMemo(() => new Set(watchlist.map(w => w.id)), [watchlist]);
+
   // Recompute scores whenever rankings change
   const scoreMap = useMemo(() => computeScores(items), [items]);
 
@@ -219,12 +259,26 @@ const App = () => {
                  <button 
                     onClick={() => setActiveTab('ranking')}
                     className={`p-2 rounded-lg transition-colors ${activeTab === 'ranking' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'}`}
+                    title="Rankings"
                  >
                     <LayoutGrid size={20} />
                 </button>
                 <button 
+                    onClick={() => setActiveTab('watchlist')}
+                    className={`p-2 rounded-lg transition-colors relative ${activeTab === 'watchlist' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'}`}
+                    title="Watch Later"
+                 >
+                    <Bookmark size={20} />
+                    {watchlist.length > 0 && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full bg-emerald-500 text-black flex items-center justify-center">
+                        {watchlist.length > 9 ? '9+' : watchlist.length}
+                      </span>
+                    )}
+                </button>
+                <button 
                     onClick={() => setActiveTab('stats')}
                     className={`p-2 rounded-lg transition-colors ${activeTab === 'stats' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'}`}
+                    title="Stats"
                  >
                     <BarChart2 size={20} />
                 </button>
@@ -238,7 +292,7 @@ const App = () => {
             </div>
         </header>
 
-        {activeTab === 'ranking' ? (
+        {activeTab === 'ranking' && (
              <div className="space-y-4">
                 {TIERS.map((tier) => (
                     <TierRow
@@ -252,7 +306,17 @@ const App = () => {
                     />
                 ))}
             </div>
-        ) : (
+        )}
+
+        {activeTab === 'watchlist' && (
+            <Watchlist
+              items={watchlist}
+              onRemove={removeFromWatchlist}
+              onRank={rankFromWatchlist}
+            />
+        )}
+
+        {activeTab === 'stats' && (
             <StatsView items={items} />
         )}
       </main>
@@ -260,9 +324,12 @@ const App = () => {
       {/* Add Media Modal */}
       <AddMediaModal 
         isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onAdd={addItem} 
+        onClose={() => { setIsModalOpen(false); setPreselectedForRank(null); }} 
+        onAdd={handleAddItem} 
+        onSaveForLater={addToWatchlist}
         currentItems={items}
+        watchlistIds={watchlistIds}
+        preselectedItem={preselectedForRank}
       />
 
     </div>
