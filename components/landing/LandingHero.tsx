@@ -7,10 +7,11 @@ export interface LandingHeroProps {
 }
 
 export const LandingHero: React.FC<LandingHeroProps> = ({ onEnterApp }) => {
-  const heroPosters = LANDING_FEATURED_IDS
+  const selected = LANDING_FEATURED_IDS
     .map((id) => INITIAL_RANKINGS.find((item) => item.id === id))
-    .filter((item): item is (typeof INITIAL_RANKINGS)[number] => Boolean(item))
-    .slice(0, 3);
+    .filter((item): item is (typeof INITIAL_RANKINGS)[number] => Boolean(item));
+
+  const heroPosters = (selected.length > 0 ? selected : INITIAL_RANKINGS).slice(0, 3);
 
   return (
     <section className="landing-panel reveal-up" style={{ animationDelay: '0ms' }}>
