@@ -1,4 +1,23 @@
+import json
+from typing import Union
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_cors_origins(v: Union[str, list[str]]) -> list[str]:
+    """Parse CORS_ORIGINS from env: JSON array, comma-separated, or single URL."""
+    if isinstance(v, list):
+        return [str(x).strip() for x in v if x]
+    s = str(v).strip()
+    if not s:
+        return []
+    if s.startswith("["):
+        try:
+            return [x.strip() for x in json.loads(s) if x]
+        except json.JSONDecodeError:
+            pass
+    return [x.strip() for x in s.split(",") if x.strip()]
 
 
 class Settings(BaseSettings):
@@ -21,16 +40,22 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
 
     # ── Server ────────────────────────────────────────────────────────────────
-    PORT: int = 8000  # Cloud Run injects $PORT
+    PORT: int = 8000  # App Runner / Cloud Run inject $PORT
 
     # ── CORS ──────────────────────────────────────────────────────────────────
-    # Set CORS_ORIGINS env var as a comma-separated string for production:
-    #   CORS_ORIGINS=https://your-app.vercel.app,https://custom-domain.com
+    # Env: comma-separated (https://a.com,https://b.com) or JSON ["https://a.com"]
     CORS_ORIGINS: list[str] = [
-        "http://localhost:5173",  # Vite dev
+        "http://localhost:5173",
         "http://localhost:3000",
         "http://localhost:8080",
     ]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors(cls, v: object) -> list[str]:
+        if v is None:
+            return []
+        return _parse_cors_origins(v)
 
     # ── App ───────────────────────────────────────────────────────────────────
     APP_ENV: str = "development"  # development | production
