@@ -1,54 +1,63 @@
 """
-Auth Service — /auth
-────────────────────
-Day 1: Stubs that compile and return sensible shapes.
-Day 2: Full bcrypt + JWT implementation wired to the DB.
-
+Auth API — /auth
+─────────────────
 Endpoints:
-  POST /auth/signup   — Create account
-  POST /auth/login    — Return JWT
-  GET  /auth/me       — Return current user (requires token)
+  POST /auth/signup   — Create account, return user profile (201)
+  POST /auth/login    — Authenticate, return JWT
+  GET  /auth/me       — Return current user profile (requires bearer token)
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
+from app.db.models import User
 from app.db.session import get_db
+from app.deps.auth import get_current_user
+from app.schemas.auth import SignupRequest, TokenResponse, UserResponse
+from app.services.auth_service import (
+    DuplicateUserError,
+    authenticate_user,
+    create_user,
+    issue_access_token,
+)
 
 router = APIRouter()
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-
-
-# ── Pydantic schemas ──────────────────────────────────────────────────────────
-
-class SignupRequest(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
-class UserResponse(BaseModel):
-    id: str
-    username: str
-    email: str
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/signup",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> UserResponse:
     """
     Create a new user account.
-    TODO (Day 2): hash password, insert into DB, raise 409 on duplicate.
+
+    Returns 201 + user profile on success.
+    Returns 409 if the username or email already exists.
     """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Coming in Day 2")
+    try:
+        user = create_user(
+            db,
+            username=payload.username,
+            email=payload.email,
+            password=payload.password,
+        )
+    except DuplicateUserError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": {
+                    "code": "DUPLICATE_USER",
+                    "message": str(exc),
+                }
+            },
+        ) from exc
+
+    return UserResponse.model_validate(user)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -58,16 +67,28 @@ def login(
 ) -> TokenResponse:
     """
     Authenticate with username + password, return a JWT.
-    Uses OAuth2 password form so it works directly with /docs Authorize button.
-    TODO (Day 2): verify credentials, issue token.
+
+    Uses OAuth2 password form so the Swagger /docs Authorize button works
+    out of the box.
     """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Coming in Day 2")
+    user = authenticate_user(db, username=form.username, password=form.password)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": {
+                    "code": "INVALID_CREDENTIALS",
+                    "message": "Incorrect username or password",
+                }
+            },
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = issue_access_token(user)
+    return TokenResponse(access_token=token)
 
 
 @router.get("/me", response_model=UserResponse)
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> UserResponse:
-    """
-    Return the authenticated user's profile.
-    TODO (Day 2): decode JWT, load user from DB.
-    """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Coming in Day 2")
+def me(current_user: User = Depends(get_current_user)) -> UserResponse:
+    """Return the authenticated user's profile."""
+    return UserResponse.model_validate(current_user)
