@@ -81,7 +81,7 @@ def upgrade() -> None:
         sa.Column("title", sa.Text, nullable=False),
         sa.Column("release_year", sa.Integer, nullable=True),
         sa.Column("tmdb_id", sa.BigInteger, nullable=True),
-        sa.Column("attributes", JSONB, nullable=False, server_default="'{}'::jsonb"),
+        sa.Column("attributes", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("is_verified", sa.Boolean, nullable=False, server_default="false"),
         sa.Column("is_user_generated", sa.Boolean, nullable=False, server_default="false"),
         sa.Column(
