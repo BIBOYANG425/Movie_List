@@ -13,9 +13,8 @@ app = FastAPI(
     title="Marquee API",
     description="Backend for the Marquee movie ranking app.",
     version="0.1.0",
-    # Disable auto-generated docs in production
-    docs_url="/docs" if settings.is_dev else None,
-    redoc_url="/redoc" if settings.is_dev else None,
+    docs_url="/docs" if settings.ENABLE_DOCS else None,
+    redoc_url="/redoc" if settings.ENABLE_DOCS else None,
 )
 
 # ── CORS ──────────────────────────────────────────────────────────────────────

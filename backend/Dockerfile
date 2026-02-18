@@ -31,13 +31,17 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application source
 COPY . .
 
+# Make entrypoint executable
+RUN chmod +x /app/entrypoint.sh
+
 # Non-root user for security
 RUN adduser --disabled-password --gecos "" appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 8000
+# Cloud Run sets $PORT; default to 8000 for local dev
+ENV PORT=8000
+EXPOSE ${PORT}
 
-# Run migrations then start the server.
-# In production, run migrations as a separate init container / pre-deploy step.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Entrypoint runs migrations then starts uvicorn
+ENTRYPOINT ["/app/entrypoint.sh"]

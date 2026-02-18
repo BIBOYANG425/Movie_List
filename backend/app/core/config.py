@@ -20,8 +20,12 @@ class Settings(BaseSettings):
     TMDB_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
 
+    # ── Server ────────────────────────────────────────────────────────────────
+    PORT: int = 8000  # Cloud Run injects $PORT
+
     # ── CORS ──────────────────────────────────────────────────────────────────
-    # Frontend dev server + production origin
+    # Set CORS_ORIGINS env var as a comma-separated string for production:
+    #   CORS_ORIGINS=https://your-app.vercel.app,https://custom-domain.com
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",  # Vite dev
         "http://localhost:3000",
@@ -30,6 +34,7 @@ class Settings(BaseSettings):
 
     # ── App ───────────────────────────────────────────────────────────────────
     APP_ENV: str = "development"  # development | production
+    ENABLE_DOCS: bool = True  # Set to False to disable /docs in production
 
     @property
     def is_dev(self) -> bool:
