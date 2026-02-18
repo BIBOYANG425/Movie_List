@@ -26,6 +26,13 @@ export const TIER_SCORE_RANGES = {
   [Tier.D]: { min: 1.0, max: 3.9 },
 };
 
+export const LANDING_FEATURED_IDS = [
+  'tmdb_693134',
+  'tmdb_496243',
+  'tmdb_545611',
+  'tmdb_76341',
+];
+
 // Initial Seed Data
 export const INITIAL_RANKINGS: RankedItem[] = [
   {
