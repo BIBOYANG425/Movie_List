@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
     # ── External APIs ─────────────────────────────────────────────────────────
+    # If empty, TMDB fallback is disabled and media search stays DB-only.
     TMDB_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
 

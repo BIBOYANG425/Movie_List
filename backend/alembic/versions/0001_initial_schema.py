@@ -103,8 +103,11 @@ def upgrade() -> None:
             name="chk_release_year",
         ),
     )
-    # Alter media_type to use the enum
+    # Alter media_type to use the enum.
+    # Drop and re-apply default to avoid PostgreSQL default-cast errors.
+    op.execute("ALTER TABLE media_items ALTER COLUMN media_type DROP DEFAULT")
     op.execute("ALTER TABLE media_items ALTER COLUMN media_type TYPE media_type USING media_type::media_type")
+    op.execute("ALTER TABLE media_items ALTER COLUMN media_type SET DEFAULT 'MOVIE'::media_type")
 
     # Unique tmdb_id only for MOVIE rows — partial index
     op.execute("""
@@ -155,7 +158,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("user_id", "media_item_id", name="uq_user_media"),
         sa.UniqueConstraint("user_id", "tier", "rank_position", name="uq_user_tier_rank_position"),
         sa.CheckConstraint(
-            "isfinite(rank_position) AND rank_position = rank_position",
+            "rank_position = rank_position "
+            "AND rank_position < 'Infinity'::double precision "
+            "AND rank_position > '-Infinity'::double precision",
             name="chk_rank_position_finite",
         ),
         sa.CheckConstraint(
@@ -164,17 +169,39 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             """
-            (tier = 'S' AND visual_score BETWEEN 9.0 AND 10.0) OR
-            (tier = 'A' AND visual_score BETWEEN 8.0 AND 8.9) OR
-            (tier = 'B' AND visual_score BETWEEN 7.0 AND 7.9) OR
-            (tier = 'C' AND visual_score BETWEEN 6.0 AND 6.9) OR
-            (tier = 'D' AND visual_score BETWEEN 0.0 AND 5.9)
+            (tier::text = 'S' AND visual_score BETWEEN 9.0 AND 10.0) OR
+            (tier::text = 'A' AND visual_score BETWEEN 8.0 AND 8.9) OR
+            (tier::text = 'B' AND visual_score BETWEEN 7.0 AND 7.9) OR
+            (tier::text = 'C' AND visual_score BETWEEN 6.0 AND 6.9) OR
+            (tier::text = 'D' AND visual_score BETWEEN 0.0 AND 5.9)
             """,
             name="chk_visual_score_by_tier",
         ),
     )
+    # The tier conversion can fail with constraints still bound to TEXT semantics.
+    # Drop/recreate tier-dependent constraints around the type cast.
+    op.drop_constraint("chk_visual_score_by_tier", "user_rankings", type_="check")
+    op.drop_constraint("uq_user_tier_rank_position", "user_rankings", type_="unique")
+
     # Convert tier text column to enum
     op.execute("ALTER TABLE user_rankings ALTER COLUMN tier TYPE ranking_tier USING tier::ranking_tier")
+
+    op.create_unique_constraint(
+        "uq_user_tier_rank_position",
+        "user_rankings",
+        ["user_id", "tier", "rank_position"],
+    )
+    op.create_check_constraint(
+        "chk_visual_score_by_tier",
+        "user_rankings",
+        """
+        (tier::text = 'S' AND visual_score BETWEEN 9.0 AND 10.0) OR
+        (tier::text = 'A' AND visual_score BETWEEN 8.0 AND 8.9) OR
+        (tier::text = 'B' AND visual_score BETWEEN 7.0 AND 7.9) OR
+        (tier::text = 'C' AND visual_score BETWEEN 6.0 AND 6.9) OR
+        (tier::text = 'D' AND visual_score BETWEEN 0.0 AND 5.9)
+        """,
+    )
 
     # Covering index for sorted list queries
     op.execute("""

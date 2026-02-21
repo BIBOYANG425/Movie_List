@@ -40,7 +40,7 @@ def _hydrate_ranking(ranking: UserRanking, media: MediaItem) -> dict:
         "visual_score": float(ranking.visual_score),
         "notes": ranking.notes,
         "media_title": media.title,
-        "media_type": media.media_type,
+        "media_type": media.media_type.value if hasattr(media.media_type, "value") else str(media.media_type),
         "attributes": media.attributes or {},
         "created_at": ranking.created_at,
         "updated_at": ranking.updated_at,

@@ -47,6 +47,11 @@ class TierEnum(str, PyEnum):
     D = "D"
 
 
+class MediaTypeEnum(str, PyEnum):
+    MOVIE = "MOVIE"
+    PLAY = "PLAY"
+
+
 # ── Timestamp helper ──────────────────────────────────────────────────────────
 
 def _utcnow() -> datetime:
@@ -122,7 +127,7 @@ class User(Base):
 
 class MediaItem(Base):
     """
-    A movie (or future content type) that can be ranked.
+    A movie or stage play that can be ranked.
 
     attributes (JSONB) stores flexible metadata:
         {
@@ -143,8 +148,11 @@ class MediaItem(Base):
     tmdb_id = Column(Integer, unique=False, nullable=True, index=True)
     title = Column(String(500), nullable=False, index=True)
     release_year = Column(Integer, nullable=True)
-    # Only 'MOVIE' for now; schema kept flexible for future extension
-    media_type = Column(String(20), nullable=False, default="MOVIE")
+    media_type = Column(
+        SAEnum(MediaTypeEnum, name="media_type", create_type=False),
+        nullable=False,
+        default=MediaTypeEnum.MOVIE,
+    )
     attributes = Column(JSONB, nullable=False, default=dict)
     is_verified = Column(Boolean, default=False, nullable=False)
     is_user_generated = Column(Boolean, default=False, nullable=False)
@@ -166,6 +174,10 @@ class MediaItem(Base):
         CheckConstraint(
             "release_year IS NULL OR release_year BETWEEN 1800 AND 2200",
             name="chk_release_year",
+        ),
+        CheckConstraint(
+            "media_type <> 'PLAY' OR tmdb_id IS NULL",
+            name="chk_play_tmdb_null",
         ),
     )
 
@@ -228,18 +240,23 @@ class UserRanking(Base):
         UniqueConstraint("user_id", "tier", "rank_position", name="uq_user_tier_rank_position"),
         # Covering index: get user's full sorted list in one index scan
         Index("idx_user_rankings_user_tier_rank", "user_id", "tier", "rank_position"),
-        CheckConstraint("isfinite(rank_position)", name="chk_rank_position_finite"),
+        CheckConstraint(
+            "rank_position = rank_position "
+            "AND rank_position < 'Infinity'::double precision "
+            "AND rank_position > '-Infinity'::double precision",
+            name="chk_rank_position_finite",
+        ),
         CheckConstraint(
             "visual_score >= 0.0 AND visual_score <= 10.0",
             name="chk_visual_score_0_10",
         ),
         CheckConstraint(
             """
-            (tier = 'S' AND visual_score BETWEEN 9.0 AND 10.0) OR
-            (tier = 'A' AND visual_score BETWEEN 8.0 AND 8.9) OR
-            (tier = 'B' AND visual_score BETWEEN 7.0 AND 7.9) OR
-            (tier = 'C' AND visual_score BETWEEN 6.0 AND 6.9) OR
-            (tier = 'D' AND visual_score BETWEEN 0.0 AND 5.9)
+            (tier::text = 'S' AND visual_score BETWEEN 9.0 AND 10.0) OR
+            (tier::text = 'A' AND visual_score BETWEEN 8.0 AND 8.9) OR
+            (tier::text = 'B' AND visual_score BETWEEN 7.0 AND 7.9) OR
+            (tier::text = 'C' AND visual_score BETWEEN 6.0 AND 6.9) OR
+            (tier::text = 'D' AND visual_score BETWEEN 0.0 AND 5.9)
             """,
             name="chk_visual_score_by_tier",
         ),
