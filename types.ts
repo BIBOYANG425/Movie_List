@@ -34,3 +34,41 @@ export interface StatsData {
   fill: string;
 }
 
+export interface FriendProfile {
+  id: string;
+  username: string;
+  avatarUrl?: string;
+  followedAt?: string;
+}
+
+export interface UserSearchResult extends FriendProfile {
+  isFollowing: boolean;
+}
+
+export interface UserProfileSummary extends FriendProfile {
+  followersCount: number;
+  followingCount: number;
+  isSelf: boolean;
+  isFollowing: boolean;
+  isFollowedBy: boolean;
+  isMutual: boolean;
+}
+
+export interface FriendFeedItem {
+  id: string;
+  userId: string;
+  username: string;
+  title: string;
+  tier: Tier;
+  rankedAt: string;
+  posterUrl?: string;
+}
+
+export interface ProfileActivityItem {
+  id: string;
+  title: string;
+  tier: Tier;
+  notes?: string;
+  updatedAt: string;
+  posterUrl?: string;
+}

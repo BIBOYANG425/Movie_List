@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import RankingAppPage from './pages/RankingAppPage';
 import AuthPage from './pages/AuthPage';
+import ProfilePage from './pages/ProfilePage';
 import { useAuth } from './contexts/AuthContext';
 
 const App = () => {
@@ -23,6 +24,10 @@ const App = () => {
       <Route
         path="/app"
         element={user ? <RankingAppPage /> : <Navigate to="/auth" replace />}
+      />
+      <Route
+        path="/profile/:profileId"
+        element={user ? <ProfilePage /> : <Navigate to="/auth" replace />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
