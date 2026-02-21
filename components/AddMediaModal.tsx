@@ -3,6 +3,7 @@ import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bo
 import { RankedItem, Tier, WatchlistItem } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
 import { searchMovies, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
+import { searchMediaFromBackend, hasBackendUrl } from '../services/backendService';
 
 interface AddMediaModalProps {
   isOpen: boolean;
@@ -164,7 +165,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     }
   }, [isOpen]);
 
-  // Debounced TMDB search
+  // Debounced search — uses backend hybrid endpoint when VITE_API_URL is set,
+  // otherwise falls back to direct TMDB search.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -177,7 +179,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setIsSearching(true);
 
     debounceRef.current = setTimeout(async () => {
-      const results = await searchMovies(searchTerm);
+      const results = hasBackendUrl()
+        ? await searchMediaFromBackend(searchTerm)
+        : await searchMovies(searchTerm);
       setSearchResults(results);
       setIsSearching(false);
     }, 350);

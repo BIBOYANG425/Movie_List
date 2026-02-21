@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class MediaTypeEnum(str, Enum):
@@ -73,3 +73,9 @@ class CreateMediaStubRequest(BaseModel):
         if len(title) > 500:
             raise ValueError("title cannot exceed 500 characters")
         return title
+
+    @model_validator(mode="after")
+    def validate_play_constraints(self) -> "CreateMediaStubRequest":
+        if self.media_type == MediaTypeEnum.PLAY and self.tmdb_id is not None:
+            raise ValueError("PLAY entries cannot include tmdb_id")
+        return self

@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import MediaItem
-from app.schemas.media import CreateMediaStubRequest, MediaTypeEnum
+from app.schemas.media import CreateMediaStubRequest, MediaItemDetailResponse, MediaTypeEnum
 from app.services.tmdb_sync import TMDBConfigError, TMDBService, TMDBUpstreamError
 
 TMDB_FALLBACK_THRESHOLD = 8
@@ -94,10 +94,12 @@ def normalize_attributes(attributes: dict[str, Any], media_type: MediaTypeEnum) 
 
 
 def validate_media_type_payload(payload: CreateMediaStubRequest) -> None:
-    """Validate media-type-specific payload rules before writing."""
-    if payload.media_type == MediaTypeEnum.PLAY and payload.tmdb_id is not None:
-        raise InvalidMediaPayloadError("PLAY entries cannot include tmdb_id")
+    """Validate media-type-specific payload rules before writing.
 
+    Note: PLAY/tmdb_id mutual exclusion is enforced at schema level via
+    CreateMediaStubRequest.validate_play_constraints(). This function handles
+    service-layer rules that require DB context or cannot be expressed in schema.
+    """
     source = payload.attributes.get("source")
     if payload.media_type == MediaTypeEnum.PLAY and source not in (None, "manual"):
         raise InvalidMediaPayloadError("PLAY entries must use attributes.source='manual'")
@@ -346,18 +348,18 @@ def create_manual_stub(
     return row
 
 
-def map_media_response(row: MediaItem) -> dict[str, Any]:
-    """Serialize ORM media row to a consistent API payload."""
-    return {
-        "id": row.id,
-        "title": row.title,
-        "release_year": row.release_year,
-        "media_type": _media_type_value(row.media_type),
-        "tmdb_id": row.tmdb_id,
-        "attributes": row.attributes or {},
-        "is_verified": bool(row.is_verified),
-        "is_user_generated": bool(row.is_user_generated),
-        "created_by_user_id": row.created_by_user_id,
-        "created_at": row.created_at,
-        "updated_at": row.updated_at,
-    }
+def map_media_response(row: MediaItem) -> MediaItemDetailResponse:
+    """Serialize ORM media row to a typed API response model."""
+    return MediaItemDetailResponse(
+        id=row.id,
+        title=row.title,
+        release_year=row.release_year,
+        media_type=_media_type_value(row.media_type),
+        tmdb_id=row.tmdb_id,
+        attributes=row.attributes or {},
+        is_verified=bool(row.is_verified),
+        is_user_generated=bool(row.is_user_generated),
+        created_by_user_id=row.created_by_user_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )

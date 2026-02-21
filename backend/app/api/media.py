@@ -75,7 +75,7 @@ async def search_media(
 
 
 @router.get("/{media_id}", response_model=MediaItemDetailResponse)
-def get_media_item(media_id: UUID, db: Session = Depends(get_db)) -> dict:
+def get_media_item(media_id: UUID, db: Session = Depends(get_db)) -> MediaItemDetailResponse:
     """
     Fetch a single media item by UUID.
     """
@@ -97,7 +97,7 @@ def create_stub(
     payload: CreateMediaStubRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> MediaItemDetailResponse:
     """Create a user-submitted manual media entry (PLAY or MOVIE)."""
     try:
         row = create_manual_stub(db, current_user.id, payload)
