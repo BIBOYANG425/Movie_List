@@ -21,7 +21,7 @@ services:
       - key: TMDB_API_KEY
         sync: false          # Set in Render dashboard
       - key: CORS_ORIGINS
-        value: https://movie-list-mvp.vercel.app
+        value: '["https://movie-list-mvp.vercel.app"]'
       - key: APP_ENV
         value: production
       - key: ENABLE_DOCS
