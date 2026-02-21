@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, BarChart2, Bookmark, LayoutGrid, LogOut, Plus, RotateCcw } from 'lucide-react';
+import { ArrowLeft, BarChart2, Bookmark, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType } from '../types';
-import { INITIAL_RANKINGS, TIERS } from '../constants';
+import { TIERS } from '../constants';
 import { TierRow } from '../components/TierRow';
 import { AddMediaModal } from '../components/AddMediaModal';
 import { StatsView } from '../components/StatsView';
 import { Watchlist } from '../components/Watchlist';
+import { FriendsView } from '../components/FriendsView';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -74,7 +75,7 @@ const RankingAppPage = () => {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'friends'>('ranking');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -315,6 +316,15 @@ const RankingAppPage = () => {
             >
               <LogOut size={18} />
             </button>
+            {user && (
+              <Link
+                to={`/profile/${user.id}`}
+                title="My profile"
+                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-colors"
+              >
+                <UserCircle2 size={18} />
+              </Link>
+            )}
           </div>
         </div>
       </nav>
@@ -362,6 +372,15 @@ const RankingAppPage = () => {
               <BarChart2 size={20} />
             </button>
             <button
+              onClick={() => setActiveTab('friends')}
+              className={`p-2 rounded-lg transition-colors ${
+                activeTab === 'friends' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+              }`}
+              title="Friends"
+            >
+              <Users size={20} />
+            </button>
+            <button
               onClick={handleReset}
               title="Reset rankings"
               className="p-2 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900 transition-colors"
@@ -392,6 +411,8 @@ const RankingAppPage = () => {
         )}
 
         {activeTab === 'stats' && <StatsView items={items} />}
+
+        {activeTab === 'friends' && user && <FriendsView userId={user.id} />}
       </main>
 
       <AddMediaModal
