@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, BarChart2, Bookmark, LayoutGrid, Plus, RotateCcw } from 'lucide-react';
-import { Tier, RankedItem, WatchlistItem } from '../types';
+import { ArrowLeft, BarChart2, Bookmark, LayoutGrid, LogOut, Plus, RotateCcw } from 'lucide-react';
+import { Tier, RankedItem, WatchlistItem, MediaType } from '../types';
 import { INITIAL_RANKINGS, TIERS } from '../constants';
 import { TierRow } from '../components/TierRow';
 import { AddMediaModal } from '../components/AddMediaModal';
 import { StatsView } from '../components/StatsView';
 import { Watchlist } from '../components/Watchlist';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 const SCORE_MAX = 10.0;
 const SCORE_MIN = 1.0;
@@ -38,32 +40,39 @@ function computeScores(items: RankedItem[]): Map<string, number> {
   return scoreMap;
 }
 
-const STORAGE_KEY = 'marquee_rankings_v1';
-const WATCHLIST_KEY = 'marquee_watchlist_v1';
-
-function loadRankings(): RankedItem[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved) as RankedItem[];
-  } catch {
-    // Fall back to seed data.
-  }
-  return INITIAL_RANKINGS;
+function rowToRankedItem(row: any): RankedItem {
+  return {
+    id: row.tmdb_id,
+    title: row.title,
+    year: row.year ?? '',
+    posterUrl: row.poster_url ?? '',
+    type: row.type as MediaType,
+    genres: row.genres ?? [],
+    director: row.director,
+    tier: row.tier as Tier,
+    rank: row.rank_position,
+    notes: row.notes,
+  };
 }
 
-function loadWatchlist(): WatchlistItem[] {
-  try {
-    const saved = localStorage.getItem(WATCHLIST_KEY);
-    if (saved) return JSON.parse(saved) as WatchlistItem[];
-  } catch {
-    // Fall back to empty watchlist.
-  }
-  return [];
+function rowToWatchlistItem(row: any): WatchlistItem {
+  return {
+    id: row.tmdb_id,
+    title: row.title,
+    year: row.year ?? '',
+    posterUrl: row.poster_url ?? '',
+    type: row.type as MediaType,
+    genres: row.genres ?? [],
+    director: row.director,
+    addedAt: row.added_at,
+  };
 }
 
 const RankingAppPage = () => {
-  const [items, setItems] = useState<RankedItem[]>(loadRankings);
-  const [watchlist, setWatchlist] = useState<WatchlistItem[]>(loadWatchlist);
+  const { user, signOut } = useAuth();
+  const [items, setItems] = useState<RankedItem[]>([]);
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist'>('ranking');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
@@ -71,26 +80,40 @@ const RankingAppPage = () => {
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch {
-      // Ignore storage quota errors.
-    }
-  }, [items]);
+    if (!user) return;
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist));
-    } catch {
-      // Ignore storage quota errors.
-    }
-  }, [watchlist]);
+    const fetchData = async () => {
+      setLoading(true);
 
-  const handleReset = () => {
-    if (window.confirm('Reset your list to the default seed data? This cannot be undone.')) {
-      localStorage.removeItem(STORAGE_KEY);
-      setItems(INITIAL_RANKINGS);
-    }
+      const [rankingsRes, watchlistRes] = await Promise.all([
+        supabase
+          .from('user_rankings')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('tier')
+          .order('rank_position'),
+        supabase
+          .from('watchlist_items')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('added_at', { ascending: false }),
+      ]);
+
+      if (rankingsRes.data) setItems(rankingsRes.data.map(rowToRankedItem));
+      if (watchlistRes.data) setWatchlist(watchlistRes.data.map(rowToWatchlistItem));
+
+      setLoading(false);
+    };
+
+    fetchData();
+  }, [user]);
+
+  const handleReset = async () => {
+    if (!user) return;
+    if (!window.confirm('Reset your list? This cannot be undone.')) return;
+
+    await supabase.from('user_rankings').delete().eq('user_id', user.id);
+    setItems([]);
   };
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -98,29 +121,40 @@ const RankingAppPage = () => {
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetTier: Tier) => {
+  const handleDrop = async (e: React.DragEvent, targetTier: Tier) => {
     e.preventDefault();
-    if (!draggedItemId) return;
+    if (!draggedItemId || !user) return;
+
+    const droppedId = draggedItemId;
+    setDraggedItemId(null);
+
+    // Compute new rank from current items snapshot (before state update)
+    const others = items.filter((i) => i.id !== droppedId);
+    const newRank = others.filter((i) => i.tier === targetTier).length;
 
     setItems((prev) => {
-      const movedItem = prev.find((i) => i.id === draggedItemId);
+      const movedItem = prev.find((i) => i.id === droppedId);
       if (!movedItem) return prev;
 
-      const others = prev.filter((i) => i.id !== draggedItemId);
-      const targetTierItems = others.filter((i) => i.tier === targetTier);
-      const newRank = targetTierItems.length;
+      const rest = prev.filter((i) => i.id !== droppedId);
       const newItem = { ...movedItem, tier: targetTier, rank: newRank };
 
-      return [...others, newItem].sort((a, b) => {
+      return [...rest, newItem].sort((a, b) => {
         if (a.tier === b.tier) return a.rank - b.rank;
         return 0;
       });
     });
 
-    setDraggedItemId(null);
+    await supabase
+      .from('user_rankings')
+      .update({ tier: targetTier, rank_position: newRank, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('tmdb_id', droppedId);
   };
 
-  const addItem = (newItem: RankedItem) => {
+  const addItem = async (newItem: RankedItem) => {
+    if (!user) return;
+
     setItems((prev) => {
       const tierItems = prev
         .filter((i) => i.tier === newItem.tier)
@@ -133,9 +167,26 @@ const RankingAppPage = () => {
       const updatedTierList = newTierList.map((item, index) => ({ ...item, rank: index }));
       return [...otherItems, ...updatedTierList];
     });
+
+    await supabase.from('user_rankings').upsert({
+      user_id: user.id,
+      tmdb_id: newItem.id,
+      title: newItem.title,
+      year: newItem.year,
+      poster_url: newItem.posterUrl,
+      type: newItem.type,
+      genres: newItem.genres,
+      director: newItem.director ?? null,
+      tier: newItem.tier,
+      rank_position: newItem.rank,
+      notes: newItem.notes ?? null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,tmdb_id' });
   };
 
-  const removeItem = (id: string) => {
+  const removeItem = async (id: string) => {
+    if (!user) return;
+
     setItems((prev) => {
       const without = prev.filter((i) => i.id !== id);
       const tiers = new Set(without.map((i) => i.tier));
@@ -151,17 +202,42 @@ const RankingAppPage = () => {
 
       return result;
     });
+
+    await supabase
+      .from('user_rankings')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('tmdb_id', id);
   };
 
-  const addToWatchlist = (item: WatchlistItem) => {
-    setWatchlist((prev) => {
-      if (prev.some((w) => w.id === item.id)) return prev;
-      return [item, ...prev];
-    });
+  const addToWatchlist = async (item: WatchlistItem) => {
+    if (!user) return;
+    if (watchlist.some((w) => w.id === item.id)) return;
+
+    setWatchlist((prev) => [item, ...prev]);
+
+    await supabase.from('watchlist_items').upsert({
+      user_id: user.id,
+      tmdb_id: item.id,
+      title: item.title,
+      year: item.year,
+      poster_url: item.posterUrl,
+      type: item.type,
+      genres: item.genres,
+      director: item.director ?? null,
+    }, { onConflict: 'user_id,tmdb_id' });
   };
 
-  const removeFromWatchlist = (id: string) => {
+  const removeFromWatchlist = async (id: string) => {
+    if (!user) return;
+
     setWatchlist((prev) => prev.filter((w) => w.id !== id));
+
+    await supabase
+      .from('watchlist_items')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('tmdb_id', id);
   };
 
   const rankFromWatchlist = (item: WatchlistItem) => {
@@ -180,6 +256,14 @@ const RankingAppPage = () => {
   const watchlistIds = useMemo(() => new Set(watchlist.map((w) => w.id)), [watchlist]);
   const scoreMap = useMemo(() => computeScores(items), [items]);
   const filteredItems = filterType === 'all' ? items : items.filter((i) => i.type === filterType);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans pb-20">
@@ -222,6 +306,14 @@ const RankingAppPage = () => {
             >
               <Plus size={16} />
               <span className="hidden sm:inline">Add Item</span>
+            </button>
+
+            <button
+              onClick={signOut}
+              title="Sign out"
+              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-colors"
+            >
+              <LogOut size={18} />
             </button>
           </div>
         </div>
@@ -271,7 +363,7 @@ const RankingAppPage = () => {
             </button>
             <button
               onClick={handleReset}
-              title="Reset to defaults"
+              title="Reset rankings"
               className="p-2 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900 transition-colors"
             >
               <RotateCcw size={18} />
