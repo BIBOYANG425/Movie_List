@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, WatchlistItem } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
-import { searchMovies, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
+import { searchMovies, searchByDirector, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
 import { searchMediaFromBackend, hasBackendUrl } from '../services/backendService';
 
 interface AddMediaModalProps {
@@ -42,6 +42,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
+  const [directorResults, setDirectorResults] = useState<{ directorName: string; movies: TMDBMovie[] }[]>([]);
   const [suggestions, setSuggestions] = useState<TMDBMovie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -189,6 +190,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     const normalizedQuery = searchTerm.trim();
     if (!normalizedQuery) {
       setSearchResults([]);
+      setDirectorResults([]);
       setIsSearching(false);
       return;
     }
@@ -196,14 +198,16 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setIsSearching(true);
 
     debounceRef.current = setTimeout(async () => {
-      const [backendResults, tmdbResults] = await Promise.all([
+      const [backendResults, tmdbResults, directors] = await Promise.all([
         hasBackendUrl()
           ? searchMediaFromBackend(normalizedQuery, BACKEND_SEARCH_TIMEOUT_MS)
           : Promise.resolve([]),
         searchMovies(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
+        searchByDirector(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
       ]);
 
       setSearchResults(mergeAndDedupSearchResults([...backendResults, ...tmdbResults]));
+      setDirectorResults(directors);
       setIsSearching(false);
     }, 350);
 
@@ -390,77 +394,110 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           </div>
         )}
 
-        {/* Search results (excludes already-ranked movies) */}
-        {!isSearching && filteredSearchResults.map((movie) => (
-          <div
-            key={movie.id}
-            className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors group"
-          >
-            {/* Poster */}
-            {movie.posterUrl ? (
-              <img
-                src={movie.posterUrl}
-                alt={movie.title}
-                className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 flex-shrink-0 shadow-md"
-              />
-            ) : (
-              <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Film size={20} className="text-zinc-600" />
-              </div>
-            )}
-
-            {/* Info — clickable to rank */}
-            <button
-              onClick={() => handleSelectMovie(movie)}
-              className="flex-1 min-w-0 text-left"
-            >
-              <p className="font-semibold text-white group-hover:text-indigo-400 transition-colors truncate leading-tight">
-                {movie.title}
+        {/* Director filmography results */}
+        {!isSearching && directorResults.map(({ directorName, movies }) => {
+          const filtered = movies.filter(m => !isAlreadyOwned(m));
+          if (filtered.length === 0) return null;
+          return (
+            <div key={directorName} className="space-y-2 pb-3">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                🎬 Directed by <span className="text-white">{directorName}</span>
               </p>
-              <p className="text-xs text-zinc-500 mt-0.5">{movie.year}</p>
-              {movie.genres.length > 0 && (
-                <div className="flex gap-1 mt-1.5 flex-wrap">
-                  {movie.genres.map(g => (
-                    <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">
-                      {g}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </button>
-
-            {/* Actions: Bookmark + Rank */}
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {onSaveForLater && (
-                <button
-                  onClick={() => handleBookmark(movie)}
-                  title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    isBookmarked(movie.id)
-                      ? 'text-emerald-400 bg-emerald-500/10'
-                      : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'
-                  }`}
-                >
-                  <Bookmark size={16} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
-                </button>
-              )}
-              <button
-                onClick={() => handleSelectMovie(movie)}
-                className="p-1.5 rounded-lg text-zinc-700 group-hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors"
-                title="Rank this movie"
-              >
-                <Plus size={18} />
-              </button>
+              <div className="grid grid-cols-3 gap-2">
+                {filtered.slice(0, 6).map(movie => (
+                  <button
+                    key={movie.id}
+                    onClick={() => handleSelectMovie(movie)}
+                    className="group flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-1.5 transition-colors"
+                  >
+                    <img
+                      src={movie.posterUrl!}
+                      alt={movie.title}
+                      className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-shadow"
+                    />
+                    <p className="text-[11px] font-medium text-zinc-300 mt-1.5 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                      {movie.title}
+                    </p>
+                    <p className="text-[10px] text-zinc-600">{movie.year}</p>
+                  </button>
+                ))}
+              </div>
             </div>
+          );
+        })}
+
+        {/* Search results (excludes already-ranked movies) */}
+        {!isSearching && filteredSearchResults.length > 0 && (
+          <div className="space-y-1">
+            {directorResults.length > 0 && (
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pt-1">Movies</p>
+            )}
+            {filteredSearchResults.map((movie) => (
+              <div
+                key={movie.id}
+                className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors group"
+              >
+                {movie.posterUrl ? (
+                  <img
+                    src={movie.posterUrl}
+                    alt={movie.title}
+                    className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 flex-shrink-0 shadow-md"
+                  />
+                ) : (
+                  <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Film size={20} className="text-zinc-600" />
+                  </div>
+                )}
+                <button
+                  onClick={() => handleSelectMovie(movie)}
+                  className="flex-1 min-w-0 text-left"
+                >
+                  <p className="font-semibold text-white group-hover:text-indigo-400 transition-colors truncate leading-tight">
+                    {movie.title}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-0.5">{movie.year}</p>
+                  {movie.genres.length > 0 && (
+                    <div className="flex gap-1 mt-1.5 flex-wrap">
+                      {movie.genres.map(g => (
+                        <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">
+                          {g}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {onSaveForLater && (
+                    <button
+                      onClick={() => handleBookmark(movie)}
+                      title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
+                      className={`p-1.5 rounded-lg transition-colors ${isBookmarked(movie.id)
+                          ? 'text-emerald-400 bg-emerald-500/10'
+                          : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'
+                        }`}
+                    >
+                      <Bookmark size={16} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleSelectMovie(movie)}
+                    className="p-1.5 rounded-lg text-zinc-700 group-hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors"
+                    title="Rank this movie"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
 
         {/* Empty state */}
-        {!isSearching && searchTerm.trim() && filteredSearchResults.length === 0 && (
+        {!isSearching && searchTerm.trim() && filteredSearchResults.length === 0 && directorResults.length === 0 && (
           <div className="text-center py-12 text-zinc-500 text-sm">
             <Film size={32} className="mx-auto mb-3 opacity-30" />
             <p>No results for "{searchTerm}"</p>
-            <p className="text-xs mt-1 opacity-60">Try a different title or check spelling</p>
+            <p className="text-xs mt-1 opacity-60">Try a different title, director name, or check spelling</p>
           </div>
         )}
 
@@ -514,11 +551,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                         <button
                           onClick={(e) => { e.stopPropagation(); handleBookmark(movie, true); }}
                           title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
-                          className={`absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md ${
-                            isBookmarked(movie.id)
+                          className={`absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md ${isBookmarked(movie.id)
                               ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
                               : 'bg-black/60 text-zinc-500 border border-zinc-700 opacity-0 group-hover:opacity-100 hover:text-emerald-400 hover:bg-emerald-500/20'
-                          }`}
+                            }`}
                         >
                           <Bookmark size={12} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
                         </button>
@@ -623,9 +659,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             onChange={(e) => setNotes(e.target.value)}
           />
           {/* Character count */}
-          <span className={`absolute bottom-3 right-3 text-xs tabular-nums transition-colors ${
-            notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-zinc-600'
-          }`}>
+          <span className={`absolute bottom-3 right-3 text-xs tabular-nums transition-colors ${notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-zinc-600'
+            }`}>
             {notes.length}/{MAX_NOTES}
           </span>
         </div>
@@ -670,9 +705,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             {Array.from({ length: totalRounds }).map((_, i) => (
               <div
                 key={i}
-                className={`h-1.5 w-6 rounded-full transition-colors ${
-                  i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'
-                }`}
+                className={`h-1.5 w-6 rounded-full transition-colors ${i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'
+                  }`}
               />
             ))}
           </div>
@@ -758,9 +792,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const getStepTitle = () => {
     switch (step) {
-      case 'search':  return 'Add to Marquee';
-      case 'tier':    return 'Assign Tier';
-      case 'notes':   return 'Add a Note';
+      case 'search': return 'Add to Marquee';
+      case 'tier': return 'Assign Tier';
+      case 'notes': return 'Add a Note';
       case 'compare': return 'Head-to-Head';
     }
   };
@@ -791,9 +825,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
         {/* Content */}
         <div className="p-5 overflow-y-auto flex-1">
-          {step === 'search'  && renderSearchStep()}
-          {step === 'tier'    && renderTierStep()}
-          {step === 'notes'   && renderNotesStep()}
+          {step === 'search' && renderSearchStep()}
+          {step === 'tier' && renderTierStep()}
+          {step === 'notes' && renderNotesStep()}
           {step === 'compare' && renderCompareStep()}
         </div>
       </div>
