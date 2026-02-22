@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { RankedItem, Tier, MediaType } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES } from '../constants';
-import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, TMDBMovie } from '../services/tmdbService';
+import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, searchByDirector, TMDBMovie } from '../services/tmdbService';
 import { searchMediaFromBackend, hasBackendUrl } from '../services/backendService';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,6 +37,7 @@ const MovieOnboardingPage: React.FC = () => {
     // Search
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
+    const [directorResults, setDirectorResults] = useState<{ directorName: string; movies: TMDBMovie[] }[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -168,14 +169,16 @@ const MovieOnboardingPage: React.FC = () => {
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         const q = searchTerm.trim();
-        if (!q) { setSearchResults([]); setIsSearching(false); return; }
+        if (!q) { setSearchResults([]); setDirectorResults([]); setIsSearching(false); return; }
         setIsSearching(true);
         debounceRef.current = setTimeout(async () => {
-            const [backend, tmdb] = await Promise.all([
+            const [backend, tmdb, directors] = await Promise.all([
                 hasBackendUrl() ? searchMediaFromBackend(q, 2500) : Promise.resolve([]),
                 searchMovies(q, 4500),
+                searchByDirector(q, 4500),
             ]);
             setSearchResults(mergeAndDedup([...backend, ...tmdb]));
+            setDirectorResults(directors);
             setIsSearching(false);
         }, 350);
         return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
@@ -522,7 +525,7 @@ const MovieOnboardingPage: React.FC = () => {
                     <Search className="absolute left-3 top-3.5 text-zinc-500" size={18} />
                     <input
                         type="text"
-                        placeholder="Search for a movie..."
+                        placeholder="Search by movie title or director..."
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
@@ -532,7 +535,7 @@ const MovieOnboardingPage: React.FC = () => {
 
                 {/* Search results */}
                 {searchTerm.trim() && (
-                    <div className="space-y-1">
+                    <div className="space-y-4">
                         {isSearching && (
                             <div className="space-y-2">
                                 {[1, 2, 3].map(i => (
@@ -546,33 +549,76 @@ const MovieOnboardingPage: React.FC = () => {
                                 ))}
                             </div>
                         )}
-                        {!isSearching && filteredSearch.map(movie => (
-                            <button
-                                key={movie.id}
-                                onClick={() => handleSelectMovie(movie, false)}
-                                className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors w-full text-left"
-                            >
-                                {movie.posterUrl ? (
-                                    <img src={movie.posterUrl} alt={movie.title} className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 flex-shrink-0 shadow-md" />
-                                ) : (
-                                    <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-                                        <Film size={20} className="text-zinc-600" />
+
+                        {/* Director filmography results */}
+                        {!isSearching && directorResults.map(({ directorName, movies }) => {
+                            const filteredMovies = movies.filter(m => !isOwned(m));
+                            if (filteredMovies.length === 0) return null;
+                            return (
+                                <section key={directorName} className="space-y-2">
+                                    <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider px-1">
+                                        🎬 Directed by <span className="text-white">{directorName}</span>
+                                    </p>
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                        {filteredMovies.slice(0, 8).map(movie => (
+                                            <button
+                                                key={movie.id}
+                                                onClick={() => handleSelectMovie(movie, false)}
+                                                className="group flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-1.5 transition-colors"
+                                            >
+                                                <img
+                                                    src={movie.posterUrl!}
+                                                    alt={movie.title}
+                                                    className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-shadow"
+                                                />
+                                                <p className="text-[11px] font-medium text-zinc-300 mt-1.5 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                                                    {movie.title}
+                                                </p>
+                                                <p className="text-[10px] text-zinc-600">{movie.year}</p>
+                                            </button>
+                                        ))}
                                     </div>
+                                </section>
+                            );
+                        })}
+
+                        {/* Movie title results */}
+                        {!isSearching && filteredSearch.length > 0 && (
+                            <div className="space-y-1">
+                                {directorResults.length > 0 && (
+                                    <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider px-1 pt-2">Movies</p>
                                 )}
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-white truncate">{movie.title}</p>
-                                    <p className="text-xs text-zinc-500 mt-0.5">{movie.year}</p>
-                                    {movie.genres.length > 0 && (
-                                        <div className="flex gap-1 mt-1 flex-wrap">
-                                            {movie.genres.map(g => (
-                                                <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">{g}</span>
-                                            ))}
+                                {filteredSearch.map(movie => (
+                                    <button
+                                        key={movie.id}
+                                        onClick={() => handleSelectMovie(movie, false)}
+                                        className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors w-full text-left"
+                                    >
+                                        {movie.posterUrl ? (
+                                            <img src={movie.posterUrl} alt={movie.title} className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 flex-shrink-0 shadow-md" />
+                                        ) : (
+                                            <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                <Film size={20} className="text-zinc-600" />
+                                            </div>
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-semibold text-white truncate">{movie.title}</p>
+                                            <p className="text-xs text-zinc-500 mt-0.5">{movie.year}</p>
+                                            {movie.genres.length > 0 && (
+                                                <div className="flex gap-1 mt-1 flex-wrap">
+                                                    {movie.genres.map(g => (
+                                                        <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">{g}</span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                            </button>
-                        ))}
-                        {!isSearching && searchTerm.trim() && filteredSearch.length === 0 && (
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Empty state */}
+                        {!isSearching && searchTerm.trim() && filteredSearch.length === 0 && directorResults.length === 0 && (
                             <div className="text-center py-8 text-zinc-500 text-sm">
                                 <Film size={28} className="mx-auto mb-2 opacity-30" />
                                 <p>No results for "{searchTerm}"</p>

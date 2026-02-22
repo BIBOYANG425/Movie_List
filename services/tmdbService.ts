@@ -298,3 +298,77 @@ export async function searchMovies(
     return [];
   }
 }
+
+/**
+ * Search TMDB for a director by name, then return their directed movies.
+ * Uses /search/person → /person/{id}/movie_credits (crew, department=Directing).
+ */
+export async function searchByDirector(
+  query: string,
+  timeoutMs: number = DEFAULT_TMDB_SEARCH_TIMEOUT_MS,
+): Promise<{ directorName: string; movies: TMDBMovie[] }[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !query.trim()) return [];
+
+  try {
+    // 1. Search for people
+    const personUrl = new URL(`${TMDB_BASE}/search/person`);
+    personUrl.searchParams.set('api_key', apiKey);
+    personUrl.searchParams.set('query', query);
+    personUrl.searchParams.set('language', 'en-US');
+    personUrl.searchParams.set('page', '1');
+    personUrl.searchParams.set('include_adult', 'false');
+
+    const personRes = await fetchWithTimeout(personUrl.toString(), timeoutMs);
+    if (!personRes.ok) return [];
+
+    const personData = await personRes.json();
+
+    // 2. Filter for directors (known_for_department === 'Directing')
+    const directors = (personData.results as any[])
+      .filter(p => p.known_for_department === 'Directing')
+      .slice(0, 2); // Top 2 director matches
+
+    if (directors.length === 0) return [];
+
+    // 3. Fetch movie credits for each director
+    const results = await Promise.all(
+      directors.map(async (director: any) => {
+        const creditsUrl = new URL(`${TMDB_BASE}/person/${director.id}/movie_credits`);
+        creditsUrl.searchParams.set('api_key', apiKey);
+        creditsUrl.searchParams.set('language', 'en-US');
+
+        const creditsRes = await fetch(creditsUrl.toString());
+        if (!creditsRes.ok) return { directorName: director.name as string, movies: [] as TMDBMovie[] };
+
+        const creditsData = await creditsRes.json();
+
+        const directedMovies = (creditsData.crew as any[])
+          .filter((c: any) => c.job === 'Director' && c.poster_path)
+          .sort((a: any, b: any) => (b.popularity ?? 0) - (a.popularity ?? 0))
+          .slice(0, 12)
+          .map((m: any): TMDBMovie => ({
+            id: `tmdb_${m.id}`,
+            tmdbId: m.id,
+            title: m.title,
+            year: m.release_date ? m.release_date.slice(0, 4) : '—',
+            posterUrl: `${TMDB_IMAGE_BASE}${m.poster_path}`,
+            type: 'movie' as const,
+            genres: (m.genre_ids as number[] ?? [])
+              .map((gid: number) => GENRE_MAP[gid])
+              .filter(Boolean)
+              .slice(0, 3),
+            overview: m.overview ?? '',
+          }));
+
+        return { directorName: director.name as string, movies: directedMovies };
+      }),
+    );
+
+    return results.filter(r => r.movies.length > 0);
+  } catch (err) {
+    console.error('TMDB director search failed:', err);
+    return [];
+  }
+}
+
