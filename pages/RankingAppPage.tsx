@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BarChart2, Bookmark, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType } from '../types';
 import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE } from '../constants';
@@ -120,6 +120,7 @@ function rowToWatchlistItem(row: any): WatchlistItem {
 
 const RankingAppPage = () => {
   const { user, profile, signOut } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState<RankedItem[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -157,6 +158,13 @@ const RankingAppPage = () => {
 
     fetchData();
   }, [user]);
+
+  // Redirect to movie onboarding if user hasn't reached the threshold
+  useEffect(() => {
+    if (!loading && items.length < MIN_MOVIES_FOR_SCORES) {
+      navigate('/onboarding/movies', { replace: true });
+    }
+  }, [loading, items.length, navigate]);
 
   const handleReset = async () => {
     if (!user) return;
