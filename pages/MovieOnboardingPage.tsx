@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { RankedItem, Tier, MediaType } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES } from '../constants';
 import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, TMDBMovie } from '../services/tmdbService';
@@ -43,6 +43,11 @@ const MovieOnboardingPage: React.FC = () => {
     // Tier picker modal
     const [pendingMovie, setPendingMovie] = useState<TMDBMovie | null>(null);
     const [fromSuggestion, setFromSuggestion] = useState(false);
+    const [modalStep, setModalStep] = useState<'tier' | 'compare'>('tier');
+    const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
+    const [compLow, setCompLow] = useState(0);
+    const [compHigh, setCompHigh] = useState(0);
+    const [compHistory, setCompHistory] = useState<{ low: number; high: number }[]>([]);
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -181,14 +186,73 @@ const MovieOnboardingPage: React.FC = () => {
     const handleSelectMovie = (movie: TMDBMovie, isSuggestion: boolean) => {
         setPendingMovie(movie);
         setFromSuggestion(isSuggestion);
+        setModalStep('tier');
+        setSelectedTier(null);
+        setCompHistory([]);
     };
 
-    const handlePickTier = async (tier: Tier) => {
+    const getTierItems = (tier: Tier) =>
+        rankedItems.filter(i => i.tier === tier).sort((a, b) => a.rank - b.rank);
+
+    const handlePickTier = (tier: Tier) => {
+        if (!pendingMovie || !user) return;
+        setSelectedTier(tier);
+
+        const tierItems = getTierItems(tier);
+        if (tierItems.length === 0) {
+            // No existing items — insert immediately
+            finishInsert(tier, 0);
+        } else {
+            // Start head-to-head comparison
+            setCompLow(0);
+            setCompHigh(tierItems.length);
+            setCompHistory([]);
+            setModalStep('compare');
+        }
+    };
+
+    const handleCompareChoice = (choice: 'new' | 'existing' | 'skip') => {
+        if (!selectedTier) return;
+        const tierItems = getTierItems(selectedTier);
+        const mid = Math.floor((compLow + compHigh) / 2);
+
+        if (choice === 'skip') {
+            finishInsert(selectedTier, mid);
+            return;
+        }
+
+        setCompHistory(prev => [...prev, { low: compLow, high: compHigh }]);
+
+        let newLow = compLow;
+        let newHigh = compHigh;
+
+        if (choice === 'new') {
+            newHigh = mid;
+        } else {
+            newLow = mid + 1;
+        }
+
+        if (newLow >= newHigh) {
+            finishInsert(selectedTier, newLow);
+        } else {
+            setCompLow(newLow);
+            setCompHigh(newHigh);
+        }
+    };
+
+    const handleCompareUndo = () => {
+        if (compHistory.length === 0) return;
+        const prev = compHistory[compHistory.length - 1];
+        setCompLow(prev.low);
+        setCompHigh(prev.high);
+        setCompHistory(h => h.slice(0, -1));
+    };
+
+    const finishInsert = async (tier: Tier, rankIndex: number) => {
         if (!pendingMovie || !user) return;
 
         if (fromSuggestion) consumeSuggestion(pendingMovie.id);
 
-        const newRank = rankedItems.filter(i => i.tier === tier).length;
         const newItem: RankedItem = {
             id: pendingMovie.id,
             title: pendingMovie.title,
@@ -197,10 +261,17 @@ const MovieOnboardingPage: React.FC = () => {
             type: 'movie',
             genres: pendingMovie.genres,
             tier,
-            rank: newRank,
+            rank: rankIndex,
         };
 
-        setRankedItems(prev => [...prev, newItem]);
+        setRankedItems(prev => {
+            const tierItems = prev.filter(i => i.tier === tier).sort((a, b) => a.rank - b.rank);
+            const otherItems = prev.filter(i => i.tier !== tier);
+            const newTierList = [...tierItems];
+            newTierList.splice(rankIndex, 0, newItem);
+            const updated = newTierList.map((item, idx) => ({ ...item, rank: idx }));
+            return [...otherItems, ...updated];
+        });
         setPendingMovie(null);
 
         await supabase.from('user_rankings').upsert({
@@ -254,45 +325,145 @@ const MovieOnboardingPage: React.FC = () => {
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
-                            <h3 className="text-lg font-bold">Assign Tier</h3>
+                            <div className="flex items-center gap-2">
+                                {modalStep === 'compare' && (
+                                    <button onClick={() => { setModalStep('tier'); setSelectedTier(null); }} className="text-zinc-400 hover:text-white transition-colors">
+                                        <ArrowLeft size={18} />
+                                    </button>
+                                )}
+                                <h3 className="text-lg font-bold">{modalStep === 'tier' ? 'Assign Tier' : 'Head-to-Head'}</h3>
+                            </div>
                             <button onClick={() => setPendingMovie(null)} className="text-zinc-400 hover:text-white transition-colors">
                                 <X size={20} />
                             </button>
                         </div>
 
-                        {/* Movie preview */}
-                        <div className="flex items-center gap-3 p-4 bg-zinc-800/30">
-                            {pendingMovie.posterUrl ? (
-                                <img src={pendingMovie.posterUrl} alt="" className="w-12 h-[72px] object-cover rounded-lg shadow-md flex-shrink-0" />
-                            ) : (
-                                <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-                                    <Film size={18} className="text-zinc-600" />
-                                </div>
-                            )}
-                            <div>
-                                <p className="font-bold text-white leading-tight">{pendingMovie.title}</p>
-                                <p className="text-zinc-500 text-xs mt-0.5">{pendingMovie.year}</p>
-                            </div>
-                        </div>
-
-                        {/* Tier buttons */}
-                        <div className="p-4 space-y-2">
-                            {TIERS.map(tier => (
-                                <button
-                                    key={tier}
-                                    onClick={() => handlePickTier(tier)}
-                                    className={`flex items-center justify-between w-full p-3 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${TIER_COLORS[tier]}`}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-xl font-black">{tier}</span>
-                                        <span className="font-semibold opacity-90 text-sm">{TIER_LABELS[tier]}</span>
+                        {modalStep === 'tier' && (
+                            <>
+                                {/* Movie preview */}
+                                <div className="flex items-center gap-3 p-4 bg-zinc-800/30">
+                                    {pendingMovie.posterUrl ? (
+                                        <img src={pendingMovie.posterUrl} alt="" className="w-12 h-[72px] object-cover rounded-lg shadow-md flex-shrink-0" />
+                                    ) : (
+                                        <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                                            <Film size={18} className="text-zinc-600" />
+                                        </div>
+                                    )}
+                                    <div>
+                                        <p className="font-bold text-white leading-tight">{pendingMovie.title}</p>
+                                        <p className="text-zinc-500 text-xs mt-0.5">{pendingMovie.year}</p>
                                     </div>
-                                    <span className="text-xs font-mono opacity-50 bg-black/20 px-2 py-0.5 rounded">
-                                        {rankedItems.filter(i => i.tier === tier).length}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
+                                </div>
+
+                                {/* Tier buttons */}
+                                <div className="p-4 space-y-2">
+                                    {TIERS.map(tier => (
+                                        <button
+                                            key={tier}
+                                            onClick={() => handlePickTier(tier)}
+                                            className={`flex items-center justify-between w-full p-3 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${TIER_COLORS[tier]}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xl font-black">{tier}</span>
+                                                <span className="font-semibold opacity-90 text-sm">{TIER_LABELS[tier]}</span>
+                                            </div>
+                                            <span className="text-xs font-mono opacity-50 bg-black/20 px-2 py-0.5 rounded">
+                                                {rankedItems.filter(i => i.tier === tier).length}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+
+                        {modalStep === 'compare' && selectedTier && (() => {
+                            const tierItems = getTierItems(selectedTier);
+                            const mid = Math.floor((compLow + compHigh) / 2);
+                            const pivotItem = tierItems[mid];
+                            const totalRounds = Math.ceil(Math.log2(tierItems.length + 1));
+                            const currentRound = compHistory.length + 1;
+
+                            return (
+                                <div className="p-4 space-y-4 animate-fade-in">
+                                    {/* Progress */}
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-zinc-400 text-xs">
+                                            Round <span className="text-white font-semibold">{currentRound}</span>
+                                            {' '}of ~<span className="text-white font-semibold">{totalRounds}</span>
+                                        </p>
+                                        <div className="flex gap-1">
+                                            {Array.from({ length: totalRounds }).map((_, i) => (
+                                                <div
+                                                    key={i}
+                                                    className={`h-1.5 w-4 rounded-full transition-colors ${i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'
+                                                        }`}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <h4 className="text-center text-sm font-bold text-white">Which do you prefer?</h4>
+
+                                    {/* Head-to-head */}
+                                    <div className="flex items-stretch gap-2">
+                                        {/* New item */}
+                                        <button
+                                            onClick={() => handleCompareChoice('new')}
+                                            className="flex-1 flex flex-col items-center gap-2 p-2 rounded-xl border-2 border-zinc-700 hover:border-indigo-500 hover:bg-indigo-500/5 transition-all active:scale-[0.97]"
+                                        >
+                                            <img
+                                                src={pendingMovie.posterUrl ?? ''}
+                                                alt={pendingMovie.title}
+                                                className="w-full aspect-[2/3] object-cover rounded-lg shadow-lg"
+                                            />
+                                            <p className="font-bold text-white text-xs leading-tight text-center">{pendingMovie.title}</p>
+                                            <span className="text-[10px] text-indigo-400 font-semibold border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 rounded-full">NEW</span>
+                                        </button>
+
+                                        {/* OR divider */}
+                                        <div className="flex items-center justify-center flex-shrink-0">
+                                            <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] font-black text-zinc-400">
+                                                OR
+                                            </div>
+                                        </div>
+
+                                        {/* Pivot item */}
+                                        <button
+                                            onClick={() => handleCompareChoice('existing')}
+                                            className="flex-1 flex flex-col items-center gap-2 p-2 rounded-xl border-2 border-zinc-700 hover:border-zinc-400 hover:bg-zinc-400/5 transition-all active:scale-[0.97]"
+                                        >
+                                            <img
+                                                src={pivotItem?.posterUrl ?? ''}
+                                                alt={pivotItem?.title}
+                                                className="w-full aspect-[2/3] object-cover rounded-lg shadow-lg"
+                                            />
+                                            <p className="font-bold text-white text-xs leading-tight text-center">{pivotItem?.title}</p>
+                                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier]}`}>
+                                                {selectedTier} · #{mid + 1}
+                                            </span>
+                                        </button>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex items-center justify-between">
+                                        <button
+                                            onClick={handleCompareUndo}
+                                            disabled={compHistory.length === 0}
+                                            className="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            <ArrowLeft size={13} />
+                                            Undo
+                                        </button>
+                                        <button
+                                            onClick={() => handleCompareChoice('skip')}
+                                            className="px-3 py-1.5 rounded-full border border-zinc-700 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 hover:border-zinc-500 transition-all"
+                                        >
+                                            Too tough — place here
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
