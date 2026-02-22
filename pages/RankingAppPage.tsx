@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, BarChart2, Bookmark, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType } from '../types';
-import { TIERS } from '../constants';
+import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE } from '../constants';
 import { TierRow } from '../components/TierRow';
 import { AddMediaModal } from '../components/AddMediaModal';
 import { StatsView } from '../components/StatsView';
@@ -12,7 +12,21 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const SCORE_MAX = 10.0;
-const SCORE_MIN = 1.0;
+const SCORE_MIN = 0.1;
+
+/** Determine the "natural" tier for a given score based on equal brackets. */
+function getNaturalTier(score: number): Tier {
+  for (const tier of TIERS) {
+    const range = TIER_SCORE_RANGES[tier];
+    if (score >= range.min) return tier;
+  }
+  return Tier.D;
+}
+
+/** Dynamic tolerance: shrinks as the list grows. */
+function getTierTolerance(totalItems: number): number {
+  return Math.min(MAX_TIER_TOLERANCE, MAX_TIER_TOLERANCE * (MIN_MOVIES_FOR_SCORES / totalItems));
+}
 
 function computeScores(items: RankedItem[]): Map<string, number> {
   const scoreMap = new Map<string, number>();
@@ -39,6 +53,41 @@ function computeScores(items: RankedItem[]): Map<string, number> {
   }
 
   return scoreMap;
+}
+
+/**
+ * Sticky-tier logic: checks each item's computed score against its current
+ * tier bracket. If the score has drifted beyond the dynamic tolerance, the
+ * item is reassigned to its natural tier.
+ * Returns a list of items that need tier updates (empty if none changed).
+ */
+function computeStickyTiers(
+  items: RankedItem[],
+  scoreMap: Map<string, number>,
+): { id: string; newTier: Tier }[] {
+  const total = items.length;
+  if (total < MIN_MOVIES_FOR_SCORES) return [];
+
+  const tolerance = getTierTolerance(total);
+  const changes: { id: string; newTier: Tier }[] = [];
+
+  for (const item of items) {
+    const score = scoreMap.get(item.id);
+    if (score === undefined) continue;
+
+    const range = TIER_SCORE_RANGES[item.tier];
+    const lowerBound = range.min - tolerance;
+    const upperBound = range.max + tolerance;
+
+    if (score < lowerBound || score > upperBound) {
+      const naturalTier = getNaturalTier(score);
+      if (naturalTier !== item.tier) {
+        changes.push({ id: item.id, newTier: naturalTier });
+      }
+    }
+  }
+
+  return changes;
 }
 
 function rowToRankedItem(row: any): RankedItem {
@@ -70,7 +119,7 @@ function rowToWatchlistItem(row: any): WatchlistItem {
 }
 
 const RankingAppPage = () => {
-  const { user, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const [items, setItems] = useState<RankedItem[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -256,6 +305,7 @@ const RankingAppPage = () => {
 
   const watchlistIds = useMemo(() => new Set(watchlist.map((w) => w.id)), [watchlist]);
   const scoreMap = useMemo(() => computeScores(items), [items]);
+  const showScores = items.length >= MIN_MOVIES_FOR_SCORES;
   const filteredItems = filterType === 'all' ? items : items.filter((i) => i.type === filterType);
 
   if (loading) {
@@ -292,9 +342,8 @@ const RankingAppPage = () => {
                 <button
                   key={type}
                   onClick={() => setFilterType(type)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${
-                    filterType === type ? 'bg-zinc-700 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${filterType === type ? 'bg-zinc-700 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
                 >
                   {type === 'all' ? 'All' : 'Movies'}
                 </button>
@@ -341,18 +390,16 @@ const RankingAppPage = () => {
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab('ranking')}
-              className={`p-2 rounded-lg transition-colors ${
-                activeTab === 'ranking' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
-              }`}
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'ranking' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+                }`}
               title="Rankings"
             >
               <LayoutGrid size={20} />
             </button>
             <button
               onClick={() => setActiveTab('watchlist')}
-              className={`p-2 rounded-lg transition-colors relative ${
-                activeTab === 'watchlist' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
-              }`}
+              className={`p-2 rounded-lg transition-colors relative ${activeTab === 'watchlist' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+                }`}
               title="Watch Later"
             >
               <Bookmark size={20} />
@@ -364,18 +411,16 @@ const RankingAppPage = () => {
             </button>
             <button
               onClick={() => setActiveTab('stats')}
-              className={`p-2 rounded-lg transition-colors ${
-                activeTab === 'stats' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
-              }`}
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'stats' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+                }`}
               title="Stats"
             >
               <BarChart2 size={20} />
             </button>
             <button
               onClick={() => setActiveTab('friends')}
-              className={`p-2 rounded-lg transition-colors ${
-                activeTab === 'friends' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
-              }`}
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'friends' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+                }`}
               title="Friends"
             >
               <Users size={20} />
@@ -398,6 +443,7 @@ const RankingAppPage = () => {
                 tier={tier}
                 items={filteredItems.filter((i) => i.tier === tier).sort((a, b) => a.rank - b.rank)}
                 scoreMap={scoreMap}
+                showScores={showScores}
                 onDrop={handleDrop}
                 onDragStart={handleDragStart}
                 onDelete={removeItem}
@@ -412,7 +458,9 @@ const RankingAppPage = () => {
 
         {activeTab === 'stats' && <StatsView items={items} />}
 
-        {activeTab === 'friends' && user && <FriendsView userId={user.id} />}
+        {activeTab === 'friends' && user && (
+          <FriendsView userId={user.id} selfUsername={profile?.username} />
+        )}
       </main>
 
       <AddMediaModal

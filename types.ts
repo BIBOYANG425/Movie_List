@@ -37,6 +37,7 @@ export interface StatsData {
 export interface FriendProfile {
   id: string;
   username: string;
+  displayName?: string;
   avatarUrl?: string;
   followedAt?: string;
 }
@@ -46,12 +47,24 @@ export interface UserSearchResult extends FriendProfile {
 }
 
 export interface UserProfileSummary extends FriendProfile {
+  bio?: string;
+  onboardingCompleted?: boolean;
   followersCount: number;
   followingCount: number;
   isSelf: boolean;
   isFollowing: boolean;
   isFollowedBy: boolean;
   isMutual: boolean;
+}
+
+export interface AppProfile {
+  id: string;
+  username: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  avatarPath?: string;
+  onboardingCompleted: boolean;
 }
 
 export interface FriendFeedItem {

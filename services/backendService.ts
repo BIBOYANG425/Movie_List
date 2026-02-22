@@ -11,10 +11,22 @@
 import type { TMDBMovie } from './tmdbService';
 
 const API_BASE = import.meta.env.VITE_API_URL as string | undefined;
+const DEFAULT_BACKEND_SEARCH_TIMEOUT_MS = 2500;
 
 /** True when the backend URL is configured. */
 export function hasBackendUrl(): boolean {
   return !!API_BASE;
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /** Shape of one item returned by GET /media/search */
@@ -53,7 +65,10 @@ function mapBackendItem(item: BackendMediaItem): TMDBMovie {
  * Search the backend's hybrid /media/search endpoint.
  * Falls back to [] if VITE_API_URL is not set or the request fails.
  */
-export async function searchMediaFromBackend(query: string): Promise<TMDBMovie[]> {
+export async function searchMediaFromBackend(
+  query: string,
+  timeoutMs: number = DEFAULT_BACKEND_SEARCH_TIMEOUT_MS,
+): Promise<TMDBMovie[]> {
   if (!API_BASE || !query.trim()) return [];
 
   try {
@@ -61,7 +76,7 @@ export async function searchMediaFromBackend(query: string): Promise<TMDBMovie[]
     url.searchParams.set('q', query.trim());
     url.searchParams.set('limit', '12');
 
-    const res = await fetch(url.toString());
+    const res = await fetchWithTimeout(url.toString(), timeoutMs);
     if (!res.ok) {
       console.error(`Backend search error: ${res.status} ${res.statusText}`);
       return [];
@@ -72,6 +87,10 @@ export async function searchMediaFromBackend(query: string): Promise<TMDBMovie[]
       .filter((item) => item.attributes?.poster_url)
       .map(mapBackendItem);
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.warn(`Backend search timed out after ${timeoutMs}ms`);
+      return [];
+    }
     console.error('Backend search failed:', err);
     return [];
   }

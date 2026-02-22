@@ -22,6 +22,22 @@ interface CompareSnapshot {
   high: number;
 }
 
+const BACKEND_SEARCH_TIMEOUT_MS = 2500;
+const TMDB_SEARCH_TIMEOUT_MS = 4500;
+
+function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
+  const byKey = new Map<string, TMDBMovie>();
+
+  for (const movie of results) {
+    const key = movie.tmdbId > 0
+      ? `tmdb:${movie.tmdbId}`
+      : `title:${movie.title.toLowerCase().trim()}`;
+    if (!byKey.has(key)) byKey.set(key, movie);
+  }
+
+  return Array.from(byKey.values()).slice(0, 12);
+}
+
 export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem }) => {
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
@@ -166,11 +182,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   }, [isOpen]);
 
   // Debounced search — uses backend hybrid endpoint when VITE_API_URL is set,
-  // otherwise falls back to direct TMDB search.
+  // and always includes direct TMDB search as a fallback path.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (!searchTerm.trim()) {
+    const normalizedQuery = searchTerm.trim();
+    if (!normalizedQuery) {
       setSearchResults([]);
       setIsSearching(false);
       return;
@@ -179,10 +196,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setIsSearching(true);
 
     debounceRef.current = setTimeout(async () => {
-      const results = hasBackendUrl()
-        ? await searchMediaFromBackend(searchTerm)
-        : await searchMovies(searchTerm);
-      setSearchResults(results);
+      const [backendResults, tmdbResults] = await Promise.all([
+        hasBackendUrl()
+          ? searchMediaFromBackend(normalizedQuery, BACKEND_SEARCH_TIMEOUT_MS)
+          : Promise.resolve([]),
+        searchMovies(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
+      ]);
+
+      setSearchResults(mergeAndDedupSearchResults([...backendResults, ...tmdbResults]));
       setIsSearching(false);
     }, 350);
 

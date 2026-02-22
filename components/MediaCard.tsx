@@ -7,11 +7,12 @@ interface MediaCardProps {
   item: RankedItem;
   rank: number;
   score: number;
+  showScore?: boolean;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDelete: (id: string) => void;
 }
 
-export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, onDragStart, onDelete }) => {
+export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showScore = true, onDragStart, onDelete }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -35,10 +36,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, onDragS
         </div>
 
         {/* Score Badge */}
-        <div className="absolute top-2 right-2 z-10 bg-indigo-500/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-xs font-bold text-white border border-white/10 flex items-center gap-1 shadow-lg">
-          <Star size={10} className="fill-current" />
-          <span>{score.toFixed(1)}</span>
-        </div>
+        {showScore && (
+          <div className="absolute top-2 right-2 z-10 bg-indigo-500/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-xs font-bold text-white border border-white/10 flex items-center gap-1 shadow-lg">
+            <Star size={10} className="fill-current" />
+            <span>{score.toFixed(1)}</span>
+          </div>
+        )}
 
         {/* Poster Image */}
         <div className="relative aspect-[2/3] w-full bg-zinc-800">
@@ -131,10 +134,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, onDragS
             <div className="p-5 space-y-4">
               {/* Score + Tier row */}
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5 bg-indigo-500/15 border border-indigo-500/30 px-3 py-1.5 rounded-lg">
-                  <Star size={14} className="fill-indigo-400 text-indigo-400" />
-                  <span className="text-lg font-bold text-white">{score.toFixed(1)}</span>
-                </div>
+                {showScore && (
+                  <div className="flex items-center gap-1.5 bg-indigo-500/15 border border-indigo-500/30 px-3 py-1.5 rounded-lg">
+                    <Star size={14} className="fill-indigo-400 text-indigo-400" />
+                    <span className="text-lg font-bold text-white">{score.toFixed(1)}</span>
+                  </div>
+                )}
                 <div className={`px-3 py-1.5 rounded-lg border font-bold text-sm ${TIER_COLORS[item.tier]}`}>
                   {item.tier} — {TIER_LABELS[item.tier]}
                 </div>
