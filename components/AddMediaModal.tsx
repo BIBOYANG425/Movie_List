@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, WatchlistItem } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
-import { searchMovies, searchDirectors, getDirectorFilmography, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie, DirectorProfile, DirectorDetail } from '../services/tmdbService';
+import { searchMovies, searchPeople, getPersonFilmography, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
 import { searchMediaFromBackend, hasBackendUrl } from '../services/backendService';
 
 interface AddMediaModalProps {
@@ -42,8 +42,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
-  const [directorProfiles, setDirectorProfiles] = useState<DirectorProfile[]>([]);
-  const [selectedDirector, setSelectedDirector] = useState<DirectorDetail | null>(null);
+  const [directorProfiles, setDirectorProfiles] = useState<PersonProfile[]>([]);
+  const [selectedDirector, setSelectedDirector] = useState<PersonDetail | null>(null);
   const [directorLoading, setDirectorLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<TMDBMovie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -201,16 +201,16 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setIsSearching(true);
 
     debounceRef.current = setTimeout(async () => {
-      const [backendResults, tmdbResults, directors] = await Promise.all([
+      const [backendResults, tmdbResults, people] = await Promise.all([
         hasBackendUrl()
           ? searchMediaFromBackend(normalizedQuery, BACKEND_SEARCH_TIMEOUT_MS)
           : Promise.resolve([]),
         searchMovies(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
-        searchDirectors(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
+        searchPeople(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
       ]);
 
       setSearchResults(mergeAndDedupSearchResults([...backendResults, ...tmdbResults]));
-      setDirectorProfiles(directors);
+      setDirectorProfiles(people);
       setSelectedDirector(null);
       setIsSearching(false);
     }, 350);
@@ -220,9 +220,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     };
   }, [searchTerm]);
 
-  const handleOpenDirector = async (dir: DirectorProfile) => {
+  const handleOpenDirector = async (person: PersonProfile) => {
     setDirectorLoading(true);
-    const detail = await getDirectorFilmography(dir.id);
+    const detail = await getPersonFilmography(person.id, person.role);
     setSelectedDirector(detail);
     setDirectorLoading(false);
   };
@@ -405,27 +405,32 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           </div>
         )}
 
-        {/* Director profiles */}
+        {/* People (directors & actors) */}
         {!isSearching && !selectedDirector && directorProfiles.length > 0 && (
           <div className="space-y-1 pb-2">
-            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Directors</p>
-            {directorProfiles.map(dir => (
+            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">People</p>
+            {directorProfiles.map(person => (
               <button
-                key={dir.id}
-                onClick={() => handleOpenDirector(dir)}
+                key={person.id}
+                onClick={() => handleOpenDirector(person)}
                 className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-zinc-800/80 transition-colors w-full text-left"
               >
-                {dir.photoUrl ? (
-                  <img src={dir.photoUrl} alt={dir.name} className="w-10 h-10 object-cover rounded-full bg-zinc-800 flex-shrink-0 shadow-md" />
+                {person.photoUrl ? (
+                  <img src={person.photoUrl} alt={person.name} className="w-10 h-10 object-cover rounded-full bg-zinc-800 flex-shrink-0 shadow-md" />
                 ) : (
                   <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center flex-shrink-0 text-zinc-600 text-sm font-bold">
-                    {dir.name.charAt(0)}
+                    {person.name.charAt(0)}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-white truncate text-sm">{dir.name}</p>
-                  {dir.knownFor.length > 0 && (
-                    <p className="text-[11px] text-zinc-500 truncate">Known for: {dir.knownFor.join(', ')}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-white truncate text-sm">{person.name}</p>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${person.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                      {person.role}
+                    </span>
+                  </div>
+                  {person.knownFor.length > 0 && (
+                    <p className="text-[11px] text-zinc-500 truncate">Known for: {person.knownFor.join(', ')}</p>
                   )}
                 </div>
                 <ChevronRight size={14} className="text-zinc-600 flex-shrink-0" />
@@ -441,7 +446,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           </div>
         )}
 
-        {/* Director profile card */}
+        {/* Person profile card */}
         {selectedDirector && !directorLoading && (
           <div className="space-y-3 animate-fade-in">
             <button
@@ -461,13 +466,18 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold text-white">{selectedDirector.name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">{selectedDirector.name}</h3>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${selectedDirector.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                    {selectedDirector.role}
+                  </span>
+                </div>
                 <p className="text-[11px] text-zinc-500">
                   {selectedDirector.placeOfBirth && <span>{selectedDirector.placeOfBirth}</span>}
                   {selectedDirector.birthday && <span> · Born {selectedDirector.birthday}</span>}
                 </p>
                 <p className="text-xs text-indigo-400 font-semibold mt-0.5">
-                  {selectedDirector.movies.length} {selectedDirector.movies.length === 1 ? 'film' : 'films'}
+                  {selectedDirector.movies.length} {selectedDirector.movies.length === 1 ? 'film' : 'films'} {selectedDirector.role === 'Director' ? 'directed' : 'starred in'}
                 </p>
               </div>
             </div>

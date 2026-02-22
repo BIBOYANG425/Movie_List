@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { RankedItem, Tier, MediaType } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES } from '../constants';
-import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, searchDirectors, getDirectorFilmography, TMDBMovie, DirectorProfile, DirectorDetail } from '../services/tmdbService';
+import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
 import { searchMediaFromBackend, hasBackendUrl } from '../services/backendService';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,9 +37,9 @@ const MovieOnboardingPage: React.FC = () => {
     // Search
     const [searchTerm, setSearchTerm] = useState('');
     const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
-    const [directorProfiles, setDirectorProfiles] = useState<DirectorProfile[]>([]);
-    const [selectedDirector, setSelectedDirector] = useState<DirectorDetail | null>(null);
-    const [directorLoading, setDirectorLoading] = useState(false);
+    const [personProfiles, setPersonProfiles] = useState<PersonProfile[]>([]);
+    const [selectedPerson, setSelectedPerson] = useState<PersonDetail | null>(null);
+    const [personLoading, setPersonLoading] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -171,26 +171,26 @@ const MovieOnboardingPage: React.FC = () => {
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         const q = searchTerm.trim();
-        if (!q) { setSearchResults([]); setDirectorProfiles([]); setIsSearching(false); return; }
+        if (!q) { setSearchResults([]); setPersonProfiles([]); setIsSearching(false); return; }
         setIsSearching(true);
         debounceRef.current = setTimeout(async () => {
-            const [backend, tmdb, directors] = await Promise.all([
+            const [backend, tmdb, people] = await Promise.all([
                 hasBackendUrl() ? searchMediaFromBackend(q, 2500) : Promise.resolve([]),
                 searchMovies(q, 4500),
-                searchDirectors(q, 4500),
+                searchPeople(q, 4500),
             ]);
             setSearchResults(mergeAndDedup([...backend, ...tmdb]));
-            setDirectorProfiles(directors);
+            setPersonProfiles(people);
             setIsSearching(false);
         }, 350);
         return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     }, [searchTerm]);
 
-    const handleOpenDirector = async (director: DirectorProfile) => {
-        setDirectorLoading(true);
-        const detail = await getDirectorFilmography(director.id);
-        setSelectedDirector(detail);
-        setDirectorLoading(false);
+    const handleOpenPerson = async (person: PersonProfile) => {
+        setPersonLoading(true);
+        const detail = await getPersonFilmography(person.id, person.role);
+        setSelectedPerson(detail);
+        setPersonLoading(false);
     };
 
     // ── Add item ────────────────────────────────────────────────────────────────
@@ -534,7 +534,7 @@ const MovieOnboardingPage: React.FC = () => {
                     <Search className="absolute left-3 top-3.5 text-zinc-500" size={18} />
                     <input
                         type="text"
-                        placeholder="Search by movie title or director..."
+                        placeholder="Search by title, director, or actor..."
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
@@ -543,7 +543,7 @@ const MovieOnboardingPage: React.FC = () => {
                 </div>
 
                 {/* Search results */}
-                {searchTerm.trim() && !selectedDirector && (
+                {searchTerm.trim() && !selectedPerson && (
                     <div className="space-y-3">
                         {isSearching && (
                             <div className="space-y-2">
@@ -559,27 +559,32 @@ const MovieOnboardingPage: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Director profiles */}
-                        {!isSearching && directorProfiles.length > 0 && (
+                        {/* People (directors & actors) */}
+                        {!isSearching && personProfiles.length > 0 && (
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1">Directors</p>
-                                {directorProfiles.map(dir => (
+                                <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1">People</p>
+                                {personProfiles.map(person => (
                                     <button
-                                        key={dir.id}
-                                        onClick={() => handleOpenDirector(dir)}
+                                        key={person.id}
+                                        onClick={() => handleOpenPerson(person)}
                                         className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-zinc-800/80 transition-colors w-full text-left"
                                     >
-                                        {dir.photoUrl ? (
-                                            <img src={dir.photoUrl} alt={dir.name} className="w-11 h-11 object-cover rounded-full bg-zinc-800 flex-shrink-0 shadow-md" />
+                                        {person.photoUrl ? (
+                                            <img src={person.photoUrl} alt={person.name} className="w-11 h-11 object-cover rounded-full bg-zinc-800 flex-shrink-0 shadow-md" />
                                         ) : (
                                             <div className="w-11 h-11 bg-zinc-800 rounded-full flex items-center justify-center flex-shrink-0 text-zinc-600 text-lg font-bold">
-                                                {dir.name.charAt(0)}
+                                                {person.name.charAt(0)}
                                             </div>
                                         )}
                                         <div className="flex-1 min-w-0">
-                                            <p className="font-semibold text-white truncate">{dir.name}</p>
-                                            {dir.knownFor.length > 0 && (
-                                                <p className="text-xs text-zinc-500 mt-0.5 truncate">Known for: {dir.knownFor.join(', ')}</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-semibold text-white truncate">{person.name}</p>
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${person.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                                                    {person.role}
+                                                </span>
+                                            </div>
+                                            {person.knownFor.length > 0 && (
+                                                <p className="text-xs text-zinc-500 mt-0.5 truncate">Known for: {person.knownFor.join(', ')}</p>
                                             )}
                                         </div>
                                         <ChevronRight size={16} className="text-zinc-600 flex-shrink-0" />
@@ -591,7 +596,7 @@ const MovieOnboardingPage: React.FC = () => {
                         {/* Movie title results */}
                         {!isSearching && filteredSearch.length > 0 && (
                             <div className="space-y-1">
-                                {directorProfiles.length > 0 && (
+                                {personProfiles.length > 0 && (
                                     <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1 pt-1">Movies</p>
                                 )}
                                 {filteredSearch.map(movie => (
@@ -624,7 +629,7 @@ const MovieOnboardingPage: React.FC = () => {
                         )}
 
                         {/* Empty state */}
-                        {!isSearching && searchTerm.trim() && filteredSearch.length === 0 && directorProfiles.length === 0 && (
+                        {!isSearching && searchTerm.trim() && filteredSearch.length === 0 && personProfiles.length === 0 && (
                             <div className="text-center py-8 text-zinc-500 text-sm">
                                 <Film size={28} className="mx-auto mb-2 opacity-30" />
                                 <p>No results for "{searchTerm}"</p>
@@ -633,46 +638,51 @@ const MovieOnboardingPage: React.FC = () => {
                     </div>
                 )}
 
-                {/* Director profile card */}
-                {selectedDirector && (
+                {/* Person profile card */}
+                {selectedPerson && (
                     <div className="space-y-4 animate-fade-in">
                         <button
-                            onClick={() => setSelectedDirector(null)}
+                            onClick={() => setSelectedPerson(null)}
                             className="flex items-center gap-1 text-sm text-zinc-400 hover:text-white transition-colors"
                         >
                             <ArrowLeft size={16} />
                             Back to search
                         </button>
 
-                        {/* Director header */}
+                        {/* Person header */}
                         <div className="flex items-start gap-4 p-4 bg-zinc-900/80 rounded-2xl border border-zinc-800">
-                            {selectedDirector.photoUrl ? (
+                            {selectedPerson.photoUrl ? (
                                 <img
-                                    src={selectedDirector.photoUrl}
-                                    alt={selectedDirector.name}
+                                    src={selectedPerson.photoUrl}
+                                    alt={selectedPerson.name}
                                     className="w-20 h-20 object-cover rounded-xl shadow-lg flex-shrink-0"
                                 />
                             ) : (
                                 <div className="w-20 h-20 bg-zinc-800 rounded-xl flex items-center justify-center flex-shrink-0 text-3xl font-bold text-zinc-600">
-                                    {selectedDirector.name.charAt(0)}
+                                    {selectedPerson.name.charAt(0)}
                                 </div>
                             )}
                             <div className="flex-1 min-w-0">
-                                <h2 className="text-xl font-bold text-white">{selectedDirector.name}</h2>
+                                <div className="flex items-center gap-2">
+                                    <h2 className="text-xl font-bold text-white">{selectedPerson.name}</h2>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${selectedPerson.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                                        {selectedPerson.role}
+                                    </span>
+                                </div>
                                 <p className="text-xs text-zinc-500 mt-0.5">
-                                    {selectedDirector.placeOfBirth && <span>{selectedDirector.placeOfBirth}</span>}
-                                    {selectedDirector.birthday && <span> · Born {selectedDirector.birthday}</span>}
+                                    {selectedPerson.placeOfBirth && <span>{selectedPerson.placeOfBirth}</span>}
+                                    {selectedPerson.birthday && <span> · Born {selectedPerson.birthday}</span>}
                                 </p>
                                 <p className="text-sm text-indigo-400 font-semibold mt-1">
-                                    {selectedDirector.movies.length} {selectedDirector.movies.length === 1 ? 'film' : 'films'} directed
+                                    {selectedPerson.movies.length} {selectedPerson.movies.length === 1 ? 'film' : 'films'} {selectedPerson.role === 'Director' ? 'directed' : 'starred in'}
                                 </p>
                             </div>
                         </div>
 
                         {/* Bio */}
-                        {selectedDirector.biography && (
+                        {selectedPerson.biography && (
                             <p className="text-xs text-zinc-400 leading-relaxed line-clamp-4">
-                                {selectedDirector.biography}
+                                {selectedPerson.biography}
                             </p>
                         )}
 
@@ -680,7 +690,7 @@ const MovieOnboardingPage: React.FC = () => {
                         <div>
                             <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Filmography</p>
                             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                                {selectedDirector.movies.filter(m => !isOwned(m)).map(movie => (
+                                {selectedPerson.movies.filter(m => !isOwned(m)).map(movie => (
                                     <button
                                         key={movie.id}
                                         onClick={() => handleSelectMovie(movie, false)}
@@ -698,15 +708,15 @@ const MovieOnboardingPage: React.FC = () => {
                                     </button>
                                 ))}
                             </div>
-                            {selectedDirector.movies.filter(m => !isOwned(m)).length === 0 && (
+                            {selectedPerson.movies.filter(m => !isOwned(m)).length === 0 && (
                                 <p className="text-center py-6 text-zinc-500 text-sm">All movies already ranked!</p>
                             )}
                         </div>
                     </div>
                 )}
 
-                {/* Director loading */}
-                {directorLoading && (
+                {/* Person loading */}
+                {personLoading && (
                     <div className="flex items-center justify-center py-12">
                         <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
                     </div>
