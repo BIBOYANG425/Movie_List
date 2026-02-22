@@ -8,6 +8,7 @@
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+const DEFAULT_TMDB_SEARCH_TIMEOUT_MS = 4500;
 
 // Full genre map from TMDB (stable — rarely changes)
 const GENRE_MAP: Record<number, string> = {
@@ -51,6 +52,17 @@ export interface TMDBMovie {
 /** Returns true if the TMDB API key is configured */
 export function hasTmdbKey(): boolean {
   return !!import.meta.env.VITE_TMDB_API_KEY;
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ── Shared response mapper ──────────────────────────────────────────────────
@@ -238,7 +250,10 @@ export async function getPersonalizedFills(
  * Search TMDB for movies matching *query*.
  * Returns up to 10 results with real posters and metadata.
  */
-export async function searchMovies(query: string): Promise<TMDBMovie[]> {
+export async function searchMovies(
+  query: string,
+  timeoutMs: number = DEFAULT_TMDB_SEARCH_TIMEOUT_MS,
+): Promise<TMDBMovie[]> {
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
 
   if (!apiKey || !query.trim()) return [];
@@ -251,7 +266,7 @@ export async function searchMovies(query: string): Promise<TMDBMovie[]> {
     url.searchParams.set('page', '1');
     url.searchParams.set('include_adult', 'false');
 
-    const res = await fetch(url.toString());
+    const res = await fetchWithTimeout(url.toString(), timeoutMs);
 
     if (!res.ok) {
       console.error(`TMDB API error: ${res.status} ${res.statusText}`);
@@ -265,6 +280,10 @@ export async function searchMovies(query: string): Promise<TMDBMovie[]> {
       .filter((m): m is TMDBMovie => m !== null)
       .slice(0, 12);
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      console.warn(`TMDB search timed out after ${timeoutMs}ms`);
+      return [];
+    }
     console.error('TMDB search failed:', err);
     return [];
   }

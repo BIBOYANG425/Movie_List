@@ -9,8 +9,9 @@ const AuthPage = () => {
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [oauthSubmitting, setOauthSubmitting] = useState(false);
 
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,6 +41,16 @@ const AuthPage = () => {
     }
 
     setSubmitting(false);
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setOauthSubmitting(true);
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setError(error.message);
+      setOauthSubmitting(false);
+    }
   };
 
   return (
@@ -73,6 +84,25 @@ const AuthPage = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={submitting || oauthSubmitting}
+              className="w-full flex items-center justify-center gap-2 bg-white hover:bg-zinc-100 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-900 font-semibold rounded-lg py-2 text-sm transition-colors"
+            >
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-zinc-900 text-white text-xs font-bold">
+                G
+              </span>
+              {oauthSubmitting ? 'Redirecting…' : 'Continue with Google'}
+            </button>
+
+            <div className="relative">
+              <div className="h-px bg-zinc-800" />
+              <span className="absolute left-1/2 -translate-x-1/2 -top-2 bg-zinc-900 px-2 text-center text-[10px] tracking-wider uppercase text-zinc-500">
+                Or
+              </span>
+            </div>
+
             <div className="space-y-1">
               <label className="text-xs font-semibold text-zinc-400">Email</label>
               <input
@@ -123,7 +153,7 @@ const AuthPage = () => {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || oauthSubmitting}
               className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg py-2 text-sm transition-colors"
             >
               {submitting ? 'Loading…' : mode === 'signin' ? 'Sign In' : 'Create Account'}

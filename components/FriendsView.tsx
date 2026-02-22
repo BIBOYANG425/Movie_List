@@ -13,6 +13,7 @@ import {
 
 interface FriendsViewProps {
   userId: string;
+  selfUsername?: string;
 }
 
 function relativeDate(iso: string): string {
@@ -30,17 +31,23 @@ function relativeDate(iso: string): string {
   }
 }
 
-export const FriendsView: React.FC<FriendsViewProps> = ({ userId }) => {
+export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }) => {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [actionUserId, setActionUserId] = useState<string | null>(null);
   const [results, setResults] = useState<UserSearchResult[]>([]);
+  const [searchAttempted, setSearchAttempted] = useState(false);
   const [following, setFollowing] = useState<FriendProfile[]>([]);
   const [followers, setFollowers] = useState<FriendProfile[]>([]);
   const [feed, setFeed] = useState<FriendFeedItem[]>([]);
 
   const followingSet = useMemo(() => new Set(following.map((user) => user.id)), [following]);
+  const normalizedQuery = query.trim().replace(/^@+/, '').toLowerCase();
+  const isSearchingForSelf = Boolean(selfUsername)
+    && normalizedQuery.length > 0
+    && normalizedQuery === selfUsername.toLowerCase();
 
   const loadSocialData = async () => {
     setLoading(true);
@@ -61,14 +68,24 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId }) => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSearchError(null);
     if (!query.trim()) {
       setResults([]);
+      setSearchAttempted(false);
       return;
     }
-    setSearching(true);
-    const nextResults = await searchUsers(userId, query);
-    setResults(nextResults);
-    setSearching(false);
+    try {
+      setSearching(true);
+      setSearchAttempted(true);
+      const nextResults = await searchUsers(userId, query);
+      setResults(nextResults);
+    } catch (error) {
+      console.error('Friend search failed:', error);
+      setResults([]);
+      setSearchError('Search failed. Please try again.');
+    } finally {
+      setSearching(false);
+    }
   };
 
   const refreshFollowingAndFeed = async () => {
@@ -166,7 +183,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId }) => {
                       alt={row.username}
                       className="w-7 h-7 rounded-md object-cover bg-zinc-800"
                     />
-                    <span className="text-sm font-medium truncate">{row.username}</span>
+                    <span className="text-sm font-medium truncate">{row.displayName ?? row.username}</span>
                   </Link>
                   {isFollowing ? (
                     <button
@@ -192,6 +209,20 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId }) => {
             })}
           </div>
         )}
+
+        {searchAttempted && !searching && results.length === 0 && (
+          <p className="text-xs text-zinc-500 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
+            {isSearchingForSelf
+              ? 'That is your account. Friend search only shows other users.'
+              : 'No users found. Try username/display name. Your own account is hidden from friend search.'}
+          </p>
+        )}
+
+        {searchError && (
+          <p className="text-xs text-red-300 rounded-md border border-red-900 bg-red-950/40 px-3 py-2">
+            {searchError}
+          </p>
+        )}
       </section>
 
       <div className="grid md:grid-cols-2 gap-4">
@@ -212,7 +243,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId }) => {
                       alt={row.username}
                       className="w-7 h-7 rounded-md object-cover bg-zinc-800"
                     />
-                    <span className="text-sm truncate">{row.username}</span>
+                    <span className="text-sm truncate">{row.displayName ?? row.username}</span>
                   </Link>
                   <button
                     onClick={() => handleUnfollow(row.id)}
@@ -244,7 +275,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId }) => {
                       alt={row.username}
                       className="w-7 h-7 rounded-md object-cover bg-zinc-800"
                     />
-                    <span className="text-sm truncate">{row.username}</span>
+                    <span className="text-sm truncate">{row.displayName ?? row.username}</span>
                   </Link>
                   <span className="text-xs text-zinc-500">{relativeDate(row.followedAt ?? '')}</span>
                 </div>

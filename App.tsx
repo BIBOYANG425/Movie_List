@@ -3,11 +3,15 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import RankingAppPage from './pages/RankingAppPage';
 import AuthPage from './pages/AuthPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import ProfilePage from './pages/ProfilePage';
+import ProfileOnboardingPage from './pages/ProfileOnboardingPage';
+import MovieOnboardingPage from './pages/MovieOnboardingPage';
 import { useAuth } from './contexts/AuthContext';
 
 const App = () => {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
+  const needsOnboarding = Boolean(user) && !profile?.onboardingCompleted;
 
   if (loading) {
     return (
@@ -20,14 +24,23 @@ const App = () => {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
-      <Route path="/auth" element={user ? <Navigate to="/app" replace /> : <AuthPage />} />
+      <Route path="/auth" element={user ? <Navigate to={needsOnboarding ? '/onboarding/profile' : '/onboarding/movies'} replace /> : <AuthPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Route
+        path="/onboarding/profile"
+        element={user ? (needsOnboarding ? <ProfileOnboardingPage /> : <Navigate to="/onboarding/movies" replace />) : <Navigate to="/auth" replace />}
+      />
+      <Route
+        path="/onboarding/movies"
+        element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <MovieOnboardingPage />) : <Navigate to="/auth" replace />}
+      />
       <Route
         path="/app"
-        element={user ? <RankingAppPage /> : <Navigate to="/auth" replace />}
+        element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <RankingAppPage />) : <Navigate to="/auth" replace />}
       />
       <Route
         path="/profile/:profileId"
-        element={user ? <ProfilePage /> : <Navigate to="/auth" replace />}
+        element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <ProfilePage />) : <Navigate to="/auth" replace />}
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

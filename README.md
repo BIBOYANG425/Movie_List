@@ -13,6 +13,7 @@ Users can search movies, rank them in S/A/B/C/D tiers, save titles for later, an
 ## Core Features
 
 - Email/password sign-up and sign-in.
+- Google OAuth sign-in (via Supabase Auth).
 - Route-protected app area (`/app`).
 - Tier-based ranking board with drag-and-drop movement.
 - Add flow with TMDB search + suggestion system.
@@ -43,6 +44,22 @@ VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_TMDB_API_KEY=your-tmdb-api-key
 ```
+
+## Google Login Setup (Supabase)
+
+1. In Google Cloud Console:
+   - Create an OAuth client as a `Web application`.
+   - Add redirect URI: `https://<your-supabase-project-ref>.supabase.co/auth/v1/callback`
+2. In Supabase Dashboard:
+   - Go to `Authentication` -> `Providers` -> `Google`.
+   - Enable Google, then set your Google client ID and client secret.
+3. In Supabase URL settings:
+   - Add allowed redirect URLs:
+     - `http://localhost:5173/auth/callback`
+     - `https://your-production-domain.com/auth/callback`
+4. Apply SQL:
+   - New setup: run `supabase_schema.sql`.
+   - Existing setup: run `supabase_phase1_profile_patch.sql`.
 
 ## Install and Run
 

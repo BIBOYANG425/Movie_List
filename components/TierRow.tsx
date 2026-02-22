@@ -7,12 +7,13 @@ interface TierRowProps {
   tier: Tier;
   items: RankedItem[];
   scoreMap: Map<string, number>;
+  showScores: boolean;
   onDrop: (e: React.DragEvent, tier: Tier) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDelete: (id: string) => void;
 }
 
-export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, onDrop, onDragStart, onDelete }) => {
+export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showScores, onDrop, onDragStart, onDelete }) => {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
@@ -32,13 +33,13 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, onDrop,
           </span>
         </div>
         <div className="flex gap-2">
-           {items.length > 0 && (
-             <div className="text-xs font-mono opacity-50 px-2 py-1 bg-black/20 rounded">
-               {Math.min(...items.map(i => scoreMap.get(i.id) ?? 0)).toFixed(1)}–
-               {Math.max(...items.map(i => scoreMap.get(i.id) ?? 0)).toFixed(1)} pts
-             </div>
-           )}
-           <div className="text-xs font-mono opacity-50 px-2 py-1 bg-black/20 rounded">
+          {showScores && items.length > 0 && (
+            <div className="text-xs font-mono opacity-50 px-2 py-1 bg-black/20 rounded">
+              {Math.min(...items.map(i => scoreMap.get(i.id) ?? 0)).toFixed(1)}–
+              {Math.max(...items.map(i => scoreMap.get(i.id) ?? 0)).toFixed(1)} pts
+            </div>
+          )}
+          <div className="text-xs font-mono opacity-50 px-2 py-1 bg-black/20 rounded">
             {items.length} items
           </div>
         </div>
@@ -57,6 +58,7 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, onDrop,
               item={item}
               rank={index}
               score={scoreMap.get(item.id) ?? 0}
+              showScore={showScores}
               onDragStart={onDragStart}
               onDelete={onDelete}
             />

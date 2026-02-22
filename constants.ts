@@ -19,12 +19,22 @@ export const TIER_LABELS = {
 };
 
 export const TIER_SCORE_RANGES = {
-  [Tier.S]: { min: 9.5, max: 10.0 },
-  [Tier.A]: { min: 8.0, max: 9.4 },
-  [Tier.B]: { min: 6.0, max: 7.9 },
-  [Tier.C]: { min: 4.0, max: 5.9 },
-  [Tier.D]: { min: 1.0, max: 3.9 },
+  [Tier.S]: { min: 8.1, max: 10.0 },
+  [Tier.A]: { min: 6.1, max: 8.0 },
+  [Tier.B]: { min: 4.1, max: 6.0 },
+  [Tier.C]: { min: 2.1, max: 4.0 },
+  [Tier.D]: { min: 0.1, max: 2.0 },
 };
+
+/** Scores are hidden until the user has ranked at least this many movies. */
+export const MIN_MOVIES_FOR_SCORES = 10;
+
+/**
+ * Sticky-tier tolerance (maximum). Actual tolerance scales down as the list
+ * grows: tolerance = MAX_TIER_TOLERANCE × (MIN_MOVIES_FOR_SCORES / totalMovies),
+ * capped at MAX_TIER_TOLERANCE. With 10 movies → 2.0, 20 → 1.0, 50 → 0.4, etc.
+ */
+export const MAX_TIER_TOLERANCE = 2.0;
 
 export const LANDING_FEATURED_IDS = [
   'tmdb_693134',
@@ -77,7 +87,7 @@ export const INITIAL_RANKINGS: RankedItem[] = [
     tier: Tier.D,
     rank: 0
   },
-    {
+  {
     id: 'tmdb_76341',
     title: 'Mad Max: Fury Road',
     year: '2015',

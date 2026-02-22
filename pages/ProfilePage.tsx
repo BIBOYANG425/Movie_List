@@ -1,16 +1,32 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Camera, UserMinus, UserPlus, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  BookmarkPlus,
+  Camera,
+  Heart,
+  ListPlus,
+  MessageCircle,
+  Share2,
+  UserMinus,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { FriendProfile, ProfileActivityItem, UserProfileSummary } from '../types';
 import {
+  AVATAR_ACCEPTED_MIME_TYPES,
+  AVATAR_MAX_FILE_BYTES,
   followUser,
   getFollowerProfilesForUser,
   getFollowingProfilesForUser,
   getProfileSummary,
   getRecentProfileActivity,
+  rankActivityMovie,
+  saveActivityMovieToWatchlist,
   unfollowUser,
-  updateProfileAvatar,
+  updateMyProfile,
+  uploadAvatarPhoto,
 } from '../services/friendsService';
 
 function relativeDate(iso: string): string {
@@ -28,14 +44,23 @@ function relativeDate(iso: string): string {
   }
 }
 
+const MAX_BIO_LENGTH = 280;
+
 const ProfilePage = () => {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const { profileId } = useParams();
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [avatarInput, setAvatarInput] = useState('');
+  const [followBusy, setFollowBusy] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [activityBusyId, setActivityBusyId] = useState<string | null>(null);
+
+  const [displayNameInput, setDisplayNameInput] = useState('');
+  const [bioInput, setBioInput] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [likedActivityIds, setLikedActivityIds] = useState<Set<string>>(new Set());
 
   const [profile, setProfile] = useState<UserProfileSummary | null>(null);
   const [followers, setFollowers] = useState<FriendProfile[]>([]);
@@ -47,6 +72,15 @@ const ProfilePage = () => {
     return profile.isSelf || profile.isMutual;
   }, [profile]);
 
+  const avatarPreview = useMemo(() => {
+    if (!avatarFile) return profile?.avatarUrl;
+    return URL.createObjectURL(avatarFile);
+  }, [avatarFile, profile?.avatarUrl]);
+
+  useEffect(() => () => {
+    if (avatarPreview?.startsWith('blob:')) URL.revokeObjectURL(avatarPreview);
+  }, [avatarPreview]);
+
   const loadProfile = async () => {
     if (!user) return;
     if (!profileId) {
@@ -54,6 +88,7 @@ const ProfilePage = () => {
       setLoading(false);
       return;
     }
+
     setLoading(true);
     setNotFound(false);
 
@@ -69,7 +104,9 @@ const ProfilePage = () => {
     }
 
     setProfile(summary);
-    setAvatarInput(summary.avatarUrl ?? '');
+    setDisplayNameInput(summary.displayName ?? summary.username);
+    setBioInput(summary.bio ?? '');
+    setAvatarFile(null);
 
     if (summary.isSelf || summary.isMutual) {
       const [nextFollowers, nextFollowing, nextActivity] = await Promise.all([
@@ -94,27 +131,127 @@ const ProfilePage = () => {
   }, [user?.id, profileId]);
 
   const handleFollow = async () => {
-    if (!user || !profile || busy) return;
-    setBusy(true);
+    if (!user || !profile || followBusy) return;
+    setFollowBusy(true);
     const ok = await followUser(user.id, profile.id);
     if (ok) await loadProfile();
-    setBusy(false);
+    setFollowBusy(false);
   };
 
   const handleUnfollow = async () => {
-    if (!user || !profile || busy) return;
-    setBusy(true);
+    if (!user || !profile || followBusy) return;
+    setFollowBusy(true);
     const ok = await unfollowUser(user.id, profile.id);
     if (ok) await loadProfile();
-    setBusy(false);
+    setFollowBusy(false);
   };
 
-  const handleAvatarSave = async () => {
-    if (!user || !profile || !profile.isSelf || busy) return;
-    setBusy(true);
-    const ok = await updateProfileAvatar(user.id, avatarInput);
-    if (ok) await loadProfile();
-    setBusy(false);
+  const handleAvatarFile = (nextFile: File | null) => {
+    if (!nextFile) {
+      setAvatarFile(null);
+      return;
+    }
+
+    if (!AVATAR_ACCEPTED_MIME_TYPES.includes(nextFile.type)) {
+      setStatusMessage('Use JPG, PNG, WEBP, or GIF for your avatar.');
+      return;
+    }
+
+    if (nextFile.size > AVATAR_MAX_FILE_BYTES) {
+      setStatusMessage('Avatar must be 5MB or smaller.');
+      return;
+    }
+
+    setAvatarFile(nextFile);
+    setStatusMessage(null);
+  };
+
+  const handleProfileSave = async () => {
+    if (!user || !profile || !profile.isSelf || profileBusy) return;
+    setProfileBusy(true);
+    setStatusMessage(null);
+
+    const updatePayload: {
+      displayName: string;
+      bio: string;
+      onboardingCompleted: boolean;
+      avatarUrl?: string | null;
+      avatarPath?: string | null;
+    } = {
+      displayName: displayNameInput,
+      bio: bioInput,
+      onboardingCompleted: true,
+    };
+
+    if (avatarFile) {
+      const upload = await uploadAvatarPhoto(user.id, avatarFile);
+      if (!upload) {
+        setProfileBusy(false);
+        setStatusMessage('Avatar upload failed. Try a different photo.');
+        return;
+      }
+      updatePayload.avatarUrl = upload.avatarUrl;
+      updatePayload.avatarPath = upload.avatarPath;
+    }
+
+    const ok = await updateMyProfile(user.id, updatePayload);
+
+    if (!ok) {
+      setProfileBusy(false);
+      setStatusMessage('Could not save profile changes.');
+      return;
+    }
+
+    await refreshProfile();
+    await loadProfile();
+    setStatusMessage('Profile updated.');
+    setProfileBusy(false);
+  };
+
+  const toggleLike = (activityId: string) => {
+    setLikedActivityIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(activityId)) next.delete(activityId);
+      else next.add(activityId);
+      return next;
+    });
+  };
+
+  const handleShare = async (item: ProfileActivityItem) => {
+    if (!profile) return;
+
+    const shareText = `${profile.displayName ?? profile.username} ranked ${item.title} in tier ${item.tier} on Marquee.`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          text: shareText,
+          url: window.location.href,
+        });
+      } else {
+        await navigator.clipboard.writeText(`${shareText} ${window.location.href}`);
+      }
+      setStatusMessage('Shared to clipboard.');
+    } catch {
+      setStatusMessage('Could not share right now.');
+    }
+  };
+
+  const handleSaveToWatchlist = async (item: ProfileActivityItem) => {
+    if (!user || !profile || profile.isSelf) return;
+
+    setActivityBusyId(item.id);
+    const ok = await saveActivityMovieToWatchlist(user.id, item);
+    setStatusMessage(ok ? `Saved "${item.title}" to your watchlist.` : 'Could not save to watchlist.');
+    setActivityBusyId(null);
+  };
+
+  const handleRankFromActivity = async (item: ProfileActivityItem) => {
+    if (!user || !profile || profile.isSelf) return;
+
+    setActivityBusyId(item.id);
+    const ok = await rankActivityMovie(user.id, item);
+    setStatusMessage(ok ? `Ranked "${item.title}" in tier ${item.tier}.` : 'Could not rank this movie.');
+    setActivityBusyId(null);
   };
 
   if (!user) return null;
@@ -160,16 +297,17 @@ const ProfilePage = () => {
           </Link>
         </div>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6">
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
             <div className="flex items-center gap-4">
               <img
-                src={profile.avatarUrl}
+                src={avatarPreview}
                 alt={profile.username}
                 className="w-20 h-20 rounded-2xl object-cover border border-zinc-700 bg-zinc-800"
               />
               <div>
-                <h1 className="text-2xl font-bold">@{profile.username}</h1>
+                <h1 className="text-2xl font-bold">{profile.displayName ?? profile.username}</h1>
+                <p className="text-zinc-400 text-sm mt-0.5">@{profile.username}</p>
                 <p className="text-zinc-400 text-sm mt-1">
                   {profile.isSelf
                     ? 'Your profile'
@@ -194,7 +332,7 @@ const ProfilePage = () => {
               profile.isFollowing ? (
                 <button
                   onClick={handleUnfollow}
-                  disabled={busy}
+                  disabled={followBusy}
                   className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:text-red-300 hover:border-red-400 transition-colors disabled:opacity-50"
                 >
                   <UserMinus size={14} />
@@ -203,7 +341,7 @@ const ProfilePage = () => {
               ) : (
                 <button
                   onClick={handleFollow}
-                  disabled={busy}
+                  disabled={followBusy}
                   className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-400 transition-colors disabled:opacity-50"
                 >
                   <UserPlus size={14} />
@@ -213,28 +351,57 @@ const ProfilePage = () => {
             )}
           </div>
 
+          {(profile.bio && canSeeFullProfile) && (
+            <p className="text-sm text-zinc-300 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">{profile.bio}</p>
+          )}
+
           {profile.isSelf && (
-            <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950 p-4 space-y-3">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
               <div className="flex items-center gap-2 text-sm text-zinc-300">
                 <Camera size={14} />
-                Profile Picture URL
+                Edit profile
               </div>
-              <div className="flex gap-2">
+
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => handleAvatarFile(e.target.files?.[0] ?? null)}
+                className="block text-xs text-zinc-400 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-700 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-zinc-600"
+              />
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-zinc-400">Display Name</label>
                 <input
-                  value={avatarInput}
-                  onChange={(e) => setAvatarInput(e.target.value)}
-                  placeholder="https://example.com/avatar.jpg"
-                  className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  value={displayNameInput}
+                  onChange={(e) => setDisplayNameInput(e.target.value.slice(0, 60))}
+                  placeholder="How friends should see your name"
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                 />
-                <button
-                  onClick={handleAvatarSave}
-                  disabled={busy}
-                  className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition-colors disabled:opacity-50"
-                >
-                  Save
-                </button>
               </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-zinc-400">Bio</label>
+                <textarea
+                  value={bioInput}
+                  onChange={(e) => setBioInput(e.target.value.slice(0, MAX_BIO_LENGTH))}
+                  className="w-full h-20 resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  placeholder="Tell people what kinds of movies you rank"
+                />
+                <p className="text-[11px] text-zinc-500 text-right">{bioInput.length}/{MAX_BIO_LENGTH}</p>
+              </div>
+
+              <button
+                onClick={handleProfileSave}
+                disabled={profileBusy}
+                className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition-colors disabled:opacity-50"
+              >
+                {profileBusy ? 'Saving...' : 'Save Profile'}
+              </button>
             </div>
+          )}
+
+          {statusMessage && (
+            <p className="text-xs text-zinc-300 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">{statusMessage}</p>
           )}
         </section>
 
@@ -271,9 +438,10 @@ const ProfilePage = () => {
                           className="w-8 h-8 rounded-lg object-cover bg-zinc-800"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{row.username}</p>
-                          <p className="text-xs text-zinc-500">{relativeDate(row.followedAt ?? '')}</p>
+                          <p className="text-sm font-medium truncate">{row.displayName ?? row.username}</p>
+                          <p className="text-xs text-zinc-500 truncate">@{row.username}</p>
                         </div>
+                        <p className="text-xs text-zinc-500">{relativeDate(row.followedAt ?? '')}</p>
                       </Link>
                     ))}
                   </div>
@@ -298,9 +466,10 @@ const ProfilePage = () => {
                           className="w-8 h-8 rounded-lg object-cover bg-zinc-800"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{row.username}</p>
-                          <p className="text-xs text-zinc-500">{relativeDate(row.followedAt ?? '')}</p>
+                          <p className="text-sm font-medium truncate">{row.displayName ?? row.username}</p>
+                          <p className="text-xs text-zinc-500 truncate">@{row.username}</p>
                         </div>
+                        <p className="text-xs text-zinc-500">{relativeDate(row.followedAt ?? '')}</p>
                       </Link>
                     ))}
                   </div>
@@ -314,36 +483,94 @@ const ProfilePage = () => {
                 <p className="text-sm text-zinc-500">No recent ranking activity.</p>
               ) : (
                 <div className="space-y-2">
-                  {activity.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2"
-                    >
-                      {item.posterUrl ? (
-                        <img
-                          src={item.posterUrl}
-                          alt={item.title}
-                          className="w-10 h-14 rounded object-cover bg-zinc-800"
-                        />
-                      ) : (
-                        <div className="w-10 h-14 rounded bg-zinc-800" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm truncate">
-                          Ranked <span className="font-semibold">{item.title}</span> in tier {item.tier}
-                        </p>
-                        <p className="text-xs text-zinc-500 mt-0.5">{relativeDate(item.updatedAt)}</p>
-                        {item.notes && (
-                          <p className="text-xs text-zinc-300 mt-1">
-                            {item.notes}
-                          </p>
-                        )}
+                  {activity.map((item) => {
+                    const liked = likedActivityIds.has(item.id);
+                    const itemBusy = activityBusyId === item.id;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 space-y-2"
+                      >
+                        <div className="flex items-center gap-3">
+                          {item.posterUrl ? (
+                            <img
+                              src={item.posterUrl}
+                              alt={item.title}
+                              className="w-10 h-14 rounded object-cover bg-zinc-800"
+                            />
+                          ) : (
+                            <div className="w-10 h-14 rounded bg-zinc-800" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm truncate">
+                              Ranked <span className="font-semibold">{item.title}</span> in tier {item.tier}
+                            </p>
+                            <p className="text-xs text-zinc-500 mt-0.5">{relativeDate(item.updatedAt)}</p>
+                            {item.notes && (
+                              <p className="text-xs text-zinc-300 mt-1">
+                                {item.notes}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-xs font-bold rounded-md px-2 py-1 bg-zinc-800 text-zinc-200">
+                            {item.tier}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <button
+                            onClick={() => toggleLike(item.id)}
+                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 transition-colors ${
+                              liked
+                                ? 'border-rose-500 text-rose-300 bg-rose-950/40'
+                                : 'border-zinc-700 text-zinc-300 hover:border-zinc-500'
+                            }`}
+                          >
+                            <Heart size={12} />
+                            {liked ? 'Liked' : 'Like'}
+                          </button>
+
+                          <button
+                            onClick={() => setStatusMessage('Comments are planned for the next phase.')}
+                            className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-zinc-300 hover:border-zinc-500 transition-colors"
+                          >
+                            <MessageCircle size={12} />
+                            Comment
+                          </button>
+
+                          <button
+                            onClick={() => handleShare(item)}
+                            className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-zinc-300 hover:border-zinc-500 transition-colors"
+                          >
+                            <Share2 size={12} />
+                            Share
+                          </button>
+
+                          {!profile.isSelf && (
+                            <>
+                              <button
+                                onClick={() => handleRankFromActivity(item)}
+                                disabled={itemBusy}
+                                className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-zinc-300 hover:border-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50"
+                              >
+                                <ListPlus size={12} />
+                                Rank
+                              </button>
+                              <button
+                                onClick={() => handleSaveToWatchlist(item)}
+                                disabled={itemBusy}
+                                className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-zinc-300 hover:border-emerald-400 hover:text-emerald-300 transition-colors disabled:opacity-50"
+                              >
+                                <BookmarkPlus size={12} />
+                                Save
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-xs font-bold rounded-md px-2 py-1 bg-zinc-800 text-zinc-200">
-                        {item.tier}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
