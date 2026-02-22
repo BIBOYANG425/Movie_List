@@ -30,7 +30,7 @@ const MovieOnboardingPage: React.FC = () => {
     // Suggestions
     const [suggestions, setSuggestions] = useState<TMDBMovie[]>([]);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-    const suggestionPageRef = useRef(1);
+    const suggestionPageRef = useRef(Math.floor(Math.random() * 5) + 1);
     const backfillPoolRef = useRef<TMDBMovie[]>([]);
     const backfillPageRef = useRef(1);
 
