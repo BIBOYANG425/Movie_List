@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, WatchlistItem } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
-import { searchMovies, searchByDirector, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie } from '../services/tmdbService';
+import { searchMovies, searchDirectors, getDirectorFilmography, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie, DirectorProfile, DirectorDetail } from '../services/tmdbService';
 import { searchMediaFromBackend, hasBackendUrl } from '../services/backendService';
 
 interface AddMediaModalProps {
@@ -42,7 +42,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
-  const [directorResults, setDirectorResults] = useState<{ directorName: string; movies: TMDBMovie[] }[]>([]);
+  const [directorProfiles, setDirectorProfiles] = useState<DirectorProfile[]>([]);
+  const [selectedDirector, setSelectedDirector] = useState<DirectorDetail | null>(null);
+  const [directorLoading, setDirectorLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<TMDBMovie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -190,7 +192,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     const normalizedQuery = searchTerm.trim();
     if (!normalizedQuery) {
       setSearchResults([]);
-      setDirectorResults([]);
+      setDirectorProfiles([]);
+      setSelectedDirector(null);
       setIsSearching(false);
       return;
     }
@@ -203,11 +206,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           ? searchMediaFromBackend(normalizedQuery, BACKEND_SEARCH_TIMEOUT_MS)
           : Promise.resolve([]),
         searchMovies(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
-        searchByDirector(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
+        searchDirectors(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
       ]);
 
       setSearchResults(mergeAndDedupSearchResults([...backendResults, ...tmdbResults]));
-      setDirectorResults(directors);
+      setDirectorProfiles(directors);
+      setSelectedDirector(null);
       setIsSearching(false);
     }, 350);
 
@@ -215,6 +219,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [searchTerm]);
+
+  const handleOpenDirector = async (dir: DirectorProfile) => {
+    setDirectorLoading(true);
+    const detail = await getDirectorFilmography(dir.id);
+    setSelectedDirector(detail);
+    setDirectorLoading(false);
+  };
 
   if (!isOpen) return null;
 
@@ -394,43 +405,104 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           </div>
         )}
 
-        {/* Director filmography results */}
-        {!isSearching && directorResults.map(({ directorName, movies }) => {
-          const filtered = movies.filter(m => !isAlreadyOwned(m));
-          if (filtered.length === 0) return null;
-          return (
-            <div key={directorName} className="space-y-2 pb-3">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                🎬 Directed by <span className="text-white">{directorName}</span>
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {filtered.slice(0, 6).map(movie => (
-                  <button
-                    key={movie.id}
-                    onClick={() => handleSelectMovie(movie)}
-                    className="group flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-1.5 transition-colors"
-                  >
-                    <img
-                      src={movie.posterUrl!}
-                      alt={movie.title}
-                      className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-shadow"
-                    />
-                    <p className="text-[11px] font-medium text-zinc-300 mt-1.5 leading-tight line-clamp-2 group-hover:text-white transition-colors">
-                      {movie.title}
-                    </p>
-                    <p className="text-[10px] text-zinc-600">{movie.year}</p>
-                  </button>
-                ))}
+        {/* Director profiles */}
+        {!isSearching && !selectedDirector && directorProfiles.length > 0 && (
+          <div className="space-y-1 pb-2">
+            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Directors</p>
+            {directorProfiles.map(dir => (
+              <button
+                key={dir.id}
+                onClick={() => handleOpenDirector(dir)}
+                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-zinc-800/80 transition-colors w-full text-left"
+              >
+                {dir.photoUrl ? (
+                  <img src={dir.photoUrl} alt={dir.name} className="w-10 h-10 object-cover rounded-full bg-zinc-800 flex-shrink-0 shadow-md" />
+                ) : (
+                  <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center flex-shrink-0 text-zinc-600 text-sm font-bold">
+                    {dir.name.charAt(0)}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-white truncate text-sm">{dir.name}</p>
+                  {dir.knownFor.length > 0 && (
+                    <p className="text-[11px] text-zinc-500 truncate">Known for: {dir.knownFor.join(', ')}</p>
+                  )}
+                </div>
+                <ChevronRight size={14} className="text-zinc-600 flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Director loading */}
+        {directorLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+          </div>
+        )}
+
+        {/* Director profile card */}
+        {selectedDirector && !directorLoading && (
+          <div className="space-y-3 animate-fade-in">
+            <button
+              onClick={() => setSelectedDirector(null)}
+              className="flex items-center gap-1 text-xs text-zinc-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft size={14} />
+              Back to results
+            </button>
+
+            <div className="flex items-start gap-3 p-3 bg-zinc-900/80 rounded-xl border border-zinc-800">
+              {selectedDirector.photoUrl ? (
+                <img src={selectedDirector.photoUrl} alt={selectedDirector.name} className="w-16 h-16 object-cover rounded-xl shadow-lg flex-shrink-0" />
+              ) : (
+                <div className="w-16 h-16 bg-zinc-800 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl font-bold text-zinc-600">
+                  {selectedDirector.name.charAt(0)}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-white">{selectedDirector.name}</h3>
+                <p className="text-[11px] text-zinc-500">
+                  {selectedDirector.placeOfBirth && <span>{selectedDirector.placeOfBirth}</span>}
+                  {selectedDirector.birthday && <span> · Born {selectedDirector.birthday}</span>}
+                </p>
+                <p className="text-xs text-indigo-400 font-semibold mt-0.5">
+                  {selectedDirector.movies.length} {selectedDirector.movies.length === 1 ? 'film' : 'films'}
+                </p>
               </div>
             </div>
-          );
-        })}
+
+            {selectedDirector.biography && (
+              <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-3">{selectedDirector.biography}</p>
+            )}
+
+            <div className="grid grid-cols-3 gap-2">
+              {selectedDirector.movies.filter(m => !isAlreadyOwned(m)).map(movie => (
+                <button
+                  key={movie.id}
+                  onClick={() => handleSelectMovie(movie)}
+                  className="group flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-1.5 transition-colors"
+                >
+                  <img
+                    src={movie.posterUrl!}
+                    alt={movie.title}
+                    className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg group-hover:scale-[1.03] transition-all"
+                  />
+                  <p className="text-[11px] font-medium text-zinc-300 mt-1.5 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                    {movie.title}
+                  </p>
+                  <p className="text-[10px] text-zinc-600">{movie.year}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Search results (excludes already-ranked movies) */}
-        {!isSearching && filteredSearchResults.length > 0 && (
+        {!isSearching && !selectedDirector && filteredSearchResults.length > 0 && (
           <div className="space-y-1">
-            {directorResults.length > 0 && (
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider pt-1">Movies</p>
+            {directorProfiles.length > 0 && (
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider pt-1">Movies</p>
             )}
             {filteredSearchResults.map((movie) => (
               <div
@@ -438,30 +510,19 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors group"
               >
                 {movie.posterUrl ? (
-                  <img
-                    src={movie.posterUrl}
-                    alt={movie.title}
-                    className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 flex-shrink-0 shadow-md"
-                  />
+                  <img src={movie.posterUrl} alt={movie.title} className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 flex-shrink-0 shadow-md" />
                 ) : (
                   <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
                     <Film size={20} className="text-zinc-600" />
                   </div>
                 )}
-                <button
-                  onClick={() => handleSelectMovie(movie)}
-                  className="flex-1 min-w-0 text-left"
-                >
-                  <p className="font-semibold text-white group-hover:text-indigo-400 transition-colors truncate leading-tight">
-                    {movie.title}
-                  </p>
+                <button onClick={() => handleSelectMovie(movie)} className="flex-1 min-w-0 text-left">
+                  <p className="font-semibold text-white group-hover:text-indigo-400 transition-colors truncate leading-tight">{movie.title}</p>
                   <p className="text-xs text-zinc-500 mt-0.5">{movie.year}</p>
                   {movie.genres.length > 0 && (
                     <div className="flex gap-1 mt-1.5 flex-wrap">
                       {movie.genres.map(g => (
-                        <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">
-                          {g}
-                        </span>
+                        <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">{g}</span>
                       ))}
                     </div>
                   )}
@@ -471,19 +532,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                     <button
                       onClick={() => handleBookmark(movie)}
                       title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
-                      className={`p-1.5 rounded-lg transition-colors ${isBookmarked(movie.id)
-                          ? 'text-emerald-400 bg-emerald-500/10'
-                          : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'
-                        }`}
+                      className={`p-1.5 rounded-lg transition-colors ${isBookmarked(movie.id) ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'}`}
                     >
                       <Bookmark size={16} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
                     </button>
                   )}
-                  <button
-                    onClick={() => handleSelectMovie(movie)}
-                    className="p-1.5 rounded-lg text-zinc-700 group-hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors"
-                    title="Rank this movie"
-                  >
+                  <button onClick={() => handleSelectMovie(movie)} className="p-1.5 rounded-lg text-zinc-700 group-hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors" title="Rank this movie">
                     <Plus size={18} />
                   </button>
                 </div>
@@ -493,7 +547,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         )}
 
         {/* Empty state */}
-        {!isSearching && searchTerm.trim() && filteredSearchResults.length === 0 && directorResults.length === 0 && (
+        {!isSearching && !selectedDirector && searchTerm.trim() && filteredSearchResults.length === 0 && directorProfiles.length === 0 && (
           <div className="text-center py-12 text-zinc-500 text-sm">
             <Film size={32} className="mx-auto mb-3 opacity-30" />
             <p>No results for "{searchTerm}"</p>
@@ -552,8 +606,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                           onClick={(e) => { e.stopPropagation(); handleBookmark(movie, true); }}
                           title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
                           className={`absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md ${isBookmarked(movie.id)
-                              ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
-                              : 'bg-black/60 text-zinc-500 border border-zinc-700 opacity-0 group-hover:opacity-100 hover:text-emerald-400 hover:bg-emerald-500/20'
+                            ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
+                            : 'bg-black/60 text-zinc-500 border border-zinc-700 opacity-0 group-hover:opacity-100 hover:text-emerald-400 hover:bg-emerald-500/20'
                             }`}
                         >
                           <Bookmark size={12} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
