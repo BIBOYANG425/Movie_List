@@ -12,25 +12,25 @@ const DEFAULT_TMDB_SEARCH_TIMEOUT_MS = 4500;
 
 // Full genre map from TMDB (stable — rarely changes)
 const GENRE_MAP: Record<number, string> = {
-  28:    'Action',
-  12:    'Adventure',
-  16:    'Animation',
-  35:    'Comedy',
-  80:    'Crime',
-  99:    'Documentary',
-  18:    'Drama',
+  28: 'Action',
+  12: 'Adventure',
+  16: 'Animation',
+  35: 'Comedy',
+  80: 'Crime',
+  99: 'Documentary',
+  18: 'Drama',
   10751: 'Family',
-  14:    'Fantasy',
-  36:    'History',
-  27:    'Horror',
+  14: 'Fantasy',
+  36: 'History',
+  27: 'Horror',
   10402: 'Music',
-  9648:  'Mystery',
+  9648: 'Mystery',
   10749: 'Romance',
-  878:   'Sci-Fi',
+  878: 'Sci-Fi',
   10770: 'TV Movie',
-  53:    'Thriller',
+  53: 'Thriller',
   10752: 'War',
-  37:    'Western',
+  37: 'Western',
 };
 
 // Reverse map: genre name → TMDB genre ID
@@ -111,6 +111,16 @@ function interleave(a: TMDBMovie[], b: TMDBMovie[]): TMDBMovie[] {
   return mixed;
 }
 
+/** Fisher-Yates shuffle (returns a new shuffled array). */
+function shuffle<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 /**
  * Fetch GENERIC suggestions: 50% popular new releases + 50% all-time classics.
  * No genre filter -- this is the initial batch shown when the modal opens.
@@ -169,7 +179,7 @@ export async function getGenericSuggestions(
       .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
       .slice(0, 6);
 
-    return dedup(interleave(newFilms, classics)).slice(0, 12);
+    return shuffle(dedup(interleave(newFilms, classics)).slice(0, 12));
   } catch (err) {
     console.error('TMDB generic suggestions failed:', err);
     return [];
