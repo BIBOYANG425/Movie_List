@@ -300,23 +300,28 @@ export async function searchMovies(
 }
 
 /**
- * Director profile returned by searchDirectors.
+ * Person profile returned by searchPeople.
  */
-export interface DirectorProfile {
+export interface PersonProfile {
   id: number;
   name: string;
+  role: 'Director' | 'Actor';
   photoUrl: string | null;
   knownFor: string[]; // titles of known movies
 }
 
+// Backwards-compat aliases
+export type DirectorProfile = PersonProfile;
+export type { PersonProfile as ActorProfile };
+
 /**
- * Search TMDB for directors matching `query`.
+ * Search TMDB for directors AND actors matching `query`.
  * Returns compact profiles the UI can show as selectable results.
  */
-export async function searchDirectors(
+export async function searchPeople(
   query: string,
   timeoutMs: number = DEFAULT_TMDB_SEARCH_TIMEOUT_MS,
-): Promise<DirectorProfile[]> {
+): Promise<PersonProfile[]> {
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
   if (!apiKey || !query.trim()) return [];
 
@@ -334,11 +339,12 @@ export async function searchDirectors(
     const data = await res.json();
 
     return (data.results as any[])
-      .filter(p => p.known_for_department === 'Directing')
-      .slice(0, 5)
-      .map((p: any): DirectorProfile => ({
+      .filter(p => p.known_for_department === 'Directing' || p.known_for_department === 'Acting')
+      .slice(0, 6)
+      .map((p: any): PersonProfile => ({
         id: p.id,
         name: p.name,
+        role: p.known_for_department === 'Directing' ? 'Director' : 'Actor',
         photoUrl: p.profile_path ? `${TMDB_IMAGE_BASE}${p.profile_path}` : null,
         knownFor: (p.known_for as any[] ?? [])
           .filter((m: any) => m.media_type === 'movie')
@@ -346,17 +352,21 @@ export async function searchDirectors(
           .slice(0, 3),
       }));
   } catch (err) {
-    console.error('TMDB director search failed:', err);
+    console.error('TMDB person search failed:', err);
     return [];
   }
 }
 
+/** @deprecated Use searchPeople instead */
+export const searchDirectors = searchPeople;
+
 /**
- * Full director detail: bio, photo, and complete filmography.
+ * Full person detail: bio, photo, and filmography.
  */
-export interface DirectorDetail {
+export interface PersonDetail {
   id: number;
   name: string;
+  role: 'Director' | 'Actor';
   photoUrl: string | null;
   biography: string;
   birthday: string | null;
@@ -364,13 +374,18 @@ export interface DirectorDetail {
   movies: TMDBMovie[];
 }
 
+// Backwards-compat alias
+export type DirectorDetail = PersonDetail;
+
 /**
- * Fetch full director profile + filmography by their TMDB person ID.
- * Uses /person/{id} for bio and /person/{id}/movie_credits for filmography.
+ * Fetch full person profile + filmography by their TMDB person ID.
+ * For directors: uses crew credits (job=Director).
+ * For actors: uses cast credits.
  */
-export async function getDirectorFilmography(
+export async function getPersonFilmography(
   personId: number,
-): Promise<DirectorDetail | null> {
+  role: 'Director' | 'Actor' = 'Director',
+): Promise<PersonDetail | null> {
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
   if (!apiKey) return null;
 
@@ -384,26 +399,45 @@ export async function getDirectorFilmography(
 
     const [person, credits] = await Promise.all([personRes.json(), creditsRes.json()]);
 
-    const movies = (credits.crew as any[])
-      .filter((c: any) => c.job === 'Director' && c.poster_path)
-      .sort((a: any, b: any) => (b.popularity ?? 0) - (a.popularity ?? 0))
-      .map((m: any): TMDBMovie => ({
-        id: `tmdb_${m.id}`,
-        tmdbId: m.id,
-        title: m.title,
-        year: m.release_date ? m.release_date.slice(0, 4) : '—',
-        posterUrl: `${TMDB_IMAGE_BASE}${m.poster_path}`,
-        type: 'movie' as const,
-        genres: (m.genre_ids as number[] ?? [])
-          .map((gid: number) => GENRE_MAP[gid])
-          .filter(Boolean)
-          .slice(0, 3),
-        overview: m.overview ?? '',
-      }));
+    const mapMovie = (m: any): TMDBMovie => ({
+      id: `tmdb_${m.id}`,
+      tmdbId: m.id,
+      title: m.title,
+      year: m.release_date ? m.release_date.slice(0, 4) : '—',
+      posterUrl: `${TMDB_IMAGE_BASE}${m.poster_path}`,
+      type: 'movie' as const,
+      genres: (m.genre_ids as number[] ?? [])
+        .map((gid: number) => GENRE_MAP[gid])
+        .filter(Boolean)
+        .slice(0, 3),
+      overview: m.overview ?? '',
+    });
+
+    let movies: TMDBMovie[];
+    if (role === 'Director') {
+      movies = (credits.crew as any[])
+        .filter((c: any) => c.job === 'Director' && c.poster_path)
+        .sort((a: any, b: any) => (b.popularity ?? 0) - (a.popularity ?? 0))
+        .map(mapMovie);
+    } else {
+      movies = (credits.cast as any[])
+        .filter((c: any) => c.poster_path)
+        .sort((a: any, b: any) => (b.popularity ?? 0) - (a.popularity ?? 0))
+        .map(mapMovie);
+    }
+
+    // Deduplicate (actors can appear in same movie multiple times)
+    const seen = new Set<number>();
+    movies = movies.filter(m => {
+      if (seen.has(m.tmdbId)) return false;
+      seen.add(m.tmdbId);
+      return true;
+    });
 
     return {
       id: person.id,
       name: person.name,
+      role,
       photoUrl: person.profile_path ? `${TMDB_IMAGE_BASE}${person.profile_path}` : null,
       biography: person.biography ?? '',
       birthday: person.birthday ?? null,
@@ -411,9 +445,10 @@ export async function getDirectorFilmography(
       movies,
     };
   } catch (err) {
-    console.error('TMDB director filmography failed:', err);
+    console.error('TMDB person filmography failed:', err);
     return null;
   }
 }
 
-
+/** @deprecated Use getPersonFilmography instead */
+export const getDirectorFilmography = (personId: number) => getPersonFilmography(personId, 'Director');
