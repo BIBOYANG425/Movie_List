@@ -4,6 +4,8 @@ import {
   AppProfile,
   FriendFeedItem,
   FriendProfile,
+  FriendRecommendation,
+  GenreProfileItem,
   MovieReview,
   ProfileActivityItem,
   RankingComparison,
@@ -14,6 +16,7 @@ import {
   SharedWatchlistMember,
   TasteCompatibility,
   Tier,
+  TrendingMovie,
   UserProfileSummary,
   UserSearchResult,
 } from '../types';
@@ -1303,6 +1306,12 @@ export async function toggleReviewLike(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const TIER_NUMERIC: Record<string, number> = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+const NUMERIC_TIER: Record<number, string> = { 5: 'S', 4: 'A', 3: 'B', 2: 'C', 1: 'D' };
+
+function tierLabel(numeric: number): string {
+  const rounded = Math.round(numeric);
+  return NUMERIC_TIER[Math.max(1, Math.min(5, rounded))] || 'C';
+}
 
 interface UserRankingRowPhase1 {
   tmdb_id: string;
@@ -1740,4 +1749,248 @@ export async function deleteSharedWatchlist(
     return false;
   }
   return true;
+}
+
+// ── Phase 2: Discovery & Recommendations ────────────────────────────────────
+// (Reuses TIER_NUMERIC, NUMERIC_TIER, tierLabel from Phase 1 section above)
+
+
+/**
+ * Get movies that friends ranked S/A tier but the user hasn't ranked or watchlisted.
+ */
+export async function getFriendRecommendations(
+  userId: string,
+  limit = 20,
+): Promise<FriendRecommendation[]> {
+  // 1. Get following IDs
+  const { data: follows } = await supabase
+    .from('friend_follows')
+    .select('following_id')
+    .eq('follower_id', userId);
+  const friendIds = follows?.map((f: { following_id: string }) => f.following_id) ?? [];
+  if (friendIds.length === 0) return [];
+
+  // 2. Get user's own ranked + watchlisted movie IDs
+  const [rankedRes, watchlistRes] = await Promise.all([
+    supabase.from('user_rankings').select('tmdb_id').eq('user_id', userId),
+    supabase.from('watchlist_items').select('tmdb_id').eq('user_id', userId),
+  ]);
+  const myMovieIds = new Set([
+    ...(rankedRes.data?.map((r: { tmdb_id: string }) => r.tmdb_id) ?? []),
+    ...(watchlistRes.data?.map((w: { tmdb_id: string }) => w.tmdb_id) ?? []),
+  ]);
+
+  // 3. Get friends' S/A-tier rankings
+  const { data: friendRankings } = await supabase
+    .from('user_rankings')
+    .select('tmdb_id, title, poster_url, year, genres, tier, user_id')
+    .in('user_id', friendIds)
+    .in('tier', ['S', 'A']);
+
+  if (!friendRankings || friendRankings.length === 0) return [];
+
+  // 4. Aggregate by movie, excluding user's own
+  const movieMap = new Map<string, {
+    title: string;
+    posterUrl: string | null;
+    year: string | null;
+    genres: string[];
+    tiers: number[];
+    userIds: Set<string>;
+  }>();
+
+  for (const r of friendRankings) {
+    if (myMovieIds.has(r.tmdb_id)) continue;
+    const existing = movieMap.get(r.tmdb_id);
+    if (existing) {
+      existing.tiers.push(TIER_NUMERIC[r.tier] ?? 3);
+      existing.userIds.add(r.user_id);
+    } else {
+      movieMap.set(r.tmdb_id, {
+        title: r.title,
+        posterUrl: r.poster_url,
+        year: r.year,
+        genres: r.genres ?? [],
+        tiers: [TIER_NUMERIC[r.tier] ?? 3],
+        userIds: new Set([r.user_id]),
+      });
+    }
+  }
+
+  // 5. Get friend profiles for avatars
+  const allFriendIds = [...new Set(friendRankings.map((r: { user_id: string }) => r.user_id))];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, avatar_path')
+    .in('id', allFriendIds);
+  const profileMap = new Map(
+    (profiles ?? []).map((p: { id: string; username: string; avatar_path?: string }) => [p.id, p]),
+  );
+
+  // 6. Build and sort results
+  const results: FriendRecommendation[] = [];
+  for (const [tmdbId, data] of movieMap) {
+    const avg = data.tiers.reduce((a, b) => a + b, 0) / data.tiers.length;
+    const friendList = [...data.userIds].slice(0, 5);
+    const avatars = friendList.map((id) => {
+      const p = profileMap.get(id);
+      if (!p?.avatar_path) return '';
+      return `${SUPABASE_URL}/storage/v1/object/public/avatars/${p.avatar_path}`;
+    });
+    const usernames = friendList.map(
+      (id) => (profileMap.get(id) as { username: string } | undefined)?.username ?? '',
+    );
+
+    results.push({
+      tmdbId,
+      title: data.title,
+      posterUrl: data.posterUrl ?? undefined,
+      year: data.year ?? undefined,
+      genres: data.genres,
+      avgTier: tierLabel(avg),
+      avgTierNumeric: Math.round(avg * 10) / 10,
+      friendCount: data.userIds.size,
+      friendAvatars: avatars,
+      friendUsernames: usernames,
+      topTier: NUMERIC_TIER[Math.max(...data.tiers)] ?? 'C',
+    });
+  }
+
+  results.sort((a, b) => b.friendCount - a.friendCount || b.avgTierNumeric - a.avgTierNumeric);
+  return results.slice(0, limit);
+}
+
+/**
+ * Get most-ranked movies among friends in the last N days.
+ */
+export async function getTrendingAmongFriends(
+  userId: string,
+  limit = 15,
+  days = 30,
+): Promise<TrendingMovie[]> {
+  const { data: follows } = await supabase
+    .from('friend_follows')
+    .select('following_id')
+    .eq('follower_id', userId);
+  const friendIds = follows?.map((f: { following_id: string }) => f.following_id) ?? [];
+  if (friendIds.length === 0) return [];
+
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+
+  const { data: recentRankings } = await supabase
+    .from('user_rankings')
+    .select('tmdb_id, title, poster_url, year, genres, tier, user_id')
+    .in('user_id', friendIds)
+    .gte('updated_at', cutoff);
+
+  if (!recentRankings || recentRankings.length === 0) return [];
+
+  // Aggregate
+  const movieMap = new Map<string, {
+    title: string;
+    posterUrl: string | null;
+    year: string | null;
+    genres: string[];
+    tiers: number[];
+    rankerIds: Set<string>;
+  }>();
+
+  for (const r of recentRankings) {
+    const existing = movieMap.get(r.tmdb_id);
+    if (existing) {
+      existing.tiers.push(TIER_NUMERIC[r.tier] ?? 3);
+      existing.rankerIds.add(r.user_id);
+    } else {
+      movieMap.set(r.tmdb_id, {
+        title: r.title,
+        posterUrl: r.poster_url,
+        year: r.year,
+        genres: r.genres ?? [],
+        tiers: [TIER_NUMERIC[r.tier] ?? 3],
+        rankerIds: new Set([r.user_id]),
+      });
+    }
+  }
+
+  // Get ranker profiles
+  const allRankerIds = [...new Set(recentRankings.map((r: { user_id: string }) => r.user_id))];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username')
+    .in('id', allRankerIds);
+  const usernameMap = new Map(
+    (profiles ?? []).map((p: { id: string; username: string }) => [p.id, p.username]),
+  );
+
+  const results: TrendingMovie[] = [];
+  for (const [tmdbId, data] of movieMap) {
+    if (data.rankerIds.size < 2) continue; // Need 2+ friends
+    const avg = data.tiers.reduce((a, b) => a + b, 0) / data.tiers.length;
+    const rankerNames = [...data.rankerIds].slice(0, 5).map(
+      (id) => usernameMap.get(id) ?? '',
+    );
+
+    results.push({
+      tmdbId,
+      title: data.title,
+      posterUrl: data.posterUrl ?? undefined,
+      year: data.year ?? undefined,
+      genres: data.genres,
+      rankerCount: data.rankerIds.size,
+      avgTier: tierLabel(avg),
+      avgTierNumeric: Math.round(avg * 10) / 10,
+      recentRankers: rankerNames,
+    });
+  }
+
+  results.sort((a, b) => b.rankerCount - a.rankerCount || b.avgTierNumeric - a.avgTierNumeric);
+  return results.slice(0, limit);
+}
+
+/**
+ * Get genre distribution from a user's rankings.
+ */
+export async function getGenreProfile(
+  userId: string,
+): Promise<GenreProfileItem[]> {
+  const { data: rankings } = await supabase
+    .from('user_rankings')
+    .select('genres, tier')
+    .eq('user_id', userId);
+
+  if (!rankings || rankings.length === 0) return [];
+
+  const genreTiers = new Map<string, number[]>();
+  const total = rankings.length;
+
+  for (const r of rankings) {
+    const genres: string[] = r.genres ?? [];
+    const tierVal = TIER_NUMERIC[r.tier] ?? 3;
+    for (const g of genres) {
+      if (!g || typeof g !== 'string') continue;
+      const trimmed = g.trim();
+      const existing = genreTiers.get(trimmed);
+      if (existing) {
+        existing.push(tierVal);
+      } else {
+        genreTiers.set(trimmed, [tierVal]);
+      }
+    }
+  }
+
+  const items: GenreProfileItem[] = [];
+  for (const [genre, tiers] of genreTiers) {
+    const count = tiers.length;
+    const avg = tiers.reduce((a, b) => a + b, 0) / count;
+    items.push({
+      genre,
+      count,
+      percentage: Math.round((count / total) * 1000) / 10,
+      avgTier: tierLabel(avg),
+      avgTierNumeric: Math.round(avg * 10) / 10,
+    });
+  }
+
+  items.sort((a, b) => b.count - a.count);
+  return items;
 }

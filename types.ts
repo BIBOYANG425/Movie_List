@@ -201,3 +201,56 @@ export interface RankingComparison {
   sharedCount: number;
   items: RankingComparisonItem[];
 }
+
+// ── Phase 2: Discovery & Recommendations ────────────────────────────────────
+
+export interface FriendRecommendation {
+  tmdbId: string;
+  title: string;
+  posterUrl?: string;
+  year?: string;
+  genres: string[];
+  avgTier: string;
+  avgTierNumeric: number;
+  friendCount: number;
+  friendAvatars: string[];
+  friendUsernames: string[];
+  topTier: string;
+}
+
+export interface TrendingMovie {
+  tmdbId: string;
+  title: string;
+  posterUrl?: string;
+  year?: string;
+  genres: string[];
+  rankerCount: number;
+  avgTier: string;
+  avgTierNumeric: number;
+  recentRankers: string[];
+}
+
+export interface GenreProfileItem {
+  genre: string;
+  count: number;
+  percentage: number;
+  avgTier: string;
+  avgTierNumeric: number;
+}
+
+export interface GenreProfile {
+  userId: string;
+  username: string;
+  totalRanked: number;
+  genres: GenreProfileItem[];
+}
+
+export interface GenreComparison {
+  viewerId: string;
+  viewerUsername: string;
+  targetId: string;
+  targetUsername: string;
+  viewerGenres: GenreProfileItem[];
+  targetGenres: GenreProfileItem[];
+  sharedTopGenres: string[];
+}

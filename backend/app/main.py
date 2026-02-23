@@ -11,11 +11,12 @@ from app.api import auth, media, rankings, social
 from app.api import reviews as reviews_api
 from app.api import taste as taste_api
 from app.api import shared_watchlists as shared_watchlists_api
+from app.api import discovery as discovery_api
 
 app = FastAPI(
     title="Marquee API",
     description="Backend for the Marquee movie ranking app.",
-    version="0.2.0",
+    version="0.3.0",
     docs_url="/docs" if settings.ENABLE_DOCS else None,
     redoc_url="/redoc" if settings.ENABLE_DOCS else None,
 )
@@ -38,6 +39,9 @@ app.include_router(social.router,   prefix="/social",   tags=["social"])
 app.include_router(reviews_api.router,            prefix="/reviews",           tags=["reviews"])
 app.include_router(taste_api.router,              prefix="/taste",             tags=["taste"])
 app.include_router(shared_watchlists_api.router,  prefix="/watchlists/shared", tags=["shared-watchlists"])
+# Phase 2 discovery
+app.include_router(discovery_api.router,          prefix="/discover",          tags=["discovery"])
+
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

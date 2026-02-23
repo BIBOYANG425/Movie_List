@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BarChart2, Bookmark, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users } from 'lucide-react';
+import { ArrowLeft, BarChart2, Bookmark, Compass, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType } from '../types';
 import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE } from '../constants';
 import { TierRow } from '../components/TierRow';
@@ -8,6 +8,7 @@ import { AddMediaModal } from '../components/AddMediaModal';
 import { StatsView } from '../components/StatsView';
 import { Watchlist } from '../components/Watchlist';
 import { FriendsView } from '../components/FriendsView';
+import { DiscoverView } from '../components/DiscoverView';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
@@ -126,7 +127,7 @@ const RankingAppPage = () => {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'friends'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'friends' | 'discover'>('ranking');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -480,6 +481,14 @@ const RankingAppPage = () => {
               <Users size={20} />
             </button>
             <button
+              onClick={() => setActiveTab('discover')}
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'discover' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+                }`}
+              title="Discover"
+            >
+              <Compass size={20} />
+            </button>
+            <button
               onClick={handleReset}
               title="Reset rankings"
               className="p-2 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900 transition-colors"
@@ -514,6 +523,10 @@ const RankingAppPage = () => {
 
         {activeTab === 'friends' && user && (
           <FriendsView userId={user.id} selfUsername={profile?.username} />
+        )}
+
+        {activeTab === 'discover' && user && (
+          <DiscoverView userId={user.id} />
         )}
       </main>
 
