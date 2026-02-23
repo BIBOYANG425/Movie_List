@@ -7,6 +7,7 @@ import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, 
 import { searchMediaFromBackend, hasBackendUrl } from '../services/backendService';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { logRankingActivityEvent } from '../services/friendsService';
 
 const REQUIRED_MOVIES = MIN_MOVIES_FOR_SCORES;
 
@@ -300,6 +301,18 @@ const MovieOnboardingPage: React.FC = () => {
             notes: null,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id,tmdb_id' });
+
+        await logRankingActivityEvent(
+            user.id,
+            {
+                id: newItem.id,
+                title: newItem.title,
+                tier: newItem.tier,
+                posterUrl: newItem.posterUrl,
+                year: newItem.year,
+            },
+            'ranking_add',
+        );
     };
 
     const handleContinue = () => {

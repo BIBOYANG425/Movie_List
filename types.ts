@@ -75,6 +75,7 @@ export interface FriendFeedItem {
   tier: Tier;
   rankedAt: string;
   posterUrl?: string;
+  eventType?: 'ranking_add' | 'ranking_move' | 'ranking_remove';
 }
 
 export interface ProfileActivityItem {
@@ -82,6 +83,121 @@ export interface ProfileActivityItem {
   title: string;
   tier: Tier;
   notes?: string;
+  year?: string;
   updatedAt: string;
   posterUrl?: string;
+  eventType?: 'ranking_add' | 'ranking_move' | 'ranking_remove';
+}
+
+export interface ActivityComment {
+  id: string;
+  eventId: string;
+  userId: string;
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+  body: string;
+  createdAt: string;
+}
+
+// ── Phase 1: Movie Reviews ──────────────────────────────────────────────────
+
+export interface MovieReview {
+  id: string;
+  userId: string;
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+  mediaItemId: string;
+  mediaTitle: string;
+  body: string;
+  ratingTier?: Tier;
+  containsSpoilers: boolean;
+  likeCount: number;
+  isLikedByViewer: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Phase 1: Taste Compatibility ────────────────────────────────────────────
+
+export interface SharedMovieComparison {
+  mediaItemId: string;
+  mediaTitle: string;
+  posterUrl?: string;
+  viewerTier: string;
+  viewerScore: number;
+  targetTier: string;
+  targetScore: number;
+  tierDifference: number;
+}
+
+export interface TasteCompatibility {
+  targetUserId: string;
+  targetUsername: string;
+  score: number; // 0-100
+  sharedCount: number;
+  agreements: number;
+  nearAgreements: number;
+  disagreements: number;
+  topShared: SharedMovieComparison[];
+  biggestDivergences: SharedMovieComparison[];
+}
+
+// ── Phase 1: Shared Watchlists ──────────────────────────────────────────────
+
+export interface SharedWatchlistMember {
+  userId: string;
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+  joinedAt: string;
+}
+
+export interface SharedWatchlistItem {
+  id: string;
+  mediaItemId: string;
+  mediaTitle: string;
+  posterUrl?: string;
+  releaseYear?: number;
+  addedByUsername: string;
+  voteCount: number;
+  viewerHasVoted: boolean;
+  addedAt: string;
+}
+
+export interface SharedWatchlist {
+  id: string;
+  name: string;
+  createdBy: string;
+  creatorUsername: string;
+  memberCount: number;
+  itemCount: number;
+  createdAt: string;
+  members?: SharedWatchlistMember[];
+  items?: SharedWatchlistItem[];
+}
+
+// ── Phase 1: Ranking Comparison ─────────────────────────────────────────────
+
+export interface RankingComparisonItem {
+  mediaItemId: string;
+  mediaTitle: string;
+  posterUrl?: string;
+  viewerTier?: string;
+  viewerScore?: number;
+  viewerRankPosition?: number;
+  targetTier?: string;
+  targetScore?: number;
+  targetRankPosition?: number;
+  isShared: boolean;
+}
+
+export interface RankingComparison {
+  targetUserId: string;
+  targetUsername: string;
+  viewerTotal: number;
+  targetTotal: number;
+  sharedCount: number;
+  items: RankingComparisonItem[];
 }

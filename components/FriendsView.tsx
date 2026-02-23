@@ -31,6 +31,12 @@ function relativeDate(iso: string): string {
   }
 }
 
+function feedActionText(eventType?: FriendFeedItem['eventType']): string {
+  if (eventType === 'ranking_move') return 'reranked';
+  if (eventType === 'ranking_remove') return 'removed';
+  return 'ranked';
+}
+
 export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }) => {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -316,7 +322,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
                     >
                       {item.username}
                     </Link>{' '}
-                    ranked{' '}
+                    {feedActionText(item.eventType)}{' '}
                     <span className="font-medium text-zinc-100">{item.title}</span>
                   </p>
                   <p className="text-xs text-zinc-500 mt-0.5">

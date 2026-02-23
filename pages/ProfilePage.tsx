@@ -13,17 +13,21 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { FriendProfile, ProfileActivityItem, UserProfileSummary } from '../types';
+import { ActivityComment, FriendProfile, ProfileActivityItem, UserProfileSummary } from '../types';
 import {
+  addActivityComment,
   AVATAR_ACCEPTED_MIME_TYPES,
   AVATAR_MAX_FILE_BYTES,
   followUser,
+  getActivityEngagement,
   getFollowerProfilesForUser,
   getFollowingProfilesForUser,
   getProfileSummary,
   getRecentProfileActivity,
+  listActivityComments,
   rankActivityMovie,
   saveActivityMovieToWatchlist,
+  toggleActivityLike,
   unfollowUser,
   updateMyProfile,
   uploadAvatarPhoto,
@@ -46,6 +50,12 @@ function relativeDate(iso: string): string {
 
 const MAX_BIO_LENGTH = 280;
 
+function activityActionLabel(eventType?: ProfileActivityItem['eventType']): string {
+  if (eventType === 'ranking_move') return 'Reranked';
+  if (eventType === 'ranking_remove') return 'Removed';
+  return 'Ranked';
+}
+
 const ProfilePage = () => {
   const { user, refreshProfile } = useAuth();
   const { profileId } = useParams();
@@ -55,12 +65,20 @@ const ProfilePage = () => {
   const [followBusy, setFollowBusy] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [activityBusyId, setActivityBusyId] = useState<string | null>(null);
+  const [likeBusyId, setLikeBusyId] = useState<string | null>(null);
+  const [commentBusyId, setCommentBusyId] = useState<string | null>(null);
+  const [commentLoadingId, setCommentLoadingId] = useState<string | null>(null);
 
   const [displayNameInput, setDisplayNameInput] = useState('');
   const [bioInput, setBioInput] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [likedActivityIds, setLikedActivityIds] = useState<Set<string>>(new Set());
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [openCommentIds, setOpenCommentIds] = useState<Set<string>>(new Set());
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [commentsByActivityId, setCommentsByActivityId] = useState<Record<string, ActivityComment[]>>({});
 
   const [profile, setProfile] = useState<UserProfileSummary | null>(null);
   const [followers, setFollowers] = useState<FriendProfile[]>([]);
@@ -99,6 +117,12 @@ const ProfilePage = () => {
       setFollowers([]);
       setFollowing([]);
       setActivity([]);
+      setLikedActivityIds(new Set());
+      setLikeCounts({});
+      setCommentCounts({});
+      setOpenCommentIds(new Set());
+      setCommentDrafts({});
+      setCommentsByActivityId({});
       setLoading(false);
       return;
     }
@@ -117,10 +141,24 @@ const ProfilePage = () => {
       setFollowers(nextFollowers);
       setFollowing(nextFollowing);
       setActivity(nextActivity);
+
+      const engagement = await getActivityEngagement(user.id, nextActivity.map((item) => item.id));
+      setLikedActivityIds(engagement.likedByMe);
+      setLikeCounts(engagement.likeCounts);
+      setCommentCounts(engagement.commentCounts);
+      setOpenCommentIds(new Set());
+      setCommentDrafts({});
+      setCommentsByActivityId({});
     } else {
       setFollowers([]);
       setFollowing([]);
       setActivity([]);
+      setLikedActivityIds(new Set());
+      setLikeCounts({});
+      setCommentCounts({});
+      setOpenCommentIds(new Set());
+      setCommentDrafts({});
+      setCommentsByActivityId({});
     }
 
     setLoading(false);
@@ -208,13 +246,75 @@ const ProfilePage = () => {
     setProfileBusy(false);
   };
 
-  const toggleLike = (activityId: string) => {
+  const handleToggleLike = async (activityId: string) => {
+    if (!user) return;
+    const shouldLike = !likedActivityIds.has(activityId);
+
+    setLikeBusyId(activityId);
+    const ok = await toggleActivityLike(user.id, activityId, shouldLike);
+    if (!ok) {
+      setStatusMessage('Could not update reaction right now.');
+      setLikeBusyId(null);
+      return;
+    }
+
     setLikedActivityIds((prev) => {
       const next = new Set(prev);
-      if (next.has(activityId)) next.delete(activityId);
+      if (shouldLike) next.add(activityId);
+      else next.delete(activityId);
+      return next;
+    });
+    setLikeCounts((prev) => ({
+      ...prev,
+      [activityId]: Math.max(0, (prev[activityId] ?? 0) + (shouldLike ? 1 : -1)),
+    }));
+    setLikeBusyId(null);
+  };
+
+  const loadCommentsForActivity = async (activityId: string) => {
+    setCommentLoadingId(activityId);
+    const nextComments = await listActivityComments(activityId);
+    setCommentsByActivityId((prev) => ({
+      ...prev,
+      [activityId]: nextComments,
+    }));
+    setCommentCounts((prev) => ({
+      ...prev,
+      [activityId]: nextComments.length,
+    }));
+    setCommentLoadingId(null);
+  };
+
+  const handleToggleComments = async (activityId: string) => {
+    const wasOpen = openCommentIds.has(activityId);
+    setOpenCommentIds((prev) => {
+      const next = new Set(prev);
+      if (wasOpen) next.delete(activityId);
       else next.add(activityId);
       return next;
     });
+
+    if (!wasOpen && !commentsByActivityId[activityId]) {
+      await loadCommentsForActivity(activityId);
+    }
+  };
+
+  const handleSubmitComment = async (activityId: string) => {
+    if (!user) return;
+    const draft = (commentDrafts[activityId] ?? '').trim();
+    if (!draft) return;
+
+    setCommentBusyId(activityId);
+    const ok = await addActivityComment(user.id, activityId, draft);
+    if (!ok) {
+      setStatusMessage('Could not add comment right now.');
+      setCommentBusyId(null);
+      return;
+    }
+
+    setCommentDrafts((prev) => ({ ...prev, [activityId]: '' }));
+    await loadCommentsForActivity(activityId);
+    setCommentBusyId(null);
   };
 
   const handleShare = async (item: ProfileActivityItem) => {
@@ -486,6 +586,13 @@ const ProfilePage = () => {
                   {activity.map((item) => {
                     const liked = likedActivityIds.has(item.id);
                     const itemBusy = activityBusyId === item.id;
+                    const likeBusy = likeBusyId === item.id;
+                    const commentBusy = commentBusyId === item.id;
+                    const commentLoading = commentLoadingId === item.id;
+                    const commentsOpen = openCommentIds.has(item.id);
+                    const comments = commentsByActivityId[item.id] ?? [];
+                    const likeCount = likeCounts[item.id] ?? 0;
+                    const commentCount = commentCounts[item.id] ?? 0;
 
                     return (
                       <div
@@ -504,7 +611,7 @@ const ProfilePage = () => {
                           )}
                           <div className="flex-1 min-w-0">
                             <p className="text-sm truncate">
-                              Ranked <span className="font-semibold">{item.title}</span> in tier {item.tier}
+                              {activityActionLabel(item.eventType)} <span className="font-semibold">{item.title}</span> in tier {item.tier}
                             </p>
                             <p className="text-xs text-zinc-500 mt-0.5">{relativeDate(item.updatedAt)}</p>
                             {item.notes && (
@@ -520,23 +627,24 @@ const ProfilePage = () => {
 
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <button
-                            onClick={() => toggleLike(item.id)}
+                            onClick={() => handleToggleLike(item.id)}
+                            disabled={likeBusy}
                             className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 transition-colors ${
                               liked
                                 ? 'border-rose-500 text-rose-300 bg-rose-950/40'
                                 : 'border-zinc-700 text-zinc-300 hover:border-zinc-500'
-                            }`}
+                            } disabled:opacity-50`}
                           >
                             <Heart size={12} />
-                            {liked ? 'Liked' : 'Like'}
+                            {liked ? 'Liked' : 'Like'} {likeCount > 0 ? `(${likeCount})` : ''}
                           </button>
 
                           <button
-                            onClick={() => setStatusMessage('Comments are planned for the next phase.')}
+                            onClick={() => handleToggleComments(item.id)}
                             className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-zinc-300 hover:border-zinc-500 transition-colors"
                           >
                             <MessageCircle size={12} />
-                            Comment
+                            Comment {commentCount > 0 ? `(${commentCount})` : ''}
                           </button>
 
                           <button
@@ -568,6 +676,45 @@ const ProfilePage = () => {
                             </>
                           )}
                         </div>
+
+                        {commentsOpen && (
+                          <div className="rounded-md border border-zinc-800 bg-zinc-900/70 p-2 space-y-2">
+                            {commentLoading ? (
+                              <p className="text-xs text-zinc-500">Loading comments...</p>
+                            ) : comments.length === 0 ? (
+                              <p className="text-xs text-zinc-500">No comments yet.</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {comments.map((comment) => (
+                                  <div key={comment.id} className="text-xs text-zinc-300 rounded-md bg-zinc-950 border border-zinc-800 px-2 py-1.5">
+                                    <span className="font-semibold text-zinc-200">
+                                      {comment.displayName ?? comment.username}
+                                    </span>{' '}
+                                    <span className="text-zinc-500">{relativeDate(comment.createdAt)}</span>
+                                    <p className="mt-1 text-zinc-300 whitespace-pre-wrap">{comment.body}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex gap-2">
+                              <input
+                                value={commentDrafts[item.id] ?? ''}
+                                onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                                maxLength={500}
+                                placeholder="Write a comment..."
+                                className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                              />
+                              <button
+                                onClick={() => handleSubmitComment(item.id)}
+                                disabled={commentBusy}
+                                className="rounded-md border border-zinc-700 px-2 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
+                              >
+                                Post
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

@@ -45,5 +45,9 @@ class UserResponse(BaseModel):
     id: UUID
     username: str
     email: str
+    display_name: str | None = None
+    bio: str | None = None
+    avatar_url: str | None = None
+    onboarding_completed: bool = False
 
     model_config = ConfigDict(from_attributes=True)

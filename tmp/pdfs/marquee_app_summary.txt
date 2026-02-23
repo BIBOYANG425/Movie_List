@@ -1,0 +1,43 @@
+MARQUEE APP - ONE-PAGE SUMMARY
+
+WHAT IT IS
+Marquee is a web app for ranking movies in S/A/B/C/D tiers.
+It also keeps a personal watch-later list.
+The root app uses Supabase for auth/data and TMDB for search.
+
+WHO IT'S FOR
+Primary user/persona: Movie fans building a personal canon.
+Formal persona documentation: Not found in repo.
+
+WHAT IT DOES
+- Email/password sign-up and sign-in.
+- Protected routes for landing, auth, and app views.
+- Tier board with drag-and-drop moves.
+- Add movies via TMDB search and suggestion sets.
+- Compare placement step before final rank insert.
+- Watch Later list with save, remove, and promote actions.
+- Stats charts for tier mix and media split.
+
+HOW IT WORKS (REPO EVIDENCE)
+- UI layer: React + Vite single-page app.
+- Routing in App.tsx; auth state in AuthContext.tsx.
+- Supabase client is created in lib/supabase.ts.
+- RankingAppPage.tsx reads/writes user_rankings and
+  watchlist_items using user-scoped queries.
+- AddMediaModal.tsx calls services/tmdbService.ts in browser.
+- supabase_schema.sql defines profiles, rankings,
+  watchlist tables, RLS policies, and signup trigger.
+- server.js serves built dist assets with Express.
+- A separate FastAPI backend exists under backend/.
+- backend/app/api/media.py and social.py include TODO/501 stubs.
+- Root frontend calls to that FastAPI API:
+  Not found in repo.
+
+HOW TO RUN (MINIMAL)
+1) Install deps: npm install
+2) Create .env.local with:
+   - VITE_SUPABASE_URL
+   - VITE_SUPABASE_ANON_KEY
+   - VITE_TMDB_API_KEY
+3) Start dev server: npm run dev
+4) Open Vite URL (typically http://localhost:5173)

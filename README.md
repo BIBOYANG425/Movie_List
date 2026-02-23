@@ -60,6 +60,7 @@ VITE_TMDB_API_KEY=your-tmdb-api-key
 4. Apply SQL:
    - New setup: run `supabase_schema.sql`.
    - Existing setup: run `supabase_phase1_profile_patch.sql`.
+   - Existing setups adding activity feed reactions/comments: run `supabase_phase2_activity_patch.sql`.
 
 ## Install and Run
 

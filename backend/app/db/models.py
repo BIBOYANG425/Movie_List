@@ -88,6 +88,11 @@ class User(Base):
         nullable=False,
         index=True,
     )
+    display_name = Column(String(60), nullable=True)
+    bio = Column(String(280), nullable=True)
+    avatar_url = Column(String(500), nullable=True)
+    avatar_path = Column(String(255), nullable=True)
+    onboarding_completed = Column(Boolean, default=False, nullable=False)
     password_hash = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
@@ -119,6 +124,20 @@ class User(Base):
         foreign_keys="Follow.following_id",
         back_populates="following_user",
         cascade="all, delete-orphan",
+    )
+    # Phase 1: Movie reviews authored by this user
+    reviews = relationship(
+        "MovieReview",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+    # Phase 1: Shared watchlists created by this user
+    created_shared_watchlists = relationship(
+        "SharedWatchlist",
+        back_populates="creator",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
     )
 
     def __repr__(self) -> str:
@@ -306,3 +325,198 @@ class Follow(Base):
 
     def __repr__(self) -> str:
         return f"<Follow {self.follower_id} → {self.following_id}>"
+
+
+# ── Phase 1: Movie Reviews ───────────────────────────────────────────────────
+
+class MovieReview(Base):
+    """
+    A user's written review of a movie, tied to their ranking tier.
+    One review per user per media item. Supports spoiler flagging.
+    """
+    __tablename__ = "movie_reviews"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    media_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("media_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    body = Column(Text, nullable=False)
+    rating_tier = Column(
+        SAEnum(TierEnum, name="ranking_tier", create_type=False),
+        nullable=True,
+    )
+    contains_spoilers = Column(Boolean, default=False, nullable=False)
+    like_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=_utcnow,
+        onupdate=_utcnow,
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "media_item_id", name="uq_user_review"),
+        CheckConstraint(
+            "length(btrim(body)) >= 10 AND length(btrim(body)) <= 2000",
+            name="chk_review_body_len",
+        ),
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="reviews")
+    media_item = relationship("MediaItem")
+
+    def __repr__(self) -> str:
+        return f"<MovieReview user={self.user_id} media={self.media_item_id}>"
+
+
+# ── Phase 1: Review Likes ────────────────────────────────────────────────────
+
+class ReviewLike(Base):
+    """One like per user per review."""
+    __tablename__ = "review_likes"
+
+    review_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("movie_reviews.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    # Relationships
+    review = relationship("MovieReview")
+    user = relationship("User")
+
+
+# ── Phase 1: Shared Watchlists ───────────────────────────────────────────────
+
+class SharedWatchlist(Base):
+    """
+    A collaborative watchlist that multiple users can add movies to.
+    Created by a user, others can be invited.
+    """
+    __tablename__ = "shared_watchlists"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False, default="Movie Night")
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "length(btrim(name)) >= 1 AND length(btrim(name)) <= 100",
+            name="chk_shared_watchlist_name",
+        ),
+    )
+
+    # Relationships
+    creator = relationship("User", back_populates="created_shared_watchlists")
+    members = relationship(
+        "SharedWatchlistMember",
+        back_populates="watchlist",
+        cascade="all, delete-orphan",
+    )
+    items = relationship(
+        "SharedWatchlistItem",
+        back_populates="watchlist",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        return f"<SharedWatchlist id={self.id} name={self.name!r}>"
+
+
+class SharedWatchlistMember(Base):
+    """Join table: users who belong to a shared watchlist."""
+    __tablename__ = "shared_watchlist_members"
+
+    watchlist_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("shared_watchlists.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    joined_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    # Relationships
+    watchlist = relationship("SharedWatchlist", back_populates="members")
+    user = relationship("User")
+
+
+class SharedWatchlistItem(Base):
+    """A movie added to a shared watchlist by one of its members."""
+    __tablename__ = "shared_watchlist_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    watchlist_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("shared_watchlists.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    media_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("media_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    added_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    vote_count = Column(Integer, default=0, nullable=False)
+    added_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("watchlist_id", "media_item_id", name="uq_shared_watchlist_item"),
+    )
+
+    # Relationships
+    watchlist = relationship("SharedWatchlist", back_populates="items")
+    media_item = relationship("MediaItem")
+    added_by_user = relationship("User")
+
+
+class SharedWatchlistVote(Base):
+    """A user's vote for a specific item in a shared watchlist."""
+    __tablename__ = "shared_watchlist_votes"
+
+    item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("shared_watchlist_items.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    # Relationships
+    item = relationship("SharedWatchlistItem")
+    user = relationship("User")

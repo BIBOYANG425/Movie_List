@@ -60,6 +60,47 @@ CREATE TABLE friend_follows (
 CREATE INDEX idx_friend_follows_follower ON friend_follows(follower_id);
 CREATE INDEX idx_friend_follows_following ON friend_follows(following_id);
 
+-- activity_events: append-only social timeline items
+CREATE TABLE activity_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  event_type text NOT NULL CHECK (event_type IN ('ranking_add','ranking_move','ranking_remove','follow','comment','reaction')),
+  target_user_id uuid REFERENCES profiles(id) ON DELETE SET NULL,
+  media_tmdb_id text,
+  media_title text,
+  media_tier text CHECK (media_tier IN ('S','A','B','C','D')),
+  media_poster_url text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT chk_activity_event_metadata_object CHECK (jsonb_typeof(metadata) = 'object')
+);
+CREATE INDEX idx_activity_events_actor_created_at ON activity_events(actor_id, created_at DESC);
+CREATE INDEX idx_activity_events_created_at ON activity_events(created_at DESC);
+CREATE INDEX idx_activity_events_target_user ON activity_events(target_user_id);
+
+-- activity_reactions: one reaction per user per event type (currently only "like")
+CREATE TABLE activity_reactions (
+  event_id uuid NOT NULL REFERENCES activity_events(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  reaction text NOT NULL DEFAULT 'like' CHECK (reaction IN ('like')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (event_id, user_id, reaction)
+);
+CREATE INDEX idx_activity_reactions_event ON activity_reactions(event_id);
+CREATE INDEX idx_activity_reactions_user ON activity_reactions(user_id);
+
+-- activity_comments: threaded comments on social events
+CREATE TABLE activity_comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL REFERENCES activity_events(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  body text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT chk_activity_comment_body CHECK (length(btrim(body)) BETWEEN 1 AND 500)
+);
+CREATE INDEX idx_activity_comments_event_created_at ON activity_comments(event_id, created_at ASC);
+CREATE INDEX idx_activity_comments_user ON activity_comments(user_id);
+
 CREATE OR REPLACE FUNCTION set_profiles_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -79,6 +120,9 @@ ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_rankings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE watchlist_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE friend_follows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_reactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_comments ENABLE ROW LEVEL SECURITY;
 
 -- profiles policies
 CREATE POLICY "Public users can view profiles" ON profiles FOR SELECT USING (true);
@@ -110,6 +154,96 @@ CREATE POLICY "Users can insert own follows" ON friend_follows FOR INSERT WITH C
 );
 CREATE POLICY "Users can delete own follows" ON friend_follows FOR DELETE USING (
   auth.uid() = follower_id
+);
+
+-- activity_events policies
+CREATE POLICY "Users can view own and followed activity events" ON activity_events FOR SELECT USING (
+  auth.uid() = actor_id
+  OR EXISTS (
+    SELECT 1
+    FROM friend_follows
+    WHERE friend_follows.follower_id = auth.uid()
+      AND friend_follows.following_id = activity_events.actor_id
+  )
+);
+CREATE POLICY "Users can insert own activity events" ON activity_events FOR INSERT WITH CHECK (
+  auth.uid() = actor_id
+);
+
+-- activity_reactions policies
+CREATE POLICY "Users can view reactions on visible events" ON activity_reactions FOR SELECT USING (
+  EXISTS (
+    SELECT 1
+    FROM activity_events
+    WHERE activity_events.id = activity_reactions.event_id
+      AND (
+        activity_events.actor_id = auth.uid()
+        OR EXISTS (
+          SELECT 1
+          FROM friend_follows
+          WHERE friend_follows.follower_id = auth.uid()
+            AND friend_follows.following_id = activity_events.actor_id
+        )
+      )
+  )
+);
+CREATE POLICY "Users can insert own reactions on visible events" ON activity_reactions FOR INSERT WITH CHECK (
+  auth.uid() = user_id
+  AND EXISTS (
+    SELECT 1
+    FROM activity_events
+    WHERE activity_events.id = activity_reactions.event_id
+      AND (
+        activity_events.actor_id = auth.uid()
+        OR EXISTS (
+          SELECT 1
+          FROM friend_follows
+          WHERE friend_follows.follower_id = auth.uid()
+            AND friend_follows.following_id = activity_events.actor_id
+        )
+      )
+  )
+);
+CREATE POLICY "Users can delete own reactions" ON activity_reactions FOR DELETE USING (
+  auth.uid() = user_id
+);
+
+-- activity_comments policies
+CREATE POLICY "Users can view comments on visible events" ON activity_comments FOR SELECT USING (
+  EXISTS (
+    SELECT 1
+    FROM activity_events
+    WHERE activity_events.id = activity_comments.event_id
+      AND (
+        activity_events.actor_id = auth.uid()
+        OR EXISTS (
+          SELECT 1
+          FROM friend_follows
+          WHERE friend_follows.follower_id = auth.uid()
+            AND friend_follows.following_id = activity_events.actor_id
+        )
+      )
+  )
+);
+CREATE POLICY "Users can insert own comments on visible events" ON activity_comments FOR INSERT WITH CHECK (
+  auth.uid() = user_id
+  AND EXISTS (
+    SELECT 1
+    FROM activity_events
+    WHERE activity_events.id = activity_comments.event_id
+      AND (
+        activity_events.actor_id = auth.uid()
+        OR EXISTS (
+          SELECT 1
+          FROM friend_follows
+          WHERE friend_follows.follower_id = auth.uid()
+            AND friend_follows.following_id = activity_events.actor_id
+        )
+      )
+  )
+);
+CREATE POLICY "Users can delete own comments" ON activity_comments FOR DELETE USING (
+  auth.uid() = user_id
 );
 
 -- avatar storage bucket + policies

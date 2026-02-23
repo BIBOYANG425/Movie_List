@@ -26,18 +26,36 @@ def _avatar_from_username(username: str) -> str:
     return f"https://api.dicebear.com/8.x/thumbs/svg?seed={quote_plus(username)}"
 
 
+def _avatar_from_user(user: User) -> str:
+    if user.avatar_url:
+        return user.avatar_url
+    return _avatar_from_username(user.username)
+
+
+def _optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def _active_user_or_raise(db: Session, user_id: UUID) -> User:
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.is_active.is_(True))
+        .first()
+    )
+    if user is None:
+        raise UserNotFoundError(f"User {user_id} not found")
+    return user
+
+
 def create_follow(db: Session, follower_id: UUID, following_id: UUID) -> dict:
     """Create a follow relationship and return a response payload."""
     if follower_id == following_id:
         raise SelfFollowError("You cannot follow yourself")
 
-    target_user = (
-        db.query(User)
-        .filter(User.id == following_id, User.is_active.is_(True))
-        .first()
-    )
-    if target_user is None:
-        raise UserNotFoundError(f"User {following_id} not found")
+    target_user = _active_user_or_raise(db, following_id)
 
     existing = (
         db.query(Follow)
@@ -90,7 +108,8 @@ def list_following(db: Session, user_id: UUID) -> list[dict]:
         {
             "user_id": target.id,
             "username": target.username,
-            "avatar_url": _avatar_from_username(target.username),
+            "display_name": target.display_name,
+            "avatar_url": _avatar_from_user(target),
             "followed_at": follow.created_at,
         }
         for follow, target in rows
@@ -110,7 +129,8 @@ def list_followers(db: Session, user_id: UUID) -> list[dict]:
         {
             "user_id": follower.id,
             "username": follower.username,
-            "avatar_url": _avatar_from_username(follower.username),
+            "display_name": follower.display_name,
+            "avatar_url": _avatar_from_user(follower),
             "followed_at": follow.created_at,
         }
         for follow, follower in rows
@@ -208,7 +228,8 @@ def search_users(db: Session, user_id: UUID, query: str, limit: int = 10) -> lis
         {
             "id": row.id,
             "username": row.username,
-            "avatar_url": _avatar_from_username(row.username),
+            "display_name": row.display_name,
+            "avatar_url": _avatar_from_user(row),
             "is_following": row.id in following_ids,
         }
         for row in users
@@ -217,13 +238,7 @@ def search_users(db: Session, user_id: UUID, query: str, limit: int = 10) -> lis
 
 def get_profile_summary(db: Session, viewer_id: UUID, target_id: UUID) -> dict:
     """Return profile header details and follow-state."""
-    target = (
-        db.query(User)
-        .filter(User.id == target_id, User.is_active.is_(True))
-        .first()
-    )
-    if target is None:
-        raise UserNotFoundError(f"User {target_id} not found")
+    target = _active_user_or_raise(db, target_id)
 
     followers_count = (
         db.query(Follow)
@@ -253,11 +268,60 @@ def get_profile_summary(db: Session, viewer_id: UUID, target_id: UUID) -> dict:
     return {
         "user_id": target.id,
         "username": target.username,
-        "avatar_url": _avatar_from_username(target.username),
+        "display_name": target.display_name,
+        "bio": target.bio,
+        "avatar_url": _avatar_from_user(target),
+        "onboarding_completed": bool(target.onboarding_completed),
         "followers_count": followers_count,
         "following_count": following_count,
         "is_self": is_self,
         "is_following": is_following,
         "is_followed_by": is_followed_by,
         "is_mutual": is_following and is_followed_by,
+    }
+
+
+def get_my_profile(db: Session, user_id: UUID) -> dict:
+    """Return editable profile fields for the authenticated user."""
+    me = _active_user_or_raise(db, user_id)
+    return {
+        "user_id": me.id,
+        "username": me.username,
+        "email": me.email,
+        "display_name": me.display_name,
+        "bio": me.bio,
+        "avatar_url": me.avatar_url,
+        "avatar_path": me.avatar_path,
+        "onboarding_completed": bool(me.onboarding_completed),
+    }
+
+
+def update_my_profile(db: Session, user_id: UUID, updates: dict) -> dict:
+    """Apply partial updates to editable profile fields."""
+    me = _active_user_or_raise(db, user_id)
+
+    if "display_name" in updates:
+        me.display_name = _optional_text(updates["display_name"])
+    if "bio" in updates:
+        me.bio = _optional_text(updates["bio"])
+    if "avatar_url" in updates:
+        me.avatar_url = _optional_text(updates["avatar_url"])
+    if "avatar_path" in updates:
+        me.avatar_path = _optional_text(updates["avatar_path"])
+    if "onboarding_completed" in updates and updates["onboarding_completed"] is not None:
+        me.onboarding_completed = bool(updates["onboarding_completed"])
+
+    db.add(me)
+    db.commit()
+    db.refresh(me)
+
+    return {
+        "user_id": me.id,
+        "username": me.username,
+        "email": me.email,
+        "display_name": me.display_name,
+        "bio": me.bio,
+        "avatar_url": me.avatar_url,
+        "avatar_path": me.avatar_path,
+        "onboarding_completed": bool(me.onboarding_completed),
     }

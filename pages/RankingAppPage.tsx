@@ -10,6 +10,7 @@ import { Watchlist } from '../components/Watchlist';
 import { FriendsView } from '../components/FriendsView';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { logRankingActivityEvent } from '../services/friendsService';
 
 const SCORE_MAX = 10.0;
 const SCORE_MIN = 0.1;
@@ -184,6 +185,7 @@ const RankingAppPage = () => {
     if (!draggedItemId || !user) return;
 
     const droppedId = draggedItemId;
+    const movedItem = items.find((i) => i.id === droppedId);
     setDraggedItemId(null);
 
     // Compute new rank from current items snapshot (before state update)
@@ -208,6 +210,21 @@ const RankingAppPage = () => {
       .update({ tier: targetTier, rank_position: newRank, updated_at: new Date().toISOString() })
       .eq('user_id', user.id)
       .eq('tmdb_id', droppedId);
+
+    if (movedItem) {
+      await logRankingActivityEvent(
+        user.id,
+        {
+          id: movedItem.id,
+          title: movedItem.title,
+          tier: targetTier,
+          posterUrl: movedItem.posterUrl,
+          notes: movedItem.notes,
+          year: movedItem.year,
+        },
+        'ranking_move',
+      );
+    }
   };
 
   const addItem = async (newItem: RankedItem) => {
@@ -240,10 +257,24 @@ const RankingAppPage = () => {
       notes: newItem.notes ?? null,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,tmdb_id' });
+
+    await logRankingActivityEvent(
+      user.id,
+      {
+        id: newItem.id,
+        title: newItem.title,
+        tier: newItem.tier,
+        posterUrl: newItem.posterUrl,
+        notes: newItem.notes,
+        year: newItem.year,
+      },
+      'ranking_add',
+    );
   };
 
   const removeItem = async (id: string) => {
     if (!user) return;
+    const removedItem = items.find((item) => item.id === id);
 
     setItems((prev) => {
       const without = prev.filter((i) => i.id !== id);
@@ -266,6 +297,21 @@ const RankingAppPage = () => {
       .delete()
       .eq('user_id', user.id)
       .eq('tmdb_id', id);
+
+    if (removedItem) {
+      await logRankingActivityEvent(
+        user.id,
+        {
+          id: removedItem.id,
+          title: removedItem.title,
+          tier: removedItem.tier,
+          posterUrl: removedItem.posterUrl,
+          notes: removedItem.notes,
+          year: removedItem.year,
+        },
+        'ranking_remove',
+      );
+    }
   };
 
   const addToWatchlist = async (item: WatchlistItem) => {
@@ -303,10 +349,10 @@ const RankingAppPage = () => {
     setIsModalOpen(true);
   };
 
-  const handleAddItem = (newItem: RankedItem) => {
-    addItem(newItem);
+  const handleAddItem = async (newItem: RankedItem) => {
+    await addItem(newItem);
     if (preselectedForRank) {
-      removeFromWatchlist(preselectedForRank.id);
+      await removeFromWatchlist(preselectedForRank.id);
       setPreselectedForRank(null);
     }
   };

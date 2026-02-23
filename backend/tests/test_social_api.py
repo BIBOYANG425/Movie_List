@@ -150,6 +150,59 @@ class TestSocialApi(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload[0]["s_tier_count"], 12)
 
+    def test_get_my_profile_shape(self) -> None:
+        me_id = uuid4()
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=me_id)
+        with patch(
+            "app.api.social.get_my_profile",
+            return_value={
+                "user_id": me_id,
+                "username": "sam",
+                "email": "sam@example.com",
+                "display_name": "Sam",
+                "bio": "Movie nerd",
+                "avatar_url": "https://example.com/avatar.png",
+                "avatar_path": "abc/avatar.jpg",
+                "onboarding_completed": True,
+            },
+        ):
+            response = self.client.get("/social/me/profile")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["username"], "sam")
+        self.assertTrue(payload["onboarding_completed"])
+
+    def test_patch_my_profile_shape(self) -> None:
+        me_id = uuid4()
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=me_id)
+        with patch(
+            "app.api.social.update_my_profile",
+            return_value={
+                "user_id": me_id,
+                "username": "sam",
+                "email": "sam@example.com",
+                "display_name": "Sam Updated",
+                "bio": "Updated bio",
+                "avatar_url": "https://example.com/avatar-2.png",
+                "avatar_path": "abc/avatar-2.png",
+                "onboarding_completed": True,
+            },
+        ):
+            response = self.client.patch(
+                "/social/me/profile",
+                json={
+                    "display_name": "Sam Updated",
+                    "bio": "Updated bio",
+                    "onboarding_completed": True,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["display_name"], "Sam Updated")
+        self.assertEqual(payload["bio"], "Updated bio")
+
     def test_profile_summary_shape(self) -> None:
         viewer_id = uuid4()
         target_id = uuid4()

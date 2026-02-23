@@ -1,9 +1,18 @@
 import { supabase } from '../lib/supabase';
 import {
+  ActivityComment,
   AppProfile,
   FriendFeedItem,
   FriendProfile,
+  MovieReview,
   ProfileActivityItem,
+  RankingComparison,
+  RankingComparisonItem,
+  SharedMovieComparison,
+  SharedWatchlist,
+  SharedWatchlistItem,
+  SharedWatchlistMember,
+  TasteCompatibility,
   Tier,
   UserProfileSummary,
   UserSearchResult,
@@ -41,12 +50,49 @@ interface RankingRow {
   poster_url: string | null;
 }
 
+interface ActivityEventRow {
+  id: string;
+  actor_id: string;
+  event_type: string;
+  media_tmdb_id?: string | null;
+  media_title?: string | null;
+  media_tier?: string | null;
+  media_poster_url?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+}
+
+interface ActivityReactionRow {
+  event_id: string;
+  user_id: string;
+  reaction: string;
+}
+
+interface ActivityCommentRow {
+  id: string;
+  event_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+}
+
 export interface UpdateMyProfileInput {
   displayName?: string | null;
   bio?: string | null;
   avatarUrl?: string | null;
   avatarPath?: string | null;
   onboardingCompleted?: boolean;
+}
+
+export type RankingActivityEventType = 'ranking_add' | 'ranking_move' | 'ranking_remove';
+
+export interface RankingActivityPayload {
+  id: string;
+  title: string;
+  tier: Tier;
+  posterUrl?: string;
+  notes?: string;
+  year?: string;
 }
 
 function isMissingProfileColumnError(error: unknown): boolean {
@@ -167,13 +213,17 @@ function fileExtension(file: File): string {
   return fromName || 'jpg';
 }
 
-function manualMediaKey(title: string): string {
+function manualMediaKey(title: string, year?: string | number | null): string {
   const slug = title
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
+  const yearToken = String(year ?? '').trim();
+  if (/^\d{4}$/.test(yearToken)) {
+    return `manual:${slug || 'movie'}:${yearToken}`;
+  }
   return `manual:${slug || 'movie'}`;
 }
 
@@ -205,7 +255,7 @@ async function getProfilesByIds(
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, avatar_url')
+    .select('id, username, display_name, avatar_url, avatar_path')
     .in('id', ids);
 
   if (error) {
@@ -218,6 +268,7 @@ async function getProfilesByIds(
       row.id,
       {
         username: row.username,
+        displayName: row.display_name ?? undefined,
         avatarUrl: profileAvatarUrl(row),
       },
     ]),
@@ -671,16 +722,57 @@ export async function unfollowUser(currentUserId: string, targetUserId: string):
   return true;
 }
 
+function toTier(value: string | null | undefined): Tier | null {
+  if (value === Tier.S || value === Tier.A || value === Tier.B || value === Tier.C || value === Tier.D) {
+    return value;
+  }
+  return null;
+}
+
+function toRankingEventType(value: string): 'ranking_add' | 'ranking_move' | 'ranking_remove' | null {
+  if (value === 'ranking_add' || value === 'ranking_move' || value === 'ranking_remove') {
+    return value;
+  }
+  return null;
+}
+
+export async function logRankingActivityEvent(
+  userId: string,
+  item: RankingActivityPayload,
+  eventType: RankingActivityEventType,
+): Promise<boolean> {
+  const metadata: Record<string, unknown> = {};
+  if (item.notes) metadata.notes = item.notes;
+  if (item.year) metadata.year = item.year;
+
+  const { error } = await supabase.from('activity_events').insert({
+    actor_id: userId,
+    event_type: eventType,
+    media_tmdb_id: item.id,
+    media_title: item.title,
+    media_tier: item.tier,
+    media_poster_url: item.posterUrl ?? null,
+    metadata,
+  });
+
+  if (error) {
+    console.error('Failed to log ranking activity event:', error);
+    return false;
+  }
+  return true;
+}
+
 export async function getFriendFeed(currentUserId: string, limit = 24): Promise<FriendFeedItem[]> {
   const followingIds = await getFollowingIdSet(currentUserId);
   const ids = Array.from(followingIds);
   if (ids.length === 0) return [];
 
   const { data, error } = await supabase
-    .from('user_rankings')
-    .select('id, user_id, title, tier, updated_at, poster_url')
-    .in('user_id', ids)
-    .order('updated_at', { ascending: false })
+    .from('activity_events')
+    .select('id, actor_id, event_type, media_title, media_tier, media_poster_url, created_at')
+    .in('actor_id', ids)
+    .in('event_type', ['ranking_add', 'ranking_move', 'ranking_remove'])
+    .order('created_at', { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -688,17 +780,19 @@ export async function getFriendFeed(currentUserId: string, limit = 24): Promise<
     return [];
   }
 
-  const rows = data as RankingRow[];
-  const profileMap = await getProfilesByIds(Array.from(new Set(rows.map((row) => row.user_id))));
+  const rows = (data ?? []) as ActivityEventRow[];
+  const filteredRows = rows.filter((row) => toTier(row.media_tier) && row.media_title);
+  const profileMap = await getProfilesByIds(Array.from(new Set(filteredRows.map((row) => row.actor_id))));
 
-  return rows.map((row) => ({
+  return filteredRows.map((row) => ({
     id: row.id,
-    userId: row.user_id,
-    username: profileMap.get(row.user_id)?.username ?? 'unknown',
-    title: row.title,
-    tier: row.tier,
-    rankedAt: row.updated_at,
-    posterUrl: row.poster_url ?? undefined,
+    userId: row.actor_id,
+    username: profileMap.get(row.actor_id)?.username ?? 'unknown',
+    title: row.media_title ?? 'Untitled',
+    tier: toTier(row.media_tier)!,
+    rankedAt: row.created_at,
+    posterUrl: row.media_poster_url ?? undefined,
+    eventType: toRankingEventType(row.event_type) ?? undefined,
   }));
 }
 
@@ -707,10 +801,11 @@ export async function getRecentProfileActivity(
   limit = 10,
 ): Promise<ProfileActivityItem[]> {
   const { data, error } = await supabase
-    .from('user_rankings')
-    .select('id, title, tier, notes, updated_at, poster_url')
-    .eq('user_id', targetUserId)
-    .order('updated_at', { ascending: false })
+    .from('activity_events')
+    .select('id, event_type, media_title, media_tier, media_poster_url, metadata, created_at')
+    .eq('actor_id', targetUserId)
+    .in('event_type', ['ranking_add', 'ranking_move', 'ranking_remove'])
+    .order('created_at', { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -718,33 +813,178 @@ export async function getRecentProfileActivity(
     return [];
   }
 
-  const rows = (data ?? []) as Array<{
-    id: string;
-    title: string;
-    tier: Tier;
-    notes?: string | null;
-    updated_at: string;
-    poster_url?: string | null;
-  }>;
+  const rows = (data ?? []) as ActivityEventRow[];
+  return rows
+    .map((row) => {
+      const tier = toTier(row.media_tier);
+      if (!tier || !row.media_title) return null;
+      const notes = typeof row.metadata?.notes === 'string' ? row.metadata.notes : undefined;
+      const year = typeof row.metadata?.year === 'string' ? row.metadata.year : undefined;
+      return {
+        id: row.id,
+        title: row.media_title,
+        tier,
+        notes,
+        year,
+        updatedAt: row.created_at,
+        posterUrl: row.media_poster_url ?? undefined,
+        eventType: toRankingEventType(row.event_type) ?? undefined,
+      };
+    })
+    .filter((row): row is ProfileActivityItem => row !== null);
+}
 
-  return rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    tier: row.tier,
-    notes: row.notes ?? undefined,
-    updatedAt: row.updated_at,
-    posterUrl: row.poster_url ?? undefined,
-  }));
+export async function getActivityEngagement(
+  currentUserId: string,
+  eventIds: string[],
+): Promise<{
+  likedByMe: Set<string>;
+  likeCounts: Record<string, number>;
+  commentCounts: Record<string, number>;
+}> {
+  if (eventIds.length === 0) {
+    return {
+      likedByMe: new Set<string>(),
+      likeCounts: {},
+      commentCounts: {},
+    };
+  }
+
+  const [likesRes, commentsRes] = await Promise.all([
+    supabase
+      .from('activity_reactions')
+      .select('event_id, user_id, reaction')
+      .in('event_id', eventIds)
+      .eq('reaction', 'like'),
+    supabase
+      .from('activity_comments')
+      .select('event_id, id')
+      .in('event_id', eventIds),
+  ]);
+
+  if (likesRes.error) {
+    console.error('Failed to load activity reactions:', likesRes.error);
+  }
+  if (commentsRes.error) {
+    console.error('Failed to load activity comments:', commentsRes.error);
+  }
+
+  const likedByMe = new Set<string>();
+  const likeCounts: Record<string, number> = {};
+  const commentCounts: Record<string, number> = {};
+
+  const likeRows = (likesRes.data ?? []) as ActivityReactionRow[];
+  likeRows.forEach((row) => {
+    likeCounts[row.event_id] = (likeCounts[row.event_id] ?? 0) + 1;
+    if (row.user_id === currentUserId) likedByMe.add(row.event_id);
+  });
+
+  const commentRows = (commentsRes.data ?? []) as Array<{ event_id: string }>;
+  commentRows.forEach((row) => {
+    commentCounts[row.event_id] = (commentCounts[row.event_id] ?? 0) + 1;
+  });
+
+  return {
+    likedByMe,
+    likeCounts,
+    commentCounts,
+  };
+}
+
+export async function toggleActivityLike(
+  userId: string,
+  eventId: string,
+  shouldLike: boolean,
+): Promise<boolean> {
+  if (shouldLike) {
+    const { error } = await supabase.from('activity_reactions').insert({
+      event_id: eventId,
+      user_id: userId,
+      reaction: 'like',
+    });
+    if (error) {
+      console.error('Failed to add like reaction:', error);
+      return false;
+    }
+    return true;
+  }
+
+  const { error } = await supabase
+    .from('activity_reactions')
+    .delete()
+    .eq('event_id', eventId)
+    .eq('user_id', userId)
+    .eq('reaction', 'like');
+  if (error) {
+    console.error('Failed to remove like reaction:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function listActivityComments(
+  eventId: string,
+  limit = 50,
+): Promise<ActivityComment[]> {
+  const { data, error } = await supabase
+    .from('activity_comments')
+    .select('id, event_id, user_id, body, created_at')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    console.error('Failed to load activity comments:', error);
+    return [];
+  }
+
+  const rows = (data ?? []) as ActivityCommentRow[];
+  const profileMap = await getProfilesByIds(Array.from(new Set(rows.map((row) => row.user_id))));
+
+  return rows.map((row) => {
+    const profile = profileMap.get(row.user_id);
+    return {
+      id: row.id,
+      eventId: row.event_id,
+      userId: row.user_id,
+      username: profile?.username ?? 'unknown',
+      displayName: profile?.displayName,
+      avatarUrl: profile?.avatarUrl,
+      body: row.body,
+      createdAt: row.created_at,
+    };
+  });
+}
+
+export async function addActivityComment(
+  userId: string,
+  eventId: string,
+  body: string,
+): Promise<boolean> {
+  const trimmedBody = body.trim();
+  if (!trimmedBody) return false;
+
+  const { error } = await supabase.from('activity_comments').insert({
+    event_id: eventId,
+    user_id: userId,
+    body: trimmedBody,
+  });
+  if (error) {
+    console.error('Failed to add activity comment:', error);
+    return false;
+  }
+  return true;
 }
 
 export async function saveActivityMovieToWatchlist(
   userId: string,
-  activity: Pick<ProfileActivityItem, 'title' | 'posterUrl'>,
+  activity: Pick<ProfileActivityItem, 'title' | 'posterUrl' | 'year'>,
 ): Promise<boolean> {
   const { error } = await supabase.from('watchlist_items').upsert({
     user_id: userId,
-    tmdb_id: manualMediaKey(activity.title),
+    tmdb_id: manualMediaKey(activity.title, activity.year),
     title: activity.title,
+    year: activity.year ?? null,
     poster_url: activity.posterUrl ?? null,
     type: 'movie',
     genres: [],
@@ -760,7 +1000,7 @@ export async function saveActivityMovieToWatchlist(
 
 export async function rankActivityMovie(
   userId: string,
-  activity: Pick<ProfileActivityItem, 'title' | 'tier' | 'notes' | 'posterUrl'>,
+  activity: Pick<ProfileActivityItem, 'title' | 'tier' | 'notes' | 'posterUrl' | 'year'>,
 ): Promise<boolean> {
   const { data: tierRows, error: tierError } = await supabase
     .from('user_rankings')
@@ -781,8 +1021,9 @@ export async function rankActivityMovie(
 
   const { error } = await supabase.from('user_rankings').upsert({
     user_id: userId,
-    tmdb_id: manualMediaKey(activity.title),
+    tmdb_id: manualMediaKey(activity.title, activity.year),
     title: activity.title,
+    year: activity.year ?? null,
     poster_url: activity.posterUrl ?? null,
     type: 'movie',
     genres: [],
@@ -798,5 +1039,705 @@ export async function rankActivityMovie(
     return false;
   }
 
+  await logRankingActivityEvent(
+    userId,
+    {
+      id: manualMediaKey(activity.title, activity.year),
+      title: activity.title,
+      tier: activity.tier,
+      posterUrl: activity.posterUrl,
+      notes: activity.notes,
+      year: activity.year,
+    },
+    'ranking_add',
+  );
+
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase 1: Movie Reviews
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface ReviewRow {
+  id: string;
+  user_id: string;
+  tmdb_id: string;
+  title: string;
+  poster_url: string | null;
+  body: string;
+  rating_tier: string | null;
+  contains_spoilers: boolean;
+  like_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ReviewLikeRow {
+  review_id: string;
+  user_id: string;
+}
+
+export async function createOrUpdateReview(
+  userId: string,
+  tmdbId: string,
+  title: string,
+  body: string,
+  containsSpoilers: boolean = false,
+  posterUrl?: string,
+): Promise<MovieReview | null> {
+  // Get user's tier for this movie
+  const { data: rankingRow } = await supabase
+    .from('user_rankings')
+    .select('tier')
+    .eq('user_id', userId)
+    .eq('tmdb_id', tmdbId)
+    .maybeSingle();
+
+  const ratingTier = rankingRow?.tier ?? null;
+
+  const { data, error } = await supabase
+    .from('movie_reviews')
+    .upsert({
+      user_id: userId,
+      tmdb_id: tmdbId,
+      title,
+      body,
+      rating_tier: ratingTier,
+      contains_spoilers: containsSpoilers,
+      poster_url: posterUrl ?? null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,tmdb_id' })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Failed to create/update review:', error);
+    return null;
+  }
+
+  const profileMap = await getProfilesByIds([userId]);
+  const profile = profileMap.get(userId);
+  const row = data as ReviewRow;
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    username: profile?.username ?? 'unknown',
+    displayName: profile?.displayName,
+    avatarUrl: profile?.avatarUrl,
+    mediaItemId: row.tmdb_id,
+    mediaTitle: row.title,
+    body: row.body,
+    ratingTier: toTier(row.rating_tier) ?? undefined,
+    containsSpoilers: row.contains_spoilers,
+    likeCount: row.like_count,
+    isLikedByViewer: false,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function getReviewsForMovie(
+  tmdbId: string,
+  currentUserId: string,
+  limit = 20,
+): Promise<MovieReview[]> {
+  const { data, error } = await supabase
+    .from('movie_reviews')
+    .select('*')
+    .eq('tmdb_id', tmdbId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Failed to load reviews:', error);
+    return [];
+  }
+
+  const rows = (data ?? []) as ReviewRow[];
+  const userIds = [...new Set(rows.map(r => r.user_id))];
+  const profileMap = await getProfilesByIds(userIds);
+
+  // Get likes by current user
+  const reviewIds = rows.map(r => r.id);
+  const likedSet = new Set<string>();
+  if (reviewIds.length > 0) {
+    const { data: likes } = await supabase
+      .from('review_likes')
+      .select('review_id')
+      .eq('user_id', currentUserId)
+      .in('review_id', reviewIds);
+    (likes ?? []).forEach((l: ReviewLikeRow) => likedSet.add(l.review_id));
+  }
+
+  // Sort: friends first
+  const followingSet = await getFollowingIdSet(currentUserId);
+
+  const reviews = rows.map((row) => {
+    const profile = profileMap.get(row.user_id);
+    return {
+      id: row.id,
+      userId: row.user_id,
+      username: profile?.username ?? 'unknown',
+      displayName: profile?.displayName,
+      avatarUrl: profile?.avatarUrl,
+      mediaItemId: row.tmdb_id,
+      mediaTitle: row.title,
+      body: row.body,
+      ratingTier: toTier(row.rating_tier) ?? undefined,
+      containsSpoilers: row.contains_spoilers,
+      likeCount: row.like_count,
+      isLikedByViewer: likedSet.has(row.id),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  });
+
+  // Sort friends first, then self, then others
+  reviews.sort((a, b) => {
+    const aFriend = followingSet.has(a.userId) ? 0 : a.userId === currentUserId ? 1 : 2;
+    const bFriend = followingSet.has(b.userId) ? 0 : b.userId === currentUserId ? 1 : 2;
+    return aFriend - bFriend;
+  });
+
+  return reviews;
+}
+
+export async function getReviewsByUser(
+  targetUserId: string,
+  currentUserId: string,
+  limit = 20,
+): Promise<MovieReview[]> {
+  const { data, error } = await supabase
+    .from('movie_reviews')
+    .select('*')
+    .eq('user_id', targetUserId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Failed to load user reviews:', error);
+    return [];
+  }
+
+  const rows = (data ?? []) as ReviewRow[];
+  const profileMap = await getProfilesByIds([targetUserId]);
+  const profile = profileMap.get(targetUserId);
+
+  const reviewIds = rows.map(r => r.id);
+  const likedSet = new Set<string>();
+  if (reviewIds.length > 0) {
+    const { data: likes } = await supabase
+      .from('review_likes')
+      .select('review_id')
+      .eq('user_id', currentUserId)
+      .in('review_id', reviewIds);
+    (likes ?? []).forEach((l: ReviewLikeRow) => likedSet.add(l.review_id));
+  }
+
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    username: profile?.username ?? 'unknown',
+    displayName: profile?.displayName,
+    avatarUrl: profile?.avatarUrl,
+    mediaItemId: row.tmdb_id,
+    mediaTitle: row.title,
+    body: row.body,
+    ratingTier: toTier(row.rating_tier) ?? undefined,
+    containsSpoilers: row.contains_spoilers,
+    likeCount: row.like_count,
+    isLikedByViewer: likedSet.has(row.id),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function deleteReview(reviewId: string, userId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('movie_reviews')
+    .delete()
+    .eq('id', reviewId)
+    .eq('user_id', userId);
+  if (error) {
+    console.error('Failed to delete review:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function toggleReviewLike(
+  reviewId: string,
+  userId: string,
+  shouldLike: boolean,
+): Promise<boolean> {
+  if (shouldLike) {
+    const { error } = await supabase.from('review_likes').insert({
+      review_id: reviewId,
+      user_id: userId,
+    });
+    if (error) {
+      console.error('Failed to like review:', error);
+      return false;
+    }
+    // Increment like count
+    await supabase.rpc('increment_review_likes', { review_id_param: reviewId });
+  } else {
+    const { error } = await supabase
+      .from('review_likes')
+      .delete()
+      .eq('review_id', reviewId)
+      .eq('user_id', userId);
+    if (error) {
+      console.error('Failed to unlike review:', error);
+      return false;
+    }
+    await supabase.rpc('decrement_review_likes', { review_id_param: reviewId });
+  }
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase 1: Taste Compatibility (computed client-side from shared rankings)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const TIER_NUMERIC: Record<string, number> = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+
+interface UserRankingRowPhase1 {
+  tmdb_id: string;
+  title: string;
+  poster_url: string | null;
+  tier: string;
+  rank_position: number;
+}
+
+export async function getTasteCompatibility(
+  viewerId: string,
+  targetId: string,
+): Promise<TasteCompatibility | null> {
+  const [viewerRes, targetRes, profileMap] = await Promise.all([
+    supabase
+      .from('user_rankings')
+      .select('tmdb_id, title, poster_url, tier, rank_position')
+      .eq('user_id', viewerId),
+    supabase
+      .from('user_rankings')
+      .select('tmdb_id, title, poster_url, tier, rank_position')
+      .eq('user_id', targetId),
+    getProfilesByIds([targetId]),
+  ]);
+
+  if (viewerRes.error || targetRes.error) {
+    console.error('Failed to load rankings for taste computation');
+    return null;
+  }
+
+  const viewerMap = new Map<string, UserRankingRowPhase1>();
+  ((viewerRes.data ?? []) as UserRankingRowPhase1[]).forEach(r => viewerMap.set(r.tmdb_id, r));
+
+  const targetMap = new Map<string, UserRankingRowPhase1>();
+  ((targetRes.data ?? []) as UserRankingRowPhase1[]).forEach(r => targetMap.set(r.tmdb_id, r));
+
+  const sharedIds = [...viewerMap.keys()].filter(id => targetMap.has(id));
+  const targetProfile = profileMap.get(targetId);
+
+  if (sharedIds.length === 0) {
+    return {
+      targetUserId: targetId,
+      targetUsername: targetProfile?.username ?? 'unknown',
+      score: 0,
+      sharedCount: 0,
+      agreements: 0,
+      nearAgreements: 0,
+      disagreements: 0,
+      topShared: [],
+      biggestDivergences: [],
+    };
+  }
+
+  let agreements = 0;
+  let nearAgreements = 0;
+  let disagreements = 0;
+  const scores: number[] = [];
+  const shared: (SharedMovieComparison & { _distance: number })[] = [];
+
+  for (const tmdbId of sharedIds) {
+    const vr = viewerMap.get(tmdbId)!;
+    const tr = targetMap.get(tmdbId)!;
+    const vVal = TIER_NUMERIC[vr.tier] ?? 3;
+    const tVal = TIER_NUMERIC[tr.tier] ?? 3;
+    const distance = Math.abs(vVal - tVal);
+
+    if (distance === 0) { agreements++; scores.push(100); }
+    else if (distance === 1) { nearAgreements++; scores.push(60); }
+    else if (distance === 2) { disagreements++; scores.push(20); }
+    else { disagreements++; scores.push(0); }
+
+    shared.push({
+      mediaItemId: tmdbId,
+      mediaTitle: vr.title,
+      posterUrl: vr.poster_url ?? undefined,
+      viewerTier: vr.tier,
+      viewerScore: 0,
+      targetTier: tr.tier,
+      targetScore: 0,
+      tierDifference: vVal - tVal,
+      _distance: distance,
+    });
+  }
+
+  const overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+
+  const topShared = shared
+    .filter(s => s._distance === 0)
+    .sort((a, b) => (TIER_NUMERIC[b.viewerTier] ?? 0) - (TIER_NUMERIC[a.viewerTier] ?? 0))
+    .slice(0, 5)
+    .map(({ _distance, ...rest }) => rest);
+
+  const biggestDivergences = [...shared]
+    .sort((a, b) => b._distance - a._distance)
+    .slice(0, 5)
+    .map(({ _distance, ...rest }) => rest);
+
+  return {
+    targetUserId: targetId,
+    targetUsername: targetProfile?.username ?? 'unknown',
+    score: overallScore,
+    sharedCount: sharedIds.length,
+    agreements,
+    nearAgreements,
+    disagreements,
+    topShared,
+    biggestDivergences,
+  };
+}
+
+export async function getRankingComparison(
+  viewerId: string,
+  targetId: string,
+): Promise<RankingComparison | null> {
+  const [viewerRes, targetRes, profileMap] = await Promise.all([
+    supabase
+      .from('user_rankings')
+      .select('tmdb_id, title, poster_url, tier, rank_position')
+      .eq('user_id', viewerId),
+    supabase
+      .from('user_rankings')
+      .select('tmdb_id, title, poster_url, tier, rank_position')
+      .eq('user_id', targetId),
+    getProfilesByIds([targetId]),
+  ]);
+
+  if (viewerRes.error || targetRes.error) {
+    console.error('Failed to load rankings for comparison');
+    return null;
+  }
+
+  const viewerRows = (viewerRes.data ?? []) as UserRankingRowPhase1[];
+  const targetRows = (targetRes.data ?? []) as UserRankingRowPhase1[];
+  const targetProfile = profileMap.get(targetId);
+
+  const viewerMap = new Map<string, UserRankingRowPhase1>();
+  viewerRows.forEach(r => viewerMap.set(r.tmdb_id, r));
+  const targetMap = new Map<string, UserRankingRowPhase1>();
+  targetRows.forEach(r => targetMap.set(r.tmdb_id, r));
+
+  const allIds = new Set([...viewerMap.keys(), ...targetMap.keys()]);
+  const sharedIds = new Set([...viewerMap.keys()].filter(id => targetMap.has(id)));
+
+  const items: RankingComparisonItem[] = [];
+  for (const id of allIds) {
+    const vr = viewerMap.get(id);
+    const tr = targetMap.get(id);
+    items.push({
+      mediaItemId: id,
+      mediaTitle: (vr?.title ?? tr?.title) || 'Unknown',
+      posterUrl: vr?.poster_url ?? tr?.poster_url ?? undefined,
+      viewerTier: vr?.tier,
+      viewerScore: undefined,
+      viewerRankPosition: vr?.rank_position,
+      targetTier: tr?.tier,
+      targetScore: undefined,
+      targetRankPosition: tr?.rank_position,
+      isShared: sharedIds.has(id),
+    });
+  }
+
+  const tierOrder: Record<string, number> = { S: 0, A: 1, B: 2, C: 3, D: 4 };
+  items.sort((a, b) => {
+    if (a.isShared !== b.isShared) return a.isShared ? -1 : 1;
+    return (tierOrder[a.viewerTier ?? ''] ?? 5) - (tierOrder[b.viewerTier ?? ''] ?? 5);
+  });
+
+  return {
+    targetUserId: targetId,
+    targetUsername: targetProfile?.username ?? 'unknown',
+    viewerTotal: viewerRows.length,
+    targetTotal: targetRows.length,
+    sharedCount: sharedIds.size,
+    items,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phase 1: Shared Watchlists
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface SharedWatchlistRow {
+  id: string;
+  name: string;
+  created_by: string;
+  created_at: string;
+}
+
+interface SharedWLMemberRow {
+  watchlist_id: string;
+  user_id: string;
+  joined_at: string;
+}
+
+interface SharedWLItemRow {
+  id: string;
+  watchlist_id: string;
+  tmdb_id: string;
+  title: string;
+  poster_url: string | null;
+  added_by: string;
+  vote_count: number;
+  added_at: string;
+}
+
+interface SharedWLVoteRow {
+  item_id: string;
+  user_id: string;
+}
+
+export async function createSharedWatchlist(
+  userId: string,
+  name: string = 'Movie Night',
+): Promise<SharedWatchlist | null> {
+  const { data: wlData, error: wlError } = await supabase
+    .from('shared_watchlists')
+    .insert({ name, created_by: userId })
+    .select()
+    .single();
+
+  if (wlError || !wlData) {
+    console.error('Failed to create shared watchlist:', wlError);
+    return null;
+  }
+
+  const wl = wlData as SharedWatchlistRow;
+
+  // Add creator as member
+  await supabase.from('shared_watchlist_members').insert({
+    watchlist_id: wl.id,
+    user_id: userId,
+  });
+
+  const profileMap = await getProfilesByIds([userId]);
+  const profile = profileMap.get(userId);
+
+  return {
+    id: wl.id,
+    name: wl.name,
+    createdBy: wl.created_by,
+    creatorUsername: profile?.username ?? 'unknown',
+    memberCount: 1,
+    itemCount: 0,
+    createdAt: wl.created_at,
+  };
+}
+
+export async function getMySharedWatchlists(
+  userId: string,
+): Promise<SharedWatchlist[]> {
+  const { data: memberships, error: memErr } = await supabase
+    .from('shared_watchlist_members')
+    .select('watchlist_id')
+    .eq('user_id', userId);
+
+  if (memErr || !memberships || memberships.length === 0) return [];
+
+  const wlIds = (memberships as SharedWLMemberRow[]).map(m => m.watchlist_id);
+
+  const { data: wlData, error: wlErr } = await supabase
+    .from('shared_watchlists')
+    .select('*')
+    .in('id', wlIds)
+    .order('created_at', { ascending: false });
+
+  if (wlErr) {
+    console.error('Failed to load shared watchlists:', wlErr);
+    return [];
+  }
+
+  const watchlists = (wlData ?? []) as SharedWatchlistRow[];
+  const creatorIds = [...new Set(watchlists.map(w => w.created_by))];
+  const profileMap = await getProfilesByIds(creatorIds);
+
+  return watchlists.map(wl => ({
+    id: wl.id,
+    name: wl.name,
+    createdBy: wl.created_by,
+    creatorUsername: profileMap.get(wl.created_by)?.username ?? 'unknown',
+    memberCount: 0,
+    itemCount: 0,
+    createdAt: wl.created_at,
+  }));
+}
+
+export async function getSharedWatchlistDetail(
+  watchlistId: string,
+  viewerId: string,
+): Promise<SharedWatchlist | null> {
+  const [wlRes, membersRes, itemsRes] = await Promise.all([
+    supabase.from('shared_watchlists').select('*').eq('id', watchlistId).single(),
+    supabase.from('shared_watchlist_members').select('*').eq('watchlist_id', watchlistId),
+    supabase.from('shared_watchlist_items').select('*').eq('watchlist_id', watchlistId).order('vote_count', { ascending: false }),
+  ]);
+
+  if (wlRes.error || !wlRes.data) return null;
+
+  const wl = wlRes.data as SharedWatchlistRow;
+  const memberRows = (membersRes.data ?? []) as SharedWLMemberRow[];
+  const itemRows = (itemsRes.data ?? []) as SharedWLItemRow[];
+
+  // Get profiles for members and item adders
+  const allUserIds = [...new Set([
+    wl.created_by,
+    ...memberRows.map(m => m.user_id),
+    ...itemRows.map(i => i.added_by),
+  ])];
+  const profileMap = await getProfilesByIds(allUserIds);
+
+  // Get viewer votes
+  const itemIds = itemRows.map(i => i.id);
+  const viewerVotes = new Set<string>();
+  if (itemIds.length > 0) {
+    const { data: votes } = await supabase
+      .from('shared_watchlist_votes')
+      .select('item_id')
+      .eq('user_id', viewerId)
+      .in('item_id', itemIds);
+    (votes ?? []).forEach((v: SharedWLVoteRow) => viewerVotes.add(v.item_id));
+  }
+
+  const members: SharedWatchlistMember[] = memberRows.map(m => {
+    const profile = profileMap.get(m.user_id);
+    return {
+      userId: m.user_id,
+      username: profile?.username ?? 'unknown',
+      displayName: profile?.displayName,
+      avatarUrl: profile?.avatarUrl,
+      joinedAt: m.joined_at,
+    };
+  });
+
+  const items: SharedWatchlistItem[] = itemRows.map(item => {
+    const adder = profileMap.get(item.added_by);
+    return {
+      id: item.id,
+      mediaItemId: item.tmdb_id,
+      mediaTitle: item.title,
+      posterUrl: item.poster_url ?? undefined,
+      addedByUsername: adder?.username ?? 'unknown',
+      voteCount: item.vote_count,
+      viewerHasVoted: viewerVotes.has(item.id),
+      addedAt: item.added_at,
+    };
+  });
+
+  return {
+    id: wl.id,
+    name: wl.name,
+    createdBy: wl.created_by,
+    creatorUsername: profileMap.get(wl.created_by)?.username ?? 'unknown',
+    memberCount: members.length,
+    itemCount: items.length,
+    createdAt: wl.created_at,
+    members,
+    items,
+  };
+}
+
+export async function addSharedWatchlistMember(
+  watchlistId: string,
+  userId: string,
+): Promise<boolean> {
+  const { error } = await supabase.from('shared_watchlist_members').insert({
+    watchlist_id: watchlistId,
+    user_id: userId,
+  });
+  if (error) {
+    console.error('Failed to add member:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function addSharedWatchlistItem(
+  watchlistId: string,
+  userId: string,
+  tmdbId: string,
+  title: string,
+  posterUrl?: string,
+): Promise<boolean> {
+  const { error } = await supabase.from('shared_watchlist_items').insert({
+    watchlist_id: watchlistId,
+    tmdb_id: tmdbId,
+    title,
+    poster_url: posterUrl ?? null,
+    added_by: userId,
+  });
+  if (error) {
+    console.error('Failed to add item to shared watchlist:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function toggleSharedWLVote(
+  itemId: string,
+  userId: string,
+  shouldVote: boolean,
+): Promise<boolean> {
+  if (shouldVote) {
+    const { error } = await supabase.from('shared_watchlist_votes').insert({
+      item_id: itemId,
+      user_id: userId,
+    });
+    if (error) {
+      console.error('Failed to vote:', error);
+      return false;
+    }
+  } else {
+    const { error } = await supabase
+      .from('shared_watchlist_votes')
+      .delete()
+      .eq('item_id', itemId)
+      .eq('user_id', userId);
+    if (error) {
+      console.error('Failed to unvote:', error);
+      return false;
+    }
+  }
+  return true;
+}
+
+export async function deleteSharedWatchlist(
+  watchlistId: string,
+  userId: string,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('shared_watchlists')
+    .delete()
+    .eq('id', watchlistId)
+    .eq('created_by', userId);
+  if (error) {
+    console.error('Failed to delete shared watchlist:', error);
+    return false;
+  }
   return true;
 }

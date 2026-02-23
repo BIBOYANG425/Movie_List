@@ -4,6 +4,8 @@ Social Service — /social
 Follow graph + activity feed.
 
 Endpoints:
+  GET    /social/me/profile         — Current user's editable profile
+  PATCH  /social/me/profile         — Update current user's profile fields
   GET    /social/profile/{user_id}    — Profile summary for a user
   GET    /social/profile/{user_id}/followers — Followers list for a user
   GET    /social/profile/{user_id}/following — Following list for a user
@@ -28,7 +30,9 @@ from app.schemas.social import (
     FollowListItem,
     FollowRelationResponse,
     LeaderboardItemResponse,
+    MyProfileResponse,
     ProfileSummaryResponse,
+    UpdateMyProfileRequest,
     UserPreview,
 )
 from app.services.social_service import (
@@ -39,10 +43,12 @@ from app.services.social_service import (
     delete_follow,
     get_feed,
     get_leaderboard,
+    get_my_profile,
     get_profile_summary,
     list_followers,
     list_following,
     search_users,
+    update_my_profile,
 )
 
 router = APIRouter()
@@ -53,6 +59,38 @@ def _error(code: str, message: str) -> dict:
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@router.get("/me/profile", response_model=MyProfileResponse)
+def get_my_profile_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        return get_my_profile(db, current_user.id)
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error("USER_NOT_FOUND", str(exc)),
+        ) from exc
+
+
+@router.patch("/me/profile", response_model=MyProfileResponse)
+def update_my_profile_endpoint(
+    payload: UpdateMyProfileRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        return update_my_profile(
+            db,
+            current_user.id,
+            payload.model_dump(exclude_unset=True),
+        )
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_error("USER_NOT_FOUND", str(exc)),
+        ) from exc
 
 @router.get("/profile/{user_id}", response_model=ProfileSummaryResponse)
 def get_profile_summary_endpoint(
