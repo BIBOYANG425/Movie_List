@@ -243,6 +243,67 @@ const RankingAppPage = () => {
     }
   };
 
+  const handleDropOnItem = async (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedItemId || !user || draggedItemId === targetId) return;
+
+    const droppedId = draggedItemId;
+    const movedItem = items.find((i) => i.id === droppedId);
+    const targetItem = items.find((i) => i.id === targetId);
+    setDraggedItemId(null);
+
+    if (!movedItem || !targetItem) return;
+
+    if (movedItem.tier !== targetItem.tier) {
+      // Trigger Spool tier migration comparison flow, target is targetItem.tier
+      setMigrationState({ item: movedItem, targetTier: targetItem.tier });
+      setIsModalOpen(true);
+      return;
+    }
+
+    // Move within the SAME tier
+    let updatedTierList: RankedItem[] = [];
+    setItems((prev) => {
+      const tierItems = prev.filter(i => i.tier === targetItem.tier).sort((a, b) => a.rank - b.rank);
+      const otherItems = prev.filter(i => i.tier !== targetItem.tier);
+
+      // Find indices
+      const oldIndex = tierItems.findIndex(i => i.id === droppedId);
+      const newIndex = tierItems.findIndex(i => i.id === targetId);
+
+      if (oldIndex === -1 || newIndex === -1) return prev;
+
+      // Reorder array
+      const [removed] = tierItems.splice(oldIndex, 1);
+      tierItems.splice(newIndex, 0, removed);
+
+      // Reassign ranks
+      updatedTierList = tierItems.map((item, idx) => ({ ...item, rank: idx }));
+
+      return [...otherItems, ...updatedTierList];
+    });
+
+    if (updatedTierList.length > 0) {
+      const rowsToUpdate = updatedTierList.map(item => ({
+        user_id: user.id,
+        tmdb_id: item.id,
+        title: item.title,
+        year: item.year,
+        poster_url: item.posterUrl,
+        type: item.type,
+        genres: item.genres,
+        director: item.director ?? null,
+        tier: item.tier,
+        rank_position: item.rank,
+        bracket: item.bracket,
+        notes: item.notes ?? null,
+        updated_at: new Date().toISOString(),
+      }));
+      await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
+    }
+  };
+
   const addItem = async (newItem: RankedItem) => {
     if (!user) return;
 
@@ -614,7 +675,8 @@ const RankingAppPage = () => {
                 items={filteredItems.filter((i) => i.tier === tier).sort((a, b) => a.rank - b.rank)}
                 scoreMap={scoreMap}
                 showScores={showScores}
-                onDrop={handleDrop}
+                onDrop={(e, tier) => handleDrop(e, tier)}
+                onDropOnItem={handleDropOnItem}
                 onDragStart={handleDragStart}
                 onDelete={removeItem}
               />

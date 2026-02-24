@@ -9,10 +9,12 @@ interface MediaCardProps {
   score: number;
   showScore?: boolean;
   onDragStart: (e: React.DragEvent, id: string) => void;
+  onDragOver?: (e: React.DragEvent, id: string) => void;
+  onDrop?: (e: React.DragEvent, id: string) => void;
   onDelete: (id: string) => void;
 }
 
-export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showScore = true, onDragStart, onDelete }) => {
+export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showScore = true, onDragStart, onDragOver, onDrop, onDelete }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -27,6 +29,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
       <div
         draggable
         onDragStart={(e) => onDragStart(e, item.id)}
+        onDragOver={(e) => onDragOver?.(e, item.id)}
+        onDrop={(e) => onDrop?.(e, item.id)}
         onClick={handleClick}
         className="group relative flex-shrink-0 w-32 md:w-40 bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-600 transition-all cursor-pointer active:cursor-grabbing shadow-lg select-none"
       >

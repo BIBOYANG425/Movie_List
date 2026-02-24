@@ -10,10 +10,11 @@ interface TierRowProps {
   showScores: boolean;
   onDrop: (e: React.DragEvent, tier: Tier) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
+  onDropOnItem?: (e: React.DragEvent, id: string) => void;
   onDelete: (id: string) => void;
 }
 
-export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showScores, onDrop, onDragStart, onDelete }) => {
+export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showScores, onDrop, onDragStart, onDropOnItem, onDelete }) => {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
@@ -60,6 +61,11 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showSco
               score={scoreMap.get(item.id) ?? 0}
               showScore={showScores}
               onDragStart={onDragStart}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={onDropOnItem}
               onDelete={onDelete}
             />
           ))
