@@ -444,3 +444,55 @@ export interface ComparisonLogEntry {
   winner: 'a' | 'b' | 'skip';
   round: number;
 }
+
+// ── Phase 9: Full Movie Card (Detail View) ───────────────────────────────────
+
+export interface StreamingProvider {
+  providerId: number;
+  providerName: string;
+  logoUrl?: string; // Full URL to TMDB image
+}
+
+export interface StreamingAvailability {
+  link?: string;
+  flatrate?: StreamingProvider[];
+  rent?: StreamingProvider[];
+  buy?: StreamingProvider[];
+  free?: StreamingProvider[];
+}
+
+export interface MoodTag {
+  emoji: string;
+  label: string;
+  count: number;
+}
+
+export interface MovieSocialStats {
+  movieId: string; // The TMDB ID string format e.g. "tmdb_123"
+  timesRanked: number;
+  friendsWatched: number;
+  friendAvatars: string[];
+  avgFriendRankPosition?: number;
+  globalAvgRankPosition?: number;
+  topFriendReview?: {
+    userId: string;
+    username: string;
+    avatarUrl?: string;
+    body: string;
+    rankPosition: number;
+    tier: Tier;
+  };
+  tasteMatchReview?: {
+    userId: string;
+    username: string;
+    avatarUrl?: string;
+    matchScore: number;
+    rankPosition: number;
+    tier: Tier;
+  };
+  moodConsensus: MoodTag[];
+  divisiveMatchup?: {
+    movieBTitle: string;
+    winPercent: number; // e.g. 52 for 52/48 split
+  };
+}

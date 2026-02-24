@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { RankedItem } from '../types';
-import { GripVertical, Film, Star, StickyNote, Trash2, X } from 'lucide-react';
+import { GripVertical, Film, Star, StickyNote, Trash2 } from 'lucide-react';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
+import { MediaDetailModal } from './MediaDetailModal';
 
 interface MediaCardProps {
   item: RankedItem;
@@ -93,83 +94,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
 
       {/* ── Detail Modal ─────────────────────────────────────────────────── */}
       {isOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-          onClick={() => setIsOpen(false)}
-        >
-          <div
-            className="bg-zinc-950 border border-zinc-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Poster header */}
-            <div className="relative aspect-[3/2] w-full bg-zinc-900 overflow-hidden">
-              <img
-                src={item.posterUrl}
-                alt={item.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
-
-              {/* Close button */}
-              <button
-                onClick={() => setIsOpen(false)}
-                className="absolute top-3 right-3 p-1.5 rounded-full bg-black/50 backdrop-blur-sm text-zinc-400 hover:text-white border border-white/10 transition-colors"
-              >
-                <X size={16} />
-              </button>
-
-              {/* Title over poster */}
-              <div className="absolute bottom-0 left-0 right-0 p-5">
-                <h2 className="text-xl font-bold text-white leading-tight">{item.title}</h2>
-                <div className="flex items-center gap-2 mt-1.5 text-sm text-zinc-400">
-                  <Film size={14} />
-                  <span>{item.year}</span>
-                  {item.genres?.length > 0 && (
-                    <>
-                      <span className="text-zinc-700">·</span>
-                      <span>{item.genres.join(', ')}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Details body */}
-            <div className="p-5 space-y-4">
-              {/* Score + Tier row */}
-              <div className="flex items-center gap-3">
-                {showScore && (
-                  <div className="flex items-center gap-1.5 bg-indigo-500/15 border border-indigo-500/30 px-3 py-1.5 rounded-lg">
-                    <Star size={14} className="fill-indigo-400 text-indigo-400" />
-                    <span className="text-lg font-bold text-white">{score.toFixed(1)}</span>
-                  </div>
-                )}
-                <div className={`px-3 py-1.5 rounded-lg border font-bold text-sm ${TIER_COLORS[item.tier]}`}>
-                  {item.tier} — {TIER_LABELS[item.tier]}
-                </div>
-                <div className="ml-auto text-sm text-zinc-500 font-mono">
-                  #{rank + 1}
-                </div>
-              </div>
-
-              {/* Review/Notes */}
-              {item.notes ? (
-                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <StickyNote size={13} className="text-amber-400" />
-                    <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Your Review</span>
-                  </div>
-                  <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{item.notes}</p>
-                </div>
-              ) : (
-                <div className="bg-zinc-900/50 border border-zinc-800/50 border-dashed rounded-xl p-4 text-center">
-                  <StickyNote size={18} className="text-zinc-700 mx-auto mb-1.5" />
-                  <p className="text-xs text-zinc-600">No review added</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <MediaDetailModal
+          initialItem={item}
+          tmdbId={item.id}
+          onClose={() => setIsOpen(false)}
+        />
       )}
     </>
   );

@@ -44,10 +44,26 @@ export interface TMDBMovie {
   title: string;
   year: string;
   posterUrl: string | null;
+  backdropUrl?: string | null;
   type: 'movie';
   genres: string[];
   overview: string;
   voteAverage?: number; // TMDb vote_average 0–10, maps to Spool global score
+  runtime?: number; // minutes
+}
+
+export interface StreamingProvider {
+  providerId: number;
+  providerName: string;
+  logoUrl?: string; // Full URL to TMDB image
+}
+
+export interface StreamingAvailability {
+  link?: string;
+  flatrate?: StreamingProvider[];
+  rent?: StreamingProvider[];
+  buy?: StreamingProvider[];
+  free?: StreamingProvider[];
 }
 
 /** Returns true if the TMDB API key is configured */
@@ -75,13 +91,15 @@ function mapTmdbResult(m: any): TMDBMovie | null {
     title: m.title,
     year: m.release_date ? m.release_date.slice(0, 4) : '—',
     posterUrl: `${TMDB_IMAGE_BASE}${m.poster_path}`,
+    backdropUrl: m.backdrop_path ? `${TMDB_IMAGE_BASE}${m.backdrop_path}` : null,
     type: 'movie' as const,
-    genres: (m.genre_ids as number[])
-      .map((gid: number) => GENRE_MAP[gid])
+    genres: (m.genre_ids as number[] | undefined)
+      ?.map((gid: number) => GENRE_MAP[gid])
       .filter(Boolean)
-      .slice(0, 3),
+      .slice(0, 3) ?? [],
     overview: m.overview ?? '',
     voteAverage: typeof m.vote_average === 'number' ? m.vote_average : undefined,
+    runtime: m.runtime,
   };
 }
 
@@ -474,5 +492,65 @@ export async function getMovieGlobalScore(tmdbNumericId: number): Promise<number
     return typeof data.vote_average === 'number' ? data.vote_average : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Fetch extended details for the Movie Detail Modal.
+ * Includes full genres, runtime, backdrop, and watch providers (streaming).
+ */
+export async function getExtendedMovieDetails(tmdbNumericId: number): Promise<{
+  movie: TMDBMovie;
+  streaming: StreamingAvailability;
+  director?: string;
+} | null> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !tmdbNumericId) return null;
+
+  try {
+    const res = await fetchWithTimeout(
+      `${TMDB_BASE}/movie/${tmdbNumericId}?api_key=${apiKey}&language=en-US&append_to_response=watch/providers,credits`,
+      5000,
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    // Map genres (extended has array of objects instead of genre_ids)
+    if (data.genres && Array.isArray(data.genres)) {
+      data.genre_ids = data.genres.map((g: any) => g.id);
+    }
+
+    const movie = mapTmdbResult(data);
+    if (!movie) return null;
+
+    let director: string | undefined;
+    if (data.credits && data.credits.crew) {
+      const dirObj = data.credits.crew.find((c: any) => c.job === 'Director');
+      if (dirObj) director = dirObj.name;
+    }
+
+    const providersData = data['watch/providers']?.results?.US; // Assuming US region for now
+    const streaming: StreamingAvailability = { link: providersData?.link };
+
+    const mapProviders = (pz: any[] | undefined) => {
+      if (!pz) return undefined;
+      return pz.map(p => ({
+        providerId: p.provider_id,
+        providerName: p.provider_name,
+        logoUrl: p.logo_path ? `${TMDB_IMAGE_BASE}${p.logo_path}` : undefined,
+      }));
+    };
+
+    if (providersData) {
+      streaming.flatrate = mapProviders(providersData.flatrate);
+      streaming.rent = mapProviders(providersData.rent);
+      streaming.buy = mapProviders(providersData.buy);
+      streaming.free = mapProviders(providersData.free);
+    }
+
+    return { movie, streaming, director };
+  } catch (err) {
+    console.error('TMDB extended details fetch failed:', err);
+    return null;
   }
 }

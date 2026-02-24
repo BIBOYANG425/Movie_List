@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, BarChart2, Bookmark, Compass, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users, UsersRound } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType, Bracket, ComparisonLogEntry } from '../types';
 import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE, BRACKETS, BRACKET_LABELS } from '../constants';
@@ -16,6 +16,7 @@ import { MoviePollView } from '../components/MoviePollView';
 import { NotificationBell } from '../components/NotificationBell';
 import { MovieListView } from '../components/MovieListView';
 import { AchievementsView } from '../components/AchievementsView';
+import { MediaDetailModal } from '../components/MediaDetailModal';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
@@ -137,6 +138,8 @@ const RankingAppPage = () => {
   const [migrationState, setMigrationState] = useState<{ item: RankedItem, targetTier: Tier } | null>(null);
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedMovieId = searchParams.get('movieId');
 
   useEffect(() => {
     if (!user) return;
@@ -745,6 +748,22 @@ const RankingAppPage = () => {
         preselectedTier={migrationState ? migrationState.targetTier : undefined}
         onCompare={handleCompareLog}
       />
+
+      {/* Deep linked Movie Modal */}
+      {linkedMovieId && (() => {
+        const foundItem = items.find(i => i.id === linkedMovieId);
+        return (
+          <MediaDetailModal
+            tmdbId={linkedMovieId}
+            onClose={() => {
+              const newParams = new URLSearchParams(searchParams);
+              newParams.delete('movieId');
+              setSearchParams(newParams);
+            }}
+            {...(foundItem ? { initialItem: foundItem } : {})}
+          />
+        );
+      })()}
     </div>
   );
 };

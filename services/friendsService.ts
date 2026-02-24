@@ -25,6 +25,8 @@ import {
   TasteCompatibility,
   Tier,
   TrendingMovie,
+  MoodTag,
+  MovieSocialStats,
   UserAchievement,
   UserProfileSummary,
   UserSearchResult,
@@ -2666,4 +2668,105 @@ export async function checkAndGrantBadges(userId: string): Promise<string[]> {
   }
 
   return newBadges;
+}
+
+// ── Phase 9: Full Movie Card (Detail View) ───────────────────────────────────
+
+export async function getMovieSocialStats(currentUserId: string, tmdbId: string): Promise<MovieSocialStats | null> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+
+  try {
+    // 1. Get user's following list
+    const { data: follows, error: followsError } = await supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', currentUserId);
+
+    if (followsError || !follows) return null;
+
+    const friendIds = follows.map(f => f.following_id);
+    if (friendIds.length === 0) {
+      return {
+        movieId: tmdbId,
+        timesRanked: 0,
+        friendsWatched: 0,
+        friendAvatars: [],
+        moodConsensus: [],
+      };
+    }
+
+    // 2. Get friends' rankings for this movie
+    const { data: friendRankings, error: rankingsError } = await supabase
+      .from('user_rankings')
+      .select('user_id, rank_position, tier, profiles:user_id(username, avatar_url)')
+      .eq('tmdb_id', tmdbId)
+      .in('user_id', friendIds);
+
+    if (rankingsError) return null;
+
+    const friendsWatched = friendRankings?.length || 0;
+    const friendAvatars = (friendRankings || [])
+      .map(r => (r.profiles as any)?.avatar_url)
+      .filter(Boolean)
+      .slice(0, 5);
+
+    let avgFriendRankPosition: number | undefined = undefined;
+    if (friendsWatched > 0) {
+      const sum = friendRankings!.reduce((acc, r) => acc + r.rank_position, 0);
+      avgFriendRankPosition = Math.round(sum / friendsWatched);
+    }
+
+    // 3. Get friends' reviews for this movie
+    const { data: friendReviews, error: reviewsError } = await supabase
+      .from('movie_reviews')
+      .select('user_id, body, profiles:user_id(username, avatar_url)')
+      .eq('media_item_id', tmdbId)
+      .in('user_id', friendIds)
+      .order('like_count', { ascending: false })
+      .limit(1);
+
+    let topFriendReview;
+    if (friendReviews && friendReviews.length > 0) {
+      const rev = friendReviews[0];
+      const rankData = friendRankings?.find(r => r.user_id === rev.user_id);
+      topFriendReview = {
+        userId: rev.user_id,
+        username: (rev.profiles as any).username,
+        avatarUrl: (rev.profiles as any).avatar_url,
+        body: rev.body,
+        rankPosition: rankData?.rank_position ?? 0,
+        tier: rankData?.tier ?? Tier.C,
+      };
+    }
+
+    // 4. (stub) Global metrics and mood consensus
+    // In a real app, mood consensus would parse the review body for emojis or 
+    // fetch from a `movie_moods` table.
+    const moodConsensus: MoodTag[] = [];
+
+    // Global average rank and times ranked would ideally be aggregated offline 
+    // or via a database view/RPC. For now, we'll fetch a small count to simulate it.
+    const { count: timesRanked } = await supabase
+      .from('user_rankings')
+      .select('*', { count: 'exact', head: true })
+      .eq('tmdb_id', tmdbId);
+
+    // Divisive matchup would also be a complex query. Stubbed for MVP.
+    const divisiveMatchup = undefined;
+
+    return {
+      movieId: tmdbId,
+      timesRanked: timesRanked || 0,
+      friendsWatched,
+      friendAvatars,
+      avgFriendRankPosition,
+      topFriendReview,
+      moodConsensus,
+      divisiveMatchup,
+      globalAvgRankPosition: undefined, // Stubbed for now
+    };
+  } catch (err) {
+    console.error('Failed to fetch movie social stats:', err);
+    return null;
+  }
 }
