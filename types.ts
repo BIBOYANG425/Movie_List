@@ -495,4 +495,15 @@ export interface MovieSocialStats {
     movieBTitle: string;
     winPercent: number; // e.g. 52 for 52/48 split
   };
+  recentActivity?: FriendActivityItem[];
+}
+
+export interface FriendActivityItem {
+  id: string; // the activity event id
+  userId: string;
+  username: string;
+  avatarUrl?: string;
+  action: 'ranked' | 'reviewed' | 'bookmarked';
+  tier?: Tier;
+  timestamp: string;
 }

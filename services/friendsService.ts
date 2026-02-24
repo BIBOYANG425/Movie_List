@@ -27,6 +27,7 @@ import {
   TrendingMovie,
   MoodTag,
   MovieSocialStats,
+  FriendActivityItem,
   UserAchievement,
   UserProfileSummary,
   UserSearchResult,
@@ -2754,6 +2755,38 @@ export async function getMovieSocialStats(currentUserId: string, tmdbId: string)
     // Divisive matchup would also be a complex query. Stubbed for MVP.
     const divisiveMatchup = undefined;
 
+    // 5. Get recent friend activity stream for this movie
+    const { data: activityData, error: activityError } = await supabase
+      .from('activity_events')
+      .select('id, actor_id, event_type, media_tier, created_at, profiles:actor_id(username, avatar_url)')
+      .eq('media_tmdb_id', tmdbId)
+      .in('actor_id', friendIds)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    const recentActivity: FriendActivityItem[] = [];
+    if (!activityError && activityData) {
+      activityData.forEach(event => {
+        let action: FriendActivityItem['action'] | null = null;
+
+        if (event.event_type === 'ranking_add' || event.event_type === 'ranking_move') action = 'ranked';
+        else if (event.event_type === 'review_add') action = 'reviewed';
+        else if (event.event_type === 'watchlist_add') action = 'bookmarked';
+
+        if (action) {
+          recentActivity.push({
+            id: event.id,
+            userId: event.actor_id,
+            username: (event.profiles as any)?.username || 'A friend',
+            avatarUrl: (event.profiles as any)?.avatar_url,
+            action,
+            tier: event.media_tier as Tier | undefined,
+            timestamp: event.created_at
+          });
+        }
+      });
+    }
+
     return {
       movieId: tmdbId,
       timesRanked: timesRanked || 0,
@@ -2764,6 +2797,7 @@ export async function getMovieSocialStats(currentUserId: string, tmdbId: string)
       moodConsensus,
       divisiveMatchup,
       globalAvgRankPosition: undefined, // Stubbed for now
+      recentActivity,
     };
   } catch (err) {
     console.error('Failed to fetch movie social stats:', err);

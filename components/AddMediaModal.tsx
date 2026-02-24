@@ -15,6 +15,7 @@ interface AddMediaModalProps {
   preselectedItem?: WatchlistItem | RankedItem | null;
   preselectedTier?: Tier | null;
   onCompare?: (log: ComparisonLogEntry) => void;
+  onMovieInfoClick?: (tmdbId: string) => void;
 }
 
 type Step = 'search' | 'tier' | 'notes' | 'compare';
@@ -37,9 +38,10 @@ function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
   }
 
   return Array.from(byKey.values()).slice(0, 12);
+  return Array.from(byKey.values()).slice(0, 12);
 }
 
-export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem, preselectedTier, onCompare }) => {
+export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem, preselectedTier, onCompare, onMovieInfoClick }) => {
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
@@ -555,21 +557,25 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
             <div className="grid grid-cols-3 gap-2">
               {selectedDirector.movies.filter(m => !isAlreadyOwned(m)).map(movie => (
-                <button
-                  key={movie.id}
-                  onClick={() => handleSelectMovie(movie)}
-                  className="group flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-1.5 transition-colors"
-                >
-                  <img
-                    src={movie.posterUrl!}
-                    alt={movie.title}
-                    className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg group-hover:scale-[1.03] transition-all"
-                  />
-                  <p className="text-[11px] font-medium text-zinc-300 mt-1.5 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                <div key={movie.id} className="relative group flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-1.5 transition-colors">
+                  <button
+                    onClick={() => {
+                      onClose();
+                      onMovieInfoClick?.(`tmdb_${movie.tmdbId}`);
+                    }}
+                    className="w-full relative cursor-pointer"
+                  >
+                    <img
+                      src={movie.posterUrl!}
+                      alt={movie.title}
+                      className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-all mb-1.5"
+                    />
+                  </button>
+                  <button onClick={() => handleSelectMovie(movie)} className="text-[11px] font-medium text-zinc-300 leading-tight line-clamp-2 hover:text-indigo-400 transition-colors w-full text-left">
                     {movie.title}
-                  </p>
-                  <p className="text-[10px] text-zinc-600">{movie.year}</p>
-                </button>
+                  </button>
+                  <p className="text-[10px] text-zinc-600 w-full text-left">{movie.year}</p>
+                </div>
               ))}
             </div>
           </div>
@@ -586,17 +592,25 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 key={movie.id}
                 className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors group"
               >
-                {movie.posterUrl ? (
-                  <img src={movie.posterUrl} alt={movie.title} className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 flex-shrink-0 shadow-md" />
-                ) : (
-                  <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Film size={20} className="text-zinc-600" />
-                  </div>
-                )}
+                <div
+                  className="cursor-pointer relative flex-shrink-0"
+                  onClick={() => {
+                    onClose();
+                    onMovieInfoClick?.(`tmdb_${movie.tmdbId}`);
+                  }}
+                >
+                  {movie.posterUrl ? (
+                    <img src={movie.posterUrl} alt={movie.title} className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 shadow-md hover:scale-105 transition-transform" />
+                  ) : (
+                    <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Film size={20} className="text-zinc-600" />
+                    </div>
+                  )}
+                </div>
                 <button onClick={() => handleSelectMovie(movie)} className="flex-1 min-w-0 text-left">
                   <p className="font-semibold text-white group-hover:text-indigo-400 transition-colors truncate leading-tight">{movie.title}</p>
                   <p className="text-xs text-zinc-500 mt-0.5">{movie.year}</p>
-                  {movie.genres.length > 0 && (
+                  {movie.genres && movie.genres.length > 0 && (
                     <div className="flex gap-1 mt-1.5 flex-wrap">
                       {movie.genres.map(g => (
                         <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">{g}</span>
@@ -672,20 +686,25 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 <div className="grid grid-cols-3 gap-2">
                   {filteredSuggestions.map((movie) => (
                     <div key={movie.id} className="relative group">
-                      <button
-                        onClick={() => handleSelectMovie(movie, true)}
-                        className="flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors w-full"
-                      >
-                        <img
-                          src={movie.posterUrl!}
-                          alt={movie.title}
-                          className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-shadow"
-                        />
-                        <p className="text-xs font-medium text-zinc-300 mt-2 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                      <div className="flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors w-full">
+                        <button
+                          onClick={() => {
+                            onClose();
+                            onMovieInfoClick?.(`tmdb_${movie.tmdbId}`);
+                          }}
+                          className="w-full relative cursor-pointer"
+                        >
+                          <img
+                            src={movie.posterUrl!}
+                            alt={movie.title}
+                            className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg hover:scale-105 transition-all mb-1.5"
+                          />
+                        </button>
+                        <button onClick={() => handleSelectMovie(movie, true)} className="text-xs font-medium text-zinc-300 leading-tight line-clamp-2 hover:text-indigo-400 transition-colors w-full text-left">
                           {movie.title}
-                        </p>
-                        <p className="text-[10px] text-zinc-600 mt-0.5">{movie.year}</p>
-                      </button>
+                        </button>
+                        <p className="text-[10px] text-zinc-600 w-full text-left">{movie.year}</p>
+                      </div>
                       {onSaveForLater && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleBookmark(movie, true); }}

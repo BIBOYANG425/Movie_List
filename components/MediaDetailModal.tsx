@@ -187,6 +187,12 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 </div>
                             )}
 
+                            {movie.overview && (
+                                <p className="mt-5 text-sm text-zinc-300 text-center leading-relaxed max-w-md">
+                                    {movie.overview}
+                                </p>
+                            )}
+
                             {/* Streaming Badges */}
                             {streaming?.flatrate && streaming.flatrate.length > 0 && (
                                 <div className="mt-6 flex flex-col items-center">
@@ -200,6 +206,43 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+
+                    {/* 📊 Scores Banner */}
+                    <div className="px-6 py-6 border-b border-white/10 flex justify-between gap-4">
+                        <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-white/10">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Global Score</span>
+                            <div className="flex items-center gap-1">
+                                <Star size={14} className="text-amber-500 fill-current" />
+                                <span className="text-xl font-black text-white">{movie.voteAverage?.toFixed(1) || '--'}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.1)]">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1">Your Score</span>
+                            <div className="flex items-center gap-1">
+                                {rankedItem ? (
+                                    <>
+                                        <span className={`w-2 h-2 rounded-full ${TIER_COLORS[rankedItem.tier].replace('border-', 'bg-').replace('text-', 'bg-')}`} />
+                                        <span className="text-xl font-black text-white">{rankedItem.tier}</span>
+                                    </>
+                                ) : (
+                                    <span className="text-xl font-bold text-zinc-600">--</span>
+                                )}
+                            </div>
+                            {rankedItem && <span className="text-[9px] text-zinc-400 mt-1">Tier</span>}
+                        </div>
+
+                        <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-white/10">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Friend Avg</span>
+                            <div className="flex items-center gap-1">
+                                {socialStats?.avgFriendRankPosition !== undefined ? (
+                                    <span className="text-xl font-black text-white">#{socialStats.avgFriendRankPosition + 1}</span>
+                                ) : (
+                                    <span className="text-xl font-bold text-zinc-600">--</span>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -292,7 +335,42 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                     </div>
                                 )}
 
-                                <button className="flex items-center gap-2 text-sm text-indigo-400 font-bold hover:text-indigo-300 transition group mt-2">
+                                {socialStats?.recentActivity && socialStats.recentActivity.length > 0 && (
+                                    <div className="mt-6 pt-6 border-t border-white/5">
+                                        <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Recent Activity</h4>
+                                        <div className="space-y-4">
+                                            {socialStats.recentActivity.map(activity => (
+                                                <div key={activity.id} className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-full border border-zinc-800 bg-zinc-800 overflow-hidden flex-shrink-0">
+                                                        {activity.avatarUrl ? (
+                                                            <img src={activity.avatarUrl} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-[10px] text-zinc-500 font-bold bg-zinc-900">
+                                                                {activity.username.charAt(0).toUpperCase()}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-xs text-zinc-300">
+                                                            <span className="font-bold text-white">{activity.username}</span>
+                                                            {' '}
+                                                            {activity.action === 'ranked' && (
+                                                                <>ranked this <span className={`font-bold ${activity.tier ? 'text-indigo-400' : 'text-zinc-300'}`}>{activity.tier || 'in their list'}</span></>
+                                                            )}
+                                                            {activity.action === 'reviewed' && 'left a review.'}
+                                                            {activity.action === 'bookmarked' && 'added this to their watchlist.'}
+                                                        </p>
+                                                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                                                            {new Date(activity.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <button className="flex items-center gap-2 text-sm text-indigo-400 font-bold hover:text-indigo-300 transition group mt-6">
                                     See all {socialStats.friendsWatched} friend rankings
                                     <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                 </button>

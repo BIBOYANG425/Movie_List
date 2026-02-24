@@ -698,7 +698,10 @@ const RankingAppPage = () => {
         )}
 
         {activeTab === 'discover' && user && (
-          <DiscoverView userId={user.id} />
+          <DiscoverView
+            userId={user.id}
+            onMovieClick={(id) => setSearchParams({ movieId: id })}
+          />
         )}
 
         {activeTab === 'groups' && user && (
@@ -747,6 +750,7 @@ const RankingAppPage = () => {
         preselectedItem={migrationState ? migrationState.item : preselectedForRank}
         preselectedTier={migrationState ? migrationState.targetTier : undefined}
         onCompare={handleCompareLog}
+        onMovieInfoClick={(id) => setSearchParams({ movieId: id })}
       />
 
       {/* Deep linked Movie Modal */}

@@ -26,9 +26,10 @@ const TIER_LABELS: Record<string, string> = {
 
 interface DiscoverViewProps {
     userId: string;
+    onMovieClick?: (tmdbId: string) => void;
 }
 
-export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId }) => {
+export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick }) => {
     const [recommendations, setRecommendations] = useState<FriendRecommendation[]>([]);
     const [trending, setTrending] = useState<TrendingMovie[]>([]);
     const [genreProfile, setGenreProfile] = useState<GenreProfileItem[]>([]);
@@ -80,8 +81,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId }) => {
                         key={key}
                         onClick={() => setActiveSection(key)}
                         className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeSection === key
-                                ? 'bg-zinc-800 text-white shadow-lg'
-                                : 'text-zinc-500 hover:text-zinc-300'
+                            ? 'bg-zinc-800 text-white shadow-lg'
+                            : 'text-zinc-500 hover:text-zinc-300'
                             }`}
                     >
                         <Icon size={16} />
@@ -119,7 +120,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId }) => {
                                     className="group relative rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800/50 hover:border-zinc-700 transition-all hover:scale-[1.02]"
                                 >
                                     {/* Poster */}
-                                    <div className="aspect-[2/3] bg-zinc-800 relative">
+                                    <div
+                                        className="aspect-[2/3] bg-zinc-800 relative cursor-pointer"
+                                        onClick={() => onMovieClick?.(`tmdb_${rec.tmdbId}`)}
+                                    >
                                         {rec.posterUrl ? (
                                             <img
                                                 src={rec.posterUrl}
@@ -228,12 +232,15 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId }) => {
                                     </div>
 
                                     {/* Poster thumbnail */}
-                                    <div className="w-12 h-[72px] rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0">
+                                    <div
+                                        className="w-12 h-[72px] rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0 cursor-pointer"
+                                        onClick={() => onMovieClick?.(`tmdb_${movie.tmdbId}`)}
+                                    >
                                         {movie.posterUrl ? (
                                             <img
                                                 src={movie.posterUrl}
                                                 alt={movie.title}
-                                                className="w-full h-full object-cover"
+                                                className="w-full h-full object-cover hover:scale-110 transition-transform"
                                             />
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center text-zinc-600">
