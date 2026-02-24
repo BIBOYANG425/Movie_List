@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BarChart2, Bookmark, Compass, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users } from 'lucide-react';
+import { ArrowLeft, BarChart2, Bookmark, Compass, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users, UsersRound } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType } from '../types';
 import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE } from '../constants';
 import { TierRow } from '../components/TierRow';
@@ -9,6 +9,9 @@ import { StatsView } from '../components/StatsView';
 import { Watchlist } from '../components/Watchlist';
 import { FriendsView } from '../components/FriendsView';
 import { DiscoverView } from '../components/DiscoverView';
+import { WatchPartyView } from '../components/WatchPartyView';
+import { GroupRankingView } from '../components/GroupRankingView';
+import { MoviePollView } from '../components/MoviePollView';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
@@ -127,7 +130,8 @@ const RankingAppPage = () => {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'friends' | 'discover'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'friends' | 'discover' | 'groups'>('ranking');
+  const [groupSubTab, setGroupSubTab] = useState<'parties' | 'rankings' | 'polls'>('parties');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -489,6 +493,14 @@ const RankingAppPage = () => {
               <Compass size={20} />
             </button>
             <button
+              onClick={() => setActiveTab('groups')}
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'groups' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+                }`}
+              title="Groups"
+            >
+              <UsersRound size={20} />
+            </button>
+            <button
               onClick={handleReset}
               title="Reset rankings"
               className="p-2 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900 transition-colors"
@@ -527,6 +539,33 @@ const RankingAppPage = () => {
 
         {activeTab === 'discover' && user && (
           <DiscoverView userId={user.id} />
+        )}
+
+        {activeTab === 'groups' && user && (
+          <div className="space-y-4">
+            {/* Group sub-tabs */}
+            <div className="flex gap-2 bg-zinc-900/60 rounded-xl p-1 border border-zinc-800/50">
+              {[
+                { key: 'parties' as const, label: 'Watch Parties' },
+                { key: 'rankings' as const, label: 'Group Rankings' },
+                { key: 'polls' as const, label: 'Polls' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setGroupSubTab(key)}
+                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${groupSubTab === key
+                      ? 'bg-zinc-800 text-white shadow-lg'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {groupSubTab === 'parties' && <WatchPartyView userId={user.id} />}
+            {groupSubTab === 'rankings' && <GroupRankingView userId={user.id} />}
+            {groupSubTab === 'polls' && <MoviePollView userId={user.id} />}
+          </div>
         )}
       </main>
 

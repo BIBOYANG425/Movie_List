@@ -254,3 +254,103 @@ export interface GenreComparison {
   targetGenres: GenreProfileItem[];
   sharedTopGenres: string[];
 }
+
+// ── Phase 3: Group Experiences ──────────────────────────────────────────────
+
+export type RsvpStatus = 'pending' | 'going' | 'maybe' | 'not_going';
+export type PartyStatus = 'upcoming' | 'active' | 'completed' | 'cancelled';
+
+export interface WatchParty {
+  id: string;
+  hostId: string;
+  hostUsername?: string;
+  hostAvatar?: string;
+  title: string;
+  movieTmdbId?: string;
+  movieTitle?: string;
+  moviePosterUrl?: string;
+  scheduledAt: string;
+  location?: string;
+  notes?: string;
+  status: PartyStatus;
+  createdAt: string;
+  memberCount?: number;
+  goingCount?: number;
+}
+
+export interface WatchPartyMember {
+  partyId: string;
+  userId: string;
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+  rsvp: RsvpStatus;
+  respondedAt?: string;
+}
+
+export interface GroupRanking {
+  id: string;
+  name: string;
+  createdBy: string;
+  creatorUsername?: string;
+  description?: string;
+  createdAt: string;
+  memberCount?: number;
+  entryCount?: number;
+}
+
+export interface GroupRankingEntry {
+  id: string;
+  groupId: string;
+  userId: string;
+  username?: string;
+  tmdbId: string;
+  title: string;
+  posterUrl?: string;
+  year?: string;
+  genres: string[];
+  tier: Tier;
+  createdAt: string;
+}
+
+export interface GroupRankingConsensus {
+  tmdbId: string;
+  title: string;
+  posterUrl?: string;
+  year?: string;
+  tiers: { userId: string; username: string; tier: Tier }[];
+  consensusTier: Tier;
+  avgTierNumeric: number;
+  divergenceScore: number; // 0 = agreement, higher = more spread
+}
+
+export interface MoviePoll {
+  id: string;
+  createdBy: string;
+  creatorUsername?: string;
+  question: string;
+  expiresAt?: string;
+  isClosed: boolean;
+  createdAt: string;
+  options?: MoviePollOption[];
+  totalVotes?: number;
+  viewerVoteOptionId?: string;
+}
+
+export interface MoviePollOption {
+  id: string;
+  pollId: string;
+  tmdbId: string;
+  title: string;
+  posterUrl?: string;
+  position: number;
+  voteCount?: number;
+  isWinner?: boolean;
+}
+
+export interface MoviePollVote {
+  pollId: string;
+  userId: string;
+  optionId: string;
+  createdAt: string;
+}
