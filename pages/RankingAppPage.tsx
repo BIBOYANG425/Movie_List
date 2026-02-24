@@ -20,6 +20,7 @@ import { MediaDetailModal } from '../components/MediaDetailModal';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
+import { TMDBMovie } from '../services/tmdbService';
 
 const SCORE_MAX = 10.0;
 const SCORE_MIN = 0.1;
@@ -136,7 +137,7 @@ const RankingAppPage = () => {
   const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
   const [migrationState, setMigrationState] = useState<{ item: RankedItem, targetTier: Tier } | null>(null);
-  const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | null>(null);
+  const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | TMDBMovie | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const linkedMovieId = searchParams.get('movieId');
@@ -394,21 +395,28 @@ const RankingAppPage = () => {
     }
   };
 
-  const addToWatchlist = async (item: WatchlistItem) => {
+  const addToWatchlist = async (item: WatchlistItem | TMDBMovie) => {
     if (!user) return;
     if (watchlist.some((w) => w.id === item.id)) return;
 
-    setWatchlist((prev) => [item, ...prev]);
+    const watchItem: WatchlistItem = {
+      ...item,
+      addedAt: 'addedAt' in item ? item.addedAt : new Date().toISOString(),
+      type: 'movie',
+      director: 'director' in item ? item.director : undefined,
+    };
+
+    setWatchlist((prev) => [watchItem, ...prev]);
 
     await supabase.from('watchlist_items').upsert({
       user_id: user.id,
-      tmdb_id: item.id,
-      title: item.title,
-      year: item.year,
-      poster_url: item.posterUrl,
-      type: item.type,
-      genres: item.genres,
-      director: item.director ?? null,
+      tmdb_id: watchItem.id,
+      title: watchItem.title,
+      year: watchItem.year,
+      poster_url: watchItem.posterUrl,
+      type: watchItem.type,
+      genres: watchItem.genres,
+      director: watchItem.director ?? null,
     }, { onConflict: 'user_id,tmdb_id' });
   };
 
@@ -763,6 +771,20 @@ const RankingAppPage = () => {
               const newParams = new URLSearchParams(searchParams);
               newParams.delete('movieId');
               setSearchParams(newParams);
+            }}
+            onSaveForLater={(movie) => {
+              addToWatchlist(movie);
+              // Close the modal
+              const newParams = new URLSearchParams(searchParams);
+              newParams.delete('movieId');
+              setSearchParams(newParams);
+            }}
+            onStartRanking={(movie) => {
+              const newParams = new URLSearchParams(searchParams);
+              newParams.delete('movieId');
+              setSearchParams(newParams);
+              setPreselectedForRank(movie);
+              setIsModalOpen(true);
             }}
             {...(foundItem ? { initialItem: foundItem } : {})}
           />

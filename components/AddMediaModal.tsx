@@ -9,10 +9,10 @@ interface AddMediaModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (item: RankedItem) => void;
-  onSaveForLater?: (item: WatchlistItem) => void;
+  onSaveForLater?: (item: TMDBMovie) => void;
   currentItems: RankedItem[];
   watchlistIds?: Set<string>;
-  preselectedItem?: WatchlistItem | RankedItem | null;
+  preselectedItem?: WatchlistItem | RankedItem | TMDBMovie | null;
   preselectedTier?: Tier | null;
   onCompare?: (log: ComparisonLogEntry) => void;
   onMovieInfoClick?: (tmdbId: string) => void;
@@ -295,19 +295,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setStep('tier');
   };
 
-  const handleBookmark = (movie: TMDBMovie, fromSuggestion = false) => {
+  const handleBookmark = async (movie: TMDBMovie, fromSuggestion = false) => {
     if (!onSaveForLater) return;
     if (fromSuggestion) consumeSuggestion(movie.id);
-    const watchItem: WatchlistItem = {
-      id: movie.id,
-      title: movie.title,
-      year: movie.year,
-      posterUrl: movie.posterUrl ?? '',
-      type: 'movie',
-      genres: movie.genres,
-      addedAt: new Date().toISOString(),
-    };
-    onSaveForLater(watchItem);
+    onSaveForLater(movie);
   };
 
   const isBookmarked = (movieId: string) => watchlistIds?.has(movieId) ?? false;

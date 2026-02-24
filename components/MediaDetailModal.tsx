@@ -10,9 +10,11 @@ interface MediaDetailModalProps {
     initialItem?: RankedItem;
     tmdbId: string;
     onClose: () => void;
+    onSaveForLater?: (movie: TMDBMovie) => void;
+    onStartRanking?: (movie: TMDBMovie) => void;
 }
 
-export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem, tmdbId, onClose }) => {
+export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem, tmdbId, onClose, onSaveForLater, onStartRanking }) => {
     const defaultMovie: TMDBMovie | null = initialItem ? {
         ...initialItem,
         tmdbId: parseInt(initialItem.id, 10),
@@ -397,10 +399,16 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                         </>
                     ) : (
                         <>
-                            <button className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]">
+                            <button
+                                onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
+                                className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]"
+                            >
                                 📌 Want-to-Watch
                             </button>
-                            <button className="px-6 bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]" title="Share with a Friend">
+                            <button
+                                onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
+                                className="px-6 bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]" title="Share with a Friend"
+                            >
                                 ✅ Watched
                             </button>
                         </>
