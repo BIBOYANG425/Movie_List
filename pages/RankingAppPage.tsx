@@ -12,6 +12,9 @@ import { DiscoverView } from '../components/DiscoverView';
 import { WatchPartyView } from '../components/WatchPartyView';
 import { GroupRankingView } from '../components/GroupRankingView';
 import { MoviePollView } from '../components/MoviePollView';
+import { NotificationBell } from '../components/NotificationBell';
+import { MovieListView } from '../components/MovieListView';
+import { AchievementsView } from '../components/AchievementsView';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
@@ -131,7 +134,7 @@ const RankingAppPage = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'friends' | 'discover' | 'groups'>('ranking');
-  const [groupSubTab, setGroupSubTab] = useState<'parties' | 'rankings' | 'polls'>('parties');
+  const [groupSubTab, setGroupSubTab] = useState<'parties' | 'rankings' | 'polls' | 'lists' | 'badges'>('parties');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -500,6 +503,7 @@ const RankingAppPage = () => {
             >
               <UsersRound size={20} />
             </button>
+            {user && <NotificationBell userId={user.id} />}
             <button
               onClick={handleReset}
               title="Reset rankings"
@@ -544,16 +548,18 @@ const RankingAppPage = () => {
         {activeTab === 'groups' && user && (
           <div className="space-y-4">
             {/* Group sub-tabs */}
-            <div className="flex gap-2 bg-zinc-900/60 rounded-xl p-1 border border-zinc-800/50">
+            <div className="flex gap-2 bg-zinc-900/60 rounded-xl p-1 border border-zinc-800/50 overflow-x-auto">
               {[
-                { key: 'parties' as const, label: 'Watch Parties' },
-                { key: 'rankings' as const, label: 'Group Rankings' },
+                { key: 'parties' as const, label: 'Parties' },
+                { key: 'rankings' as const, label: 'Rankings' },
                 { key: 'polls' as const, label: 'Polls' },
+                { key: 'lists' as const, label: 'Lists' },
+                { key: 'badges' as const, label: 'Badges' },
               ].map(({ key, label }) => (
                 <button
                   key={key}
                   onClick={() => setGroupSubTab(key)}
-                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${groupSubTab === key
+                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${groupSubTab === key
                       ? 'bg-zinc-800 text-white shadow-lg'
                       : 'text-zinc-500 hover:text-zinc-300'
                     }`}
@@ -565,6 +571,8 @@ const RankingAppPage = () => {
             {groupSubTab === 'parties' && <WatchPartyView userId={user.id} />}
             {groupSubTab === 'rankings' && <GroupRankingView userId={user.id} />}
             {groupSubTab === 'polls' && <MoviePollView userId={user.id} />}
+            {groupSubTab === 'lists' && <MovieListView userId={user.id} />}
+            {groupSubTab === 'badges' && <AchievementsView userId={user.id} />}
           </div>
         )}
       </main>

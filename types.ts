@@ -354,3 +354,74 @@ export interface MoviePollVote {
   optionId: string;
   createdAt: string;
 }
+
+// ── Phase 4: Content & Engagement ───────────────────────────────────────────
+
+export type NotificationType =
+  | 'new_follower'
+  | 'review_like'
+  | 'party_invite'
+  | 'party_rsvp'
+  | 'poll_vote'
+  | 'poll_closed'
+  | 'list_like'
+  | 'badge_unlock'
+  | 'group_invite'
+  | 'ranking_comment';
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  body?: string;
+  actorId?: string;
+  actorUsername?: string;
+  actorAvatar?: string;
+  referenceId?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface MovieList {
+  id: string;
+  createdBy: string;
+  creatorUsername?: string;
+  creatorAvatar?: string;
+  title: string;
+  description?: string;
+  isPublic: boolean;
+  coverUrl?: string;
+  likeCount: number;
+  itemCount?: number;
+  createdAt: string;
+  updatedAt: string;
+  isLikedByViewer?: boolean;
+  items?: MovieListItem[];
+}
+
+export interface MovieListItem {
+  id: string;
+  listId: string;
+  tmdbId: string;
+  title: string;
+  posterUrl?: string;
+  year?: string;
+  position: number;
+  note?: string;
+  addedAt: string;
+}
+
+export interface BadgeDefinition {
+  key: string;
+  name: string;
+  description: string;
+  icon: string;      // emoji
+  category: 'milestone' | 'social' | 'taste' | 'special';
+  requirement: string;
+}
+
+export interface UserAchievement {
+  badgeKey: string;
+  unlockedAt: string;
+}

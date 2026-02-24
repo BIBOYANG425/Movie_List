@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import {
   ActivityComment,
+  AppNotification,
   AppProfile,
   FriendFeedItem,
   FriendProfile,
@@ -8,6 +9,8 @@ import {
   GenreProfileItem,
   GroupRanking,
   GroupRankingEntry,
+  MovieList,
+  MovieListItem,
   MoviePoll,
   MoviePollOption,
   MovieReview,
@@ -22,6 +25,7 @@ import {
   TasteCompatibility,
   Tier,
   TrendingMovie,
+  UserAchievement,
   UserProfileSummary,
   UserSearchResult,
   WatchParty,
@@ -2386,4 +2390,280 @@ export async function closePoll(pollId: string): Promise<boolean> {
     .update({ is_closed: true })
     .eq('id', pollId);
   return !error;
+}
+
+// ── Phase 4: Notifications ──────────────────────────────────────────────────
+
+export async function getNotifications(userId: string, limit = 30): Promise<AppNotification[]> {
+  const { data } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (!data) return [];
+
+  // Get actor profiles
+  const actorIds = [...new Set(data.filter((n: any) => n.actor_id).map((n: any) => n.actor_id))];
+  let profileMap = new Map<string, any>();
+  if (actorIds.length > 0) {
+    const { data: profiles } = await supabase.from('profiles').select('id, username, avatar_path').in('id', actorIds);
+    profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+  }
+
+  return data.map((n: any) => {
+    const actor = n.actor_id ? profileMap.get(n.actor_id) : null;
+    return {
+      id: n.id,
+      userId: n.user_id,
+      type: n.type,
+      title: n.title,
+      body: n.body,
+      actorId: n.actor_id,
+      actorUsername: actor?.username,
+      actorAvatar: actor?.avatar_path ? `${SUPABASE_URL}/storage/v1/object/public/avatars/${actor.avatar_path}` : undefined,
+      referenceId: n.reference_id,
+      isRead: n.is_read,
+      createdAt: n.created_at,
+    };
+  });
+}
+
+export async function markNotificationsRead(ids: string[]): Promise<boolean> {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .in('id', ids);
+  return !error;
+}
+
+export async function getUnreadCount(userId: string): Promise<number> {
+  const { count } = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('is_read', false);
+  return count ?? 0;
+}
+
+// ── Phase 4: Movie Lists ────────────────────────────────────────────────────
+
+export async function createMovieList(
+  userId: string,
+  title: string,
+  description?: string,
+  isPublic = true,
+): Promise<MovieList | null> {
+  const { data: row, error } = await supabase
+    .from('movie_lists')
+    .insert({ created_by: userId, title, description: description ?? null, is_public: isPublic })
+    .select()
+    .single();
+  if (error || !row) { console.error('Create list failed:', error); return null; }
+  return {
+    id: row.id,
+    createdBy: row.created_by,
+    title: row.title,
+    description: row.description,
+    isPublic: row.is_public,
+    coverUrl: row.cover_url,
+    likeCount: 0,
+    itemCount: 0,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function getMyMovieLists(userId: string): Promise<MovieList[]> {
+  const { data } = await supabase
+    .from('movie_lists')
+    .select('*')
+    .or(`created_by.eq.${userId},is_public.eq.true`)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (!data) return [];
+
+  // Check viewer likes
+  const listIds = data.map((l: any) => l.id);
+  const { data: likes } = await supabase
+    .from('movie_list_likes')
+    .select('list_id')
+    .eq('user_id', userId)
+    .in('list_id', listIds);
+  const likedSet = new Set((likes ?? []).map((l: { list_id: string }) => l.list_id));
+
+  return data.map((r: any) => ({
+    id: r.id,
+    createdBy: r.created_by,
+    title: r.title,
+    description: r.description,
+    isPublic: r.is_public,
+    coverUrl: r.cover_url,
+    likeCount: r.like_count ?? 0,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    isLikedByViewer: likedSet.has(r.id),
+  }));
+}
+
+export async function getMovieListItems(listId: string): Promise<MovieListItem[]> {
+  const { data } = await supabase
+    .from('movie_list_items')
+    .select('*')
+    .eq('list_id', listId)
+    .order('position');
+  if (!data) return [];
+  return data.map((i: any) => ({
+    id: i.id,
+    listId: i.list_id,
+    tmdbId: i.tmdb_id,
+    title: i.title,
+    posterUrl: i.poster_url,
+    year: i.year,
+    position: i.position,
+    note: i.note,
+    addedAt: i.added_at,
+  }));
+}
+
+export async function addMovieListItem(
+  listId: string,
+  movie: { tmdbId: string; title: string; posterUrl?: string; year?: string; note?: string },
+  position: number,
+): Promise<boolean> {
+  const { error } = await supabase.from('movie_list_items').insert({
+    list_id: listId,
+    tmdb_id: movie.tmdbId,
+    title: movie.title,
+    poster_url: movie.posterUrl ?? null,
+    year: movie.year ?? null,
+    note: movie.note ?? null,
+    position,
+  });
+  return !error;
+}
+
+export async function removeMovieListItem(itemId: string): Promise<boolean> {
+  const { error } = await supabase.from('movie_list_items').delete().eq('id', itemId);
+  return !error;
+}
+
+export async function toggleListLike(listId: string, userId: string): Promise<boolean> {
+  // Check if already liked
+  const { data: existing } = await supabase
+    .from('movie_list_likes')
+    .select('list_id')
+    .eq('list_id', listId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from('movie_list_likes').delete().eq('list_id', listId).eq('user_id', userId);
+    return false; // unliked
+  } else {
+    await supabase.from('movie_list_likes').insert({ list_id: listId, user_id: userId });
+    return true; // liked
+  }
+}
+
+export async function deleteMovieList(listId: string): Promise<boolean> {
+  const { error } = await supabase.from('movie_lists').delete().eq('id', listId);
+  return !error;
+}
+
+// ── Phase 4: Achievements ───────────────────────────────────────────────────
+
+export async function getUserAchievements(userId: string): Promise<UserAchievement[]> {
+  const { data } = await supabase
+    .from('user_achievements')
+    .select('badge_key, unlocked_at')
+    .eq('user_id', userId)
+    .order('unlocked_at', { ascending: false });
+  return (data ?? []).map((a: any) => ({ badgeKey: a.badge_key, unlockedAt: a.unlocked_at }));
+}
+
+export async function checkAndGrantBadges(userId: string): Promise<string[]> {
+  const newBadges: string[] = [];
+
+  // Get existing badges
+  const existing = await getUserAchievements(userId);
+  const has = new Set(existing.map((a) => a.badgeKey));
+
+  // Get counts
+  const [rankRes, reviewRes, followingRes, followerRes, partyRes, pollRes, listRes] = await Promise.all([
+    supabase.from('user_rankings').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+    supabase.from('movie_reviews').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+    supabase.from('friend_follows').select('id', { count: 'exact', head: true }).eq('follower_id', userId),
+    supabase.from('friend_follows').select('id', { count: 'exact', head: true }).eq('following_id', userId),
+    supabase.from('watch_parties').select('id', { count: 'exact', head: true }).eq('host_id', userId),
+    supabase.from('movie_polls').select('id', { count: 'exact', head: true }).eq('created_by', userId),
+    supabase.from('movie_lists').select('id', { count: 'exact', head: true }).eq('created_by', userId),
+  ]);
+
+  const rankCount = rankRes.count ?? 0;
+  const reviewCount = reviewRes.count ?? 0;
+  const followingCount = followingRes.count ?? 0;
+  const followerCount = followerRes.count ?? 0;
+  const partyCount = partyRes.count ?? 0;
+  const pollCount = pollRes.count ?? 0;
+  const listCount = listRes.count ?? 0;
+
+  // Check milestone badges
+  const milestones: [string, number, number][] = [
+    ['first_rank', rankCount, 1],
+    ['rank_10', rankCount, 10],
+    ['rank_25', rankCount, 25],
+    ['rank_50', rankCount, 50],
+    ['rank_100', rankCount, 100],
+    ['first_review', reviewCount, 1],
+    ['review_10', reviewCount, 10],
+  ];
+
+  const socials: [string, number, number][] = [
+    ['first_follow', followingCount, 1],
+    ['followers_10', followerCount, 10],
+    ['followers_50', followerCount, 50],
+    ['first_party', partyCount, 1],
+    ['first_poll', pollCount, 1],
+    ['first_list', listCount, 1],
+  ];
+
+  for (const [key, count, threshold] of [...milestones, ...socials]) {
+    if (!has.has(key) && count >= threshold) {
+      newBadges.push(key);
+    }
+  }
+
+  // Check genre badges
+  if (!has.has('genre_5') || !has.has('genre_10')) {
+    const { data: rankings } = await supabase.from('user_rankings').select('genres').eq('user_id', userId);
+    const genres = new Set<string>();
+    for (const r of (rankings ?? [])) {
+      for (const g of (r.genres ?? [])) {
+        if (g && typeof g === 'string') genres.add(g.trim());
+      }
+    }
+    if (!has.has('genre_5') && genres.size >= 5) newBadges.push('genre_5');
+    if (!has.has('genre_10') && genres.size >= 10) newBadges.push('genre_10');
+  }
+
+  // Check tier badges
+  if (!has.has('s_tier_10') || !has.has('d_tier_5')) {
+    const { data: tierCounts } = await supabase.from('user_rankings').select('tier').eq('user_id', userId);
+    let sCount = 0, dCount = 0;
+    for (const r of (tierCounts ?? [])) {
+      if (r.tier === 'S') sCount++;
+      if (r.tier === 'D') dCount++;
+    }
+    if (!has.has('s_tier_10') && sCount >= 10) newBadges.push('s_tier_10');
+    if (!has.has('d_tier_5') && dCount >= 5) newBadges.push('d_tier_5');
+  }
+
+  // Grant new badges
+  if (newBadges.length > 0) {
+    const rows = newBadges.map((key) => ({ user_id: userId, badge_key: key }));
+    await supabase.from('user_achievements').insert(rows);
+  }
+
+  return newBadges;
 }
