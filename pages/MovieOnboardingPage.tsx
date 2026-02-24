@@ -4,7 +4,6 @@ import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } f
 import { RankedItem, Tier, MediaType } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES } from '../constants';
 import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
-import { searchMediaFromBackend, hasBackendUrl } from '../services/backendService';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
@@ -175,12 +174,11 @@ const MovieOnboardingPage: React.FC = () => {
         if (!q) { setSearchResults([]); setPersonProfiles([]); setIsSearching(false); return; }
         setIsSearching(true);
         debounceRef.current = setTimeout(async () => {
-            const [backend, tmdb, people] = await Promise.all([
-                hasBackendUrl() ? searchMediaFromBackend(q, 2500) : Promise.resolve([]),
+            const [tmdb, people] = await Promise.all([
                 searchMovies(q, 4500),
                 searchPeople(q, 4500),
             ]);
-            setSearchResults(mergeAndDedup([...backend, ...tmdb]));
+            setSearchResults(mergeAndDedup(tmdb));
             setPersonProfiles(people);
             setIsSearching(false);
         }, 350);

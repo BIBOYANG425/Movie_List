@@ -3,7 +3,6 @@ import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bo
 import { RankedItem, Tier, WatchlistItem } from '../types';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
 import { searchMovies, searchPeople, getPersonFilmography, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
-import { searchMediaFromBackend, hasBackendUrl } from '../services/backendService';
 
 interface AddMediaModalProps {
   isOpen: boolean;
@@ -22,7 +21,6 @@ interface CompareSnapshot {
   high: number;
 }
 
-const BACKEND_SEARCH_TIMEOUT_MS = 2500;
 const TMDB_SEARCH_TIMEOUT_MS = 4500;
 
 function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
@@ -184,8 +182,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     }
   }, [isOpen]);
 
-  // Debounced search — uses backend hybrid endpoint when VITE_API_URL is set,
-  // and always includes direct TMDB search as a fallback path.
+  // Debounced search — searches TMDB directly.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -201,15 +198,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setIsSearching(true);
 
     debounceRef.current = setTimeout(async () => {
-      const [backendResults, tmdbResults, people] = await Promise.all([
-        hasBackendUrl()
-          ? searchMediaFromBackend(normalizedQuery, BACKEND_SEARCH_TIMEOUT_MS)
-          : Promise.resolve([]),
+      const [tmdbResults, people] = await Promise.all([
         searchMovies(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
         searchPeople(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
       ]);
 
-      setSearchResults(mergeAndDedupSearchResults([...backendResults, ...tmdbResults]));
+      setSearchResults(mergeAndDedupSearchResults(tmdbResults));
       setDirectorProfiles(people);
       setSelectedDirector(null);
       setIsSearching(false);
@@ -317,8 +311,6 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
       onAdd(finalItem);
 
-      // TODO (Day 4): POST finalItem to backend /rankings endpoint
-      // fetch('/api/rankings', { method: 'POST', body: JSON.stringify(finalItem) })
 
       onClose();
     }
