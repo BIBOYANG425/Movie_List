@@ -316,7 +316,7 @@ const MovieOnboardingPage: React.FC = () => {
         });
         setPendingMovie(null);
 
-        await supabase.from('user_rankings').upsert({
+        const { error } = await supabase.from('user_rankings').upsert({
             user_id: user.id,
             tmdb_id: newItem.id,
             title: newItem.title,
@@ -331,6 +331,14 @@ const MovieOnboardingPage: React.FC = () => {
             notes: null,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id,tmdb_id' });
+
+        if (error) {
+            console.error("Failed to save ranking to Supabase:", error);
+            alert(`Failed to save movie. Please ensure you have run the supabase_spool_ranking.sql migration in your Supabase dashboard.\n\nError: ${error.message}`);
+
+            // Revert immediately if requested (optional)
+            // But showing the alert is the critical fix to break the confusing loop.
+        }
 
         await logRankingActivityEvent(
             user.id,
