@@ -47,6 +47,7 @@ export interface TMDBMovie {
   type: 'movie';
   genres: string[];
   overview: string;
+  voteAverage?: number; // TMDb vote_average 0–10, maps to Spool global score
 }
 
 /** Returns true if the TMDB API key is configured */
@@ -80,6 +81,7 @@ function mapTmdbResult(m: any): TMDBMovie | null {
       .filter(Boolean)
       .slice(0, 3),
     overview: m.overview ?? '',
+    voteAverage: typeof m.vote_average === 'number' ? m.vote_average : undefined,
   };
 }
 
@@ -452,3 +454,25 @@ export async function getPersonFilmography(
 
 /** @deprecated Use getPersonFilmography instead */
 export const getDirectorFilmography = (personId: number) => getPersonFilmography(personId, 'Director');
+
+/**
+ * Fetch the global average score (vote_average) for a single movie from TMDb.
+ * Used to seed the adaptive comparison algorithm.
+ * Returns a number 0.0–10.0, or undefined on failure.
+ */
+export async function getMovieGlobalScore(tmdbNumericId: number): Promise<number | undefined> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !tmdbNumericId) return undefined;
+
+  try {
+    const res = await fetchWithTimeout(
+      `${TMDB_BASE}/movie/${tmdbNumericId}?api_key=${apiKey}&language=en-US`,
+      4000,
+    );
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return typeof data.vote_average === 'number' ? data.vote_average : undefined;
+  } catch {
+    return undefined;
+  }
+}

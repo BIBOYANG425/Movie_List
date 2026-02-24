@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
-import { RankedItem, Tier, WatchlistItem } from '../types';
-import { TIER_COLORS, TIER_LABELS } from '../constants';
-import { searchMovies, searchPeople, getPersonFilmography, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { RankedItem, Tier, WatchlistItem, ComparisonLogEntry } from '../types';
+import { TIER_COLORS, TIER_LABELS, TIER_SCORE_RANGES } from '../constants';
+import { searchMovies, searchPeople, getPersonFilmography, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
 
 interface AddMediaModalProps {
   isOpen: boolean;
@@ -11,7 +12,9 @@ interface AddMediaModalProps {
   onSaveForLater?: (item: WatchlistItem) => void;
   currentItems: RankedItem[];
   watchlistIds?: Set<string>;
-  preselectedItem?: WatchlistItem | null;
+  preselectedItem?: WatchlistItem | RankedItem | null;
+  preselectedTier?: Tier | null;
+  onCompare?: (log: ComparisonLogEntry) => void;
 }
 
 type Step = 'search' | 'tier' | 'notes' | 'compare';
@@ -28,15 +31,15 @@ function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
 
   for (const movie of results) {
     const key = movie.tmdbId > 0
-      ? `tmdb:${movie.tmdbId}`
-      : `title:${movie.title.toLowerCase().trim()}`;
+      ? `tmdb:${movie.tmdbId} `
+      : `title:${movie.title.toLowerCase().trim()} `;
     if (!byKey.has(key)) byKey.set(key, movie);
   }
 
   return Array.from(byKey.values()).slice(0, 12);
 }
 
-export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem }) => {
+export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem, preselectedTier, onCompare }) => {
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
@@ -48,6 +51,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
+  const [isRatingFetching, setIsRatingFetching] = useState(false);
 
   // Two-pool suggestion system
   const suggestionPageRef = useRef(1);
@@ -62,6 +66,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [compLow, setCompLow] = useState(0);
   const [compHigh, setCompHigh] = useState(0);
   const [compHistory, setCompHistory] = useState<CompareSnapshot[]>([]);
+  const [compSeed, setCompSeed] = useState<number | null>(null);
+  const [sessionId, setSessionId] = useState('');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -156,9 +162,11 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       setCompLow(0);
       setCompHigh(0);
       setCompHistory([]);
+      setCompSeed(null);
+      setSessionId(globalThis.crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
       // If a watchlist item was pre-selected, skip to tier step
-      if (preselectedItem) {
+      if (preselectedItem && !preselectedTier) {
         const asRankedItem: RankedItem = {
           id: preselectedItem.id,
           title: preselectedItem.title,
@@ -171,6 +179,27 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         };
         setSelectedItem(asRankedItem);
         setStep('tier');
+      } else if (preselectedItem && preselectedTier) {
+        // Tier migration
+        const asRankedItem = preselectedItem as RankedItem;
+        setSelectedItem(asRankedItem);
+        setSelectedTier(preselectedTier);
+
+        const tierItems = currentItems.filter(i => i.tier === preselectedTier).sort((a, b) => a.rank - b.rank);
+        if (tierItems.length === 0) {
+          onAdd({ ...asRankedItem, tier: preselectedTier, rank: 0 });
+          onClose();
+        } else {
+          const range = TIER_SCORE_RANGES[preselectedTier];
+          const tierItemScores = tierItems.map((_, idx) => computeTierScore(idx, tierItems.length, range.min, range.max));
+          const seedIdx = computeSeedIndex(tierItemScores, range.min, range.max, asRankedItem.globalScore);
+
+          setCompLow(0);
+          setCompHigh(tierItems.length);
+          setCompHistory([]);
+          setCompSeed(seedIdx);
+          setStep('compare');
+        }
       } else {
         setSelectedItem(null);
         setStep('search');
@@ -180,7 +209,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       suggestionPageRef.current = 1;
       loadInitialSuggestions(1);
     }
-  }, [isOpen]);
+  }, [isOpen, preselectedItem, preselectedTier]);
 
   // Debounced search — searches TMDB directly.
   useEffect(() => {
@@ -241,8 +270,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   // bookmarks made during this session, and any API-level filtering misses)
   const filteredSuggestions = suggestions.filter(m => !isAlreadyOwned(m));
 
-  const handleSelectMovie = (movie: TMDBMovie, fromSuggestion = false) => {
+  const handleSelectMovie = async (movie: TMDBMovie, fromSuggestion = false) => {
     if (fromSuggestion) consumeSuggestion(movie.id);
+
+    setIsRatingFetching(true);
+    const globalScore = await getMovieGlobalScore(movie.tmdbId);
+    setIsRatingFetching(false);
+
     const asRankedItem: RankedItem = {
       id: movie.id,
       title: movie.title,
@@ -252,6 +286,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       genres: movie.genres,
       tier: Tier.B,
       rank: 0,
+      bracket: classifyBracket(movie.genres),
+      globalScore,
     };
     setSelectedItem(asRankedItem);
     setStep('tier');
@@ -292,10 +328,41 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       });
       onClose();
     } else {
-      // Start head-to-head comparison
+      // Spool adaptive seeding: Use global average if it falls within the tier
+      // Calculate derived scores for existing items in this tier
+      const range = TIER_SCORE_RANGES[selectedTier!];
+      const tierItemScores = tierItems.map((_, idx) =>
+        computeTierScore(idx, tierItems.length, range.min, range.max)
+      );
+
+      const seedIdx = computeSeedIndex(
+        tierItemScores,
+        range.min,
+        range.max,
+        selectedItem?.globalScore
+      );
+
+      // Start head-to-head comparison around the seed index
+      // The binary search needs a low and high bound. 
+      // If we seed at index N, we can set bounds such that mid roughly equals N.
+      // But standard binary search bounds are 0 to length.
+      // Quartile narrowing from the algo still requires the true low/high bounds.
+      // So we set low=0, high=length as the search space, but we could artificially
+      // force the first comparison to be `seedIdx`.
+      // Actually, since the UI expects `mid = Math.floor((low + high) / 2)` directly,
+      // the simplest way to seed is to not change low/high in `proceedFromNotes`,
+      // but to add a initial `seedMid` state, OR redefine how `compLow`/`compHigh` 
+      // dictate the first comparison.
+      // For V1 of the spec, the "start at this index" is easiest achieved by 
+      // setting compLow=0, compHigh=length, but passing the seedIdx as the FIRST mid.
+      // We need to store `seedIdx`.
+
       setCompLow(0);
       setCompHigh(tierItems.length);
       setCompHistory([]);
+      // Store seed index to be used as first mid
+      setCompSeed(seedIdx);
+
       setStep('compare');
     }
   };
@@ -319,6 +386,21 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const handleCompareChoice = (choice: 'new' | 'existing' | 'too_tough' | 'skip') => {
     const mid = Math.floor((compLow + compHigh) / 2);
 
+    // Log comparison
+    if (onCompare && selectedItem && selectedTier) {
+      const tierItems = getTierItems(selectedTier);
+      const pivotItem = tierItems[mid];
+      if (pivotItem) {
+        onCompare({
+          sessionId,
+          movieAId: selectedItem.id,
+          movieBId: pivotItem.id,
+          winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
+          round: compHistory.length + 1,
+        });
+      }
+    }
+
     if (choice === 'too_tough' || choice === 'skip') {
       handleInsertAt(mid);
       return;
@@ -326,20 +408,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
     setCompHistory(prev => [...prev, { low: compLow, high: compHigh }]);
 
-    let newLow = compLow;
-    let newHigh = compHigh;
+    const result = adaptiveNarrow(compLow, compHigh, mid, choice);
 
-    if (choice === 'new') {
-      newHigh = mid;
+    if (!result) {
+      handleInsertAt(choice === 'new' ? mid : mid + 1);
     } else {
-      newLow = mid + 1;
-    }
-
-    if (newLow >= newHigh) {
-      handleInsertAt(newLow);
-    } else {
-      setCompLow(newLow);
-      setCompHigh(newHigh);
+      setCompLow(result.newLow);
+      setCompHigh(result.newHigh);
     }
   };
 
@@ -417,7 +492,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-white truncate text-sm">{person.name}</p>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${person.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                    <span className={`text - [10px] px - 1.5 py - 0.5 rounded - full font - medium flex - shrink - 0 ${person.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'} `}>
                       {person.role}
                     </span>
                   </div>
@@ -460,7 +535,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-bold text-white">{selectedDirector.name}</h3>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${selectedDirector.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                  <span className={`text - [10px] px - 1.5 py - 0.5 rounded - full font - medium ${selectedDirector.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'} `}>
                     {selectedDirector.role}
                   </span>
                 </div>
@@ -534,7 +609,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                     <button
                       onClick={() => handleBookmark(movie)}
                       title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
-                      className={`p-1.5 rounded-lg transition-colors ${isBookmarked(movie.id) ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'}`}
+                      className={`p - 1.5 rounded - lg transition - colors ${isBookmarked(movie.id) ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'} `}
                     >
                       <Bookmark size={16} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
                     </button>
@@ -560,6 +635,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {/* Suggestions — shown when search is empty */}
         {!isSearching && !searchTerm.trim() && (
           <>
+            {isRatingFetching && (
+              <div className="absolute inset-0 bg-zinc-950/50 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
+                <div className="flex flex-col items-center gap-3 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-2xl">
+                  <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                  <p className="text-sm font-semibold text-zinc-300">Fetching global ranking...</p>
+                </div>
+              </div>
+            )}
             {suggestionsLoading && (
               <div className="grid grid-cols-3 gap-2">
                 {[1, 2, 3, 4, 5, 6].map(i => (
@@ -607,10 +690,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                         <button
                           onClick={(e) => { e.stopPropagation(); handleBookmark(movie, true); }}
                           title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
-                          className={`absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md ${isBookmarked(movie.id)
+                          className={`absolute top - 3 right - 3 p - 1.5 rounded - full transition - all shadow - md ${isBookmarked(movie.id)
                             ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
                             : 'bg-black/60 text-zinc-500 border border-zinc-700 opacity-0 group-hover:opacity-100 hover:text-emerald-400 hover:bg-emerald-500/20'
-                            }`}
+                            } `}
                         >
                           <Bookmark size={12} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
                         </button>
@@ -655,7 +738,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           <button
             key={tier}
             onClick={() => handleSelectTier(tier)}
-            className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${TIER_COLORS[tier]}`}
+            className={`flex items - center justify - between p - 4 rounded - xl border - 2 transition - all hover: scale - [1.02] active: scale - [0.98] ${TIER_COLORS[tier]} `}
           >
             <div className="flex items-center gap-4">
               <span className="text-2xl font-black">{tier}</span>
@@ -691,7 +774,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         <div>
           <p className="font-bold text-white leading-tight">{selectedItem?.title}</p>
           <p className="text-zinc-500 text-xs mt-0.5">{selectedItem?.year}</p>
-          <span className={`inline-block mt-2 text-xs font-bold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]}`}>
+          <span className={`inline - block mt - 2 text - xs font - bold px - 2 py - 0.5 rounded - full border ${TIER_COLORS[selectedTier!]} `}>
             {selectedTier} — {TIER_LABELS[selectedTier!]}
           </span>
         </div>
@@ -715,8 +798,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             onChange={(e) => setNotes(e.target.value)}
           />
           {/* Character count */}
-          <span className={`absolute bottom-3 right-3 text-xs tabular-nums transition-colors ${notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-zinc-600'
-            }`}>
+          <span className={`absolute bottom - 3 right - 3 text - xs tabular - nums transition - colors ${notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-zinc-600'
+            } `}>
             {notes.length}/{MAX_NOTES}
           </span>
         </div>
@@ -761,8 +844,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             {Array.from({ length: totalRounds }).map((_, i) => (
               <div
                 key={i}
-                className={`h-1.5 w-6 rounded-full transition-colors ${i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'
-                  }`}
+                className={`h - 1.5 w - 6 rounded - full transition - colors ${i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'
+                  } `}
               />
             ))}
           </div>
@@ -811,7 +894,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             <div className="text-center">
               <p className="font-bold text-white text-sm leading-tight">{pivotItem?.title}</p>
               <p className="text-xs text-zinc-500 mt-0.5">{pivotItem?.year}</p>
-              <span className={`inline-block mt-2 text-xs font-semibold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]}`}>
+              <span className={`inline - block mt - 2 text - xs font - semibold px - 2 py - 0.5 rounded - full border ${TIER_COLORS[selectedTier!]} `}>
                 {selectedTier} · #{mid + 1}
               </span>
             </div>

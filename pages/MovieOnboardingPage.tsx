@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { RankedItem, Tier, MediaType } from '../types';
-import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES } from '../constants';
-import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES, TIER_SCORE_RANGES } from '../constants';
+import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
@@ -45,12 +46,16 @@ const MovieOnboardingPage: React.FC = () => {
 
     // Tier picker modal
     const [pendingMovie, setPendingMovie] = useState<TMDBMovie | null>(null);
+    const [pendingGlobalScore, setPendingGlobalScore] = useState<number | undefined>();
     const [fromSuggestion, setFromSuggestion] = useState(false);
     const [modalStep, setModalStep] = useState<'tier' | 'compare'>('tier');
     const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
     const [compLow, setCompLow] = useState(0);
     const [compHigh, setCompHigh] = useState(0);
     const [compHistory, setCompHistory] = useState<{ low: number; high: number }[]>([]);
+    const [compSeed, setCompSeed] = useState<number | null>(null);
+    const [sessionId, setSessionId] = useState('');
+    const [isRatingFetching, setIsRatingFetching] = useState(false);
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +71,7 @@ const MovieOnboardingPage: React.FC = () => {
 
     useEffect(() => {
         if (!user) return;
+        setSessionId(globalThis.crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2));
         (async () => {
             const { data } = await supabase
                 .from('user_rankings')
@@ -194,12 +200,20 @@ const MovieOnboardingPage: React.FC = () => {
 
     // ── Add item ────────────────────────────────────────────────────────────────
 
-    const handleSelectMovie = (movie: TMDBMovie, isSuggestion: boolean) => {
+    const handleSelectMovie = async (movie: TMDBMovie, isSuggestion: boolean) => {
+        if (isSuggestion) consumeSuggestion(movie.id);
+
+        setIsRatingFetching(true);
+        const globalScore = await getMovieGlobalScore(movie.tmdbId);
+        setIsRatingFetching(false);
+        setPendingGlobalScore(globalScore);
+
         setPendingMovie(movie);
         setFromSuggestion(isSuggestion);
         setModalStep('tier');
         setSelectedTier(null);
         setCompHistory([]);
+        setCompSeed(null);
     };
 
     const getTierItems = (tier: Tier) =>
@@ -210,22 +224,44 @@ const MovieOnboardingPage: React.FC = () => {
         setSelectedTier(tier);
 
         const tierItems = getTierItems(tier);
-        if (tierItems.length === 0) {
-            // No existing items — insert immediately
-            finishInsert(tier, 0);
+        if (tierItems.length === 0 || rankedItems.length < 5) {
+            // No existing items OR still in first 5 movies — insert immediately
+            finishInsert(tier, Math.floor(tierItems.length / 2));
         } else {
-            // Start head-to-head comparison
+            // Spool adaptive seeding
+            const range = TIER_SCORE_RANGES[tier];
+            const tierItemScores = tierItems.map((_, idx) => computeTierScore(idx, tierItems.length, range.min, range.max));
+            const seedIdx = computeSeedIndex(tierItemScores, range.min, range.max, pendingGlobalScore);
+
             setCompLow(0);
             setCompHigh(tierItems.length);
             setCompHistory([]);
+            setCompSeed(seedIdx);
             setModalStep('compare');
         }
     };
 
-    const handleCompareChoice = (choice: 'new' | 'existing' | 'skip') => {
-        if (!selectedTier) return;
+    const handleCompareChoice = async (choice: 'new' | 'existing' | 'skip') => {
+        if (!selectedTier || !pendingMovie) return;
         const tierItems = getTierItems(selectedTier);
         const mid = Math.floor((compLow + compHigh) / 2);
+
+        // Log comparison
+        const pivotItem = tierItems[mid];
+        if (pivotItem && user) {
+            try {
+                await supabase.from('comparison_logs').insert({
+                    user_id: user.id,
+                    session_id: sessionId,
+                    movie_a_tmdb_id: pendingMovie.id,
+                    movie_b_tmdb_id: pivotItem.id,
+                    winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
+                    round: compHistory.length + 1,
+                });
+            } catch (err) {
+                console.error('Failed to log comparison:', err);
+            }
+        }
 
         if (choice === 'skip') {
             finishInsert(selectedTier, mid);
@@ -234,20 +270,13 @@ const MovieOnboardingPage: React.FC = () => {
 
         setCompHistory(prev => [...prev, { low: compLow, high: compHigh }]);
 
-        let newLow = compLow;
-        let newHigh = compHigh;
+        const result = adaptiveNarrow(compLow, compHigh, mid, choice);
 
-        if (choice === 'new') {
-            newHigh = mid;
+        if (!result) {
+            finishInsert(selectedTier, choice === 'new' ? mid : mid + 1);
         } else {
-            newLow = mid + 1;
-        }
-
-        if (newLow >= newHigh) {
-            finishInsert(selectedTier, newLow);
-        } else {
-            setCompLow(newLow);
-            setCompHigh(newHigh);
+            setCompLow(result.newLow);
+            setCompHigh(result.newHigh);
         }
     };
 
@@ -273,6 +302,8 @@ const MovieOnboardingPage: React.FC = () => {
             genres: pendingMovie.genres,
             tier,
             rank: rankIndex,
+            bracket: classifyBracket(pendingMovie.genres),
+            globalScore: pendingGlobalScore,
         };
 
         setRankedItems(prev => {
@@ -296,6 +327,7 @@ const MovieOnboardingPage: React.FC = () => {
             director: null,
             tier: newItem.tier,
             rank_position: newItem.rank,
+            bracket: newItem.bracket,
             notes: null,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id,tmdb_id' });

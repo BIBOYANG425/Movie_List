@@ -1,4 +1,4 @@
-import { Tier, RankedItem } from './types';
+import { Tier, Bracket, RankedItem } from './types';
 
 export const TIERS = [Tier.S, Tier.A, Tier.B, Tier.C, Tier.D];
 
@@ -11,19 +11,41 @@ export const TIER_COLORS = {
 };
 
 export const TIER_LABELS = {
-  [Tier.S]: 'Masterpiece (God Tier)',
-  [Tier.A]: 'Great',
+  [Tier.S]: 'Masterpiece',
+  [Tier.A]: 'Excellent',
   [Tier.B]: 'Good',
-  [Tier.C]: 'Fine',
-  [Tier.D]: 'Bad',
+  [Tier.C]: 'Mediocre',
+  [Tier.D]: 'Poor',
+};
+
+export const TIER_USER_PROMPTS = {
+  [Tier.S]: 'All-time great. Would rewatch endlessly.',
+  [Tier.A]: 'Loved it. Highly recommend.',
+  [Tier.B]: 'Enjoyed it. Solid watch.',
+  [Tier.C]: 'It was fine. Wouldn\'t rush to rewatch.',
+  [Tier.D]: 'Didn\'t enjoy it. Would not recommend.',
 };
 
 export const TIER_SCORE_RANGES = {
-  [Tier.S]: { min: 8.1, max: 10.0 },
-  [Tier.A]: { min: 6.1, max: 8.0 },
-  [Tier.B]: { min: 4.1, max: 6.0 },
-  [Tier.C]: { min: 2.1, max: 4.0 },
-  [Tier.D]: { min: 0.1, max: 2.0 },
+  [Tier.S]: { min: 9.0, max: 10.0 },
+  [Tier.A]: { min: 7.0, max: 8.9 },
+  [Tier.B]: { min: 5.0, max: 6.9 },
+  [Tier.C]: { min: 3.0, max: 4.9 },
+  [Tier.D]: { min: 0.1, max: 2.9 },
+};
+
+export const BRACKETS: Bracket[] = [
+  Bracket.Commercial,
+  Bracket.Artisan,
+  Bracket.Documentary,
+  Bracket.Animation,
+];
+
+export const BRACKET_LABELS: Record<Bracket, string> = {
+  [Bracket.Commercial]: 'Commercial',
+  [Bracket.Artisan]: 'Artisan / Indie',
+  [Bracket.Documentary]: 'Documentary',
+  [Bracket.Animation]: 'Animation',
 };
 
 /** Scores are hidden until the user has ranked at least this many movies. */

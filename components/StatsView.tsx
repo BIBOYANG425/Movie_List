@@ -13,13 +13,12 @@ export const StatsView: React.FC<StatsViewProps> = ({ items }) => {
     value: items.filter(i => i.tier === tier).length,
     color: TIER_COLORS[tier].split(' ')[0].replace('text-', '#').replace('400', '4ADE80').replace('blue-', '#60A5FA').replace('yellow-', '#FCD34D').replace('red-', '#F87171').replace('zinc-', '#A1A1AA') // Quick hack to extract hex from tailwind class name logic for demo
   }));
-  
+
   // Normalized hex colors for recharts
   const COLORS = ['#FCD34D', '#4ADE80', '#60A5FA', '#A1A1AA', '#F87171'];
 
   const typeData = [
     { name: 'Movies', value: items.filter(i => i.type === 'movie').length },
-    { name: 'Theater', value: items.filter(i => i.type === 'theater').length },
   ];
 
   return (
@@ -31,9 +30,9 @@ export const StatsView: React.FC<StatsViewProps> = ({ items }) => {
             <BarChart data={tierCounts}>
               <XAxis dataKey="name" stroke="#71717a" />
               <YAxis stroke="#71717a" />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff' }}
-                cursor={{fill: 'rgba(255,255,255,0.05)'}}
+                cursor={{ fill: 'rgba(255,255,255,0.05)' }}
               />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 {tierCounts.map((entry, index) => (
@@ -70,10 +69,6 @@ export const StatsView: React.FC<StatsViewProps> = ({ items }) => {
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-indigo-400"></div>
             <span>Movies</span>
-          </div>
-           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-pink-400"></div>
-            <span>Theater</span>
           </div>
         </div>
       </div>

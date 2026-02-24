@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, BarChart2, Bookmark, Compass, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users, UsersRound } from 'lucide-react';
-import { Tier, RankedItem, WatchlistItem, MediaType } from '../types';
-import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE } from '../constants';
+import { Tier, RankedItem, WatchlistItem, MediaType, Bracket, ComparisonLogEntry } from '../types';
+import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE, BRACKETS, BRACKET_LABELS } from '../constants';
+import { computeTierScore } from '../services/rankingAlgorithm';
 import { TierRow } from '../components/TierRow';
 import { AddMediaModal } from '../components/AddMediaModal';
 import { StatsView } from '../components/StatsView';
@@ -38,26 +39,21 @@ function getTierTolerance(totalItems: number): number {
 
 function computeScores(items: RankedItem[]): Map<string, number> {
   const scoreMap = new Map<string, number>();
-  const globalOrder: RankedItem[] = [];
 
   for (const tier of TIERS) {
     const tierItems = items
       .filter((i) => i.tier === tier)
       .sort((a, b) => a.rank - b.rank);
-    globalOrder.push(...tierItems);
-  }
 
-  const total = globalOrder.length;
-  if (total === 0) return scoreMap;
+    const totalInTier = tierItems.length;
+    if (totalInTier === 0) continue;
 
-  if (total === 1) {
-    scoreMap.set(globalOrder[0].id, SCORE_MAX);
-    return scoreMap;
-  }
+    const range = TIER_SCORE_RANGES[tier];
 
-  for (let i = 0; i < total; i++) {
-    const score = SCORE_MAX - (i / (total - 1)) * (SCORE_MAX - SCORE_MIN);
-    scoreMap.set(globalOrder[i].id, Math.round(score * 10) / 10);
+    tierItems.forEach((item, index) => {
+      const score = computeTierScore(index, totalInTier, range.min, range.max);
+      scoreMap.set(item.id, Number(score.toFixed(1)));
+    });
   }
 
   return scoreMap;
@@ -136,6 +132,9 @@ const RankingAppPage = () => {
   const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'friends' | 'discover' | 'groups'>('ranking');
   const [groupSubTab, setGroupSubTab] = useState<'parties' | 'rankings' | 'polls' | 'lists' | 'badges'>('parties');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
+  const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
+  const [activeGenre, setActiveGenre] = useState<string | null>(null);
+  const [migrationState, setMigrationState] = useState<{ item: RankedItem, targetTier: Tier } | null>(null);
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
 
@@ -196,6 +195,15 @@ const RankingAppPage = () => {
     const movedItem = items.find((i) => i.id === droppedId);
     setDraggedItemId(null);
 
+    if (!movedItem) return;
+
+    if (movedItem.tier !== targetTier) {
+      // Trigger Spool tier migration comparison flow
+      setMigrationState({ item: movedItem, targetTier });
+      setIsModalOpen(true);
+      return;
+    }
+
     // Compute new rank from current items snapshot (before state update)
     const others = items.filter((i) => i.id !== droppedId);
     const newRank = others.filter((i) => i.tier === targetTier).length;
@@ -240,9 +248,9 @@ const RankingAppPage = () => {
 
     setItems((prev) => {
       const tierItems = prev
-        .filter((i) => i.tier === newItem.tier)
+        .filter((i) => i.tier === newItem.tier && i.id !== newItem.id)
         .sort((a, b) => a.rank - b.rank);
-      const otherItems = prev.filter((i) => i.tier !== newItem.tier);
+      const otherItems = prev.filter((i) => i.tier !== newItem.tier && i.id !== newItem.id);
 
       const newTierList = [...tierItems];
       newTierList.splice(newItem.rank, 0, newItem);
@@ -363,12 +371,52 @@ const RankingAppPage = () => {
       await removeFromWatchlist(preselectedForRank.id);
       setPreselectedForRank(null);
     }
+    if (migrationState) {
+      setMigrationState(null);
+    }
+  };
+
+  const handleCompareLog = async (log: ComparisonLogEntry) => {
+    if (!user) return;
+    try {
+      await supabase.from('comparison_logs').insert({
+        user_id: user.id,
+        session_id: log.sessionId,
+        movie_a_tmdb_id: log.movieAId,
+        movie_b_tmdb_id: log.movieBId,
+        winner: log.winner,
+        round: log.round,
+      });
+    } catch (err) {
+      console.error('Failed to log comparison:', err);
+    }
   };
 
   const watchlistIds = useMemo(() => new Set(watchlist.map((w) => w.id)), [watchlist]);
-  const scoreMap = useMemo(() => computeScores(items), [items]);
-  const showScores = items.length >= MIN_MOVIES_FOR_SCORES;
-  const filteredItems = filterType === 'all' ? items : items.filter((i) => i.type === filterType);
+
+  const availableGenres = useMemo(() => {
+    const genres = new Set<string>();
+    items.forEach(i => {
+      if (activeBracket === 'all' || i.bracket === activeBracket) {
+        i.genres.forEach(g => genres.add(g));
+      }
+    });
+    return Array.from(genres).sort();
+  }, [items, activeBracket]);
+
+  const filteredItems = useMemo(() => {
+    let filtered = filterType === 'all' ? items : items.filter((i) => i.type === filterType);
+    if (activeBracket !== 'all') {
+      filtered = filtered.filter(i => i.bracket === activeBracket);
+    }
+    if (activeGenre) {
+      filtered = filtered.filter(i => i.genres.includes(activeGenre));
+    }
+    return filtered;
+  }, [items, filterType, activeBracket, activeGenre]);
+
+  const scoreMap = useMemo(() => computeScores(filteredItems), [filteredItems]);
+  const showScores = filteredItems.length >= MIN_MOVIES_FOR_SCORES;
 
   if (loading) {
     return (
@@ -516,6 +564,49 @@ const RankingAppPage = () => {
 
         {activeTab === 'ranking' && (
           <div className="space-y-4">
+            <div className="flex bg-zinc-900/50 rounded-lg p-1 overflow-x-auto border border-zinc-800 scrollbar-hide">
+              <button
+                onClick={() => { setActiveBracket('all'); setActiveGenre(null); }}
+                className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === 'all' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                All Brackets
+              </button>
+              {BRACKETS.map(bracket => (
+                <button
+                  key={bracket}
+                  onClick={() => { setActiveBracket(bracket); setActiveGenre(null); }}
+                  className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === bracket ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                  {BRACKET_LABELS[bracket]}
+                </button>
+              ))}
+            </div>
+
+            {availableGenres.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-zinc-800">
+                <button
+                  onClick={() => setActiveGenre(null)}
+                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${!activeGenre ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'}`}
+                >
+                  All Genres
+                </button>
+                {availableGenres.map(genre => (
+                  <button
+                    key={genre}
+                    onClick={() => setActiveGenre(genre === activeGenre ? null : genre)}
+                    className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${genre === activeGenre ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'}`}
+                  >
+                    {genre}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- Tab Content --- */}
+        {activeTab === 'ranking' && (
+          <div className="space-y-4">
             {TIERS.map((tier) => (
               <TierRow
                 key={tier}
@@ -560,8 +651,8 @@ const RankingAppPage = () => {
                   key={key}
                   onClick={() => setGroupSubTab(key)}
                   className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${groupSubTab === key
-                      ? 'bg-zinc-800 text-white shadow-lg'
-                      : 'text-zinc-500 hover:text-zinc-300'
+                    ? 'bg-zinc-800 text-white shadow-lg'
+                    : 'text-zinc-500 hover:text-zinc-300'
                     }`}
                 >
                   {label}
@@ -582,12 +673,15 @@ const RankingAppPage = () => {
         onClose={() => {
           setIsModalOpen(false);
           setPreselectedForRank(null);
+          setMigrationState(null);
         }}
         onAdd={handleAddItem}
         onSaveForLater={addToWatchlist}
         currentItems={items}
         watchlistIds={watchlistIds}
-        preselectedItem={preselectedForRank}
+        preselectedItem={migrationState ? migrationState.item : preselectedForRank}
+        preselectedTier={migrationState ? migrationState.targetTier : undefined}
+        onCompare={handleCompareLog}
       />
     </div>
   );

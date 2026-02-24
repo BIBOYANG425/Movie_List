@@ -447,7 +447,7 @@ export async function getFollowingProfilesForUser(targetUserId: string): Promise
   const profileMap = await getProfilesByIds(followingIds);
 
   return rows
-    .map((row) => {
+    .map((row): FriendProfile | null => {
       if (!row.following_id) return null;
       const profile = profileMap.get(row.following_id);
       return {
@@ -480,7 +480,7 @@ export async function getFollowerProfilesForUser(targetUserId: string): Promise<
   const profileMap = await getProfilesByIds(followerIds);
 
   return rows
-    .map((row) => {
+    .map((row): FriendProfile | null => {
       if (!row.follower_id) return null;
       const profile = profileMap.get(row.follower_id);
       return {
@@ -843,7 +843,7 @@ export async function getRecentProfileActivity(
         updatedAt: row.created_at,
         posterUrl: row.media_poster_url ?? undefined,
         eventType: toRankingEventType(row.event_type) ?? undefined,
-      };
+      } as ProfileActivityItem;
     })
     .filter((row): row is ProfileActivityItem => row !== null);
 }

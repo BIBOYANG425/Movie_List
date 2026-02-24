@@ -6,6 +6,13 @@ export enum Tier {
   D = 'D'
 }
 
+export enum Bracket {
+  Commercial = 'Commercial',
+  Artisan = 'Artisan',
+  Documentary = 'Documentary',
+  Animation = 'Animation',
+}
+
 export type MediaType = 'movie';
 
 export interface MediaItem {
@@ -16,6 +23,8 @@ export interface MediaItem {
   type: MediaType;
   genres: string[];
   director?: string;
+  bracket?: Bracket;
+  globalScore?: number; // TMDb vote_average (0–10), used to seed comparisons
 }
 
 export interface RankedItem extends MediaItem {
@@ -424,4 +433,14 @@ export interface BadgeDefinition {
 export interface UserAchievement {
   badgeKey: string;
   unlockedAt: string;
+}
+
+// ── Spool: Comparison Logging ───────────────────────────────────────────────
+
+export interface ComparisonLogEntry {
+  sessionId: string;
+  movieAId: string;
+  movieBId: string;
+  winner: 'a' | 'b' | 'skip';
+  round: number;
 }
