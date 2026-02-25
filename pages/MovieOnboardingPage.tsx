@@ -331,38 +331,41 @@ const MovieOnboardingPage: React.FC = () => {
             globalScore: pendingGlobalScore,
         };
 
+        let updatedTierList: RankedItem[] = [];
+
         setRankedItems(prev => {
             const tierItems = prev.filter(i => i.tier === tier).sort((a, b) => a.rank - b.rank);
             const otherItems = prev.filter(i => i.tier !== tier);
             const newTierList = [...tierItems];
             newTierList.splice(rankIndex, 0, newItem);
-            const updated = newTierList.map((item, idx) => ({ ...item, rank: idx }));
-            return [...otherItems, ...updated];
+            updatedTierList = newTierList.map((item, idx) => ({ ...item, rank: idx }));
+            return [...otherItems, ...updatedTierList];
         });
         setPendingMovie(null);
 
-        const { error } = await supabase.from('user_rankings').upsert({
-            user_id: user.id,
-            tmdb_id: newItem.id,
-            title: newItem.title,
-            year: newItem.year,
-            poster_url: newItem.posterUrl,
-            type: newItem.type,
-            genres: newItem.genres,
-            director: null,
-            tier: newItem.tier,
-            rank_position: newItem.rank,
-            bracket: newItem.bracket,
-            notes: null,
-            updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,tmdb_id' });
+        if (updatedTierList.length > 0) {
+            const rowsToUpdate = updatedTierList.map(item => ({
+                user_id: user.id,
+                tmdb_id: item.id,
+                title: item.title,
+                year: item.year,
+                poster_url: item.posterUrl,
+                type: item.type,
+                genres: item.genres,
+                director: null, // director not available in onboarding list
+                tier: item.tier,
+                rank_position: item.rank,
+                bracket: item.bracket,
+                notes: null,
+                updated_at: new Date().toISOString(),
+            }));
 
-        if (error) {
-            console.error("Failed to save ranking to Supabase:", error);
-            alert(`Failed to save movie. Please ensure you have run the supabase_spool_ranking.sql migration in your Supabase dashboard.\n\nError: ${error.message}`);
+            const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
 
-            // Revert immediately if requested (optional)
-            // But showing the alert is the critical fix to break the confusing loop.
+            if (error) {
+                console.error("Failed to save ranking to Supabase:", error);
+                alert(`Failed to save movie. Please ensure you have run the supabase_spool_ranking.sql migration in your Supabase dashboard.\n\nError: ${error.message}`);
+            }
         }
 
         await logRankingActivityEvent(

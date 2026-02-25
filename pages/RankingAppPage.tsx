@@ -312,6 +312,8 @@ const RankingAppPage = () => {
   const addItem = async (newItem: RankedItem) => {
     if (!user) return;
 
+    let updatedTierList: RankedItem[] = [];
+
     setItems((prev) => {
       const tierItems = prev
         .filter((i) => i.tier === newItem.tier && i.id !== newItem.id)
@@ -321,25 +323,28 @@ const RankingAppPage = () => {
       const newTierList = [...tierItems];
       newTierList.splice(newItem.rank, 0, newItem);
 
-      const updatedTierList = newTierList.map((item, index) => ({ ...item, rank: index }));
+      updatedTierList = newTierList.map((item, index) => ({ ...item, rank: index }));
       return [...otherItems, ...updatedTierList];
     });
 
-    await supabase.from('user_rankings').upsert({
-      user_id: user.id,
-      tmdb_id: newItem.id,
-      title: newItem.title,
-      year: newItem.year,
-      poster_url: newItem.posterUrl,
-      type: newItem.type,
-      genres: newItem.genres,
-      director: newItem.director ?? null,
-      tier: newItem.tier,
-      rank_position: newItem.rank,
-      bracket: newItem.bracket,
-      notes: newItem.notes ?? null,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,tmdb_id' });
+    if (updatedTierList.length > 0) {
+      const rowsToUpdate = updatedTierList.map(item => ({
+        user_id: user.id,
+        tmdb_id: item.id,
+        title: item.title,
+        year: item.year,
+        poster_url: item.posterUrl,
+        type: item.type,
+        genres: item.genres,
+        director: item.director ?? null,
+        tier: item.tier,
+        rank_position: item.rank,
+        bracket: item.bracket,
+        notes: item.notes ?? null,
+        updated_at: new Date().toISOString(),
+      }));
+      await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
+    }
 
     await logRankingActivityEvent(
       user.id,
