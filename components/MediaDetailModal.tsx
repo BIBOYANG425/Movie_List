@@ -286,11 +286,17 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 <h3 className="text-lg font-bold text-white mb-1">Not yet ranked</h3>
                                 <p className="text-sm text-zinc-400 mb-4">Add this movie to your lists to compare it to your favorites.</p>
                                 <div className="flex justify-center gap-3">
-                                    <button className="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-xl text-sm transition">
-                                        📌 Want-to-Watch
-                                    </button>
-                                    <button className="px-5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-bold rounded-xl text-sm transition border border-white/10">
+                                    <button
+                                        onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
+                                        className="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-xl text-sm transition"
+                                    >
                                         ✅ I've Watched This
+                                    </button>
+                                    <button
+                                        onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
+                                        className="px-5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-bold rounded-xl text-sm transition border border-white/10"
+                                    >
+                                        📌 Want-to-Watch
                                     </button>
                                 </div>
                             </div>
@@ -400,16 +406,16 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                     ) : (
                         <>
                             <button
-                                onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
+                                onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
                                 className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]"
                             >
-                                📌 Want-to-Watch
+                                ✅ Watched
                             </button>
                             <button
-                                onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
-                                className="px-6 bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]" title="Share with a Friend"
+                                onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
+                                className="px-6 bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]"
                             >
-                                ✅ Watched
+                                📌 Want-to-Watch
                             </button>
                         </>
                     )}
