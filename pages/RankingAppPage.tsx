@@ -174,12 +174,8 @@ const RankingAppPage = () => {
     fetchData();
   }, [user]);
 
-  // Redirect to movie onboarding if user hasn't reached the threshold
-  useEffect(() => {
-    if (!loading && items.length < MIN_MOVIES_FOR_SCORES) {
-      navigate('/onboarding/movies', { replace: true });
-    }
-  }, [loading, items.length, navigate]);
+  // Note: previously redirected to /onboarding/movies when items < MIN_MOVIES_FOR_SCORES,
+  // but this caused redirect loops. Users can access onboarding via the normal flow instead.
 
   const handleReset = async () => {
     if (!user) return;
