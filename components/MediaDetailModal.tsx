@@ -12,9 +12,10 @@ interface MediaDetailModalProps {
     onClose: () => void;
     onSaveForLater?: (movie: TMDBMovie) => void;
     onStartRanking?: (movie: TMDBMovie) => void;
+    onOpenJournal?: (tmdbId: string) => void;
 }
 
-export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem, tmdbId, onClose, onSaveForLater, onStartRanking }) => {
+export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem, tmdbId, onClose, onSaveForLater, onStartRanking, onOpenJournal }) => {
     const defaultMovie: TMDBMovie | null = initialItem ? {
         ...initialItem,
         tmdbId: parseInt(initialItem.id, 10),
@@ -397,7 +398,10 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                 <div className="absolute bottom-0 left-0 right-0 bg-bg border-t border-border p-4 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.5)] flex items-center gap-3">
                     {rankedItem ? (
                         <>
-                            <button className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]">
+                            <button
+                                onClick={() => { if (onOpenJournal) onOpenJournal(tmdbId); }}
+                                className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]"
+                            >
                                 <MessageCircle size={18} />
                                 Leave a Review
                             </button>

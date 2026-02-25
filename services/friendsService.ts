@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { logReviewActivityEvent, logListCreatedEvent, logMilestoneEvent } from './feedService';
+import { upsertJournalEntry } from './journalService';
 import {
   ActivityComment,
   AppNotification,
@@ -1096,6 +1097,7 @@ interface ReviewLikeRow {
   user_id: string;
 }
 
+/** @deprecated Use upsertJournalEntry from journalService instead */
 export async function createOrUpdateReview(
   userId: string,
   tmdbId: string,
@@ -1104,69 +1106,34 @@ export async function createOrUpdateReview(
   containsSpoilers: boolean = false,
   posterUrl?: string,
 ): Promise<MovieReview | null> {
-  // Get user's tier for this movie
-  const { data: rankingRow } = await supabase
-    .from('user_rankings')
-    .select('tier')
-    .eq('user_id', userId)
-    .eq('tmdb_id', tmdbId)
-    .maybeSingle();
+  // Delegate to journal service
+  const entry = await upsertJournalEntry(userId, tmdbId, {
+    title,
+    posterUrl,
+    reviewText: body,
+    containsSpoilers,
+  });
 
-  const ratingTier = rankingRow?.tier ?? null;
-
-  const { data, error } = await supabase
-    .from('movie_reviews')
-    .upsert({
-      user_id: userId,
-      tmdb_id: tmdbId,
-      title,
-      body,
-      rating_tier: ratingTier,
-      contains_spoilers: containsSpoilers,
-      poster_url: posterUrl ?? null,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,tmdb_id' })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Failed to create/update review:', error);
-    return null;
-  }
+  if (!entry) return null;
 
   const profileMap = await getProfilesByIds([userId]);
   const profile = profileMap.get(userId);
-  const row = data as ReviewRow;
-
-  // Log review activity event for the social feed
-  try {
-    await logReviewActivityEvent(userId, {
-      tmdbId,
-      title,
-      posterUrl,
-      tier: toTier(ratingTier) ?? undefined,
-      body,
-      containsSpoilers,
-    });
-  } catch (err) {
-    console.error('Failed to log review activity event:', err);
-  }
 
   return {
-    id: row.id,
-    userId: row.user_id,
+    id: entry.id,
+    userId: entry.userId,
     username: profile?.username ?? 'unknown',
     displayName: profile?.displayName,
     avatarUrl: profile?.avatarUrl,
-    mediaItemId: row.tmdb_id,
-    mediaTitle: row.title,
-    body: row.body,
-    ratingTier: toTier(row.rating_tier) ?? undefined,
-    containsSpoilers: row.contains_spoilers,
-    likeCount: row.like_count,
+    mediaItemId: entry.tmdbId,
+    mediaTitle: entry.title,
+    body: entry.reviewText ?? '',
+    ratingTier: entry.ratingTier,
+    containsSpoilers: entry.containsSpoilers,
+    likeCount: entry.likeCount,
     isLikedByViewer: false,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
   };
 }
 
@@ -1175,10 +1142,12 @@ export async function getReviewsForMovie(
   currentUserId: string,
   limit = 20,
 ): Promise<MovieReview[]> {
+  // Query from journal_entries instead of movie_reviews
   const { data, error } = await supabase
-    .from('movie_reviews')
+    .from('journal_entries')
     .select('*')
     .eq('tmdb_id', tmdbId)
+    .not('review_text', 'is', null)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -1187,20 +1156,20 @@ export async function getReviewsForMovie(
     return [];
   }
 
-  const rows = (data ?? []) as ReviewRow[];
+  const rows = (data ?? []) as { id: string; user_id: string; tmdb_id: string; title: string; review_text: string; rating_tier: string | null; contains_spoilers: boolean; like_count: number; created_at: string; updated_at: string }[];
   const userIds = [...new Set(rows.map(r => r.user_id))];
   const profileMap = await getProfilesByIds(userIds);
 
   // Get likes by current user
-  const reviewIds = rows.map(r => r.id);
+  const entryIds = rows.map(r => r.id);
   const likedSet = new Set<string>();
-  if (reviewIds.length > 0) {
+  if (entryIds.length > 0) {
     const { data: likes } = await supabase
-      .from('review_likes')
-      .select('review_id')
+      .from('journal_likes')
+      .select('entry_id')
       .eq('user_id', currentUserId)
-      .in('review_id', reviewIds);
-    (likes ?? []).forEach((l: ReviewLikeRow) => likedSet.add(l.review_id));
+      .in('entry_id', entryIds);
+    (likes ?? []).forEach((l: { entry_id: string }) => likedSet.add(l.entry_id));
   }
 
   // Sort: friends first
@@ -1216,7 +1185,7 @@ export async function getReviewsForMovie(
       avatarUrl: profile?.avatarUrl,
       mediaItemId: row.tmdb_id,
       mediaTitle: row.title,
-      body: row.body,
+      body: row.review_text,
       ratingTier: toTier(row.rating_tier) ?? undefined,
       containsSpoilers: row.contains_spoilers,
       likeCount: row.like_count,
@@ -1226,7 +1195,6 @@ export async function getReviewsForMovie(
     };
   });
 
-  // Sort friends first, then self, then others
   reviews.sort((a, b) => {
     const aFriend = followingSet.has(a.userId) ? 0 : a.userId === currentUserId ? 1 : 2;
     const bFriend = followingSet.has(b.userId) ? 0 : b.userId === currentUserId ? 1 : 2;
@@ -1241,10 +1209,12 @@ export async function getReviewsByUser(
   currentUserId: string,
   limit = 20,
 ): Promise<MovieReview[]> {
+  // Query from journal_entries instead of movie_reviews
   const { data, error } = await supabase
-    .from('movie_reviews')
+    .from('journal_entries')
     .select('*')
     .eq('user_id', targetUserId)
+    .not('review_text', 'is', null)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -1253,19 +1223,19 @@ export async function getReviewsByUser(
     return [];
   }
 
-  const rows = (data ?? []) as ReviewRow[];
+  const rows = (data ?? []) as { id: string; user_id: string; tmdb_id: string; title: string; review_text: string; rating_tier: string | null; contains_spoilers: boolean; like_count: number; created_at: string; updated_at: string }[];
   const profileMap = await getProfilesByIds([targetUserId]);
   const profile = profileMap.get(targetUserId);
 
-  const reviewIds = rows.map(r => r.id);
+  const entryIds = rows.map(r => r.id);
   const likedSet = new Set<string>();
-  if (reviewIds.length > 0) {
+  if (entryIds.length > 0) {
     const { data: likes } = await supabase
-      .from('review_likes')
-      .select('review_id')
+      .from('journal_likes')
+      .select('entry_id')
       .eq('user_id', currentUserId)
-      .in('review_id', reviewIds);
-    (likes ?? []).forEach((l: ReviewLikeRow) => likedSet.add(l.review_id));
+      .in('entry_id', entryIds);
+    (likes ?? []).forEach((l: { entry_id: string }) => likedSet.add(l.entry_id));
   }
 
   return rows.map((row) => ({
@@ -1276,7 +1246,7 @@ export async function getReviewsByUser(
     avatarUrl: profile?.avatarUrl,
     mediaItemId: row.tmdb_id,
     mediaTitle: row.title,
-    body: row.body,
+    body: row.review_text,
     ratingTier: toTier(row.rating_tier) ?? undefined,
     containsSpoilers: row.contains_spoilers,
     likeCount: row.like_count,

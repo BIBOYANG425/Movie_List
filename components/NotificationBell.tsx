@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, Check, UserPlus, Heart, Tv, Vote, Award, List, MessageCircle } from 'lucide-react';
+import { Bell, Check, UserPlus, Heart, Tv, Vote, Award, List, MessageCircle, Film } from 'lucide-react';
 import { AppNotification, NotificationType } from '../types';
 import { getNotifications, markNotificationsRead, getUnreadCount } from '../services/friendsService';
 
@@ -14,6 +14,7 @@ const NOTIF_ICONS: Record<NotificationType, { icon: React.ReactNode; color: stri
     badge_unlock: { icon: <Award size={14} />, color: 'text-amber-400' },
     group_invite: { icon: <UserPlus size={14} />, color: 'text-indigo-400' },
     ranking_comment: { icon: <MessageCircle size={14} />, color: 'text-emerald-400' },
+    journal_tag: { icon: <Film size={14} />, color: 'text-purple-400' },
 };
 
 function timeAgo(dateStr: string): string {

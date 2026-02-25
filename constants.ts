@@ -1,4 +1,4 @@
-import { Tier, Bracket, RankedItem } from './types';
+import { Tier, Bracket, RankedItem, MoodTagDef, VibeTagDef, MoodCategory } from './types';
 
 export const TIERS = [Tier.S, Tier.A, Tier.B, Tier.C, Tier.D];
 
@@ -143,3 +143,93 @@ export const MOCK_SEARCH_RESULTS: RankedItem[] = [
     rank: 0
   }
 ];
+
+// ── Journal Constants ───────────────────────────────────────────────────────
+
+export const MOOD_CATEGORIES: { id: MoodCategory; label: string }[] = [
+  { id: 'positive', label: 'Positive' },
+  { id: 'reflective', label: 'Reflective' },
+  { id: 'intense', label: 'Intense' },
+  { id: 'light', label: 'Light' },
+];
+
+export const MOOD_TAGS: MoodTagDef[] = [
+  // Positive
+  { id: 'inspired', label: 'Inspired', emoji: '\u2728', category: 'positive' },
+  { id: 'joyful', label: 'Joyful', emoji: '\uD83D\uDE04', category: 'positive' },
+  { id: 'thrilled', label: 'Thrilled', emoji: '\uD83E\uDD29', category: 'positive' },
+  { id: 'moved', label: 'Moved', emoji: '\uD83E\uDEF6', category: 'positive' },
+  { id: 'amazed', label: 'Amazed', emoji: '\uD83E\uDD2F', category: 'positive' },
+  { id: 'comforted', label: 'Comforted', emoji: '\uD83E\uDEF2', category: 'positive' },
+  { id: 'hopeful', label: 'Hopeful', emoji: '\uD83C\uDF1F', category: 'positive' },
+  // Reflective
+  { id: 'thoughtful', label: 'Thoughtful', emoji: '\uD83E\uDD14', category: 'reflective' },
+  { id: 'nostalgic', label: 'Nostalgic', emoji: '\uD83D\uDCF7', category: 'reflective' },
+  { id: 'melancholy', label: 'Melancholy', emoji: '\uD83C\uDF27\uFE0F', category: 'reflective' },
+  { id: 'haunted', label: 'Haunted', emoji: '\uD83D\uDC7B', category: 'reflective' },
+  { id: 'contemplative', label: 'Contemplative', emoji: '\uD83E\uDDD8', category: 'reflective' },
+  // Intense
+  { id: 'tense', label: 'Tense', emoji: '\uD83D\uDE2C', category: 'intense' },
+  { id: 'disturbed', label: 'Disturbed', emoji: '\uD83D\uDE16', category: 'intense' },
+  { id: 'heartbroken', label: 'Heartbroken', emoji: '\uD83D\uDC94', category: 'intense' },
+  { id: 'angry', label: 'Angry', emoji: '\uD83D\uDE21', category: 'intense' },
+  { id: 'overwhelmed', label: 'Overwhelmed', emoji: '\uD83E\uDD75', category: 'intense' },
+  { id: 'exhausted', label: 'Exhausted', emoji: '\uD83D\uDE35', category: 'intense' },
+  // Light
+  { id: 'amused', label: 'Amused', emoji: '\uD83D\uDE02', category: 'light' },
+  { id: 'charmed', label: 'Charmed', emoji: '\uD83D\uDE0A', category: 'light' },
+  { id: 'entertained', label: 'Entertained', emoji: '\uD83C\uDF7F', category: 'light' },
+  { id: 'relaxed', label: 'Relaxed', emoji: '\uD83D\uDE0C', category: 'light' },
+  { id: 'satisfied', label: 'Satisfied', emoji: '\uD83D\uDE0C', category: 'light' },
+];
+
+export const VIBE_TAGS: VibeTagDef[] = [
+  { id: 'solo_watch', label: 'Solo watch', emoji: '\uD83E\uDDD1' },
+  { id: 'date_night', label: 'Date night', emoji: '\u2764\uFE0F' },
+  { id: 'movie_night', label: 'Movie night', emoji: '\uD83C\uDF7F' },
+  { id: 'family_time', label: 'Family time', emoji: '\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67\u200D\uD83D\uDC66' },
+  { id: 'theater', label: 'Theater experience', emoji: '\uD83C\uDFA6' },
+  { id: 'cozy_night', label: 'Cozy night in', emoji: '\uD83D\uDECB\uFE0F' },
+  { id: 'binge', label: 'Binge session', emoji: '\uD83D\uDCFA' },
+  { id: 'rewatch', label: 'Rewatch', emoji: '\uD83D\uDD01' },
+  { id: 'blind_watch', label: 'Blind watch', emoji: '\uD83D\uDE48' },
+  { id: 'late_night', label: 'Late night', emoji: '\uD83C\uDF19' },
+  { id: 'travel', label: 'Travel watch', emoji: '\u2708\uFE0F' },
+];
+
+export const PLATFORM_OPTIONS: { id: string; label: string }[] = [
+  { id: 'theater', label: 'Theater' },
+  { id: 'netflix', label: 'Netflix' },
+  { id: 'apple_tv', label: 'Apple TV+' },
+  { id: 'max', label: 'Max' },
+  { id: 'hulu', label: 'Hulu' },
+  { id: 'prime', label: 'Prime Video' },
+  { id: 'disney', label: 'Disney+' },
+  { id: 'peacock', label: 'Peacock' },
+  { id: 'paramount', label: 'Paramount+' },
+  { id: 'mubi', label: 'Mubi' },
+  { id: 'criterion', label: 'Criterion Channel' },
+  { id: 'physical', label: 'Physical media' },
+  { id: 'other', label: 'Other' },
+];
+
+export const JOURNAL_REVIEW_PROMPTS: Record<Tier, string> = {
+  [Tier.S]: 'What makes this an all-time great?',
+  [Tier.A]: 'What did you love about this one?',
+  [Tier.B]: 'What stood out to you?',
+  [Tier.C]: 'What could have been better?',
+  [Tier.D]: 'What went wrong for you?',
+};
+
+export const JOURNAL_TAKEAWAY_PROMPTS: Record<Tier, string> = {
+  [Tier.S]: 'How did this change your perspective?',
+  [Tier.A]: 'What will you remember most?',
+  [Tier.B]: 'Any thoughts you want to hold onto?',
+  [Tier.C]: 'Anything redeeming you want to note?',
+  [Tier.D]: 'Any lessons or silver linings?',
+};
+
+export const JOURNAL_PHOTO_BUCKET = 'journal-photos';
+export const JOURNAL_PHOTO_MAX_BYTES = 5 * 1024 * 1024; // 5MB
+export const JOURNAL_MAX_PHOTOS = 6;
+export const JOURNAL_MAX_MOMENTS = 5;
