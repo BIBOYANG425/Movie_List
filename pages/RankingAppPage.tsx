@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, BarChart2, Bookmark, Compass, LayoutGrid, LogOut, Plus, RotateCcw, UserCircle2, Users, UsersRound } from 'lucide-react';
+import { ArrowLeft, BarChart2, Bookmark, Compass, LayoutGrid, LogOut, Plus, Rss, RotateCcw, UserCircle2, UsersRound } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType, Bracket, ComparisonLogEntry } from '../types';
 import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE, BRACKETS, BRACKET_LABELS } from '../constants';
 import { computeTierScore } from '../services/rankingAlgorithm';
@@ -8,7 +8,7 @@ import { TierRow } from '../components/TierRow';
 import { AddMediaModal } from '../components/AddMediaModal';
 import { StatsView } from '../components/StatsView';
 import { Watchlist } from '../components/Watchlist';
-import { FriendsView } from '../components/FriendsView';
+import { SocialFeedView } from '../components/SocialFeedView';
 import { DiscoverView } from '../components/DiscoverView';
 import { WatchPartyView } from '../components/WatchPartyView';
 import { GroupRankingView } from '../components/GroupRankingView';
@@ -132,7 +132,7 @@ const RankingAppPage = () => {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'friends' | 'discover' | 'groups'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'feed' | 'discover' | 'groups'>('ranking');
   const [groupSubTab, setGroupSubTab] = useState<'parties' | 'rankings' | 'polls' | 'lists' | 'badges'>('parties');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
@@ -601,12 +601,12 @@ const RankingAppPage = () => {
               <BarChart2 size={20} />
             </button>
             <button
-              onClick={() => setActiveTab('friends')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'friends' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
+              onClick={() => setActiveTab('feed')}
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'feed' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
-              title="Friends"
+              title="Feed"
             >
-              <Users size={20} />
+              <Rss size={20} />
             </button>
             <button
               onClick={() => setActiveTab('discover')}
@@ -702,8 +702,8 @@ const RankingAppPage = () => {
 
         {activeTab === 'stats' && <StatsView items={items} />}
 
-        {activeTab === 'friends' && user && (
-          <FriendsView userId={user.id} selfUsername={profile?.username} />
+        {activeTab === 'feed' && user && (
+          <SocialFeedView userId={user.id} />
         )}
 
         {activeTab === 'discover' && user && (

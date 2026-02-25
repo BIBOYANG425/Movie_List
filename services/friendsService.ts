@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { logReviewActivityEvent, logListCreatedEvent, logMilestoneEvent } from './feedService';
 import {
   ActivityComment,
   AppNotification,
@@ -1136,6 +1137,20 @@ export async function createOrUpdateReview(
   const profileMap = await getProfilesByIds([userId]);
   const profile = profileMap.get(userId);
   const row = data as ReviewRow;
+
+  // Log review activity event for the social feed
+  try {
+    await logReviewActivityEvent(userId, {
+      tmdbId,
+      title,
+      posterUrl,
+      tier: toTier(ratingTier) ?? undefined,
+      body,
+      containsSpoilers,
+    });
+  } catch (err) {
+    console.error('Failed to log review activity event:', err);
+  }
 
   return {
     id: row.id,
@@ -2463,6 +2478,19 @@ export async function createMovieList(
     .select()
     .single();
   if (error || !row) { console.error('Create list failed:', error); return null; }
+
+  // Log list creation activity event for the social feed
+  try {
+    await logListCreatedEvent(userId, {
+      listId: row.id,
+      title: row.title,
+      posterUrls: [],
+      itemCount: 0,
+    });
+  } catch (err) {
+    console.error('Failed to log list created event:', err);
+  }
+
   return {
     id: row.id,
     createdBy: row.created_by,
@@ -2666,6 +2694,39 @@ export async function checkAndGrantBadges(userId: string): Promise<string[]> {
   if (newBadges.length > 0) {
     const rows = newBadges.map((key) => ({ user_id: userId, badge_key: key }));
     await supabase.from('user_achievements').insert(rows);
+
+    // Log milestone activity events for the social feed
+    try {
+      const badgeDescriptions: Record<string, { icon: string; description: string }> = {
+        first_rank: { icon: '🎬', description: 'Ranked their first movie' },
+        rank_10: { icon: '🎯', description: 'Ranked 10 movies' },
+        rank_25: { icon: '🏅', description: 'Ranked 25 movies' },
+        rank_50: { icon: '🏆', description: 'Ranked 50 movies' },
+        rank_100: { icon: '👑', description: 'Ranked 100 movies' },
+        first_review: { icon: '✍️', description: 'Wrote their first review' },
+        review_10: { icon: '📝', description: 'Wrote 10 reviews' },
+        first_follow: { icon: '🤝', description: 'Followed their first friend' },
+        followers_10: { icon: '⭐', description: 'Reached 10 followers' },
+        followers_50: { icon: '🌟', description: 'Reached 50 followers' },
+        first_party: { icon: '🎉', description: 'Hosted their first watch party' },
+        first_poll: { icon: '🗳️', description: 'Created their first poll' },
+        first_list: { icon: '📋', description: 'Created their first list' },
+        genre_5: { icon: '🎭', description: 'Explored 5 genres' },
+        genre_10: { icon: '🌈', description: 'Explored 10 genres' },
+        s_tier_10: { icon: '💎', description: '10 movies in S tier' },
+        d_tier_5: { icon: '🗑️', description: '5 movies in D tier' },
+      };
+      for (const key of newBadges) {
+        const info = badgeDescriptions[key] ?? { icon: '🏅', description: `Unlocked: ${key}` };
+        await logMilestoneEvent(userId, {
+          badgeKey: key,
+          badgeIcon: info.icon,
+          description: info.description,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to log milestone events:', err);
+    }
   }
 
   return newBadges;

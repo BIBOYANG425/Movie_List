@@ -507,3 +507,60 @@ export interface FriendActivityItem {
   tier?: Tier;
   timestamp: string;
 }
+
+// ── Phase 5: Social Feed ────────────────────────────────────────────────────
+
+export type FeedCardType = 'ranking' | 'review' | 'milestone' | 'list';
+
+export type ReactionType = 'fire' | 'agree' | 'disagree' | 'want_to_watch' | 'love';
+
+export interface FeedCard {
+  id: string;
+  userId: string;
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+  cardType: FeedCardType;
+  createdAt: string;
+  // Media fields (ranking & review cards)
+  mediaTmdbId?: string;
+  mediaTitle?: string;
+  mediaPosterUrl?: string;
+  mediaTier?: Tier;
+  bracket?: string;
+  // Review fields
+  reviewBody?: string;
+  containsSpoilers?: boolean;
+  // Milestone fields
+  badgeKey?: string;
+  badgeIcon?: string;
+  milestoneDescription?: string;
+  // List fields
+  listId?: string;
+  listTitle?: string;
+  listPosterUrls?: string[];
+  listItemCount?: number;
+  // Engagement
+  reactionCounts: Record<ReactionType, number>;
+  commentCount: number;
+  myReactions: ReactionType[];
+}
+
+export interface FeedComment extends ActivityComment {
+  parentCommentId?: string;
+  replies?: FeedComment[];
+}
+
+export interface FeedFilters {
+  tab: 'friends' | 'explore';
+  bracket?: Bracket | 'all';
+  tier?: Tier | 'all';
+  cardType?: FeedCardType | 'all';
+  timeRange?: '24h' | '7d' | '30d' | 'all';
+}
+
+export interface FeedMute {
+  id: string;
+  muteType: 'user' | 'movie';
+  targetId: string;
+}
