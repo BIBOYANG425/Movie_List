@@ -499,32 +499,26 @@ const RankingAppPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans pb-20">
-      <nav className="sticky top-0 z-40 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-zinc-500 hover:text-white transition-colors"
-            >
-              <ArrowLeft size={14} />
-              Back to Home
-            </Link>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">
-                M
-              </div>
-              <span className="font-bold text-xl tracking-tight">Marquee</span>
+    <div className="min-h-screen bg-bg text-text font-sans pb-20">
+      <nav className="sticky top-0 z-40 h-14 px-8 flex items-center justify-between bg-bg/80 backdrop-blur-[24px] saturate-[1.4] border-b border-border transition-all duration-350">
+        <div className="flex items-center gap-7">
+          <Link
+            to="/"
+            className="flex items-center gap-2"
+          >
+            <div className="w-[22px] h-[22px] rounded-full bg-[conic-gradient(from_180deg,#A855F7,#3B82F6,#10B981,#F59E0B,#EF4444,#A855F7)] flex items-center justify-center shadow-[0_0_13.2px_rgba(168,85,247,0.15)]">
+              <div className="w-[8.8px] h-[8.8px] rounded-full bg-bg" />
             </div>
-          </div>
+            <span className="font-serif text-[19px] text-cream tracking-[-0.03em]">spool</span>
+          </Link>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden md:flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
+          <div className="flex items-center gap-6">
+            <div className="hidden md:flex bg-card rounded-lg p-1 border border-border">
               {(['all', 'movie'] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => setFilterType(type)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${filterType === type ? 'bg-zinc-700 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${filterType === type ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'
                     }`}
                 >
                   {type === 'all' ? 'All' : 'Movies'}
@@ -534,7 +528,7 @@ const RankingAppPage = () => {
 
             <button
               onClick={() => setIsModalOpen(true)}
-              className="bg-white text-black hover:bg-zinc-200 px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors"
+              className="bg-cream text-bg px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity"
             >
               <Plus size={16} />
               <span className="hidden sm:inline">Add Item</span>
@@ -543,15 +537,15 @@ const RankingAppPage = () => {
             <button
               onClick={signOut}
               title="Sign out"
-              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-colors"
+              className="text-text hover:text-cream text-[13px] font-medium transition-colors"
             >
-              <LogOut size={18} />
+              Log out
             </button>
             {user && (
               <Link
                 to={`/profile/${user.id}`}
                 title="My profile"
-                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-colors"
+                className="text-text hover:text-cream transition-colors"
               >
                 <UserCircle2 size={18} />
               </Link>
@@ -563,8 +557,8 @@ const RankingAppPage = () => {
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold mb-2">My Canon</h1>
-            <p className="text-zinc-400 text-sm max-w-md">
+            <h1 className="text-4xl font-serif text-cream mb-2 tracking-[-0.02em]">My Canon</h1>
+            <p className="text-dim text-sm max-w-md">
               Add a movie and rank it head-to-head against your list. Order implies superiority.
             </p>
           </div>
@@ -572,7 +566,7 @@ const RankingAppPage = () => {
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab('ranking')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'ranking' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'ranking' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
               title="Rankings"
             >
@@ -580,20 +574,20 @@ const RankingAppPage = () => {
             </button>
             <button
               onClick={() => setActiveTab('watchlist')}
-              className={`p-2 rounded-lg transition-colors relative ${activeTab === 'watchlist' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+              className={`p-2 rounded-lg transition-colors relative ${activeTab === 'watchlist' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
               title="Watch Later"
             >
               <Bookmark size={20} />
               {watchlist.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full bg-emerald-500 text-black flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full bg-emerald-500 text-bg flex items-center justify-center">
                   {watchlist.length > 9 ? '9+' : watchlist.length}
                 </span>
               )}
             </button>
             <button
               onClick={() => setActiveTab('stats')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'stats' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'stats' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
               title="Stats"
             >
@@ -601,7 +595,7 @@ const RankingAppPage = () => {
             </button>
             <button
               onClick={() => setActiveTab('friends')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'friends' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'friends' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
               title="Friends"
             >
@@ -609,7 +603,7 @@ const RankingAppPage = () => {
             </button>
             <button
               onClick={() => setActiveTab('discover')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'discover' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'discover' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
               title="Discover"
             >
@@ -617,7 +611,7 @@ const RankingAppPage = () => {
             </button>
             <button
               onClick={() => setActiveTab('groups')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'groups' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:bg-zinc-900'
+              className={`p-2 rounded-lg transition-colors ${activeTab === 'groups' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
               title="Groups"
             >
@@ -627,7 +621,7 @@ const RankingAppPage = () => {
             <button
               onClick={handleReset}
               title="Reset rankings"
-              className="p-2 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-900 transition-colors"
+              className="p-2 rounded-lg text-muted hover:text-dim hover:bg-card transition-colors"
             >
               <RotateCcw size={18} />
             </button>
@@ -636,10 +630,10 @@ const RankingAppPage = () => {
 
         {activeTab === 'ranking' && (
           <div className="space-y-4">
-            <div className="flex bg-zinc-900/50 rounded-lg p-1 overflow-x-auto border border-zinc-800 scrollbar-hide">
+            <div className="flex bg-card rounded-lg p-1 overflow-x-auto border border-border scrollbar-hide">
               <button
                 onClick={() => { setActiveBracket('all'); setActiveGenre(null); }}
-                className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === 'all' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === 'all' ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
               >
                 All Brackets
               </button>
@@ -647,7 +641,7 @@ const RankingAppPage = () => {
                 <button
                   key={bracket}
                   onClick={() => { setActiveBracket(bracket); setActiveGenre(null); }}
-                  className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === bracket ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === bracket ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
                 >
                   {BRACKET_LABELS[bracket]}
                 </button>
@@ -715,7 +709,7 @@ const RankingAppPage = () => {
         {activeTab === 'groups' && user && (
           <div className="space-y-4">
             {/* Group sub-tabs */}
-            <div className="flex gap-2 bg-zinc-900/60 rounded-xl p-1 border border-zinc-800/50 overflow-x-auto">
+            <div className="flex gap-2 bg-card rounded-xl p-1 border border-border overflow-x-auto">
               {[
                 { key: 'parties' as const, label: 'Parties' },
                 { key: 'rankings' as const, label: 'Rankings' },
@@ -727,8 +721,8 @@ const RankingAppPage = () => {
                   key={key}
                   onClick={() => setGroupSubTab(key)}
                   className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${groupSubTab === key
-                    ? 'bg-zinc-800 text-white shadow-lg'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                    ? 'bg-elevated text-cream shadow-lg'
+                    : 'text-dim hover:text-muted'
                     }`}
                 >
                   {label}

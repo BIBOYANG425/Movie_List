@@ -129,7 +129,8 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
             {/* Modal Container */}
             <div
-                className="relative w-full max-w-xl bg-[#0a0a0c] sm:rounded-3xl shadow-2xl overflow-hidden h-[95vh] sm:h-[85vh] flex flex-col origin-bottom animate-slide-up-modal pb-24"
+                className="relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl sm:max-w-md bg-surface sm:shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:slide-in-from-right duration-300"
+                onClick={(e) => e.stopPropagation()}
             >
                 {/* Close Button */}
                 <button
@@ -145,13 +146,13 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                     {/* 🎬 Hero Section */}
                     <div className="relative w-full pb-6 border-b border-white/10">
                         {/* Backdrop */}
-                        <div className="absolute inset-0 h-80 bg-zinc-900 overflow-hidden">
+                        <div className="absolute inset-0 h-80 bg-surface overflow-hidden">
                             {movie.backdropUrl ? (
                                 <img src={movie.backdropUrl} className="w-full h-full object-cover opacity-60 mix-blend-screen animate-fade-in" />
                             ) : (
                                 <div className="w-full h-full animate-pulse bg-zinc-800" />
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0c] via-[#0a0a0c]/80 to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/80 to-transparent" />
                         </div>
 
                         <div className="relative pt-32 px-6 flex flex-col items-center">
@@ -159,9 +160,9 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 <img src={movie.posterUrl!} className="w-full h-full object-cover" />
                             </div>
 
-                            <h1 className="mt-5 text-3xl font-black text-center text-white text-balance leading-tight tracking-tight">
+                            <h2 className="mt-5 text-3xl font-serif text-white text-center leading-tight tracking-tight">
                                 {movie.title}
-                            </h1>
+                            </h2>
 
                             <div className="mt-2 flex items-center justify-center gap-2 text-sm text-zinc-400">
                                 <span className="font-semibold text-zinc-300">{movie.year}</span>
@@ -392,7 +393,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                 </div>
 
                 {/* 🎯 Action Footer (Sticky Bottom) */}
-                <div className="absolute bottom-0 left-0 right-0 bg-[#0a0a0c] border-t border-white/10 p-4 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.5)] flex items-center gap-3">
+                <div className="absolute bottom-0 left-0 right-0 bg-bg border-t border-border p-4 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.5)] flex items-center gap-3">
                     {rankedItem ? (
                         <>
                             <button className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]">

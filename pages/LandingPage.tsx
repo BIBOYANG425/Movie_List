@@ -41,7 +41,7 @@ const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="landing-root min-h-screen pb-20 text-[color:var(--text-primary)]">
+    <div className="landing-root min-h-screen pb-20">
       <div className="landing-light-leak landing-light-leak-left" aria-hidden="true" />
       <div className="landing-light-leak landing-light-leak-right" aria-hidden="true" />
 

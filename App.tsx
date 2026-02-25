@@ -8,6 +8,7 @@ import ProfilePage from './pages/ProfilePage';
 import ProfileOnboardingPage from './pages/ProfileOnboardingPage';
 import MovieOnboardingPage from './pages/MovieOnboardingPage';
 import { useAuth } from './contexts/AuthContext';
+import { Grain } from './components/Grain';
 
 const App = () => {
   const { user, profile, loading } = useAuth();
@@ -22,28 +23,31 @@ const App = () => {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/auth" element={user ? <Navigate to={needsOnboarding ? '/onboarding/profile' : '/onboarding/movies'} replace /> : <AuthPage />} />
-      <Route path="/auth/callback" element={<AuthCallbackPage />} />
-      <Route
-        path="/onboarding/profile"
-        element={user ? (needsOnboarding ? <ProfileOnboardingPage /> : <Navigate to="/onboarding/movies" replace />) : <Navigate to="/auth" replace />}
-      />
-      <Route
-        path="/onboarding/movies"
-        element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <MovieOnboardingPage />) : <Navigate to="/auth" replace />}
-      />
-      <Route
-        path="/app"
-        element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <RankingAppPage />) : <Navigate to="/auth" replace />}
-      />
-      <Route
-        path="/profile/:profileId"
-        element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <ProfilePage />) : <Navigate to="/auth" replace />}
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <Grain />
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/auth" element={user ? <Navigate to={needsOnboarding ? '/onboarding/profile' : '/onboarding/movies'} replace /> : <AuthPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route
+          path="/onboarding/profile"
+          element={user ? (needsOnboarding ? <ProfileOnboardingPage /> : <Navigate to="/onboarding/movies" replace />) : <Navigate to="/auth" replace />}
+        />
+        <Route
+          path="/onboarding/movies"
+          element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <MovieOnboardingPage />) : <Navigate to="/auth" replace />}
+        />
+        <Route
+          path="/app"
+          element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <RankingAppPage />) : <Navigate to="/auth" replace />}
+        />
+        <Route
+          path="/profile/:profileId"
+          element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <ProfilePage />) : <Navigate to="/auth" replace />}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 };
 

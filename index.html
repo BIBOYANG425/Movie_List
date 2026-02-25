@@ -7,22 +7,31 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@500;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
-              sans: ['Inter', 'sans-serif'],
+              sans: ['"DM Sans"', 'sans-serif'],
+              serif: ['"Instrument Serif"', 'serif'],
             },
             colors: {
+              bg: '#08080B',
+              surface: '#111116',
+              card: '#16161D',
+              elevated: '#1C1C25',
+              cream: '#F0EBE3',
+              text: '#C8C3BC',
+              dim: '#706D67',
+              muted: '#4A4843',
               tier: {
-                s: '#FCD34D', // Amber 300
-                a: '#4ADE80', // Green 400
-                b: '#60A5FA', // Blue 400
-                c: '#A1A1AA', // Zinc 400
-                d: '#F87171', // Red 400
+                s: '#A855F7', // Purple
+                a: '#3B82F6', // Blue
+                b: '#10B981', // Green
+                c: '#F59E0B', // Orange
+                d: '#EF4444', // Red
               }
             }
           },
@@ -31,8 +40,8 @@
     </script>
     <style>
       body {
-        background-color: #09090b; /* zinc-950 */
-        color: #f4f4f5; /* zinc-100 */
+        background-color: #08080B;
+        color: #C8C3BC;
       }
       /* Custom scrollbar for horizontal lists */
       .hide-scrollbar::-webkit-scrollbar {

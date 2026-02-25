@@ -3,11 +3,11 @@ import { Tier, Bracket, RankedItem } from './types';
 export const TIERS = [Tier.S, Tier.A, Tier.B, Tier.C, Tier.D];
 
 export const TIER_COLORS = {
-  [Tier.S]: 'text-yellow-400 border-yellow-400/20 bg-yellow-400/5',
-  [Tier.A]: 'text-green-400 border-green-400/20 bg-green-400/5',
-  [Tier.B]: 'text-blue-400 border-blue-400/20 bg-blue-400/5',
-  [Tier.C]: 'text-zinc-400 border-zinc-400/20 bg-zinc-400/5',
-  [Tier.D]: 'text-red-400 border-red-400/20 bg-red-400/5',
+  [Tier.S]: 'text-tier-s border-tier-s/20 bg-tier-s/5',
+  [Tier.A]: 'text-tier-a border-tier-a/20 bg-tier-a/5',
+  [Tier.B]: 'text-tier-b border-tier-b/20 bg-tier-b/5',
+  [Tier.C]: 'text-tier-c border-tier-c/20 bg-tier-c/5',
+  [Tier.D]: 'text-tier-d border-tier-d/20 bg-tier-d/5',
 };
 
 export const TIER_LABELS = {

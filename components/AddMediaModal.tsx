@@ -424,17 +424,17 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     <div className="space-y-4 animate-fade-in">
       {/* Search input */}
       <div className="relative">
-        <Search className="absolute left-3 top-3.5 text-zinc-500" size={18} />
+        <Search className="absolute left-3 top-3.5 text-muted" size={18} />
         <input
           type="text"
           autoFocus
           placeholder="Search any movie..."
-          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
+          className="w-full bg-card border border-border rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
         {isSearching && (
-          <Loader2 className="absolute right-3 top-3.5 text-zinc-500 animate-spin" size={18} />
+          <Loader2 className="absolute right-3 top-3.5 text-muted animate-spin" size={18} />
         )}
       </div>
 
@@ -511,33 +511,30 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           <div className="space-y-3 animate-fade-in">
             <button
               onClick={() => setSelectedDirector(null)}
-              className="flex items-center gap-1 text-xs text-zinc-400 hover:text-white transition-colors"
+              className="flex items-center gap-1 text-xs text-dim hover:text-white transition-colors"
             >
               <ArrowLeft size={14} />
               Back to results
             </button>
 
-            <div className="flex items-start gap-3 p-3 bg-zinc-900/80 rounded-xl border border-zinc-800">
+            <div className="flex items-start gap-3 p-3 bg-card rounded-xl border border-border">
               {selectedDirector.photoUrl ? (
                 <img src={selectedDirector.photoUrl} alt={selectedDirector.name} className="w-16 h-16 object-cover rounded-xl shadow-lg flex-shrink-0" />
               ) : (
-                <div className="w-16 h-16 bg-zinc-800 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl font-bold text-zinc-600">
+                <div className="w-16 h-16 bg-elevated rounded-xl flex items-center justify-center flex-shrink-0 text-2xl font-bold text-dim">
                   {selectedDirector.name.charAt(0)}
                 </div>
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-white">{selectedDirector.name}</h3>
-                  <span className={`text - [10px] px - 1.5 py - 0.5 rounded - full font - medium ${selectedDirector.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'} `}>
+                  <h3 className="text-base font-serif text-white">{selectedDirector.name}</h3>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${selectedDirector.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
                     {selectedDirector.role}
                   </span>
                 </div>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-dim">
                   {selectedDirector.placeOfBirth && <span>{selectedDirector.placeOfBirth}</span>}
                   {selectedDirector.birthday && <span> · Born {selectedDirector.birthday}</span>}
-                </p>
-                <p className="text-xs text-indigo-400 font-semibold mt-0.5">
-                  {selectedDirector.movies.length} {selectedDirector.movies.length === 1 ? 'film' : 'films'} {selectedDirector.role === 'Director' ? 'directed' : 'starred in'}
                 </p>
               </div>
             </div>
@@ -576,12 +573,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {!isSearching && !selectedDirector && filteredSearchResults.length > 0 && (
           <div className="space-y-1">
             {directorProfiles.length > 0 && (
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider pt-1">Movies</p>
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider pt-1">Movies</p>
             )}
             {filteredSearchResults.map((movie) => (
               <div
                 key={movie.id}
-                className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors group"
+                className="flex items-center gap-3 p-2 rounded-xl hover:bg-elevated transition-colors group"
               >
                 <div
                   className="cursor-pointer relative flex-shrink-0"
@@ -728,18 +725,18 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const renderTierStep = () => (
     <div className="space-y-5 animate-fade-in">
       {/* Selected movie preview */}
-      <div className="flex items-center gap-4 bg-zinc-800/50 p-4 rounded-xl border border-zinc-700/50">
+      <div className="flex items-center gap-4 bg-elevated p-4 rounded-xl border border-border">
         {selectedItem?.posterUrl ? (
           <img src={selectedItem.posterUrl} alt="" className="w-14 h-20 object-cover rounded-lg shadow-lg flex-shrink-0" />
         ) : (
-          <div className="w-14 h-20 bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Film size={20} className="text-zinc-600" />
+          <div className="w-14 h-20 bg-card rounded-lg flex items-center justify-center flex-shrink-0">
+            <Film size={20} className="text-muted" />
           </div>
         )}
         <div>
-          <h3 className="font-bold text-lg leading-tight">{selectedItem?.title}</h3>
-          <p className="text-zinc-500 text-sm mt-0.5">{selectedItem?.year}</p>
-          <p className="text-zinc-400 text-sm mt-1">How does this tier feel?</p>
+          <h3 className="font-serif text-lg leading-tight text-white">{selectedItem?.title}</h3>
+          <p className="text-dim text-sm mt-0.5">{selectedItem?.year}</p>
+          <p className="text-muted text-sm mt-1">How does this tier feel?</p>
         </div>
       </div>
 
@@ -769,7 +766,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const renderNotesStep = () => (
     <div className="flex flex-col gap-5 animate-fade-in">
       {/* Movie preview */}
-      <div className="flex items-center gap-4 bg-zinc-800/50 p-4 rounded-xl border border-zinc-700/50">
+      <div className="flex items-center gap-4 bg-elevated p-4 rounded-xl border border-border">
         {selectedItem?.posterUrl ? (
           <img
             src={selectedItem.posterUrl}
@@ -777,13 +774,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             className="w-12 h-[72px] object-cover rounded-lg shadow-md flex-shrink-0"
           />
         ) : (
-          <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Film size={18} className="text-zinc-600" />
+          <div className="w-12 h-[72px] bg-card rounded-lg flex items-center justify-center flex-shrink-0">
+            <Film size={18} className="text-muted" />
           </div>
         )}
         <div>
-          <p className="font-bold text-white leading-tight">{selectedItem?.title}</p>
-          <p className="text-zinc-500 text-xs mt-0.5">{selectedItem?.year}</p>
+          <p className="font-serif text-white leading-tight">{selectedItem?.title}</p>
+          <p className="text-dim text-xs mt-0.5">{selectedItem?.year}</p>
           <span className={`inline - block mt - 2 text - xs font - bold px - 2 py - 0.5 rounded - full border ${TIER_COLORS[selectedTier!]} `}>
             {selectedTier} — {TIER_LABELS[selectedTier!]}
           </span>
@@ -795,7 +792,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         <label className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
           <StickyNote size={15} className="text-amber-400" />
           Your thoughts
-          <span className="text-zinc-600 font-normal text-xs">(optional)</span>
+          <span className="text-dim font-normal text-xs">(optional)</span>
         </label>
         <div className="relative">
           <textarea
@@ -803,12 +800,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             rows={4}
             maxLength={MAX_NOTES}
             placeholder="What stood out? A scene, a feeling, why it deserves this tier..."
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/60 transition-colors resize-none text-sm leading-relaxed"
+            className="w-full bg-card border border-border rounded-xl py-3 px-4 text-white placeholder:text-muted focus:outline-none focus:border-amber-500/60 transition-colors resize-none text-sm leading-relaxed"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
           {/* Character count */}
-          <span className={`absolute bottom - 3 right - 3 text - xs tabular - nums transition - colors ${notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-zinc-600'
+          <span className={`absolute bottom - 3 right - 3 text - xs tabular - nums transition - colors ${notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-dim'
             } `}>
             {notes.length}/{MAX_NOTES}
           </span>
@@ -868,7 +865,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           {/* New item */}
           <button
             onClick={() => handleCompareChoice('new')}
-            className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-zinc-700 hover:border-indigo-500 hover:bg-indigo-500/5 transition-all group active:scale-[0.97]"
+            className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-border hover:border-indigo-500 hover:bg-indigo-500/5 transition-all group active:scale-[0.97]"
           >
             <img
               src={selectedItem?.posterUrl}
@@ -876,8 +873,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               className="w-full aspect-[2/3] object-cover rounded-xl shadow-lg"
             />
             <div className="text-center">
-              <p className="font-bold text-white text-sm leading-tight">{selectedItem?.title}</p>
-              <p className="text-xs text-zinc-500 mt-0.5">{selectedItem?.year}</p>
+              <p className="font-serif text-white text-sm leading-tight">{selectedItem?.title}</p>
+              <p className="text-xs text-dim mt-0.5">{selectedItem?.year}</p>
               <span className="inline-block mt-2 text-xs text-indigo-400 font-semibold border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 rounded-full">
                 NEW
               </span>
@@ -886,7 +883,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
           {/* OR divider */}
           <div className="flex items-center justify-center flex-shrink-0">
-            <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-black text-zinc-400">
+            <div className="w-9 h-9 rounded-full bg-card border border-border flex items-center justify-center text-xs font-black text-muted">
               OR
             </div>
           </div>
@@ -894,7 +891,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           {/* Pivot item */}
           <button
             onClick={() => handleCompareChoice('existing')}
-            className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-zinc-700 hover:border-zinc-400 hover:bg-zinc-400/5 transition-all group active:scale-[0.97]"
+            className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-border hover:border-zinc-400 hover:bg-zinc-400/5 transition-all group active:scale-[0.97]"
           >
             <img
               src={pivotItem?.posterUrl}
@@ -903,8 +900,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             />
             <div className="text-center">
               <p className="font-bold text-white text-sm leading-tight">{pivotItem?.title}</p>
-              <p className="text-xs text-zinc-500 mt-0.5">{pivotItem?.year}</p>
-              <span className={`inline - block mt - 2 text - xs font - semibold px - 2 py - 0.5 rounded - full border ${TIER_COLORS[selectedTier!]} `}>
+              <p className="text-xs text-dim mt-0.5">{pivotItem?.year}</p>
+              <span className={`inline-block mt-2 text-xs font-semibold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]} `}>
                 {selectedTier} · #{mid + 1}
               </span>
             </div>
@@ -916,7 +913,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           <button
             onClick={handleUndo}
             disabled={compHistory.length === 0}
-            className="flex items-center gap-1.5 text-sm font-medium text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ArrowLeft size={15} />
             Undo
