@@ -366,10 +366,11 @@ export async function getDynamicSuggestions(
 }
 
 /**
- * Fetch EDITOR'S CHOICE fills: specifically documentaries (genre 99)
- * Used to replace movies that the user has already watched.
+ * Fetch EDITOR'S CHOICE fills: Sequels & Prequels of ranked movies
+ * If no sequels/prequels are found, falls back to documentaries (genre 99)
  */
 export async function getEditorsChoiceFills(
+  rankedTmdbIds: number[],
   excludeIds: Set<string> = new Set(),
   page: number = 1,
   excludeTitles: Set<string> = new Set(),
@@ -377,6 +378,57 @@ export async function getEditorsChoiceFills(
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
   if (!apiKey) return [];
 
+  const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
+  let collectionFilms: TMDBMovie[] = [];
+
+  try {
+    if (rankedTmdbIds.length > 0) {
+      // Pick up to 5 random ranked movies to check for collections
+      const sampleIds = shuffle(rankedTmdbIds).slice(0, 5);
+
+      const moviePromises = sampleIds.map(id =>
+        fetch(`${TMDB_BASE}/movie/${id}?api_key=${apiKey}&language=en-US`).then(res => res.json())
+      );
+
+      const movies = await Promise.all(moviePromises);
+      const collectionIds = new Set<number>();
+
+      for (const m of movies) {
+        if (m.belongs_to_collection && m.belongs_to_collection.id) {
+          collectionIds.add(m.belongs_to_collection.id);
+        }
+      }
+
+      if (collectionIds.size > 0) {
+        const collectionPromises = Array.from(collectionIds).slice(0, 3).map(id =>
+          fetch(`${TMDB_BASE}/collection/${id}?api_key=${apiKey}&language=en-US`).then(res => res.json())
+        );
+
+        const collections = await Promise.all(collectionPromises);
+
+        for (const c of collections) {
+          if (c.parts) {
+            const parts = (c.parts as any[])
+              .map(mapTmdbResult)
+              .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
+            collectionFilms.push(...parts);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('TMDB collection fetch failed:', err);
+  }
+
+  // Deduplicate collection films
+  collectionFilms = dedup(collectionFilms);
+
+  // If we have enough from collections, return them
+  if (collectionFilms.length >= 12) {
+    return shuffle(collectionFilms).slice(0, 12);
+  }
+
+  // Otherwise, pad with the standard Documentary fallback
   try {
     const url = new URL(`${TMDB_BASE}/discover/movie`);
     url.searchParams.set('api_key', apiKey);
@@ -387,16 +439,19 @@ export async function getEditorsChoiceFills(
     url.searchParams.set('page', String(page));
 
     const res = await fetch(url.toString());
-    if (!res.ok) return [];
+    if (!res.ok) return collectionFilms;
 
     const data = await res.json();
-    const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
-    return (data.results as any[])
+    const docFilms = (data.results as any[])
       .map(mapTmdbResult)
       .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
+
+    // Combine collections and docs, then deduplicate again in case of overlap
+    const combined = dedup([...collectionFilms, ...docFilms]);
+    return shuffle(combined).slice(0, 12);
   } catch (err) {
-    console.error('TMDB editors choice fills failed:', err);
-    return [];
+    console.error('TMDB editors choice fallback failed:', err);
+    return collectionFilms;
   }
 }
 

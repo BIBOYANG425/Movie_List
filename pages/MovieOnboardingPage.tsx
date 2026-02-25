@@ -130,10 +130,17 @@ const MovieOnboardingPage: React.FC = () => {
 
     const prefetchBackfill = useCallback((page?: number) => {
         const p = page ?? backfillPageRef.current;
-        getEditorsChoiceFills(getExcludeIds(), p, getExcludeTitles()).then(results => {
+
+        // Extract numeric TMDB IDs from the string IDs
+        const rankedTmdbIds = rankedItems
+            .filter(i => i.id.startsWith('tmdb_'))
+            .map(i => parseInt(i.id.replace('tmdb_', ''), 10))
+            .filter(id => !isNaN(id));
+
+        getEditorsChoiceFills(rankedTmdbIds, getExcludeIds(), p, getExcludeTitles()).then(results => {
             backfillPoolRef.current = results;
         });
-    }, [getExcludeIds, getExcludeTitles]);
+    }, [getExcludeIds, getExcludeTitles, rankedItems]);
 
     const loadSuggestions = useCallback((page: number, clicks: number) => {
         if (!hasTmdbKey()) return;

@@ -101,7 +101,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const prefetchBackfillPool = (excludeIds: Set<string>, excludeTitles: Set<string>, page?: number) => {
     const usePage = page ?? backfillPageRef.current;
-    getEditorsChoiceFills(excludeIds, usePage, excludeTitles).then((results) => {
+
+    // Extract numeric TMDB IDs from the string IDs
+    const rankedTmdbIds = currentItems
+      .filter(i => i.id.startsWith('tmdb_'))
+      .map(i => parseInt(i.id.replace('tmdb_', ''), 10))
+      .filter(id => !isNaN(id));
+
+    getEditorsChoiceFills(rankedTmdbIds, excludeIds, usePage, excludeTitles).then((results) => {
       backfillPoolRef.current = results;
     });
   };
