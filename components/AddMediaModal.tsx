@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, WatchlistItem, ComparisonLogEntry } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIER_SCORE_RANGES } from '../constants';
-import { searchMovies, searchPeople, getPersonFilmography, getGenericSuggestions, getPersonalizedFills, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { searchMovies, searchPeople, getPersonFilmography, getDynamicSuggestions, getEditorsChoiceFills, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
 import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
 
 interface AddMediaModalProps {
@@ -71,6 +71,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [compSeed, setCompSeed] = useState<number | null>(null);
   const [sessionId, setSessionId] = useState('');
 
+  // Session tracking for suggestions algorithm
+  const [sessionStartTime, setSessionStartTime] = useState(Date.now());
+  const [sessionClickCount, setSessionClickCount] = useState(0);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getExcludeIds = () => new Set<string>([
@@ -96,10 +100,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   };
 
   const prefetchBackfillPool = (excludeIds: Set<string>, excludeTitles: Set<string>, page?: number) => {
-    const topGenres = getTopGenres();
-    if (topGenres.length === 0) return;
     const usePage = page ?? backfillPageRef.current;
-    getPersonalizedFills(topGenres, excludeIds, usePage, excludeTitles).then((results) => {
+    getEditorsChoiceFills(excludeIds, usePage, excludeTitles).then((results) => {
       backfillPoolRef.current = results;
     });
   };
@@ -130,15 +132,16 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     });
   };
 
-  const loadInitialSuggestions = (page: number) => {
+  const loadInitialSuggestions = (page: number, clicks: number) => {
     if (!hasTmdbKey()) return;
     setSuggestionsLoading(true);
     setHasBackfillMixed(false);
 
     const excludeIds = getExcludeIds();
     const excludeTitles = getExcludeTitles();
+    const topGenres = getTopGenres();
 
-    getGenericSuggestions(excludeIds, page, excludeTitles).then((results) => {
+    getDynamicSuggestions(topGenres, excludeIds, page, excludeTitles, clicks).then((results) => {
       setSuggestions(results);
       setSuggestionsLoading(false);
     });
@@ -150,7 +153,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const handleRefreshSuggestions = () => {
     suggestionPageRef.current += 1;
-    loadInitialSuggestions(suggestionPageRef.current);
+    loadInitialSuggestions(suggestionPageRef.current, sessionClickCount);
   };
 
   // Reset on open/close
@@ -207,9 +210,21 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         setStep('search');
       }
 
+      // Record session click for algorithm fatigue logic
+      const now = Date.now();
+      let clickCount = sessionClickCount;
+      if (now - sessionStartTime > 30 * 60 * 1000) {
+        setSessionStartTime(now);
+        setSessionClickCount(1);
+        clickCount = 1;
+      } else {
+        setSessionClickCount(c => c + 1);
+        clickCount += 1;
+      }
+
       // Reset page counters and load fresh generic suggestions + prefetch backfill
       suggestionPageRef.current = 1;
-      loadInitialSuggestions(1);
+      loadInitialSuggestions(1, clickCount);
     }
   }, [isOpen, preselectedItem, preselectedTier]);
 

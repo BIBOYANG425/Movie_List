@@ -277,6 +277,130 @@ export async function getPersonalizedFills(
 }
 
 /**
+ * Fetch DYNAMIC suggestions based on session fatigue (15% New / 30% Global / 55% Taste)
+ * New falls off after 5 clicks in a session.
+ */
+export async function getDynamicSuggestions(
+  topGenreNames: string[],
+  excludeIds: Set<string> = new Set(),
+  page: number = 1,
+  excludeTitles: Set<string> = new Set(),
+  sessionClickCount: number = 0,
+): Promise<TMDBMovie[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey) return [];
+
+  const isFatigued = sessionClickCount >= 5;
+  const targetNew = isFatigued ? 0 : 2;
+  const targetGlobal = isFatigued ? 5 : 4;
+  const currentYear = new Date().getFullYear();
+
+  try {
+    const urls = [];
+
+    // 1. New Movies
+    if (targetNew > 0) {
+      const newUrl = new URL(`${TMDB_BASE}/discover/movie`);
+      newUrl.searchParams.set('api_key', apiKey);
+      newUrl.searchParams.set('language', 'en-US');
+      newUrl.searchParams.set('sort_by', 'popularity.desc');
+      newUrl.searchParams.set('include_adult', 'false');
+      newUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
+      newUrl.searchParams.set('vote_count.gte', '50');
+      newUrl.searchParams.set('page', String(page));
+      urls.push(fetch(newUrl.toString()));
+    }
+
+    // 2. Global Trending
+    const globalUrl = new URL(`${TMDB_BASE}/trending/movie/week`);
+    globalUrl.searchParams.set('api_key', apiKey);
+    globalUrl.searchParams.set('language', 'en-US');
+    globalUrl.searchParams.set('page', String(page));
+    urls.push(fetch(globalUrl.toString()));
+
+    // 3. Taste / Random
+    const tasteUrl = new URL(`${TMDB_BASE}/discover/movie`);
+    tasteUrl.searchParams.set('api_key', apiKey);
+    tasteUrl.searchParams.set('language', 'en-US');
+    tasteUrl.searchParams.set('sort_by', 'popularity.desc');
+    tasteUrl.searchParams.set('include_adult', 'false');
+    const genreParam = genreNamesToIds(topGenreNames).join(',');
+    if (genreParam) tasteUrl.searchParams.set('with_genres', genreParam);
+    // Add varying offsets to inject high randomness
+    tasteUrl.searchParams.set('page', String(page + Math.floor(Math.random() * 5)));
+    urls.push(fetch(tasteUrl.toString()));
+
+    const responses = await Promise.all(urls);
+    if (responses.some(r => !r.ok)) return [];
+
+    const data = await Promise.all(responses.map(r => r.json()));
+
+    let newIdx = 0;
+    const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
+
+    const extractAndFilter = (resData: any, count: number) => {
+      return (resData.results as any[])
+        .map(mapTmdbResult)
+        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
+        .slice(0, count);
+    };
+
+    let newFilms: TMDBMovie[] = [];
+    if (targetNew > 0) {
+      newFilms = extractAndFilter(data[newIdx++], targetNew);
+    }
+    const globalFilms = extractAndFilter(data[newIdx++], targetGlobal);
+
+    // Ensure total sum to 12. If new or global missed their targets, taste fills the rest
+    const totalSoFar = newFilms.length + globalFilms.length;
+    const adjustedTasteTarget = 12 - totalSoFar;
+
+    const tasteFilms = extractAndFilter(data[newIdx++], adjustedTasteTarget);
+
+    const pool = shuffle([...newFilms, ...globalFilms, ...tasteFilms]);
+    return dedup(pool).slice(0, 12);
+  } catch (err) {
+    console.error('TMDB dynamic suggestions failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch EDITOR'S CHOICE fills: specifically documentaries (genre 99)
+ * Used to replace movies that the user has already watched.
+ */
+export async function getEditorsChoiceFills(
+  excludeIds: Set<string> = new Set(),
+  page: number = 1,
+  excludeTitles: Set<string> = new Set(),
+): Promise<TMDBMovie[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    const url = new URL(`${TMDB_BASE}/discover/movie`);
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('language', 'en-US');
+    url.searchParams.set('sort_by', 'popularity.desc');
+    url.searchParams.set('include_adult', 'false');
+    url.searchParams.set('with_genres', '99'); // Documentaries
+    url.searchParams.set('page', String(page));
+
+    const res = await fetch(url.toString());
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
+    return (data.results as any[])
+      .map(mapTmdbResult)
+      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
+  } catch (err) {
+    console.error('TMDB editors choice fills failed:', err);
+    return [];
+  }
+}
+
+/**
  * Search TMDB for movies matching *query*.
  * Returns up to 10 results with real posters and metadata.
  */

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
-import { RankedItem, Tier, MediaType } from '../types';
+import { RankedItem, Tier, MediaType, Bracket } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES, TIER_SCORE_RANGES } from '../constants';
-import { getGenericSuggestions, getPersonalizedFills, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { getDynamicSuggestions, getEditorsChoiceFills, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
 import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,9 +31,14 @@ const MovieOnboardingPage: React.FC = () => {
     // Suggestions
     const [suggestions, setSuggestions] = useState<TMDBMovie[]>([]);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-    const suggestionPageRef = useRef(Math.floor(Math.random() * 5) + 1);
+    // Suggestion system pagination and backfill
+    const suggestionPageRef = useRef(1);
     const backfillPoolRef = useRef<TMDBMovie[]>([]);
     const backfillPageRef = useRef(1);
+
+    // Session tracking for suggestions algorithm
+    const [sessionStartTime, setSessionStartTime] = useState(Date.now());
+    const [sessionClickCount, setSessionClickCount] = useState(0);
 
     // Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -124,33 +129,45 @@ const MovieOnboardingPage: React.FC = () => {
     }, [rankedItems]);
 
     const prefetchBackfill = useCallback((page?: number) => {
-        const topGenres = getTopGenres();
-        if (topGenres.length === 0) return;
         const p = page ?? backfillPageRef.current;
-        getPersonalizedFills(topGenres, getExcludeIds(), p, getExcludeTitles()).then(results => {
+        getEditorsChoiceFills(getExcludeIds(), p, getExcludeTitles()).then(results => {
             backfillPoolRef.current = results;
         });
-    }, [getTopGenres, getExcludeIds, getExcludeTitles]);
+    }, [getExcludeIds, getExcludeTitles]);
 
-    const loadSuggestions = useCallback((page: number) => {
+    const loadSuggestions = useCallback((page: number, clicks: number) => {
         if (!hasTmdbKey()) return;
         setSuggestionsLoading(true);
-        getGenericSuggestions(getExcludeIds(), page, getExcludeTitles()).then(results => {
+        const topGenres = getTopGenres();
+        getDynamicSuggestions(topGenres, getExcludeIds(), page, getExcludeTitles(), clicks).then(results => {
             setSuggestions(results);
             setSuggestionsLoading(false);
         });
         backfillPageRef.current = 1;
         backfillPoolRef.current = [];
         prefetchBackfill(1);
-    }, [getExcludeIds, getExcludeTitles, prefetchBackfill]);
+    }, [getExcludeIds, getExcludeTitles, prefetchBackfill, getTopGenres]);
 
     useEffect(() => {
-        if (!loading) loadSuggestions(1);
+        if (!loading) {
+            const now = Date.now();
+            let clickCount = sessionClickCount;
+            if (now - sessionStartTime > 30 * 60 * 1000) {
+                setSessionStartTime(now);
+                setSessionClickCount(1);
+                clickCount = 1;
+            } else {
+                setSessionClickCount(c => c + 1);
+                clickCount += 1;
+            }
+            suggestionPageRef.current = 1;
+            loadSuggestions(1, clickCount);
+        }
     }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleRefresh = () => {
         suggestionPageRef.current += 1;
-        loadSuggestions(suggestionPageRef.current);
+        loadSuggestions(suggestionPageRef.current, sessionClickCount);
     };
 
     const consumeSuggestion = (movieId: string) => {
