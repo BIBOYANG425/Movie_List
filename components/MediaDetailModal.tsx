@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { RankedItem, Tier, MovieSocialStats, StreamingAvailability } from '../types';
+import { RankedItem, Tier, MovieSocialStats, StreamingAvailability, Bracket } from '../types';
 import { X, Film, Star, MessageCircle, Link, StickyNote, ThumbsUp, ChevronRight } from 'lucide-react';
 import { getExtendedMovieDetails, TMDBMovie } from '../services/tmdbService';
 import { getMovieSocialStats } from '../services/friendsService';
@@ -88,6 +88,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 director: item.director,
                                 tier: item.tier as Tier,
                                 rank: item.rank_position,
+                                bracket: item.bracket as Bracket,
                                 notes: item.notes,
                             });
                         }
@@ -256,7 +257,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 <div className="flex items-start justify-between">
                                     <div>
                                         <div className="flex items-center gap-2">
-                                            <div className={`px-2 py-0.5 rounded text-xs font-bold border ${TIER_COLORS[rankedItem.tier]}`}>
+                                            <div className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${TIER_COLORS[rankedItem.tier]}`}>
                                                 {rankedItem.tier}
                                             </div>
                                             <h3 className="text-lg font-bold text-white">Your Rank: #{rankedItem.rank + 1}</h3>
@@ -364,7 +365,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                                             <span className="font-bold text-white">{activity.username}</span>
                                                             {' '}
                                                             {activity.action === 'ranked' && (
-                                                                <>ranked this <span className={`font-bold ${activity.tier ? 'text-indigo-400' : 'text-zinc-300'}`}>{activity.tier || 'in their list'}</span></>
+                                                                <>ranked this <span className={`text-[10px] font-bold ${TIER_COLORS[activity.tier || ''] || 'text-zinc-400'}`}>{activity.tier || 'in their list'}</span></>
                                                             )}
                                                             {activity.action === 'reviewed' && 'left a review.'}
                                                             {activity.action === 'bookmarked' && 'added this to their watchlist.'}

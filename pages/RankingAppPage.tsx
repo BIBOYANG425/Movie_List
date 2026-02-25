@@ -107,6 +107,7 @@ function rowToRankedItem(row: any): RankedItem {
     director: row.director,
     tier: row.tier as Tier,
     rank: row.rank_position,
+    bracket: row.bracket as Bracket,
     notes: row.notes,
   };
 }
@@ -335,6 +336,7 @@ const RankingAppPage = () => {
       director: newItem.director ?? null,
       tier: newItem.tier,
       rank_position: newItem.rank,
+      bracket: newItem.bracket,
       notes: newItem.notes ?? null,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,tmdb_id' });
