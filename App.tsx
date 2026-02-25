@@ -12,7 +12,7 @@ import { Grain } from './components/Grain';
 
 const App = () => {
   const { user, profile, loading } = useAuth();
-  const needsOnboarding = Boolean(user) && !profile?.onboardingCompleted;
+  const needsOnboarding = Boolean(user) && Boolean(profile) && !profile.onboardingCompleted;
 
   if (loading) {
     return (
@@ -27,7 +27,7 @@ const App = () => {
       <Grain />
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/auth" element={user ? <Navigate to={needsOnboarding ? '/onboarding/profile' : '/onboarding/movies'} replace /> : <AuthPage />} />
+        <Route path="/auth" element={user ? <Navigate to={needsOnboarding ? '/onboarding/profile' : '/app'} replace /> : <AuthPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route
           path="/onboarding/profile"
