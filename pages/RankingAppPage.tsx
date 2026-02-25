@@ -17,6 +17,7 @@ import { NotificationBell } from '../components/NotificationBell';
 import { MovieListView } from '../components/MovieListView';
 import { AchievementsView } from '../components/AchievementsView';
 import { MediaDetailModal } from '../components/MediaDetailModal';
+import { JournalEntrySheet } from '../components/JournalEntrySheet';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
@@ -140,6 +141,7 @@ const RankingAppPage = () => {
   const [migrationState, setMigrationState] = useState<{ item: RankedItem, targetTier: Tier } | null>(null);
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | TMDBMovie | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [journalSheetItem, setJournalSheetItem] = useState<RankedItem | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const linkedMovieId = searchParams.get('movieId');
 
@@ -453,6 +455,7 @@ const RankingAppPage = () => {
     if (migrationState) {
       setMigrationState(null);
     }
+    setJournalSheetItem(newItem);
   };
 
   const handleCompareLog = async (log: ComparisonLogEntry) => {
@@ -787,10 +790,31 @@ const RankingAppPage = () => {
               setPreselectedForRank(movie);
               setIsModalOpen(true);
             }}
+            onOpenJournal={(movieId) => {
+              // Find or create a RankedItem to open journal
+              const ranked = items.find(i => i.id === movieId);
+              if (ranked) {
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete('movieId');
+                setSearchParams(newParams);
+                setJournalSheetItem(ranked);
+              }
+            }}
             {...(foundItem ? { initialItem: foundItem } : {})}
           />
         );
       })()}
+
+      {/* Journal Entry Sheet (after ranking) */}
+      {journalSheetItem && user && (
+        <JournalEntrySheet
+          isOpen={!!journalSheetItem}
+          item={journalSheetItem}
+          userId={user.id}
+          onDismiss={() => setJournalSheetItem(null)}
+          onSaved={() => setJournalSheetItem(null)}
+        />
+      )}
     </div>
   );
 };

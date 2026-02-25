@@ -376,7 +376,8 @@ export type NotificationType =
   | 'list_like'
   | 'badge_unlock'
   | 'group_invite'
-  | 'ranking_comment';
+  | 'ranking_comment'
+  | 'journal_tag';
 
 export interface AppNotification {
   id: string;
@@ -433,6 +434,84 @@ export interface BadgeDefinition {
 export interface UserAchievement {
   badgeKey: string;
   unlockedAt: string;
+}
+
+// ── Journal Entries ─────────────────────────────────────────────────────────
+
+export type MoodCategory = 'positive' | 'reflective' | 'intense' | 'light';
+
+export interface MoodTagDef {
+  id: string;
+  label: string;
+  emoji: string;
+  category: MoodCategory;
+}
+
+export interface VibeTagDef {
+  id: string;
+  label: string;
+  emoji: string;
+}
+
+export interface StandoutPerformance {
+  personId: number;
+  name: string;
+  character?: string;
+  profilePath?: string;
+}
+
+export type JournalVisibility = 'public' | 'friends' | 'private';
+
+export interface JournalEntry {
+  id: string;
+  userId: string;
+  tmdbId: string;
+  title: string;
+  posterUrl?: string;
+  ratingTier?: Tier;
+  reviewText?: string;
+  containsSpoilers: boolean;
+  moodTags: string[];
+  vibeTags: string[];
+  favoriteMoments: string[];
+  standoutPerformances: StandoutPerformance[];
+  watchedDate?: string;
+  watchedLocation?: string;
+  watchedWithUserIds: string[];
+  watchedPlatform?: string;
+  isRewatch: boolean;
+  rewatchNote?: string;
+  personalTakeaway?: string;
+  photoPaths: string[];
+  visibilityOverride?: JournalVisibility;
+  likeCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JournalEntryCard extends JournalEntry {
+  username: string;
+  displayName?: string;
+  avatarUrl?: string;
+}
+
+export interface JournalStats {
+  totalEntries: number;
+  entriesWithReview: number;
+  mostCommonMood?: string;
+  mostTaggedFriendId?: string;
+  currentStreak: number;
+  longestStreak: number;
+}
+
+export interface JournalFilters {
+  mood?: string;
+  vibe?: string;
+  tier?: Tier;
+  platform?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  searchQuery?: string;
 }
 
 // ── Spool: Comparison Logging ───────────────────────────────────────────────

@@ -14,7 +14,9 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { ActivityComment, FriendProfile, ProfileActivityItem, UserProfileSummary, UserSearchResult } from '../types';
+import { ActivityComment, FriendProfile, JournalEntryCard as JournalEntryCardType, ProfileActivityItem, RankedItem, UserProfileSummary, UserSearchResult } from '../types';
+import { JournalHomeView } from '../components/JournalHomeView';
+import { JournalEntrySheet } from '../components/JournalEntrySheet';
 import {
   addActivityComment,
   AVATAR_ACCEPTED_MIME_TYPES,
@@ -93,6 +95,8 @@ const ProfilePage = () => {
   const [followers, setFollowers] = useState<FriendProfile[]>([]);
   const [following, setFollowing] = useState<FriendProfile[]>([]);
   const [activity, setActivity] = useState<ProfileActivityItem[]>([]);
+  const [profileTab, setProfileTab] = useState<'activity' | 'journal'>('activity');
+  const [journalEditEntry, setJournalEditEntry] = useState<RankedItem | null>(null);
 
   const canSeeFullProfile = useMemo(() => {
     if (!profile) return false;
@@ -702,6 +706,46 @@ const ProfilePage = () => {
               </div>
             </section>
 
+            {/* Tab Bar: Activity | Journal */}
+            <div className="flex gap-1 bg-zinc-900/70 rounded-lg p-1 border border-zinc-800">
+              {(['activity', 'journal'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setProfileTab(tab)}
+                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+                    profileTab === tab
+                      ? 'bg-zinc-800 text-zinc-100'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {tab === 'activity' ? 'Activity' : 'Journal'}
+                </button>
+              ))}
+            </div>
+
+            {profileTab === 'journal' && profile && user && (
+              <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+                <JournalHomeView
+                  userId={profile.id}
+                  currentUserId={user.id}
+                  isOwnProfile={profile.isSelf}
+                  onEditEntry={(entry) => {
+                    setJournalEditEntry({
+                      id: entry.tmdbId,
+                      title: entry.title,
+                      posterUrl: entry.posterUrl ?? '',
+                      year: '',
+                      type: 'movie',
+                      genres: [],
+                      tier: entry.ratingTier!,
+                      rank: 0,
+                    });
+                  }}
+                />
+              </section>
+            )}
+
+            {profileTab === 'activity' && (
             <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
               <h2 className="font-semibold mb-3">Recent Activity</h2>
               {activity.length === 0 ? (
@@ -846,6 +890,18 @@ const ProfilePage = () => {
                 </div>
               )}
             </section>
+            )}
+
+            {/* Journal edit sheet */}
+            {journalEditEntry && user && (
+              <JournalEntrySheet
+                isOpen={!!journalEditEntry}
+                item={journalEditEntry}
+                userId={user.id}
+                onDismiss={() => setJournalEditEntry(null)}
+                onSaved={() => setJournalEditEntry(null)}
+              />
+            )}
           </>
         )}
       </main>
