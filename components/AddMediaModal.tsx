@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, WatchlistItem, ComparisonLogEntry } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIER_SCORE_RANGES } from '../constants';
-import { searchMovies, searchPeople, getPersonFilmography, getDynamicSuggestions, getEditorsChoiceFills, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { searchMovies, searchPeople, getPersonFilmography, getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
 import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AddMediaModalProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
 }
 
 export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem, preselectedTier, onCompare, onMovieInfoClick }) => {
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
@@ -86,29 +88,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     currentItems.map(i => i.title.toLowerCase()),
   );
 
-  const getTopGenres = () => {
-    const genreCounts = new Map<string, number>();
-    for (const item of currentItems) {
-      for (const g of item.genres) {
-        genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
-      }
-    }
-    return [...genreCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([name]) => name);
-  };
-
   const prefetchBackfillPool = (excludeIds: Set<string>, excludeTitles: Set<string>, page?: number) => {
-    const usePage = page ?? backfillPageRef.current;
-
-    // Extract numeric TMDB IDs from the string IDs
-    const rankedTmdbIds = currentItems
-      .filter(i => i.id.startsWith('tmdb_'))
-      .map(i => parseInt(i.id.replace('tmdb_', ''), 10))
-      .filter(id => !isNaN(id));
-
-    getEditorsChoiceFills(rankedTmdbIds, excludeIds, usePage, excludeTitles).then((results) => {
+    const profile = buildTasteProfile(currentItems);
+    getSmartBackfill(profile, excludeIds, page ?? backfillPageRef.current, excludeTitles).then((results) => {
       backfillPoolRef.current = results;
     });
   };
@@ -139,28 +121,30 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     });
   };
 
-  const loadInitialSuggestions = (page: number, clicks: number) => {
+  const loadInitialSuggestions = (page: number) => {
     if (!hasTmdbKey()) return;
     setSuggestionsLoading(true);
     setHasBackfillMixed(false);
 
     const excludeIds = getExcludeIds();
     const excludeTitles = getExcludeTitles();
-    const topGenres = getTopGenres();
+    const profile = buildTasteProfile(currentItems);
 
-    getDynamicSuggestions(topGenres, excludeIds, page, excludeTitles, clicks).then((results) => {
+    getSmartSuggestions(profile, excludeIds, page, excludeTitles, user?.id ?? undefined).then((results) => {
       setSuggestions(results);
       setSuggestionsLoading(false);
     });
 
     backfillPageRef.current = 1;
     backfillPoolRef.current = [];
-    prefetchBackfillPool(excludeIds, excludeTitles, 1);
+    getSmartBackfill(profile, excludeIds, 1, excludeTitles).then((results) => {
+      backfillPoolRef.current = results;
+    });
   };
 
   const handleRefreshSuggestions = () => {
     suggestionPageRef.current += 1;
-    loadInitialSuggestions(suggestionPageRef.current, sessionClickCount);
+    loadInitialSuggestions(suggestionPageRef.current);
   };
 
   // Reset on open/close
@@ -231,7 +215,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
       // Reset page counters and load fresh generic suggestions + prefetch backfill
       suggestionPageRef.current = 1;
-      loadInitialSuggestions(1, clickCount);
+      loadInitialSuggestions(1);
     }
   }, [isOpen, preselectedItem, preselectedTier]);
 
