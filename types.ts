@@ -643,3 +643,17 @@ export interface FeedMute {
   muteType: 'user' | 'movie';
   targetId: string;
 }
+
+// ── Smart Suggestions ─────────────────────────────────────────────────────────
+
+export interface TasteProfile {
+  weightedGenres: Record<string, number>;
+  topDirectors: { name: string; score: number }[];
+  decadeDistribution: Record<string, number>;
+  preferredDecade: string | null;
+  underexposedGenres: string[];
+  topMovieIds: number[];
+  totalRanked: number;
+}
+
+export type SuggestionPoolType = 'similar' | 'taste' | 'trending' | 'variety' | 'friend';
