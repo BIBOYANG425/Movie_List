@@ -20,6 +20,14 @@ function mergeAndDedup(results: TMDBMovie[]): TMDBMovie[] {
     return Array.from(map.values()).slice(0, 12);
 }
 
+function getComparisonMid(low: number, high: number, round: number, seed: number | null): number {
+    if (round === 0 && seed !== null) {
+        const maxIndex = Math.max(low, high - 1);
+        return Math.min(Math.max(seed, low), maxIndex);
+    }
+    return Math.floor((low + high) / 2);
+}
+
 const MovieOnboardingPage: React.FC = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -236,7 +244,7 @@ const MovieOnboardingPage: React.FC = () => {
     const handleCompareChoice = async (choice: 'new' | 'existing' | 'skip') => {
         if (!selectedTier || !pendingMovie) return;
         const tierItems = getTierItems(selectedTier);
-        const mid = Math.floor((compLow + compHigh) / 2);
+        const mid = getComparisonMid(compLow, compHigh, compHistory.length, compSeed);
 
         // Log comparison
         const pivotItem = tierItems[mid];
@@ -436,7 +444,7 @@ const MovieOnboardingPage: React.FC = () => {
 
                         {modalStep === 'compare' && selectedTier && (() => {
                             const tierItems = getTierItems(selectedTier);
-                            const mid = Math.floor((compLow + compHigh) / 2);
+                            const mid = getComparisonMid(compLow, compHigh, compHistory.length, compSeed);
                             const pivotItem = tierItems[mid];
                             const totalRounds = Math.ceil(Math.log2(tierItems.length + 1));
                             const currentRound = compHistory.length + 1;

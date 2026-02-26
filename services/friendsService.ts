@@ -2710,7 +2710,7 @@ export async function getMovieSocialStats(currentUserId: string, tmdbId: string)
   try {
     // 1. Get user's following list
     const { data: follows, error: followsError } = await supabase
-      .from('follows')
+      .from('friend_follows')
       .select('following_id')
       .eq('follower_id', currentUserId);
 
@@ -2801,7 +2801,7 @@ export async function getMovieSocialStats(currentUserId: string, tmdbId: string)
         let action: FriendActivityItem['action'] | null = null;
 
         if (event.event_type === 'ranking_add' || event.event_type === 'ranking_move') action = 'ranked';
-        else if (event.event_type === 'review_add') action = 'reviewed';
+        else if (event.event_type === 'review' || event.event_type === 'review_add') action = 'reviewed';
         else if (event.event_type === 'watchlist_add') action = 'bookmarked';
 
         if (action) {

@@ -709,6 +709,9 @@ const RankingAppPage = () => {
           <DiscoverView
             userId={user.id}
             onMovieClick={(id) => setSearchParams({ movieId: id })}
+            onSaveForLater={(movie) => {
+              void addToWatchlist(movie);
+            }}
           />
         )}
 

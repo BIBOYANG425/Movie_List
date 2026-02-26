@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Search, X } from 'lucide-react';
 import { StandoutPerformance } from '../../types';
 import { getExtendedMovieDetails } from '../../services/tmdbService';
@@ -19,7 +19,16 @@ interface CastMember {
 export const CastSelector: React.FC<CastSelectorProps> = ({ tmdbId, selected, onChange }) => {
   const [cast, setCast] = useState<CastMember[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,12 +55,12 @@ export const CastSelector: React.FC<CastSelectorProps> = ({ tmdbId, selected, on
   }, [tmdbId]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return cast;
-    const q = search.toLowerCase();
+    if (!debouncedSearch.trim()) return cast;
+    const q = debouncedSearch.toLowerCase();
     return cast.filter(
       (c) => c.name.toLowerCase().includes(q) || c.character.toLowerCase().includes(q),
     );
-  }, [cast, search]);
+  }, [cast, debouncedSearch]);
 
   const selectedIds = new Set(selected.map((s) => s.personId));
 
@@ -94,7 +103,14 @@ export const CastSelector: React.FC<CastSelectorProps> = ({ tmdbId, selected, on
           type="text"
           placeholder="Search cast..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSearch(val);
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            debounceRef.current = setTimeout(() => {
+              setDebouncedSearch(val);
+            }, 300);
+          }}
           className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
         />
       </div>

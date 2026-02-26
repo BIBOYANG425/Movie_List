@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 import { UserSearchResult } from '../../types';
 import { searchUsers } from '../../services/friendsService';
@@ -14,22 +14,34 @@ export const FriendTagInput: React.FC<FriendTagInputProps> = ({ currentUserId, s
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<Map<string, UserSearchResult>>(new Map());
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSearch = useCallback(async (q: string) => {
+  // Clear debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  const handleSearch = useCallback((q: string) => {
     setQuery(q);
     if (q.trim().length < 2) {
       setResults([]);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       return;
     }
-    setSearching(true);
-    try {
-      const res = await searchUsers(currentUserId, q.trim());
-      setResults(res.filter((u) => !selectedUserIds.includes(u.id)));
-    } catch {
-      setResults([]);
-    } finally {
-      setSearching(false);
-    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await searchUsers(currentUserId, q.trim());
+        setResults(res.filter((u) => !selectedUserIds.includes(u.id)));
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
   }, [currentUserId, selectedUserIds]);
 
   const addUser = (user: UserSearchResult) => {

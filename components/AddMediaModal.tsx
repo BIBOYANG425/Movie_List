@@ -33,12 +33,20 @@ function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
 
   for (const movie of results) {
     const key = movie.tmdbId > 0
-      ? `tmdb:${movie.tmdbId} `
-      : `title:${movie.title.toLowerCase().trim()} `;
+      ? `tmdb:${movie.tmdbId}`
+      : `title:${movie.title.toLowerCase().trim()}`;
     if (!byKey.has(key)) byKey.set(key, movie);
   }
 
   return Array.from(byKey.values()).slice(0, 12);
+}
+
+function getComparisonMid(low: number, high: number, round: number, seed: number | null): number {
+  if (round === 0 && seed !== null) {
+    const maxIndex = Math.max(low, high - 1);
+    return Math.min(Math.max(seed, low), maxIndex);
+  }
+  return Math.floor((low + high) / 2);
 }
 
 export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem, preselectedTier, onCompare, onMovieInfoClick }) => {
@@ -324,27 +332,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         selectedItem?.globalScore
       );
 
-      // Start head-to-head comparison around the seed index
-      // The binary search needs a low and high bound. 
-      // If we seed at index N, we can set bounds such that mid roughly equals N.
-      // But standard binary search bounds are 0 to length.
-      // Quartile narrowing from the algo still requires the true low/high bounds.
-      // So we set low=0, high=length as the search space, but we could artificially
-      // force the first comparison to be `seedIdx`.
-      // Actually, since the UI expects `mid = Math.floor((low + high) / 2)` directly,
-      // the simplest way to seed is to not change low/high in `proceedFromNotes`,
-      // but to add a initial `seedMid` state, OR redefine how `compLow`/`compHigh` 
-      // dictate the first comparison.
-      // For V1 of the spec, the "start at this index" is easiest achieved by 
-      // setting compLow=0, compHigh=length, but passing the seedIdx as the FIRST mid.
-      // We need to store `seedIdx`.
-
       setCompLow(0);
       setCompHigh(tierItems.length);
       setCompHistory([]);
-      // Store seed index to be used as first mid
       setCompSeed(seedIdx);
-
       setStep('compare');
     }
   };
@@ -366,7 +357,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   };
 
   const handleCompareChoice = (choice: 'new' | 'existing' | 'too_tough' | 'skip') => {
-    const mid = Math.floor((compLow + compHigh) / 2);
+    const mid = getComparisonMid(compLow, compHigh, compHistory.length, compSeed);
 
     // Log comparison
     if (onCompare && selectedItem && selectedTier) {
@@ -474,7 +465,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-white truncate text-sm">{person.name}</p>
-                    <span className={`text - [10px] px - 1.5 py - 0.5 rounded - full font - medium flex - shrink - 0 ${person.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'} `}>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${person.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
                       {person.role}
                     </span>
                   </div>
@@ -600,7 +591,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                     <button
                       onClick={() => handleBookmark(movie)}
                       title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
-                      className={`p - 1.5 rounded - lg transition - colors ${isBookmarked(movie.id) ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'} `}
+                      className={`p-1.5 rounded-lg transition-colors ${isBookmarked(movie.id) ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'}`}
                     >
                       <Bookmark size={16} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
                     </button>
@@ -686,10 +677,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                         <button
                           onClick={(e) => { e.stopPropagation(); handleBookmark(movie, true); }}
                           title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
-                          className={`absolute top - 3 right - 3 p - 1.5 rounded - full transition - all shadow - md ${isBookmarked(movie.id)
+                          className={`absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md ${isBookmarked(movie.id)
                             ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
                             : 'bg-black/60 text-zinc-500 border border-zinc-700 opacity-0 group-hover:opacity-100 hover:text-emerald-400 hover:bg-emerald-500/20'
-                            } `}
+                            }`}
                         >
                           <Bookmark size={12} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
                         </button>
@@ -734,7 +725,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           <button
             key={tier}
             onClick={() => handleSelectTier(tier)}
-            className={`flex items - center justify - between p - 4 rounded - xl border - 2 transition - all hover: scale - [1.02] active: scale - [0.98] ${TIER_COLORS[tier]} `}
+            className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${TIER_COLORS[tier]}`}
           >
             <div className="flex items-center gap-4">
               <span className="text-2xl font-black">{tier}</span>
@@ -770,7 +761,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         <div>
           <p className="font-serif text-white leading-tight">{selectedItem?.title}</p>
           <p className="text-dim text-xs mt-0.5">{selectedItem?.year}</p>
-          <span className={`inline - block mt - 2 text - xs font - bold px - 2 py - 0.5 rounded - full border ${TIER_COLORS[selectedTier!]} `}>
+          <span className={`inline-block mt-2 text-xs font-bold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]}`}>
             {selectedTier} — {TIER_LABELS[selectedTier!]}
           </span>
         </div>
@@ -794,8 +785,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             onChange={(e) => setNotes(e.target.value)}
           />
           {/* Character count */}
-          <span className={`absolute bottom - 3 right - 3 text - xs tabular - nums transition - colors ${notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-dim'
-            } `}>
+          <span className={`absolute bottom-3 right-3 text-xs tabular-nums transition-colors ${notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-dim'}`}>
             {notes.length}/{MAX_NOTES}
           </span>
         </div>
@@ -823,7 +813,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   // ─── Render: Compare ──────────────────────────────────────────────────────
   const renderCompareStep = () => {
     const tierItems = getTierItems(selectedTier!);
-    const mid = Math.floor((compLow + compHigh) / 2);
+    const mid = getComparisonMid(compLow, compHigh, compHistory.length, compSeed);
     const pivotItem = tierItems[mid];
     const totalRounds = Math.ceil(Math.log2(tierItems.length + 1));
     const currentRound = compHistory.length + 1;
@@ -840,8 +830,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             {Array.from({ length: totalRounds }).map((_, i) => (
               <div
                 key={i}
-                className={`h - 1.5 w - 6 rounded - full transition - colors ${i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'
-                  } `}
+                className={`h-1.5 w-6 rounded-full transition-colors ${i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'}`}
               />
             ))}
           </div>

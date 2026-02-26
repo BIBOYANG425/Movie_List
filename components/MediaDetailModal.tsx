@@ -100,8 +100,8 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
                         let aboveStr = '';
                         let belowStr = '';
-                        if (subIndex > 0) belowStr = sameTier[subIndex - 1].title;
-                        if (subIndex < sameTier.length - 1) aboveStr = sameTier[subIndex + 1].title;
+                        if (subIndex > 0) aboveStr = sameTier[subIndex - 1].title;
+                        if (subIndex < sameTier.length - 1) belowStr = sameTier[subIndex + 1].title;
 
                         setRankContext({
                             above: aboveStr,

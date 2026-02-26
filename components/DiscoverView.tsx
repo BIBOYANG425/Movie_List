@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Compass, Flame, Sparkles, TrendingUp, BookmarkPlus, Star } from 'lucide-react';
 import { FriendRecommendation, TrendingMovie, GenreProfileItem } from '../types';
 import { GenreRadarChart } from './GenreRadarChart';
+import { TMDBMovie } from '../services/tmdbService';
 import {
     getFriendRecommendations,
     getTrendingAmongFriends,
@@ -27,9 +28,34 @@ const TIER_LABELS: Record<string, string> = {
 interface DiscoverViewProps {
     userId: string;
     onMovieClick?: (tmdbId: string) => void;
+    onSaveForLater?: (movie: TMDBMovie) => void;
 }
 
-export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick }) => {
+function normalizeTmdbId(tmdbId: string): string {
+    return tmdbId.startsWith('tmdb_') ? tmdbId : `tmdb_${tmdbId}`;
+}
+
+function parseNumericTmdbId(tmdbId: string): number {
+    const raw = tmdbId.startsWith('tmdb_') ? tmdbId.slice(5) : tmdbId;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function toWatchlistMovie(movie: { tmdbId: string; title: string; year?: string; posterUrl?: string; genres: string[] }): TMDBMovie {
+    const normalizedId = normalizeTmdbId(movie.tmdbId);
+    return {
+        id: normalizedId,
+        tmdbId: parseNumericTmdbId(movie.tmdbId),
+        title: movie.title,
+        year: movie.year ?? '—',
+        posterUrl: movie.posterUrl ?? null,
+        type: 'movie',
+        genres: movie.genres,
+        overview: '',
+    };
+}
+
+export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick, onSaveForLater }) => {
     const [recommendations, setRecommendations] = useState<FriendRecommendation[]>([]);
     const [trending, setTrending] = useState<TrendingMovie[]>([]);
     const [genreProfile, setGenreProfile] = useState<GenreProfileItem[]>([]);
@@ -122,7 +148,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                     {/* Poster */}
                                     <div
                                         className="aspect-[2/3] bg-zinc-800 relative cursor-pointer"
-                                        onClick={() => onMovieClick?.(`tmdb_${rec.tmdbId}`)}
+                                        onClick={() => onMovieClick?.(normalizeTmdbId(rec.tmdbId))}
                                     >
                                         {rec.posterUrl ? (
                                             <img
@@ -157,7 +183,17 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
 
                                         {/* Hover overlay with action */}
                                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <button className="flex items-center gap-1.5 bg-white text-black px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-zinc-200 transition-colors">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (onSaveForLater) {
+                                                        onSaveForLater(toWatchlistMovie(rec));
+                                                    } else {
+                                                        onMovieClick?.(normalizeTmdbId(rec.tmdbId));
+                                                    }
+                                                }}
+                                                className="flex items-center gap-1.5 bg-white text-black px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-zinc-200 transition-colors"
+                                            >
                                                 <BookmarkPlus size={14} />
                                                 Save to Watchlist
                                             </button>
@@ -234,7 +270,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                     {/* Poster thumbnail */}
                                     <div
                                         className="w-12 h-[72px] rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0 cursor-pointer"
-                                        onClick={() => onMovieClick?.(`tmdb_${movie.tmdbId}`)}
+                                        onClick={() => onMovieClick?.(normalizeTmdbId(movie.tmdbId))}
                                     >
                                         {movie.posterUrl ? (
                                             <img
