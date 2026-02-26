@@ -39,7 +39,6 @@ function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
   }
 
   return Array.from(byKey.values()).slice(0, 12);
-  return Array.from(byKey.values()).slice(0, 12);
 }
 
 export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem, preselectedTier, onCompare, onMovieInfoClick }) => {
@@ -72,10 +71,6 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [compHistory, setCompHistory] = useState<CompareSnapshot[]>([]);
   const [compSeed, setCompSeed] = useState<number | null>(null);
   const [sessionId, setSessionId] = useState('');
-
-  // Session tracking for suggestions algorithm
-  const [sessionStartTime, setSessionStartTime] = useState(Date.now());
-  const [sessionClickCount, setSessionClickCount] = useState(0);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -201,19 +196,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         setStep('search');
       }
 
-      // Record session click for algorithm fatigue logic
-      const now = Date.now();
-      let clickCount = sessionClickCount;
-      if (now - sessionStartTime > 30 * 60 * 1000) {
-        setSessionStartTime(now);
-        setSessionClickCount(1);
-        clickCount = 1;
-      } else {
-        setSessionClickCount(c => c + 1);
-        clickCount += 1;
-      }
-
-      // Reset page counters and load fresh generic suggestions + prefetch backfill
+      // Reset page counters and load fresh suggestions + prefetch backfill
       suggestionPageRef.current = 1;
       loadInitialSuggestions(1);
     }

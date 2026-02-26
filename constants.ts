@@ -1,4 +1,4 @@
-import { Tier, Bracket, RankedItem, MoodTagDef, VibeTagDef, MoodCategory } from './types';
+import { Tier, Bracket, RankedItem, MoodTagDef, VibeTagDef, MoodCategory, SuggestionPoolType } from './types';
 
 export const TIERS = [Tier.S, Tier.A, Tier.B, Tier.C, Tier.D];
 
@@ -251,7 +251,7 @@ export const ALL_TMDB_GENRES = [
 ];
 
 /** Default slot distribution for the 5-pool suggestion system */
-export const DEFAULT_POOL_SLOTS: Record<string, number> = {
+export const DEFAULT_POOL_SLOTS: Record<SuggestionPoolType, number> = {
   similar: 3,
   taste: 4,
   trending: 2,

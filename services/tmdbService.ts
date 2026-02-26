@@ -6,7 +6,7 @@
  * Add to Vercel: Project Settings → Environment Variables → VITE_TMDB_API_KEY
  */
 
-import { ALL_TMDB_GENRES, DEFAULT_POOL_SLOTS, SMART_SUGGESTION_THRESHOLD } from '../constants';
+import { ALL_TMDB_GENRES, DEFAULT_POOL_SLOTS, SMART_SUGGESTION_THRESHOLD, TIER_WEIGHTS } from '../constants';
 import { TasteProfile } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -163,7 +163,7 @@ export function buildTasteProfile(items: { id: string; genres: string[]; year: s
     };
   }
 
-  const tierWeights: Record<string, number> = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+  const tierWeights = TIER_WEIGHTS as Record<string, number>;
 
   // Tier-weighted genre scores
   const genreScores = new Map<string, number>();
