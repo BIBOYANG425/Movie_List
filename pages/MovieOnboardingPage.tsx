@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { RankedItem, Tier, MediaType, Bracket } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES, TIER_SCORE_RANGES } from '../constants';
-import { getDynamicSuggestions, getEditorsChoiceFills, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
 import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,10 +35,6 @@ const MovieOnboardingPage: React.FC = () => {
     const suggestionPageRef = useRef(1);
     const backfillPoolRef = useRef<TMDBMovie[]>([]);
     const backfillPageRef = useRef(1);
-
-    // Session tracking for suggestions algorithm
-    const [sessionStartTime, setSessionStartTime] = useState(Date.now());
-    const [sessionClickCount, setSessionClickCount] = useState(0);
 
     // Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -115,66 +111,37 @@ const MovieOnboardingPage: React.FC = () => {
     const getExcludeIds = useCallback(() => rankedIds, [rankedIds]);
     const getExcludeTitles = useCallback(() => rankedTitles, [rankedTitles]);
 
-    const getTopGenres = useCallback(() => {
-        const counts = new Map<string, number>();
-        for (const item of rankedItems) {
-            for (const g of item.genres) {
-                counts.set(g, (counts.get(g) ?? 0) + 1);
-            }
-        }
-        return [...counts.entries()]
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([name]) => name);
-    }, [rankedItems]);
-
     const prefetchBackfill = useCallback((page?: number) => {
         const p = page ?? backfillPageRef.current;
-
-        // Extract numeric TMDB IDs from the string IDs
-        const rankedTmdbIds = rankedItems
-            .filter(i => i.id.startsWith('tmdb_'))
-            .map(i => parseInt(i.id.replace('tmdb_', ''), 10))
-            .filter(id => !isNaN(id));
-
-        getEditorsChoiceFills(rankedTmdbIds, getExcludeIds(), p, getExcludeTitles()).then(results => {
+        const profile = buildTasteProfile(rankedItems);
+        getSmartBackfill(profile, getExcludeIds(), p, getExcludeTitles()).then(results => {
             backfillPoolRef.current = results;
         });
     }, [getExcludeIds, getExcludeTitles, rankedItems]);
 
-    const loadSuggestions = useCallback((page: number, clicks: number) => {
+    const loadSuggestions = useCallback((page: number) => {
         if (!hasTmdbKey()) return;
         setSuggestionsLoading(true);
-        const topGenres = getTopGenres();
-        getDynamicSuggestions(topGenres, getExcludeIds(), page, getExcludeTitles(), clicks).then(results => {
+        const profile = buildTasteProfile(rankedItems);
+        getSmartSuggestions(profile, getExcludeIds(), page, getExcludeTitles(), user?.id ?? undefined).then(results => {
             setSuggestions(results);
             setSuggestionsLoading(false);
         });
         backfillPageRef.current = 1;
         backfillPoolRef.current = [];
         prefetchBackfill(1);
-    }, [getExcludeIds, getExcludeTitles, prefetchBackfill, getTopGenres]);
+    }, [getExcludeIds, getExcludeTitles, prefetchBackfill, rankedItems, user?.id]);
 
     useEffect(() => {
         if (!loading) {
-            const now = Date.now();
-            let clickCount = sessionClickCount;
-            if (now - sessionStartTime > 30 * 60 * 1000) {
-                setSessionStartTime(now);
-                setSessionClickCount(1);
-                clickCount = 1;
-            } else {
-                setSessionClickCount(c => c + 1);
-                clickCount += 1;
-            }
             suggestionPageRef.current = 1;
-            loadSuggestions(1, clickCount);
+            loadSuggestions(1);
         }
     }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleRefresh = () => {
         suggestionPageRef.current += 1;
-        loadSuggestions(suggestionPageRef.current, sessionClickCount);
+        loadSuggestions(suggestionPageRef.current);
     };
 
     const consumeSuggestion = (movieId: string) => {

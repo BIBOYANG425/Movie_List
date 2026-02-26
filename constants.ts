@@ -1,4 +1,4 @@
-import { Tier, Bracket, RankedItem, MoodTagDef, VibeTagDef, MoodCategory } from './types';
+import { Tier, Bracket, RankedItem, MoodTagDef, VibeTagDef, MoodCategory, SuggestionPoolType } from './types';
 
 export const TIERS = [Tier.S, Tier.A, Tier.B, Tier.C, Tier.D];
 
@@ -233,3 +233,31 @@ export const JOURNAL_PHOTO_BUCKET = 'journal-photos';
 export const JOURNAL_PHOTO_MAX_BYTES = 5 * 1024 * 1024; // 5MB
 export const JOURNAL_MAX_PHOTOS = 6;
 export const JOURNAL_MAX_MOMENTS = 5;
+
+// ── Smart Suggestions ─────────────────────────────────────────────────────────
+
+export const TIER_WEIGHTS: Record<Tier, number> = {
+  [Tier.S]: 5,
+  [Tier.A]: 4,
+  [Tier.B]: 3,
+  [Tier.C]: 2,
+  [Tier.D]: 1,
+};
+
+export const ALL_TMDB_GENRES = [
+  'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary',
+  'Drama', 'Family', 'Fantasy', 'History', 'Horror', 'Music', 'Mystery',
+  'Romance', 'Sci-Fi', 'TV Movie', 'Thriller', 'War', 'Western',
+];
+
+/** Default slot distribution for the 5-pool suggestion system */
+export const DEFAULT_POOL_SLOTS: Record<SuggestionPoolType, number> = {
+  similar: 3,
+  taste: 4,
+  trending: 2,
+  variety: 2,
+  friend: 1,
+};
+
+/** Minimum rankings before switching from generic to smart suggestions */
+export const SMART_SUGGESTION_THRESHOLD = 3;

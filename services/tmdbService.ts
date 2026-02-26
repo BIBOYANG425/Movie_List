@@ -6,6 +6,10 @@
  * Add to Vercel: Project Settings → Environment Variables → VITE_TMDB_API_KEY
  */
 
+import { ALL_TMDB_GENRES, DEFAULT_POOL_SLOTS, SMART_SUGGESTION_THRESHOLD, TIER_WEIGHTS } from '../constants';
+import { TasteProfile } from '../types';
+import { supabase } from '../lib/supabase';
+
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 const DEFAULT_TMDB_SEARCH_TIMEOUT_MS = 4500;
@@ -142,6 +146,380 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /**
+ * Build a client-side taste profile from ranked items.
+ * Uses tier-weighted genre scores, decade distribution, director frequency,
+ * and identifies underexposed genres for variety injection.
+ */
+export function buildTasteProfile(items: { id: string; genres: string[]; year: string; tier: string; director?: string }[]): TasteProfile {
+  if (items.length === 0) {
+    return {
+      weightedGenres: {},
+      topDirectors: [],
+      decadeDistribution: {},
+      preferredDecade: null,
+      underexposedGenres: [...ALL_TMDB_GENRES],
+      topMovieIds: [],
+      totalRanked: 0,
+    };
+  }
+
+  const tierWeights = TIER_WEIGHTS as Record<string, number>;
+
+  // Tier-weighted genre scores
+  const genreScores = new Map<string, number>();
+  for (const item of items) {
+    const w = tierWeights[item.tier] ?? 3;
+    for (const g of item.genres) {
+      genreScores.set(g, (genreScores.get(g) ?? 0) + w);
+    }
+  }
+
+  // Decade distribution (tier-weighted)
+  const decadeScores = new Map<string, number>();
+  for (const item of items) {
+    if (item.year && item.year.length >= 4) {
+      const yr = parseInt(item.year.slice(0, 4), 10);
+      if (!isNaN(yr)) {
+        const decade = `${Math.floor(yr / 10) * 10}s`;
+        const w = tierWeights[item.tier] ?? 3;
+        decadeScores.set(decade, (decadeScores.get(decade) ?? 0) + w);
+      }
+    }
+  }
+
+  // Preferred decade (highest weighted score)
+  let preferredDecade: string | null = null;
+  let maxDecadeScore = 0;
+  for (const [decade, score] of decadeScores) {
+    if (score > maxDecadeScore) {
+      maxDecadeScore = score;
+      preferredDecade = decade;
+    }
+  }
+
+  // Director frequency (tier-weighted)
+  const directorScores = new Map<string, number>();
+  for (const item of items) {
+    if (item.director) {
+      const w = tierWeights[item.tier] ?? 3;
+      directorScores.set(item.director, (directorScores.get(item.director) ?? 0) + w);
+    }
+  }
+  const topDirectors = [...directorScores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([name, score]) => ({ name, score }));
+
+  // Underexposed genres (genres with < 2 rankings)
+  const genreCounts = new Map<string, number>();
+  for (const item of items) {
+    for (const g of item.genres) {
+      genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
+    }
+  }
+  const underexposedGenres = ALL_TMDB_GENRES.filter(g => (genreCounts.get(g) ?? 0) < 2);
+
+  // S/A tier movie IDs for /similar queries
+  const topMovieIds = items
+    .filter(i => i.tier === 'S' || i.tier === 'A')
+    .map(i => {
+      const match = i.id.match(/tmdb_(\d+)/);
+      return match ? parseInt(match[1], 10) : NaN;
+    })
+    .filter(id => !isNaN(id));
+
+  return {
+    weightedGenres: Object.fromEntries(genreScores),
+    topDirectors,
+    decadeDistribution: Object.fromEntries(decadeScores),
+    preferredDecade,
+    underexposedGenres,
+    topMovieIds,
+    totalRanked: items.length,
+  };
+}
+
+/**
+ * Fetch random S/A-tier movies from friends that the user hasn't ranked.
+ */
+export async function getFriendSuggestionPicks(
+  userId: string,
+  excludeIds: Set<string>,
+  limit: number = 2,
+): Promise<TMDBMovie[]> {
+  try {
+    const { data: follows } = await supabase
+      .from('friend_follows')
+      .select('following_id')
+      .eq('follower_id', userId);
+
+    const friendIds = follows?.map((f: { following_id: string }) => f.following_id) ?? [];
+    if (friendIds.length === 0) return [];
+
+    const { data: friendRankings } = await supabase
+      .from('user_rankings')
+      .select('tmdb_id, title, poster_url, year, genres')
+      .in('user_id', friendIds)
+      .in('tier', ['S', 'A'])
+      .limit(100);
+
+    if (!friendRankings || friendRankings.length === 0) return [];
+
+    const candidates = friendRankings
+      .filter((r: any) => !excludeIds.has(r.tmdb_id) && r.poster_url)
+      .reduce((acc: any[], r: any) => {
+        if (!acc.some((a: any) => a.tmdb_id === r.tmdb_id)) acc.push(r);
+        return acc;
+      }, []);
+
+    const picked = shuffle(candidates).slice(0, limit);
+
+    return picked.map((r: any): TMDBMovie => ({
+      id: r.tmdb_id,
+      tmdbId: parseInt(r.tmdb_id.replace('tmdb_', ''), 10) || 0,
+      title: r.title,
+      year: r.year ?? '—',
+      posterUrl: r.poster_url,
+      type: 'movie',
+      genres: r.genres ?? [],
+      overview: '',
+    }));
+  } catch (err) {
+    console.error('Friend suggestion picks failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Smart 5-pool suggestion system.
+ * Pools: Similar (from S/A movies) | Taste (weighted genres + decade) |
+ *        Trending | Variety (underexposed genres) | Friend picks
+ */
+export async function getSmartSuggestions(
+  profile: TasteProfile,
+  excludeIds: Set<string> = new Set(),
+  page: number = 1,
+  excludeTitles: Set<string> = new Set(),
+  userId?: string,
+  poolSlots: Record<string, number> = DEFAULT_POOL_SLOTS,
+): Promise<TMDBMovie[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey) return [];
+
+  if (profile.totalRanked < SMART_SUGGESTION_THRESHOLD) {
+    return getGenericSuggestions(excludeIds, page, excludeTitles);
+  }
+
+  const isExcluded = (m: TMDBMovie) =>
+    excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
+
+  const topGenres = Object.entries(profile.weightedGenres)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name]) => name);
+  const genreParam = genreNamesToIds(topGenres).join(',');
+
+  const fetches: Promise<TMDBMovie[]>[] = [];
+
+  // Pool 1: Similar (from random S/A movie)
+  fetches.push((async (): Promise<TMDBMovie[]> => {
+    if (profile.topMovieIds.length === 0) return [];
+    const pickId = profile.topMovieIds[Math.floor(Math.random() * profile.topMovieIds.length)];
+    try {
+      const res = await fetch(
+        `${TMDB_BASE}/movie/${pickId}/similar?api_key=${apiKey}&language=en-US&page=${page}`
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.results as any[])
+        .map(mapTmdbResult)
+        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
+        .slice(0, poolSlots.similar + 2);
+    } catch { return []; }
+  })());
+
+  // Pool 2: Taste (weighted genres + decade bias)
+  fetches.push((async (): Promise<TMDBMovie[]> => {
+    const url = new URL(`${TMDB_BASE}/discover/movie`);
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('language', 'en-US');
+    url.searchParams.set('sort_by', 'vote_average.desc');
+    url.searchParams.set('include_adult', 'false');
+    url.searchParams.set('vote_count.gte', '200');
+    if (genreParam) url.searchParams.set('with_genres', genreParam);
+
+    if (profile.preferredDecade) {
+      const decadeStart = parseInt(profile.preferredDecade, 10);
+      if (!isNaN(decadeStart) && Math.random() < 0.5) {
+        url.searchParams.set('primary_release_date.gte', `${decadeStart}-01-01`);
+        url.searchParams.set('primary_release_date.lte', `${decadeStart + 9}-12-31`);
+      }
+    }
+
+    url.searchParams.set('page', String(page + Math.floor(Math.random() * 3)));
+
+    try {
+      const res = await fetch(url.toString());
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.results as any[])
+        .map(mapTmdbResult)
+        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
+        .slice(0, poolSlots.taste + 2);
+    } catch { return []; }
+  })());
+
+  // Pool 3: Trending
+  fetches.push((async (): Promise<TMDBMovie[]> => {
+    try {
+      const res = await fetch(
+        `${TMDB_BASE}/trending/movie/week?api_key=${apiKey}&language=en-US&page=${page}`
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.results as any[])
+        .map(mapTmdbResult)
+        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
+        .slice(0, poolSlots.trending + 2);
+    } catch { return []; }
+  })());
+
+  // Pool 4: Variety (underexposed genres)
+  fetches.push((async (): Promise<TMDBMovie[]> => {
+    if (profile.underexposedGenres.length === 0) return [];
+    const pickGenres = shuffle(profile.underexposedGenres).slice(0, 2);
+    const varietyGenreParam = genreNamesToIds(pickGenres).join(',');
+    if (!varietyGenreParam) return [];
+
+    const url = new URL(`${TMDB_BASE}/discover/movie`);
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('language', 'en-US');
+    url.searchParams.set('sort_by', 'popularity.desc');
+    url.searchParams.set('include_adult', 'false');
+    url.searchParams.set('vote_count.gte', '100');
+    url.searchParams.set('with_genres', varietyGenreParam);
+    url.searchParams.set('page', String(1 + Math.floor(Math.random() * 3)));
+
+    try {
+      const res = await fetch(url.toString());
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.results as any[])
+        .map(mapTmdbResult)
+        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
+        .slice(0, poolSlots.variety + 2);
+    } catch { return []; }
+  })());
+
+  // Pool 5: Friend picks
+  fetches.push(
+    userId
+      ? getFriendSuggestionPicks(userId, excludeIds, poolSlots.friend + 1)
+      : Promise.resolve([])
+  );
+
+  const [similarMovies, tasteMovies, trendingMovies, varietyMovies, friendMovies] =
+    await Promise.all(fetches);
+
+  const result: TMDBMovie[] = [];
+  const used = new Set<number>();
+
+  const take = (pool: TMDBMovie[], count: number) => {
+    for (const m of pool) {
+      if (result.length >= 12) break;
+      if (count <= 0) break;
+      if (used.has(m.tmdbId)) continue;
+      used.add(m.tmdbId);
+      result.push(m);
+      count--;
+    }
+  };
+
+  take(similarMovies, poolSlots.similar);
+  take(tasteMovies, poolSlots.taste);
+  take(trendingMovies, poolSlots.trending);
+  take(varietyMovies, poolSlots.variety);
+  take(friendMovies, poolSlots.friend);
+
+  const remaining = [...tasteMovies, ...similarMovies, ...trendingMovies, ...varietyMovies];
+  take(remaining, 12 - result.length);
+
+  return shuffle(result);
+}
+
+/**
+ * Smart backfill: TMDB recommendations for random ranked movies.
+ * Falls back to variety discover if insufficient.
+ */
+export async function getSmartBackfill(
+  profile: TasteProfile,
+  excludeIds: Set<string> = new Set(),
+  page: number = 1,
+  excludeTitles: Set<string> = new Set(),
+): Promise<TMDBMovie[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey) return [];
+
+  const isExcluded = (m: TMDBMovie) =>
+    excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
+
+  if (profile.topMovieIds.length === 0) {
+    return getGenericSuggestions(excludeIds, page, excludeTitles);
+  }
+
+  let movies: TMDBMovie[] = [];
+
+  const sampleIds = shuffle(profile.topMovieIds).slice(0, 2);
+  try {
+    const reqs = sampleIds.map(id =>
+      fetch(`${TMDB_BASE}/movie/${id}/recommendations?api_key=${apiKey}&language=en-US&page=${page}`)
+        .then(r => r.ok ? r.json() : { results: [] })
+    );
+    const results = await Promise.all(reqs);
+    for (const data of results) {
+      const mapped = (data.results as any[])
+        .map(mapTmdbResult)
+        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
+      movies.push(...mapped);
+    }
+  } catch (err) {
+    console.error('Smart backfill recommendations failed:', err);
+  }
+
+  movies = dedup(movies);
+
+  if (movies.length < 12 && profile.underexposedGenres.length > 0) {
+    try {
+      const pickGenres = shuffle(profile.underexposedGenres).slice(0, 2);
+      const varietyParam = genreNamesToIds(pickGenres).join(',');
+      if (varietyParam) {
+        const url = new URL(`${TMDB_BASE}/discover/movie`);
+        url.searchParams.set('api_key', apiKey);
+        url.searchParams.set('language', 'en-US');
+        url.searchParams.set('sort_by', 'popularity.desc');
+        url.searchParams.set('include_adult', 'false');
+        url.searchParams.set('vote_count.gte', '100');
+        url.searchParams.set('with_genres', varietyParam);
+        url.searchParams.set('page', String(page));
+
+        const res = await fetch(url.toString());
+        if (res.ok) {
+          const data = await res.json();
+          const varietyMovies = (data.results as any[])
+            .map(mapTmdbResult)
+            .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
+          movies = dedup([...movies, ...varietyMovies]);
+        }
+      }
+    } catch (err) {
+      console.error('Smart backfill variety fallback failed:', err);
+    }
+  }
+
+  return shuffle(movies).slice(0, 20);
+}
+
+/**
  * Fetch GENERIC suggestions: 50% popular new releases + 50% all-time classics.
  * No genre filter -- this is the initial batch shown when the modal opens.
  */
@@ -207,6 +585,7 @@ export async function getGenericSuggestions(
 }
 
 /**
+ * @deprecated Use getSmartBackfill instead.
  * Fetch PERSONALIZED fills: genre-filtered discover results used to
  * backfill slots when the user ranks or bookmarks a generic suggestion.
  * Returns a larger buffer (~20 movies) so we rarely need to re-fetch.
@@ -277,6 +656,7 @@ export async function getPersonalizedFills(
 }
 
 /**
+ * @deprecated Use getSmartSuggestions instead.
  * Fetch DYNAMIC suggestions based on session fatigue (15% New / 30% Global / 55% Taste)
  * New falls off after 5 clicks in a session.
  */
@@ -366,6 +746,7 @@ export async function getDynamicSuggestions(
 }
 
 /**
+ * @deprecated Use getSmartBackfill instead.
  * Fetch EDITOR'S CHOICE fills: Sequels & Prequels of ranked movies
  * If no sequels/prequels are found, falls back to documentaries (genre 99)
  */
