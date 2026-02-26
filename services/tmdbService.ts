@@ -585,6 +585,7 @@ export async function getGenericSuggestions(
 }
 
 /**
+ * @deprecated Use getSmartBackfill instead.
  * Fetch PERSONALIZED fills: genre-filtered discover results used to
  * backfill slots when the user ranks or bookmarks a generic suggestion.
  * Returns a larger buffer (~20 movies) so we rarely need to re-fetch.
@@ -655,6 +656,7 @@ export async function getPersonalizedFills(
 }
 
 /**
+ * @deprecated Use getSmartSuggestions instead.
  * Fetch DYNAMIC suggestions based on session fatigue (15% New / 30% Global / 55% Taste)
  * New falls off after 5 clicks in a session.
  */
@@ -744,6 +746,7 @@ export async function getDynamicSuggestions(
 }
 
 /**
+ * @deprecated Use getSmartBackfill instead.
  * Fetch EDITOR'S CHOICE fills: Sequels & Prequels of ranked movies
  * If no sequels/prequels are found, falls back to documentaries (genre 99)
  */
