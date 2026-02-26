@@ -99,7 +99,7 @@ const MovieOnboardingPage: React.FC = () => {
                     director: row.director,
                     tier: row.tier as Tier,
                     rank: row.rank_position,
-                    bracket: row.bracket as Bracket,
+                    bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
                     notes: row.notes,
                 })));
             }

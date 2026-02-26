@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, BarChart2, Bookmark, Compass, LayoutGrid, LogOut, Plus, Rss, RotateCcw, UserCircle2, UsersRound } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType, Bracket, ComparisonLogEntry } from '../types';
 import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE, BRACKETS, BRACKET_LABELS } from '../constants';
-import { computeTierScore } from '../services/rankingAlgorithm';
+import { computeTierScore, classifyBracket } from '../services/rankingAlgorithm';
 import { TierRow } from '../components/TierRow';
 import { AddMediaModal } from '../components/AddMediaModal';
 import { StatsView } from '../components/StatsView';
@@ -108,7 +108,7 @@ function rowToRankedItem(row: any): RankedItem {
     director: row.director,
     tier: row.tier as Tier,
     rank: row.rank_position,
-    bracket: row.bracket as Bracket,
+    bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
     notes: row.notes,
   };
 }
