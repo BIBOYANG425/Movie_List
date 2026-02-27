@@ -15,8 +15,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { ActivityComment, FriendProfile, JournalEntryCard as JournalEntryCardType, ProfileActivityItem, RankedItem, UserProfileSummary, UserSearchResult } from '../types';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { JournalHomeView } from '../components/JournalHomeView';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
+import { Toast } from '../components/Toast';
 import {
   addActivityComment,
   AVATAR_ACCEPTED_MIME_TYPES,
@@ -97,6 +99,7 @@ const ProfilePage = () => {
   const [activity, setActivity] = useState<ProfileActivityItem[]>([]);
   const [profileTab, setProfileTab] = useState<'activity' | 'journal'>('activity');
   const [journalEditEntry, setJournalEditEntry] = useState<RankedItem | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const canSeeFullProfile = useMemo(() => {
     if (!profile) return false;
@@ -724,6 +727,7 @@ const ProfilePage = () => {
             </div>
 
             {profileTab === 'journal' && profile && user && (
+              <ErrorBoundary>
               <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
                 <JournalHomeView
                   userId={profile.id}
@@ -743,9 +747,11 @@ const ProfilePage = () => {
                   }}
                 />
               </section>
+              </ErrorBoundary>
             )}
 
             {profileTab === 'activity' && (
+            <ErrorBoundary>
             <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
               <h2 className="font-semibold mb-3">Recent Activity</h2>
               {activity.length === 0 ? (
@@ -890,19 +896,26 @@ const ProfilePage = () => {
                 </div>
               )}
             </section>
+            </ErrorBoundary>
             )}
 
             {/* Journal edit sheet */}
             {journalEditEntry && user && (
+              <ErrorBoundary>
               <JournalEntrySheet
                 isOpen={!!journalEditEntry}
                 item={journalEditEntry}
                 userId={user.id}
                 onDismiss={() => setJournalEditEntry(null)}
-                onSaved={() => setJournalEditEntry(null)}
+                onSaved={() => { setJournalEditEntry(null); setToastMessage('Journal entry saved'); }}
               />
+              </ErrorBoundary>
             )}
           </>
+        )}
+
+        {toastMessage && (
+          <Toast message={toastMessage} onDone={() => setToastMessage(null)} />
         )}
       </main>
     </div>

@@ -16,7 +16,9 @@ import { FeedReviewCard } from './FeedReviewCard';
 import { FeedMilestoneCard } from './FeedMilestoneCard';
 import { FeedListCard } from './FeedListCard';
 import { FeedCommentThread } from './FeedCommentThread';
+import { ErrorBoundary } from './ErrorBoundary';
 import { Rss, Compass } from 'lucide-react';
+import { SkeletonList } from './SkeletonCard';
 
 interface SocialFeedViewProps {
   userId: string;
@@ -226,7 +228,8 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
     }
 
     return (
-      <div key={card.id}>
+      <ErrorBoundary key={card.id}>
+      <div>
         {cardElement}
         {openCommentEventId === card.id && (
           <div className="mt-1 bg-zinc-900 border border-zinc-800 border-t-0 rounded-b-xl px-4 pb-4">
@@ -243,6 +246,7 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
           </div>
         )}
       </div>
+      </ErrorBoundary>
     );
   };
 
@@ -279,8 +283,8 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
 
       {/* Feed Cards */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <div className="space-y-3">
+          <SkeletonList count={4} variant="feed" />
         </div>
       ) : cards.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8 text-center">

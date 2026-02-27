@@ -5,6 +5,7 @@ import { listJournalEntries, searchJournalEntries, getJournalStats } from '../se
 import { MOOD_TAGS } from '../constants';
 import { JournalEntryCard } from './JournalEntryCard';
 import { JournalFilterBar } from './journal/JournalFilterBar';
+import { SkeletonList } from './SkeletonCard';
 
 interface JournalHomeViewProps {
   userId: string;
@@ -150,7 +151,7 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
 
         {/* Loading */}
         {loading && entries.length === 0 && (
-          <div className="py-8 text-center text-sm text-zinc-600">Loading journal...</div>
+          <SkeletonList count={4} variant="journal" />
         )}
 
         {/* Empty state */}

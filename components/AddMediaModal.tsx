@@ -5,6 +5,7 @@ import { TIER_COLORS, TIER_LABELS, TIER_SCORE_RANGES } from '../constants';
 import { searchMovies, searchPeople, getPersonFilmography, getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
 import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
 import { useAuth } from '../contexts/AuthContext';
+import { SkeletonList } from './SkeletonCard';
 
 interface AddMediaModalProps {
   isOpen: boolean;
@@ -626,14 +627,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               </div>
             )}
             {suggestionsLoading && (
-              <div className="grid grid-cols-3 gap-2">
-                {[1, 2, 3, 4, 5, 6].map(i => (
-                  <div key={i} className="animate-pulse p-2">
-                    <div className="w-full aspect-[2/3] bg-zinc-800 rounded-lg" />
-                    <div className="h-3 bg-zinc-800 rounded mt-2 w-3/4 mx-auto" />
-                    <div className="h-2 bg-zinc-800 rounded mt-1 w-1/2 mx-auto" />
-                  </div>
-                ))}
+              <div className="grid grid-cols-3 gap-3">
+                <SkeletonList count={6} variant="suggestion" />
               </div>
             )}
             {!suggestionsLoading && filteredSuggestions.length > 0 ? (

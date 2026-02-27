@@ -18,6 +18,8 @@ import { MovieListView } from '../components/MovieListView';
 import { AchievementsView } from '../components/AchievementsView';
 import { MediaDetailModal } from '../components/MediaDetailModal';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { Toast } from '../components/Toast';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
@@ -142,6 +144,7 @@ const RankingAppPage = () => {
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | TMDBMovie | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [journalSheetItem, setJournalSheetItem] = useState<RankedItem | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const linkedMovieId = searchParams.get('movieId');
 
@@ -678,6 +681,7 @@ const RankingAppPage = () => {
 
         {/* --- Tab Content --- */}
         {activeTab === 'ranking' && (
+          <ErrorBoundary>
           <div className="space-y-4">
             {TIERS.map((tier) => (
               <TierRow
@@ -693,6 +697,7 @@ const RankingAppPage = () => {
               />
             ))}
           </div>
+          </ErrorBoundary>
         )}
 
         {activeTab === 'watchlist' && (
@@ -747,6 +752,7 @@ const RankingAppPage = () => {
         )}
       </main>
 
+      <ErrorBoundary>
       <AddMediaModal
         isOpen={isModalOpen}
         onClose={() => {
@@ -763,6 +769,7 @@ const RankingAppPage = () => {
         onCompare={handleCompareLog}
         onMovieInfoClick={(id) => setSearchParams({ movieId: id })}
       />
+      </ErrorBoundary>
 
       {/* Deep linked Movie Modal */}
       {linkedMovieId && (() => {
@@ -806,13 +813,19 @@ const RankingAppPage = () => {
 
       {/* Journal Entry Sheet (after ranking) */}
       {journalSheetItem && user && (
+        <ErrorBoundary>
         <JournalEntrySheet
           isOpen={!!journalSheetItem}
           item={journalSheetItem}
           userId={user.id}
           onDismiss={() => setJournalSheetItem(null)}
-          onSaved={() => setJournalSheetItem(null)}
+          onSaved={() => { setJournalSheetItem(null); setToastMessage('Journal entry saved'); }}
         />
+        </ErrorBoundary>
+      )}
+
+      {toastMessage && (
+        <Toast message={toastMessage} onDone={() => setToastMessage(null)} />
       )}
     </div>
   );
