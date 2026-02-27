@@ -26,6 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 import { TMDBMovie } from '../services/tmdbService';
+import { useLocalizedItems, useLocalizedWatchlist } from '../hooks/useLocalizedItems';
 
 const SCORE_MAX = 10.0;
 const SCORE_MIN = 0.1;
@@ -512,8 +513,11 @@ const RankingAppPage = () => {
     return filtered;
   }, [items, filterType, activeBracket, activeGenre]);
 
-  const scoreMap = useMemo(() => computeScores(filteredItems), [filteredItems]);
-  const showScores = filteredItems.length >= MIN_MOVIES_FOR_SCORES;
+  const localizedItems = useLocalizedItems(filteredItems);
+  const localizedWatchlist = useLocalizedWatchlist(watchlist);
+
+  const scoreMap = useMemo(() => computeScores(localizedItems), [localizedItems]);
+  const showScores = localizedItems.length >= MIN_MOVIES_FOR_SCORES;
 
   if (loading) {
     return (
@@ -709,7 +713,7 @@ const RankingAppPage = () => {
               <TierRow
                 key={tier}
                 tier={tier}
-                items={filteredItems.filter((i) => i.tier === tier).sort((a, b) => a.rank - b.rank)}
+                items={localizedItems.filter((i) => i.tier === tier).sort((a, b) => a.rank - b.rank)}
                 scoreMap={scoreMap}
                 showScores={showScores}
                 onDrop={(e, tier) => handleDrop(e, tier)}
@@ -723,10 +727,10 @@ const RankingAppPage = () => {
         )}
 
         {activeTab === 'watchlist' && (
-          <Watchlist items={watchlist} onRemove={removeFromWatchlist} onRank={rankFromWatchlist} />
+          <Watchlist items={localizedWatchlist} onRemove={removeFromWatchlist} onRank={rankFromWatchlist} />
         )}
 
-        {activeTab === 'stats' && user && <StatsView items={items} userId={user.id} />}
+        {activeTab === 'stats' && user && <StatsView items={localizedItems} userId={user.id} />}
 
         {activeTab === 'feed' && user && (
           <SocialFeedView userId={user.id} />
