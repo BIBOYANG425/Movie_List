@@ -479,6 +479,15 @@ const RankingAppPage = () => {
 
   const watchlistIds = useMemo(() => new Set(watchlist.map((w) => w.id)), [watchlist]);
 
+  const bracketCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    items.forEach(i => {
+      const b = i.bracket ?? 'Commercial';
+      counts[b] = (counts[b] ?? 0) + 1;
+    });
+    return counts;
+  }, [items]);
+
   const availableGenres = useMemo(() => {
     const genres = new Set<string>();
     items.forEach(i => {
@@ -648,17 +657,22 @@ const RankingAppPage = () => {
                 onClick={() => { setActiveBracket('all'); setActiveGenre(null); }}
                 className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === 'all' ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
               >
-                All Brackets
+                All
+                <span className="ml-1.5 text-[10px] opacity-50">{items.length}</span>
               </button>
-              {BRACKETS.map(bracket => (
-                <button
-                  key={bracket}
-                  onClick={() => { setActiveBracket(bracket); setActiveGenre(null); }}
-                  className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === bracket ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
-                >
-                  {BRACKET_LABELS[bracket]}
-                </button>
-              ))}
+              {BRACKETS.map(bracket => {
+                const count = bracketCounts[bracket] ?? 0;
+                return (
+                  <button
+                    key={bracket}
+                    onClick={() => { setActiveBracket(bracket); setActiveGenre(null); }}
+                    className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === bracket ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'} ${count === 0 ? 'opacity-40' : ''}`}
+                  >
+                    {BRACKET_LABELS[bracket]}
+                    <span className="ml-1.5 text-[10px] opacity-50">{count}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {availableGenres.length > 0 && (

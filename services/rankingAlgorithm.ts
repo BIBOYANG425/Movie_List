@@ -18,14 +18,29 @@ const ANIMATION_GENRE = 'Animation';
 const DOCUMENTARY_GENRE = 'Documentary';
 
 /**
+ * Genres that strongly signal mainstream/commercial films.
+ * If a film has NONE of these and only has arthouse-leaning genres,
+ * it's classified as Artisan.
+ */
+const COMMERCIAL_SIGNAL_GENRES = new Set([
+    'Action', 'Adventure', 'Sci-Fi', 'Fantasy', 'Horror',
+    'Thriller', 'Comedy', 'Family', 'Animation', 'TV Movie',
+]);
+
+/**
  * Derive a bracket from TMDb genre labels.
- * Animation and Documentary map directly; everything else defaults
- * to Commercial. Artisan classification requires distribution/festival
- * data not available from TMDb—deferred to V2.
+ *
+ * - Animation genre → Animation bracket
+ * - Documentary genre → Documentary bracket
+ * - No commercial-signal genres (pure Drama, Romance, History, etc.) → Artisan
+ * - Everything else → Commercial
  */
 export function classifyBracket(genres: string[]): Bracket {
     if (genres.includes(ANIMATION_GENRE)) return Bracket.Animation;
     if (genres.includes(DOCUMENTARY_GENRE)) return Bracket.Documentary;
+    if (genres.length > 0 && !genres.some(g => COMMERCIAL_SIGNAL_GENRES.has(g))) {
+        return Bracket.Artisan;
+    }
     return Bracket.Commercial;
 }
 

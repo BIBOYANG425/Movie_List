@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
-import { RankedItem, Tier, WatchlistItem, ComparisonLogEntry } from '../types';
-import { TIER_COLORS, TIER_LABELS, TIER_SCORE_RANGES } from '../constants';
+import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry } from '../types';
+import { TIER_COLORS, TIER_LABELS, TIER_SCORE_RANGES, BRACKET_LABELS } from '../constants';
 import { searchMovies, searchPeople, getPersonFilmography, getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
 import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
 import { useAuth } from '../contexts/AuthContext';
@@ -714,6 +714,27 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           <h3 className="font-serif text-lg leading-tight text-white">{selectedItem?.title}</h3>
           <p className="text-dim text-sm mt-0.5">{selectedItem?.year}</p>
           <p className="text-muted text-sm mt-1">How does this tier feel?</p>
+        </div>
+      </div>
+
+      {/* Bracket selector */}
+      <div className="space-y-1.5">
+        <p className="text-xs text-zinc-500 font-medium">Category</p>
+        <div className="flex gap-1.5">
+          {Object.values(Bracket).map((b) => (
+            <button
+              key={b}
+              type="button"
+              onClick={() => setSelectedItem(prev => prev ? { ...prev, bracket: b } : prev)}
+              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                selectedItem?.bracket === b
+                  ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                  : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'
+              }`}
+            >
+              {BRACKET_LABELS[b]}
+            </button>
+          ))}
         </div>
       </div>
 
