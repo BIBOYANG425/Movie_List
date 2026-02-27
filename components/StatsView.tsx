@@ -5,6 +5,7 @@ import { TIER_COLORS } from '../constants';
 import { GenreRadarChart } from './GenreRadarChart';
 import { getGenreProfile } from '../services/friendsService';
 import { Star } from 'lucide-react';
+import { useTranslation } from '../contexts/LanguageContext';
 
 interface StatsViewProps {
   items: RankedItem[];
@@ -12,6 +13,7 @@ interface StatsViewProps {
 }
 
 export const StatsView: React.FC<StatsViewProps> = ({ items, userId }) => {
+  const { t } = useTranslation();
   const [genreProfile, setGenreProfile] = useState<GenreProfileItem[]>([]);
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
       <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
-        <h3 className="text-lg font-bold text-zinc-100 mb-4">Tier Distribution</h3>
+        <h3 className="text-lg font-bold text-zinc-100 mb-4">{t('stats.tierDistribution')}</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={tierCounts}>
@@ -55,7 +57,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId }) => {
       </div>
 
       <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
-        <h3 className="text-lg font-bold text-zinc-100 mb-4">Media Split</h3>
+        <h3 className="text-lg font-bold text-zinc-100 mb-4">{t('stats.mediaSplit')}</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -78,7 +80,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId }) => {
         <div className="flex justify-center gap-6 mt-4 text-sm text-zinc-400">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-indigo-400"></div>
-            <span>Movies</span>
+            <span>{t('stats.movies')}</span>
           </div>
         </div>
       </div>
@@ -87,8 +89,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId }) => {
       <div className="md:col-span-2 bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
         <div className="flex items-center gap-2 mb-4">
           <Star size={18} className="text-amber-500" />
-          <h3 className="text-lg font-bold text-zinc-100">Your Taste DNA</h3>
-          <span className="text-xs text-zinc-500">Genre distribution across your rankings</span>
+          <h3 className="text-lg font-bold text-zinc-100">{t('stats.tasteDNA')}</h3>
+          <span className="text-xs text-zinc-500">{t('stats.genreDistribution')}</span>
         </div>
         <GenreRadarChart genres={genreProfile} />
       </div>

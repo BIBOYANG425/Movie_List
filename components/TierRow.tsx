@@ -2,6 +2,7 @@ import React from 'react';
 import { Tier, RankedItem } from '../types';
 import { MediaCard } from './MediaCard';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
+import { useTranslation } from '../contexts/LanguageContext';
 
 interface TierRowProps {
   tier: Tier;
@@ -15,6 +16,7 @@ interface TierRowProps {
 }
 
 export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showScores, onDrop, onDragStart, onDropOnItem, onDelete }) => {
+  const { t } = useTranslation();
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
@@ -37,11 +39,11 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showSco
           {showScores && items.length > 0 && (
             <div className="text-xs font-mono opacity-50 px-2 py-1 bg-black/20 rounded">
               {Math.min(...items.map(i => scoreMap.get(i.id) ?? 0)).toFixed(1)}–
-              {Math.max(...items.map(i => scoreMap.get(i.id) ?? 0)).toFixed(1)} pts
+              {Math.max(...items.map(i => scoreMap.get(i.id) ?? 0)).toFixed(1)} {t('tier.pts')}
             </div>
           )}
           <div className="text-xs font-mono opacity-50 px-2 py-1 bg-black/20 rounded">
-            {items.length} items
+            {items.length} {t('tier.items')}
           </div>
         </div>
       </div>
@@ -50,7 +52,7 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showSco
       <div className="flex overflow-x-auto gap-4 pb-4 items-start hide-scrollbar">
         {items.length === 0 ? (
           <div className="flex items-center justify-center w-full h-40 border-2 border-dashed border-current opacity-20 rounded-lg">
-            <span className="text-sm font-medium">Nothing here yet</span>
+            <span className="text-sm font-medium">{t('tier.nothingYet')}</span>
           </div>
         ) : (
           items.map((item, index) => (

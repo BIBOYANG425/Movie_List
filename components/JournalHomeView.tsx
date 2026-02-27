@@ -6,6 +6,7 @@ import { MOOD_TAGS } from '../constants';
 import { JournalEntryCard } from './JournalEntryCard';
 import { JournalFilterBar } from './journal/JournalFilterBar';
 import { SkeletonList } from './SkeletonCard';
+import { useTranslation } from '../contexts/LanguageContext';
 
 interface JournalHomeViewProps {
   userId: string;
@@ -20,6 +21,7 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
   isOwnProfile,
   onEditEntry,
 }) => {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<JournalEntryCardType[]>([]);
   const [stats, setStats] = useState<JournalStats | null>(null);
   const [filters, setFilters] = useState<JournalFilters>({});
@@ -96,18 +98,18 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
         <div className="flex items-center gap-4 px-1">
           <div className="flex items-center gap-1.5 text-xs text-zinc-400">
             <BookOpen size={13} />
-            <span><strong className="text-zinc-200">{stats.totalEntries}</strong> entries</span>
+            <span><strong className="text-zinc-200">{stats.totalEntries}</strong> {t('journal.entries')}</span>
           </div>
           {mostCommonMoodTag && (
             <div className="flex items-center gap-1 text-xs text-zinc-400">
               <span>{mostCommonMoodTag.emoji}</span>
-              <span>Most felt</span>
+              <span>{t('journal.mostFelt')}</span>
             </div>
           )}
           {stats.currentStreak > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-zinc-400">
               <Flame size={13} className="text-orange-400" />
-              <span><strong className="text-zinc-200">{stats.currentStreak}</strong> day streak</span>
+              <span><strong className="text-zinc-200">{stats.currentStreak}</strong> {t('journal.dayStreak')}</span>
             </div>
           )}
         </div>
@@ -118,7 +120,7 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
         <input
           type="text"
-          placeholder="Search journal..."
+          placeholder={t('journal.search')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
@@ -160,8 +162,8 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
             <Film size={32} className="mx-auto text-zinc-700 mb-3" />
             <p className="text-sm text-zinc-500">
               {isOwnProfile
-                ? 'Start your film diary by ranking a movie'
-                : 'No journal entries yet'}
+                ? t('journal.emptyOwn')
+                : t('journal.emptyOther')}
             </p>
           </div>
         )}

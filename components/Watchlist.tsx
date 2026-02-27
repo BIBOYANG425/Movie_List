@@ -1,6 +1,7 @@
 import React from 'react';
 import { WatchlistItem } from '../types';
 import { Bookmark, Trash2, ArrowUpRight, Film, Clock } from 'lucide-react';
+import { useTranslation } from '../contexts/LanguageContext';
 
 interface WatchlistProps {
   items: WatchlistItem[];
@@ -9,13 +10,15 @@ interface WatchlistProps {
 }
 
 export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank }) => {
+  const { t } = useTranslation();
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-zinc-600">
         <Bookmark size={48} className="mb-4 opacity-30" />
-        <p className="text-lg font-semibold text-zinc-500">No saved movies yet</p>
+        <p className="text-lg font-semibold text-zinc-500">{t('watchlist.empty')}</p>
         <p className="text-sm mt-1 opacity-60 max-w-xs text-center">
-          When searching for movies, tap the bookmark icon to save them here for later.
+          {t('watchlist.emptyHint')}
         </p>
       </div>
     );
@@ -34,10 +37,10 @@ export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank })
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Bookmark size={18} className="text-emerald-400" />
-          <h2 className="text-lg font-bold text-white">Watch Later</h2>
+          <h2 className="text-lg font-bold text-white">{t('watchlist.title')}</h2>
         </div>
         <span className="text-xs font-mono text-zinc-500 bg-zinc-900 px-2 py-1 rounded border border-zinc-800">
-          {items.length} saved
+          {items.length} {t('watchlist.saved')}
         </span>
       </div>
 
@@ -63,14 +66,14 @@ export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank })
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-black text-xs font-semibold hover:bg-zinc-200 transition-colors shadow-lg"
                 >
                   <ArrowUpRight size={13} />
-                  Rank it
+                  {t('watchlist.rankIt')}
                 </button>
                 <button
                   onClick={() => onRemove(item.id)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/80 text-red-400 text-xs font-medium hover:bg-red-500/20 border border-zinc-700 transition-colors"
                 >
                   <Trash2 size={12} />
-                  Remove
+                  {t('watchlist.remove')}
                 </button>
               </div>
             </div>

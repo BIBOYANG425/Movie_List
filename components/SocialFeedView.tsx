@@ -19,6 +19,7 @@ import { FeedCommentThread } from './FeedCommentThread';
 import { ErrorBoundary } from './ErrorBoundary';
 import { Rss, Compass } from 'lucide-react';
 import { SkeletonList } from './SkeletonCard';
+import { useTranslation } from '../contexts/LanguageContext';
 
 interface SocialFeedViewProps {
   userId: string;
@@ -27,6 +28,7 @@ interface SocialFeedViewProps {
 const PAGE_SIZE = 20;
 
 export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
+  const { t } = useTranslation();
   const [cards, setCards] = useState<FeedCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -263,7 +265,7 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
           }`}
         >
           <Rss size={16} />
-          Friends Feed
+          {t('feed.friendsFeed')}
         </button>
         <button
           onClick={() => handleTabChange('explore')}
@@ -274,7 +276,7 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
           }`}
         >
           <Compass size={16} />
-          Explore
+          {t('feed.explore')}
         </button>
       </div>
 
@@ -290,8 +292,8 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8 text-center">
           <p className="text-zinc-400 text-sm">
             {filters.tab === 'friends'
-              ? 'No activity from friends yet. Follow people to see their ranking activity here.'
-              : 'No activity to explore yet. Check back soon!'}
+              ? t('feed.emptyFriends')
+              : t('feed.emptyExplore')}
           </p>
         </div>
       ) : (

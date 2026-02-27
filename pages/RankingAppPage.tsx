@@ -20,8 +20,10 @@ import { MediaDetailModal } from '../components/MediaDetailModal';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Toast } from '../components/Toast';
+import { LanguageToggle } from '../components/LanguageToggle';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 import { TMDBMovie } from '../services/tmdbService';
 
@@ -130,6 +132,7 @@ function rowToWatchlistItem(row: any): WatchlistItem {
 
 const RankingAppPage = () => {
   const { user, profile, signOut } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [items, setItems] = useState<RankedItem[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
@@ -429,7 +432,7 @@ const RankingAppPage = () => {
       director: watchItem.director ?? null,
     }, { onConflict: 'user_id,tmdb_id' });
 
-    setToastMessage('Movie saved to watchlist');
+    setToastMessage(t('toast.movieSaved'));
   };
 
   const removeFromWatchlist = async (id: string) => {
@@ -543,7 +546,7 @@ const RankingAppPage = () => {
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${filterType === type ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'
                     }`}
                 >
-                  {type === 'all' ? 'All' : 'Movies'}
+                  {type === 'all' ? t('nav.all') : t('nav.movies')}
                 </button>
               ))}
             </div>
@@ -553,7 +556,7 @@ const RankingAppPage = () => {
               className="bg-cream text-bg px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity"
             >
               <Plus size={16} />
-              <span className="hidden sm:inline">Add Item</span>
+              <span className="hidden sm:inline">{t('nav.addItem')}</span>
             </button>
 
             <button
@@ -561,12 +564,13 @@ const RankingAppPage = () => {
               title="Sign out"
               className="text-text hover:text-cream text-[13px] font-medium transition-colors"
             >
-              Log out
+              {t('nav.logOut')}
             </button>
+            <LanguageToggle />
             {user && (
               <Link
                 to={`/profile/${user.id}`}
-                title="My profile"
+                title={t('nav.myProfile')}
                 className="text-text hover:text-cream transition-colors"
               >
                 <UserCircle2 size={18} />
@@ -579,9 +583,9 @@ const RankingAppPage = () => {
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-serif text-cream mb-2 tracking-[-0.02em]">My Canon</h1>
+            <h1 className="text-4xl font-serif text-cream mb-2 tracking-[-0.02em]">{t('ranking.myCanon')}</h1>
             <p className="text-dim text-sm max-w-md">
-              Add a movie and rank it head-to-head against your list. Order implies superiority.
+              {t('ranking.subtitle')}
             </p>
           </div>
 
@@ -590,7 +594,7 @@ const RankingAppPage = () => {
               onClick={() => setActiveTab('ranking')}
               className={`p-2 rounded-lg transition-colors ${activeTab === 'ranking' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
-              title="Rankings"
+              title={t('tab.rankings')}
             >
               <LayoutGrid size={20} />
             </button>
@@ -598,7 +602,7 @@ const RankingAppPage = () => {
               onClick={() => setActiveTab('watchlist')}
               className={`p-2 rounded-lg transition-colors relative ${activeTab === 'watchlist' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
-              title="Watch Later"
+              title={t('tab.watchlist')}
             >
               <Bookmark size={20} />
               {watchlist.length > 0 && (
@@ -611,7 +615,7 @@ const RankingAppPage = () => {
               onClick={() => setActiveTab('stats')}
               className={`p-2 rounded-lg transition-colors ${activeTab === 'stats' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
-              title="Stats"
+              title={t('tab.stats')}
             >
               <BarChart2 size={20} />
             </button>
@@ -619,7 +623,7 @@ const RankingAppPage = () => {
               onClick={() => setActiveTab('feed')}
               className={`p-2 rounded-lg transition-colors ${activeTab === 'feed' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
-              title="Feed"
+              title={t('tab.feed')}
             >
               <Rss size={20} />
             </button>
@@ -627,7 +631,7 @@ const RankingAppPage = () => {
               onClick={() => setActiveTab('discover')}
               className={`p-2 rounded-lg transition-colors ${activeTab === 'discover' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
-              title="Discover"
+              title={t('tab.discover')}
             >
               <Compass size={20} />
             </button>
@@ -635,14 +639,14 @@ const RankingAppPage = () => {
               onClick={() => setActiveTab('groups')}
               className={`p-2 rounded-lg transition-colors ${activeTab === 'groups' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
                 }`}
-              title="Groups"
+              title={t('tab.groups')}
             >
               <UsersRound size={20} />
             </button>
             {user && <NotificationBell userId={user.id} />}
             <button
               onClick={handleReset}
-              title="Reset rankings"
+              title={t('tab.resetRankings')}
               className="p-2 rounded-lg text-muted hover:text-dim hover:bg-card transition-colors"
             >
               <RotateCcw size={18} />
@@ -681,7 +685,7 @@ const RankingAppPage = () => {
                   onClick={() => setActiveGenre(null)}
                   className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${!activeGenre ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'}`}
                 >
-                  All Genres
+                  {t('ranking.allGenres')}
                 </button>
                 {availableGenres.map(genre => (
                   <button
@@ -743,11 +747,11 @@ const RankingAppPage = () => {
             {/* Group sub-tabs */}
             <div className="flex gap-2 bg-card rounded-xl p-1 border border-border overflow-x-auto">
               {[
-                { key: 'parties' as const, label: 'Parties' },
-                { key: 'rankings' as const, label: 'Rankings' },
-                { key: 'polls' as const, label: 'Polls' },
-                { key: 'lists' as const, label: 'Lists' },
-                { key: 'badges' as const, label: 'Badges' },
+                { key: 'parties' as const, label: t('groups.parties') },
+                { key: 'rankings' as const, label: t('groups.rankings') },
+                { key: 'polls' as const, label: t('groups.polls') },
+                { key: 'lists' as const, label: t('groups.lists') },
+                { key: 'badges' as const, label: t('groups.badges') },
               ].map(({ key, label }) => (
                 <button
                   key={key}
@@ -837,7 +841,7 @@ const RankingAppPage = () => {
           item={journalSheetItem}
           userId={user.id}
           onDismiss={() => setJournalSheetItem(null)}
-          onSaved={() => { setJournalSheetItem(null); setToastMessage('Journal entry saved'); }}
+          onSaved={() => { setJournalSheetItem(null); setToastMessage(t('journal.saved')); }}
         />
         </ErrorBoundary>
       )}

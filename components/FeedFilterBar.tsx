@@ -1,13 +1,6 @@
 import React from 'react';
 import { FeedFilters, FeedCardType, Tier } from '../types';
-
-const CARD_TYPE_OPTIONS: { value: FeedCardType | 'all'; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'ranking', label: 'Rankings' },
-  { value: 'review', label: 'Reviews' },
-  { value: 'milestone', label: 'Milestones' },
-  { value: 'list', label: 'Lists' },
-];
+import { useTranslation } from '../contexts/LanguageContext';
 
 const TIER_OPTIONS: { value: Tier | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -18,8 +11,8 @@ const TIER_OPTIONS: { value: Tier | 'all'; label: string }[] = [
   { value: Tier.D, label: 'D' },
 ];
 
-const TIME_RANGE_OPTIONS: { value: '24h' | '7d' | '30d' | 'all'; label: string }[] = [
-  { value: 'all', label: 'All Time' },
+const TIME_RANGE_KEYS: { value: '24h' | '7d' | '30d' | 'all'; labelKey?: string; label?: string }[] = [
+  { value: 'all', labelKey: 'filter.allTime' },
   { value: '24h', label: '24h' },
   { value: '7d', label: '7d' },
   { value: '30d', label: '30d' },
@@ -35,6 +28,21 @@ const chipActive = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
 const chipInactive = 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600';
 
 export const FeedFilterBar: React.FC<FeedFilterBarProps> = ({ filters, onFilterChange }) => {
+  const { t } = useTranslation();
+
+  const cardTypeOptions = [
+    { value: 'all' as const, label: t('filter.all') },
+    { value: 'ranking' as const, label: t('filter.rankings') },
+    { value: 'review' as const, label: t('filter.reviews') },
+    { value: 'milestone' as const, label: t('filter.milestones') },
+    { value: 'list' as const, label: t('filter.lists') },
+  ];
+
+  const timeRangeOptions = TIME_RANGE_KEYS.map(opt => ({
+    value: opt.value,
+    label: opt.labelKey ? t(opt.labelKey as any) : opt.label!,
+  }));
+
   const currentCardType = filters.cardType ?? 'all';
   const currentTier = filters.tier ?? 'all';
   const currentTimeRange = filters.timeRange ?? 'all';
@@ -43,7 +51,7 @@ export const FeedFilterBar: React.FC<FeedFilterBarProps> = ({ filters, onFilterC
     <div className="space-y-2">
       {/* Card Type */}
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {CARD_TYPE_OPTIONS.map((opt) => (
+        {cardTypeOptions.map((opt) => (
           <button
             key={opt.value}
             className={`${chipBase} ${currentCardType === opt.value ? chipActive : chipInactive}`}
@@ -79,7 +87,7 @@ export const FeedFilterBar: React.FC<FeedFilterBarProps> = ({ filters, onFilterC
 
       {/* Time Range */}
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {TIME_RANGE_OPTIONS.map((opt) => (
+        {timeRangeOptions.map((opt) => (
           <button
             key={opt.value}
             className={`${chipBase} ${currentTimeRange === opt.value ? chipActive : chipInactive}`}

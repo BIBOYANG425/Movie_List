@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Compass, Flame, Sparkles, TrendingUp, BookmarkPlus } from 'lucide-react';
+import { useTranslation } from '../contexts/LanguageContext';
 import { FriendRecommendation, TrendingMovie } from '../types';
 import { TMDBMovie } from '../services/tmdbService';
 import {
@@ -54,6 +55,7 @@ function toWatchlistMovie(movie: { tmdbId: string; title: string; year?: string;
 }
 
 export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick, onSaveForLater }) => {
+    const { t } = useTranslation();
     const [recommendations, setRecommendations] = useState<FriendRecommendation[]>([]);
     const [trending, setTrending] = useState<TrendingMovie[]>([]);
     const [loading, setLoading] = useState(true);
@@ -94,8 +96,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
             {/* Section tabs */}
             <div className="flex gap-2 bg-zinc-900/60 rounded-xl p-1 border border-zinc-800/50">
                 {[
-                    { key: 'recs' as const, label: 'For You', icon: Sparkles, count: recommendations.length },
-                    { key: 'trending' as const, label: 'Trending', icon: TrendingUp, count: trending.length },
+                    { key: 'recs' as const, label: t('discover.forYou'), icon: Sparkles, count: recommendations.length },
+                    { key: 'trending' as const, label: t('discover.trending'), icon: TrendingUp, count: trending.length },
                 ].map(({ key, label, icon: Icon, count }) => (
                     <button
                         key={key}
@@ -121,16 +123,16 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                 <div className="space-y-4">
                     <div className="flex items-center gap-2 mb-1">
                         <Sparkles size={18} className="text-amber-500" />
-                        <h2 className="text-lg font-bold">From Your Circle</h2>
+                        <h2 className="text-lg font-bold">{t('discover.fromCircle')}</h2>
                         <span className="text-xs text-zinc-500">
-                            Movies your friends love that you haven't seen yet
+                            {t('discover.circleHint')}
                         </span>
                     </div>
 
                     {recommendations.length === 0 ? (
                         <div className="text-center py-16 text-zinc-500">
                             <Compass size={40} className="mx-auto mb-3 opacity-40" />
-                            <p className="text-sm">Follow more friends to get personalized recommendations!</p>
+                            <p className="text-sm">{t('discover.followMore')}</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -189,7 +191,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                                 className="flex items-center gap-1.5 bg-white text-black px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-zinc-200 transition-colors"
                                             >
                                                 <BookmarkPlus size={14} />
-                                                Save to Watchlist
+                                                {t('discover.saveToWatchlist')}
                                             </button>
                                         </div>
                                     </div>
@@ -240,14 +242,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                 <div className="space-y-4">
                     <div className="flex items-center gap-2 mb-1">
                         <TrendingUp size={18} className="text-emerald-500" />
-                        <h2 className="text-lg font-bold">Trending in Your Network</h2>
-                        <span className="text-xs text-zinc-500">Most ranked by friends (last 30 days)</span>
+                        <h2 className="text-lg font-bold">{t('discover.trendingTitle')}</h2>
+                        <span className="text-xs text-zinc-500">{t('discover.trendingHint')}</span>
                     </div>
 
                     {trending.length === 0 ? (
                         <div className="text-center py-16 text-zinc-500">
                             <TrendingUp size={40} className="mx-auto mb-3 opacity-40" />
-                            <p className="text-sm">No trending activity yet. Follow more friends!</p>
+                            <p className="text-sm">{t('discover.trendingEmpty')}</p>
                         </div>
                     ) : (
                         <div className="space-y-2">
@@ -301,7 +303,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                                 <Flame size={12} className="text-orange-500" />
                                                 <span className="text-sm font-bold text-zinc-200">{movie.rankerCount}</span>
                                             </div>
-                                            <span className="text-[9px] text-zinc-500 block">rankers</span>
+                                            <span className="text-[9px] text-zinc-500 block">{t('discover.rankers')}</span>
                                         </div>
                                         <span
                                             className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-black"

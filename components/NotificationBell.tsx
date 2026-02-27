@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Bell, Check, UserPlus, Heart, Tv, Vote, Award, List, MessageCircle, Film } from 'lucide-react';
 import { AppNotification, NotificationType } from '../types';
 import { getNotifications, markNotificationsRead, getUnreadCount } from '../services/friendsService';
+import { useTranslation } from '../contexts/LanguageContext';
 
 const NOTIF_ICONS: Record<NotificationType, { icon: React.ReactNode; color: string }> = {
     new_follower: { icon: <UserPlus size={14} />, color: 'text-blue-400' },
@@ -33,6 +34,7 @@ interface NotificationBellProps {
 }
 
 export const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) => {
+    const { t } = useTranslation();
     const [open, setOpen] = useState(false);
     const [notifications, setNotifications] = useState<AppNotification[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -96,8 +98,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) =>
             {open && (
                 <div className="absolute right-0 top-full mt-2 w-80 max-h-[420px] overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50">
                     <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-4 py-2.5 flex items-center justify-between">
-                        <h3 className="text-sm font-bold">Notifications</h3>
-                        <span className="text-[10px] text-zinc-500">{notifications.length} recent</span>
+                        <h3 className="text-sm font-bold">{t('notifications.title')}</h3>
+                        <span className="text-[10px] text-zinc-500">{notifications.length} {t('notifications.recent')}</span>
                     </div>
 
                     {loading ? (
@@ -107,7 +109,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) =>
                     ) : notifications.length === 0 ? (
                         <div className="text-center py-8 text-zinc-500">
                             <Bell size={24} className="mx-auto mb-2 opacity-40" />
-                            <p className="text-xs">No notifications yet</p>
+                            <p className="text-xs">{t('notifications.empty')}</p>
                         </div>
                     ) : (
                         <div className="divide-y divide-zinc-800/50">
