@@ -174,6 +174,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           posterUrl: preselectedItem.posterUrl,
           type: 'movie',
           genres: preselectedItem.genres,
+          director: 'director' in preselectedItem ? preselectedItem.director : undefined,
+          bracket: classifyBracket(preselectedItem.genres),
           tier: Tier.B,
           rank: 0,
         };
