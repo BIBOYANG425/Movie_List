@@ -14,6 +14,12 @@ const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 const DEFAULT_TMDB_SEARCH_TIMEOUT_MS = 4500;
 
+/** Read the user's locale from localStorage and return the TMDB language code. */
+function getTmdbLocale(): string {
+  const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('spool_locale') : null;
+  return saved === 'zh' ? 'zh-CN' : 'en-US';
+}
+
 // Full genre map from TMDB (stable — rarely changes)
 const GENRE_MAP: Record<number, string> = {
   28: 'Action',
@@ -327,7 +333,7 @@ export async function getSmartSuggestions(
     const pickId = profile.topMovieIds[Math.floor(Math.random() * profile.topMovieIds.length)];
     try {
       const res = await fetch(
-        `${TMDB_BASE}/movie/${pickId}/similar?api_key=${apiKey}&language=en-US&page=${page}`
+        `${TMDB_BASE}/movie/${pickId}/similar?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`
       );
       if (!res.ok) return [];
       const data = await res.json();
@@ -342,7 +348,7 @@ export async function getSmartSuggestions(
   fetches.push((async (): Promise<TMDBMovie[]> => {
     const url = new URL(`${TMDB_BASE}/discover/movie`);
     url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('language', 'en-US');
+    url.searchParams.set('language', getTmdbLocale());
     url.searchParams.set('sort_by', 'vote_average.desc');
     url.searchParams.set('include_adult', 'false');
     url.searchParams.set('vote_count.gte', '200');
@@ -373,7 +379,7 @@ export async function getSmartSuggestions(
   fetches.push((async (): Promise<TMDBMovie[]> => {
     try {
       const res = await fetch(
-        `${TMDB_BASE}/trending/movie/week?api_key=${apiKey}&language=en-US&page=${page}`
+        `${TMDB_BASE}/trending/movie/week?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`
       );
       if (!res.ok) return [];
       const data = await res.json();
@@ -393,7 +399,7 @@ export async function getSmartSuggestions(
 
     const url = new URL(`${TMDB_BASE}/discover/movie`);
     url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('language', 'en-US');
+    url.searchParams.set('language', getTmdbLocale());
     url.searchParams.set('sort_by', 'popularity.desc');
     url.searchParams.set('include_adult', 'false');
     url.searchParams.set('vote_count.gte', '100');
@@ -472,7 +478,7 @@ export async function getSmartBackfill(
   const sampleIds = shuffle(profile.topMovieIds).slice(0, 2);
   try {
     const reqs = sampleIds.map(id =>
-      fetch(`${TMDB_BASE}/movie/${id}/recommendations?api_key=${apiKey}&language=en-US&page=${page}`)
+      fetch(`${TMDB_BASE}/movie/${id}/recommendations?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`)
         .then(r => r.ok ? r.json() : { results: [] })
     );
     const results = await Promise.all(reqs);
@@ -495,7 +501,7 @@ export async function getSmartBackfill(
       if (varietyParam) {
         const url = new URL(`${TMDB_BASE}/discover/movie`);
         url.searchParams.set('api_key', apiKey);
-        url.searchParams.set('language', 'en-US');
+        url.searchParams.set('language', getTmdbLocale());
         url.searchParams.set('sort_by', 'popularity.desc');
         url.searchParams.set('include_adult', 'false');
         url.searchParams.set('vote_count.gte', '100');
@@ -536,7 +542,7 @@ export async function getGenericSuggestions(
   try {
     const recentUrl = new URL(`${TMDB_BASE}/discover/movie`);
     recentUrl.searchParams.set('api_key', apiKey);
-    recentUrl.searchParams.set('language', 'en-US');
+    recentUrl.searchParams.set('language', getTmdbLocale());
     recentUrl.searchParams.set('sort_by', 'popularity.desc');
     recentUrl.searchParams.set('include_adult', 'false');
     recentUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
@@ -545,7 +551,7 @@ export async function getGenericSuggestions(
 
     const classicUrl = new URL(`${TMDB_BASE}/discover/movie`);
     classicUrl.searchParams.set('api_key', apiKey);
-    classicUrl.searchParams.set('language', 'en-US');
+    classicUrl.searchParams.set('language', getTmdbLocale());
     classicUrl.searchParams.set('sort_by', 'vote_average.desc');
     classicUrl.searchParams.set('include_adult', 'false');
     classicUrl.searchParams.set('primary_release_date.lte', `${currentYear - 5}-12-31`);
@@ -607,7 +613,7 @@ export async function getPersonalizedFills(
   try {
     const recentUrl = new URL(`${TMDB_BASE}/discover/movie`);
     recentUrl.searchParams.set('api_key', apiKey);
-    recentUrl.searchParams.set('language', 'en-US');
+    recentUrl.searchParams.set('language', getTmdbLocale());
     recentUrl.searchParams.set('sort_by', 'popularity.desc');
     recentUrl.searchParams.set('include_adult', 'false');
     recentUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
@@ -617,7 +623,7 @@ export async function getPersonalizedFills(
 
     const classicUrl = new URL(`${TMDB_BASE}/discover/movie`);
     classicUrl.searchParams.set('api_key', apiKey);
-    classicUrl.searchParams.set('language', 'en-US');
+    classicUrl.searchParams.set('language', getTmdbLocale());
     classicUrl.searchParams.set('sort_by', 'vote_average.desc');
     classicUrl.searchParams.set('include_adult', 'false');
     classicUrl.searchParams.set('primary_release_date.lte', `${currentYear - 5}-12-31`);
@@ -682,7 +688,7 @@ export async function getDynamicSuggestions(
     if (targetNew > 0) {
       const newUrl = new URL(`${TMDB_BASE}/discover/movie`);
       newUrl.searchParams.set('api_key', apiKey);
-      newUrl.searchParams.set('language', 'en-US');
+      newUrl.searchParams.set('language', getTmdbLocale());
       newUrl.searchParams.set('sort_by', 'popularity.desc');
       newUrl.searchParams.set('include_adult', 'false');
       newUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
@@ -694,14 +700,14 @@ export async function getDynamicSuggestions(
     // 2. Global Trending
     const globalUrl = new URL(`${TMDB_BASE}/trending/movie/week`);
     globalUrl.searchParams.set('api_key', apiKey);
-    globalUrl.searchParams.set('language', 'en-US');
+    globalUrl.searchParams.set('language', getTmdbLocale());
     globalUrl.searchParams.set('page', String(page));
     urls.push(fetch(globalUrl.toString()));
 
     // 3. Taste / Random
     const tasteUrl = new URL(`${TMDB_BASE}/discover/movie`);
     tasteUrl.searchParams.set('api_key', apiKey);
-    tasteUrl.searchParams.set('language', 'en-US');
+    tasteUrl.searchParams.set('language', getTmdbLocale());
     tasteUrl.searchParams.set('sort_by', 'popularity.desc');
     tasteUrl.searchParams.set('include_adult', 'false');
     const genreParam = genreNamesToIds(topGenreNames).join(',');
@@ -768,7 +774,7 @@ export async function getEditorsChoiceFills(
       const sampleIds = shuffle(rankedTmdbIds).slice(0, 5);
 
       const moviePromises = sampleIds.map(id =>
-        fetch(`${TMDB_BASE}/movie/${id}?api_key=${apiKey}&language=en-US`).then(res => res.json())
+        fetch(`${TMDB_BASE}/movie/${id}?api_key=${apiKey}&language=${getTmdbLocale()}`).then(res => res.json())
       );
 
       const movies = await Promise.all(moviePromises);
@@ -782,7 +788,7 @@ export async function getEditorsChoiceFills(
 
       if (collectionIds.size > 0) {
         const collectionPromises = Array.from(collectionIds).slice(0, 3).map(id =>
-          fetch(`${TMDB_BASE}/collection/${id}?api_key=${apiKey}&language=en-US`).then(res => res.json())
+          fetch(`${TMDB_BASE}/collection/${id}?api_key=${apiKey}&language=${getTmdbLocale()}`).then(res => res.json())
         );
 
         const collections = await Promise.all(collectionPromises);
@@ -813,7 +819,7 @@ export async function getEditorsChoiceFills(
   try {
     const url = new URL(`${TMDB_BASE}/discover/movie`);
     url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('language', 'en-US');
+    url.searchParams.set('language', getTmdbLocale());
     url.searchParams.set('sort_by', 'popularity.desc');
     url.searchParams.set('include_adult', 'false');
     url.searchParams.set('with_genres', '99'); // Documentaries
@@ -852,7 +858,7 @@ export async function searchMovies(
     const url = new URL(`${TMDB_BASE}/search/movie`);
     url.searchParams.set('api_key', apiKey);
     url.searchParams.set('query', query);
-    url.searchParams.set('language', 'en-US');
+    url.searchParams.set('language', getTmdbLocale());
     url.searchParams.set('page', '1');
     url.searchParams.set('include_adult', 'false');
 
@@ -909,7 +915,7 @@ export async function searchPeople(
     const url = new URL(`${TMDB_BASE}/search/person`);
     url.searchParams.set('api_key', apiKey);
     url.searchParams.set('query', query);
-    url.searchParams.set('language', 'en-US');
+    url.searchParams.set('language', getTmdbLocale());
     url.searchParams.set('page', '1');
     url.searchParams.set('include_adult', 'false');
 
@@ -971,8 +977,8 @@ export async function getPersonFilmography(
 
   try {
     const [personRes, creditsRes] = await Promise.all([
-      fetch(`${TMDB_BASE}/person/${personId}?api_key=${apiKey}&language=en-US`),
-      fetch(`${TMDB_BASE}/person/${personId}/movie_credits?api_key=${apiKey}&language=en-US`),
+      fetch(`${TMDB_BASE}/person/${personId}?api_key=${apiKey}&language=${getTmdbLocale()}`),
+      fetch(`${TMDB_BASE}/person/${personId}/movie_credits?api_key=${apiKey}&language=${getTmdbLocale()}`),
     ]);
 
     if (!personRes.ok || !creditsRes.ok) return null;
@@ -1044,7 +1050,7 @@ export async function getMovieGlobalScore(tmdbNumericId: number): Promise<number
 
   try {
     const res = await fetchWithTimeout(
-      `${TMDB_BASE}/movie/${tmdbNumericId}?api_key=${apiKey}&language=en-US`,
+      `${TMDB_BASE}/movie/${tmdbNumericId}?api_key=${apiKey}&language=${getTmdbLocale()}`,
       4000,
     );
     if (!res.ok) return undefined;
@@ -1069,7 +1075,7 @@ export async function getExtendedMovieDetails(tmdbNumericId: number): Promise<{
 
   try {
     const res = await fetchWithTimeout(
-      `${TMDB_BASE}/movie/${tmdbNumericId}?api_key=${apiKey}&language=en-US&append_to_response=watch/providers,credits`,
+      `${TMDB_BASE}/movie/${tmdbNumericId}?api_key=${apiKey}&language=${getTmdbLocale()}&append_to_response=watch/providers,credits`,
       5000,
     );
     if (!res.ok) return null;
