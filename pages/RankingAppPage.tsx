@@ -704,7 +704,7 @@ const RankingAppPage = () => {
           <Watchlist items={watchlist} onRemove={removeFromWatchlist} onRank={rankFromWatchlist} />
         )}
 
-        {activeTab === 'stats' && <StatsView items={items} />}
+        {activeTab === 'stats' && user && <StatsView items={items} userId={user.id} />}
 
         {activeTab === 'feed' && user && (
           <SocialFeedView userId={user.id} />

@@ -1,13 +1,23 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
-import { RankedItem, Tier } from '../types';
+import { RankedItem, Tier, GenreProfileItem } from '../types';
 import { TIER_COLORS } from '../constants';
+import { GenreRadarChart } from './GenreRadarChart';
+import { getGenreProfile } from '../services/friendsService';
+import { Star } from 'lucide-react';
 
 interface StatsViewProps {
   items: RankedItem[];
+  userId: string;
 }
 
-export const StatsView: React.FC<StatsViewProps> = ({ items }) => {
+export const StatsView: React.FC<StatsViewProps> = ({ items, userId }) => {
+  const [genreProfile, setGenreProfile] = useState<GenreProfileItem[]>([]);
+
+  useEffect(() => {
+    if (!userId) return;
+    getGenreProfile(userId).then(setGenreProfile).catch(console.error);
+  }, [userId]);
   const tierCounts = Object.values(Tier).map(tier => ({
     name: tier,
     value: items.filter(i => i.tier === tier).length,
@@ -71,6 +81,16 @@ export const StatsView: React.FC<StatsViewProps> = ({ items }) => {
             <span>Movies</span>
           </div>
         </div>
+      </div>
+
+      {/* Your Taste DNA */}
+      <div className="md:col-span-2 bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
+        <div className="flex items-center gap-2 mb-4">
+          <Star size={18} className="text-amber-500" />
+          <h3 className="text-lg font-bold text-zinc-100">Your Taste DNA</h3>
+          <span className="text-xs text-zinc-500">Genre distribution across your rankings</span>
+        </div>
+        <GenreRadarChart genres={genreProfile} />
       </div>
     </div>
   );

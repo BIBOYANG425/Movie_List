@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Compass, Flame, Sparkles, TrendingUp, BookmarkPlus, Star } from 'lucide-react';
-import { FriendRecommendation, TrendingMovie, GenreProfileItem } from '../types';
-import { GenreRadarChart } from './GenreRadarChart';
+import { Compass, Flame, Sparkles, TrendingUp, BookmarkPlus } from 'lucide-react';
+import { FriendRecommendation, TrendingMovie } from '../types';
 import { TMDBMovie } from '../services/tmdbService';
 import {
     getFriendRecommendations,
     getTrendingAmongFriends,
-    getGenreProfile,
 } from '../services/friendsService';
 
 const TIER_COLORS: Record<string, string> = {
@@ -58,9 +56,8 @@ function toWatchlistMovie(movie: { tmdbId: string; title: string; year?: string;
 export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick, onSaveForLater }) => {
     const [recommendations, setRecommendations] = useState<FriendRecommendation[]>([]);
     const [trending, setTrending] = useState<TrendingMovie[]>([]);
-    const [genreProfile, setGenreProfile] = useState<GenreProfileItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeSection, setActiveSection] = useState<'recs' | 'trending' | 'genres'>('recs');
+    const [activeSection, setActiveSection] = useState<'recs' | 'trending'>('recs');
 
     useEffect(() => {
         if (!userId) return;
@@ -68,14 +65,12 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
         const load = async () => {
             setLoading(true);
             try {
-                const [recs, trend, genres] = await Promise.all([
+                const [recs, trend] = await Promise.all([
                     getFriendRecommendations(userId),
                     getTrendingAmongFriends(userId),
-                    getGenreProfile(userId),
                 ]);
                 setRecommendations(recs);
                 setTrending(trend);
-                setGenreProfile(genres);
             } catch (err) {
                 console.error('Discovery load failed:', err);
             } finally {
@@ -101,7 +96,6 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                 {[
                     { key: 'recs' as const, label: 'For You', icon: Sparkles, count: recommendations.length },
                     { key: 'trending' as const, label: 'Trending', icon: TrendingUp, count: trending.length },
-                    { key: 'genres' as const, label: 'Your Taste', icon: Star, count: genreProfile.length },
                 ].map(({ key, label, icon: Icon, count }) => (
                     <button
                         key={key}
@@ -323,20 +317,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                 </div>
             )}
 
-            {/* Genre Taste Profile */}
-            {activeSection === 'genres' && (
-                <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-1">
-                        <Star size={18} className="text-amber-500" />
-                        <h2 className="text-lg font-bold">Your Taste DNA</h2>
-                        <span className="text-xs text-zinc-500">Genre distribution across your rankings</span>
-                    </div>
 
-                    <div className="bg-zinc-900/60 rounded-2xl border border-zinc-800/30 p-6">
-                        <GenreRadarChart genres={genreProfile} />
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
