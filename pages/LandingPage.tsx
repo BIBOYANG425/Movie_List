@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useTranslation } from "../contexts/LanguageContext";
 
 /* ─── palette ─── */
 const C = {
@@ -83,7 +84,7 @@ function TierBar({ dist, height = 6 }: { dist: any, height?: number }) {
 }
 
 /* ─── nav ─── */
-function Nav({ onAuth }: { onAuth: (mode: string) => void }) {
+function Nav({ onAuth, t, locale, toggleLocale }: { onAuth: (mode: string) => void; t: (key: any) => string; locale: string; toggleLocale: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 30);
@@ -103,20 +104,28 @@ function Nav({ onAuth }: { onAuth: (mode: string) => void }) {
         <span style={{ fontFamily: "var(--serif)", fontSize: 19, color: C.cream, letterSpacing: "-0.03em" }}>spool</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button onClick={toggleLocale} style={{
+          background: "transparent", border: `1px solid ${C.border}`, color: C.text, padding: "5px 12px",
+          fontFamily: "var(--sans)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+          borderRadius: 8, transition: "color 0.2s, border-color 0.2s", display: "flex", alignItems: "center", gap: 4,
+        }}
+          onMouseOver={e => { e.currentTarget.style.color = C.cream; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
+          onMouseOut={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.border; }}
+        >{locale === 'en' ? '中文' : 'EN'}</button>
         <button onClick={() => onAuth("login")} style={{
           background: "transparent", border: "none", color: C.text, padding: "7px 18px",
           fontFamily: "var(--sans)", fontSize: 13, fontWeight: 500, cursor: "pointer",
           borderRadius: 8, transition: "color 0.2s",
         }}
           onMouseOver={e => e.currentTarget.style.color = C.cream} onMouseOut={e => e.currentTarget.style.color = C.text}
-        >Log in</button>
+        >{t('landing.logIn')}</button>
         <button onClick={() => onAuth("signup")} style={{
           background: C.cream, color: C.bg, border: "none", borderRadius: 8,
           padding: "7px 18px", fontFamily: "var(--sans)", fontSize: 13, fontWeight: 600,
           cursor: "pointer", transition: "transform 0.15s, opacity 0.15s",
         }}
           onMouseOver={e => e.currentTarget.style.opacity = "0.88"} onMouseOut={e => e.currentTarget.style.opacity = "1"}
-        >Get started</button>
+        >{t('landing.startRanking')}</button>
       </div>
     </nav>
   );
@@ -137,10 +146,10 @@ function SpoolLogo({ size = 28 }: { size?: number }) {
 }
 
 /* ─── hero ─── */
-function Hero({ onAuth }: { onAuth: (mode: string) => void }) {
+function Hero({ onAuth, t }: { onAuth: (mode: string) => void; t: (key: any) => string }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setMounted(true)); }, []);
-  const t = (d: number) => `opacity 0.7s cubic-bezier(0.16,1,0.3,1) ${d}s, transform 0.7s cubic-bezier(0.16,1,0.3,1) ${d}s`;
+  const tr = (d: number) => `opacity 0.7s cubic-bezier(0.16,1,0.3,1) ${d}s, transform 0.7s cubic-bezier(0.16,1,0.3,1) ${d}s`;
   return (
     <section style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
@@ -156,28 +165,27 @@ function Hero({ onAuth }: { onAuth: (mode: string) => void }) {
         {/* left - copy */}
         <div style={{ flex: "1 1 400px", minWidth: 340 }}>
           <div style={{
-            opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(18px)", transition: t(0.15),
+            opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(18px)", transition: tr(0.15),
           }}>
             <h1 style={{
               fontFamily: "var(--serif)", fontSize: "clamp(40px, 5.5vw, 64px)", color: C.cream,
               lineHeight: 1.05, margin: "0 0 20px", fontWeight: 400, letterSpacing: "-0.03em",
             }}>
-              Your movies,<br />
-              <span style={{ color: C.tierS }}>ranked</span> and <span style={{ color: C.tierA }}>remembered.</span>
+              {t('landing.tagline')}
             </h1>
           </div>
           <div style={{
-            opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(18px)", transition: t(0.35),
+            opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(18px)", transition: tr(0.35),
           }}>
             <p style={{
               fontFamily: "var(--sans)", fontSize: 16, color: C.text, lineHeight: 1.65,
               maxWidth: 420, margin: "0 0 32px",
             }}>
-              Tier-based rankings. Friend-powered discovery. A personal film journal. Built for people who care about movies — not algorithms.
+              {t('landing.subtitle')}
             </p>
           </div>
           <div style={{
-            opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(18px)", transition: t(0.5),
+            opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(18px)", transition: tr(0.5),
             display: "flex", gap: 10, flexWrap: "wrap",
           }}>
             <button onClick={() => onAuth("signup")} style={{
@@ -187,7 +195,7 @@ function Hero({ onAuth }: { onAuth: (mode: string) => void }) {
             }}
               onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(168,85,247,0.12)"; }}
               onMouseOut={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
-            >Start ranking</button>
+            >{t('landing.startRanking')}</button>
             <button onClick={() => onAuth("login")} style={{
               background: "transparent", color: C.cream, border: `1px solid ${C.border}`,
               borderRadius: 10, padding: "13px 28px", fontFamily: "var(--sans)", fontSize: 15,
@@ -195,11 +203,11 @@ function Hero({ onAuth }: { onAuth: (mode: string) => void }) {
             }}
               onMouseOver={e => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
               onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = C.border; }}
-            >Log in</button>
+            >{t('landing.logIn')}</button>
           </div>
           {/* social proof line */}
           <div style={{
-            opacity: mounted ? 1 : 0, transition: t(0.7),
+            opacity: mounted ? 1 : 0, transition: tr(0.7),
             display: "flex", alignItems: "center", gap: 10, marginTop: 28,
           }}>
             <div style={{ display: "flex" }}>
@@ -212,7 +220,7 @@ function Hero({ onAuth }: { onAuth: (mode: string) => void }) {
               ))}
             </div>
             <span style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.dim }}>
-              Join 48,000+ movie lovers ranking right now
+              {t('landing.socialProof')}
             </span>
           </div>
         </div>
@@ -220,9 +228,9 @@ function Hero({ onAuth }: { onAuth: (mode: string) => void }) {
         {/* right — live feed preview */}
         <div style={{
           flex: "1 1 380px", minWidth: 320, maxWidth: 440,
-          opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(24px)", transition: t(0.6),
+          opacity: mounted ? 1 : 0, transform: mounted ? "none" : "translateY(24px)", transition: tr(0.6),
         }}>
-          <LiveFeedPreview />
+          <LiveFeedPreview t={t} />
         </div>
       </div>
     </section>
@@ -230,7 +238,7 @@ function Hero({ onAuth }: { onAuth: (mode: string) => void }) {
 }
 
 /* ─── live feed preview card ─── */
-function LiveFeedPreview() {
+function LiveFeedPreview({ t }: { t: (key: any) => string }) {
   return (
     <div style={{
       background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
@@ -241,10 +249,10 @@ function LiveFeedPreview() {
         padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <span style={{ fontFamily: "var(--sans)", fontSize: 13, fontWeight: 600, color: C.cream }}>Live Activity</span>
+        <span style={{ fontFamily: "var(--sans)", fontSize: 13, fontWeight: 600, color: C.cream }}>{t('landing.liveActivity')}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.tierB, boxShadow: `0 0 6px ${C.tierB}`, animation: "pulse 2s infinite" }} />
-          <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.dim }}>Real-time</span>
+          <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.dim }}>{t('landing.realTime')}</span>
         </div>
       </div>
       {/* feed items */}
@@ -259,7 +267,7 @@ function LiveFeedPreview() {
         marginTop: -60, position: "relative", zIndex: 2,
         display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 14,
       }}>
-        <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.dim, letterSpacing: "0.04em" }}>Sign up to see your friends' feed →</span>
+        <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.dim, letterSpacing: "0.04em" }}>{t('landing.signUpCTA')}</span>
       </div>
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
     </div>
@@ -319,15 +327,15 @@ function FeedItem({ item, index }: { item: any; index: number }) {
 }
 
 /* ─── trending section ─── */
-function TrendingSection() {
+function TrendingSection({ t }: { t: (key: any) => string }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   return (
     <section style={{ padding: "60px 32px 80px", maxWidth: 1120, margin: "0 auto" }}>
       <Reveal>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 28 }}>
           <div>
-            <h2 style={{ fontFamily: "var(--serif)", fontSize: 32, color: C.cream, margin: "0 0 4px", letterSpacing: "-0.02em", fontWeight: 400 }}>Trending this week</h2>
-            <p style={{ fontFamily: "var(--sans)", fontSize: 13, color: C.dim, margin: 0 }}>See how the community is ranking right now</p>
+            <h2 style={{ fontFamily: "var(--serif)", fontSize: 32, color: C.cream, margin: "0 0 4px", letterSpacing: "-0.02em", fontWeight: 400 }}>{t('landing.trendingTitle')}</h2>
+            <p style={{ fontFamily: "var(--sans)", fontSize: 13, color: C.dim, margin: 0 }}>{t('landing.trendingHint')}</p>
           </div>
         </div>
       </Reveal>
@@ -356,7 +364,7 @@ function TrendingSection() {
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontFamily: "var(--serif)", fontSize: 24, color: C.cream, lineHeight: 1, letterSpacing: "-0.02em" }}>{m.avg}</div>
-                  <div style={{ fontFamily: "var(--sans)", fontSize: 10, color: C.dim, marginTop: 2 }}>{m.reviews.toLocaleString()} rankings</div>
+                  <div style={{ fontFamily: "var(--sans)", fontSize: 10, color: C.dim, marginTop: 2 }}>{m.reviews.toLocaleString()} {t('landing.rankings')}</div>
                 </div>
               </div>
               <TierBar dist={m.tierDist as any} height={5} />
@@ -377,17 +385,17 @@ function TrendingSection() {
 }
 
 /* ─── how it works ─── */
-function HowSection({ onAuth }: { onAuth: (mode: string) => void }) {
+function HowSection({ onAuth, t }: { onAuth: (mode: string) => void; t: (key: any) => string }) {
   const steps = [
-    { num: "1", label: "Pick your tier", desc: "S, A, B, C, or D. One tap, gut feeling.", color: C.tierS, icon: "◆" },
-    { num: "2", label: "Quick comparisons", desc: "3–4 smart matchups within your tier. 15 seconds.", color: C.tierA, icon: "⟷" },
-    { num: "3", label: "Journal it", desc: "Capture moods, moments, and why it resonated.", color: C.tierB, icon: "✎" },
-    { num: "4", label: "Share & discover", desc: "Your friends see it. You discover what they're watching.", color: C.tierC, icon: "◎" },
+    { num: "1", labelKey: 'landing.step1Title', descKey: 'landing.step1Desc', color: C.tierS, icon: "◆" },
+    { num: "2", labelKey: 'landing.step2Title', descKey: 'landing.step2Desc', color: C.tierA, icon: "⟷" },
+    { num: "3", labelKey: 'landing.step3Title', descKey: 'landing.step3Desc', color: C.tierB, icon: "✎" },
+    { num: "4", labelKey: 'landing.step4Title', descKey: 'landing.step4Desc', color: C.tierC, icon: "◎" },
   ];
   return (
     <section style={{ padding: "60px 32px 80px", maxWidth: 1120, margin: "0 auto" }}>
       <Reveal>
-        <h2 style={{ fontFamily: "var(--serif)", fontSize: 32, color: C.cream, margin: "0 0 40px", letterSpacing: "-0.02em", fontWeight: 400 }}>How Spool works</h2>
+        <h2 style={{ fontFamily: "var(--serif)", fontSize: 32, color: C.cream, margin: "0 0 40px", letterSpacing: "-0.02em", fontWeight: 400 }}>{t('landing.howItWorks')}</h2>
       </Reveal>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
         {steps.map((s, i) => (
@@ -405,9 +413,9 @@ function HowSection({ onAuth }: { onAuth: (mode: string) => void }) {
                 width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
                 background: `${s.color}10`, borderRadius: 10,
               }}>{s.icon}</div>
-              <div style={{ fontFamily: "var(--sans)", fontSize: 11, fontWeight: 700, color: s.color, letterSpacing: "0.06em", marginBottom: 6 }}>STEP {s.num}</div>
-              <h3 style={{ fontFamily: "var(--sans)", fontSize: 16, color: C.cream, margin: "0 0 6px", fontWeight: 600 }}>{s.label}</h3>
-              <p style={{ fontFamily: "var(--sans)", fontSize: 13, color: C.text, lineHeight: 1.55, margin: 0 }}>{s.desc}</p>
+              <div style={{ fontFamily: "var(--sans)", fontSize: 11, fontWeight: 700, color: s.color, letterSpacing: "0.06em", marginBottom: 6 }}>{t('landing.step')} {s.num}</div>
+              <h3 style={{ fontFamily: "var(--sans)", fontSize: 16, color: C.cream, margin: "0 0 6px", fontWeight: 600 }}>{t(s.labelKey as any)}</h3>
+              <p style={{ fontFamily: "var(--sans)", fontSize: 13, color: C.text, lineHeight: 1.55, margin: 0 }}>{t(s.descKey as any)}</p>
             </div>
           </Reveal>
         ))}
@@ -421,7 +429,7 @@ function HowSection({ onAuth }: { onAuth: (mode: string) => void }) {
           }}
             onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(168,85,247,0.12)"; }}
             onMouseOut={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
-          >Start ranking</button>
+          >{t('landing.startRanking')}</button>
         </div>
       </Reveal>
     </section>
@@ -429,7 +437,13 @@ function HowSection({ onAuth }: { onAuth: (mode: string) => void }) {
 }
 
 /* ─── footer ─── */
-function Footer() {
+function Footer({ t }: { t: (key: any) => string }) {
+  const links = [
+    { key: 'landing.about', href: '#' },
+    { key: 'landing.privacy', href: '#' },
+    { key: 'landing.terms', href: '#' },
+    { key: 'landing.contact', href: '#' },
+  ];
   return (
     <footer style={{
       padding: "28px 32px", borderTop: `1px solid ${C.border}`,
@@ -441,13 +455,13 @@ function Footer() {
         <span style={{ fontFamily: "var(--serif)", fontSize: 14, color: C.muted }}>spool</span>
       </div>
       <div style={{ display: "flex", gap: 24 }}>
-        {["About", "Privacy", "Terms", "Contact"].map(link => (
-          <a key={link} href="#" style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.muted, textDecoration: "none", transition: "color 0.15s" }}
+        {links.map(link => (
+          <a key={link.key} href={link.href} style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.muted, textDecoration: "none", transition: "color 0.15s" }}
             onMouseOver={e => e.currentTarget.style.color = C.text} onMouseOut={e => e.currentTarget.style.color = C.muted}
-          >{link}</a>
+          >{t(link.key as any)}</a>
         ))}
       </div>
-      <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.muted }}>© 2026 Spool</span>
+      <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.muted }}>{t('landing.copyright')}</span>
     </footer>
   );
 }
@@ -456,6 +470,9 @@ function Footer() {
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t, locale, setLocale } = useTranslation();
+
+  const toggleLocale = () => setLocale(locale === 'en' ? 'zh' : 'en');
 
   const handleAuth = (mode: string) => {
     if (user) {
@@ -463,7 +480,6 @@ export default function LandingPage() {
     } else if (mode === 'login') {
       navigate('/auth');
     } else {
-      // New users go straight to movie picking before auth
       navigate('/onboarding/movies');
     }
   };
@@ -474,12 +490,11 @@ export default function LandingPage() {
       "--serif": "'Instrument Serif', Georgia, serif",
       "--sans": "'DM Sans', -apple-system, sans-serif",
     } as React.CSSProperties}>
-      {/* We skip the <Grain /> since App.tsx already renders it globally! */}
-      <Nav onAuth={handleAuth} />
-      <Hero onAuth={handleAuth} />
-      <TrendingSection />
-      <HowSection onAuth={handleAuth} />
-      <Footer />
+      <Nav onAuth={handleAuth} t={t} locale={locale} toggleLocale={toggleLocale} />
+      <Hero onAuth={handleAuth} t={t} />
+      <TrendingSection t={t} />
+      <HowSection onAuth={handleAuth} t={t} />
+      <Footer t={t} />
     </div>
   );
 }

@@ -165,6 +165,7 @@ const en = {
   // ── Landing Page ─────────────────────────────────────────────────────────
   'landing.tagline': 'Your movies, ranked and remembered',
   'landing.subtitle': 'Tier-based rankings. Friend-powered discovery. A personal film journal. Built for people who care about movies \u2014 not algorithms.',
+  'landing.getStarted': 'Get started',
   'landing.createAccount': 'Create your account',
   'landing.logIn': 'Log in',
   'landing.socialProof': 'Join 48,000+ movie lovers ranking right now',
