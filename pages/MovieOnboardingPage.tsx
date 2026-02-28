@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 
 const REQUIRED_MOVIES = MIN_MOVIES_FOR_SCORES;
+const ONBOARDING_STORAGE_KEY = 'spool_onboarding_picks';
 
 function mergeAndDedup(results: TMDBMovie[]): TMDBMovie[] {
     const map = new Map<string, TMDBMovie>();
@@ -79,40 +80,50 @@ const MovieOnboardingPage: React.FC = () => {
     // ── Load existing rankings on mount ─────────────────────────────────────────
 
     useEffect(() => {
-        if (!user) return;
         setSessionId(globalThis.crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2));
-        (async () => {
-            const { data } = await supabase
-                .from('user_rankings')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('tier')
-                .order('rank_position');
-            if (data) {
-                setRankedItems(data.map((row: any): RankedItem => ({
-                    id: row.tmdb_id,
-                    title: row.title,
-                    year: row.year ?? '',
-                    posterUrl: row.poster_url ?? '',
-                    type: row.type as MediaType,
-                    genres: row.genres ?? [],
-                    director: row.director,
-                    tier: row.tier as Tier,
-                    rank: row.rank_position,
-                    bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
-                    notes: row.notes,
-                })));
-            }
+
+        if (user) {
+            // Authenticated: load from Supabase
+            (async () => {
+                const { data } = await supabase
+                    .from('user_rankings')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('tier')
+                    .order('rank_position');
+                if (data) {
+                    setRankedItems(data.map((row: any): RankedItem => ({
+                        id: row.tmdb_id,
+                        title: row.title,
+                        year: row.year ?? '',
+                        posterUrl: row.poster_url ?? '',
+                        type: row.type as MediaType,
+                        genres: row.genres ?? [],
+                        director: row.director,
+                        tier: row.tier as Tier,
+                        rank: row.rank_position,
+                        bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
+                        notes: row.notes,
+                    })));
+                }
+                setLoading(false);
+            })();
+        } else {
+            // Anonymous: load from localStorage
+            try {
+                const stored = JSON.parse(localStorage.getItem(ONBOARDING_STORAGE_KEY) || '[]');
+                if (stored.length > 0) setRankedItems(stored);
+            } catch { /* ignore */ }
             setLoading(false);
-        })();
+        }
     }, [user]);
 
     // Redirect if already at threshold
     useEffect(() => {
         if (!loading && rankedItems.length >= REQUIRED_MOVIES) {
-            navigate('/app', { replace: true });
+            navigate(user ? '/app' : '/auth', { replace: true });
         }
-    }, [loading, rankedItems.length, navigate]);
+    }, [loading, rankedItems.length, navigate, user]);
 
     // ── Suggestions loading ─────────────────────────────────────────────────────
 
@@ -220,7 +231,7 @@ const MovieOnboardingPage: React.FC = () => {
         rankedItems.filter(i => i.tier === tier).sort((a, b) => a.rank - b.rank);
 
     const handlePickTier = (tier: Tier) => {
-        if (!pendingMovie || !user) return;
+        if (!pendingMovie) return;
         setSelectedTier(tier);
 
         const tierItems = getTierItems(tier);
@@ -289,7 +300,7 @@ const MovieOnboardingPage: React.FC = () => {
     };
 
     const finishInsert = async (tier: Tier, rankIndex: number) => {
-        if (!pendingMovie || !user) return;
+        if (!pendingMovie) return;
 
         if (fromSuggestion) consumeSuggestion(pendingMovie.id);
 
@@ -314,11 +325,17 @@ const MovieOnboardingPage: React.FC = () => {
             const newTierList = [...tierItems];
             newTierList.splice(rankIndex, 0, newItem);
             updatedTierList = newTierList.map((item, idx) => ({ ...item, rank: idx }));
-            return [...otherItems, ...updatedTierList];
+            const result = [...otherItems, ...updatedTierList];
+
+            // Always persist to localStorage during onboarding
+            localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(result));
+
+            return result;
         });
         setPendingMovie(null);
 
-        if (updatedTierList.length > 0) {
+        // Only save to Supabase + log activity if authenticated
+        if (user && updatedTierList.length > 0) {
             const rowsToUpdate = updatedTierList.map(item => ({
                 user_id: user.id,
                 tmdb_id: item.id,
@@ -327,7 +344,7 @@ const MovieOnboardingPage: React.FC = () => {
                 poster_url: item.posterUrl,
                 type: item.type,
                 genres: item.genres,
-                director: null, // director not available in onboarding list
+                director: null,
                 tier: item.tier,
                 rank_position: item.rank,
                 bracket: item.bracket,
@@ -339,25 +356,24 @@ const MovieOnboardingPage: React.FC = () => {
 
             if (error) {
                 console.error("Failed to save ranking to Supabase:", error);
-                alert(`Failed to save movie. Please ensure you have run the supabase_spool_ranking.sql migration in your Supabase dashboard.\n\nError: ${error.message}`);
             }
-        }
 
-        await logRankingActivityEvent(
-            user.id,
-            {
-                id: newItem.id,
-                title: newItem.title,
-                tier: newItem.tier,
-                posterUrl: newItem.posterUrl,
-                year: newItem.year,
-            },
-            'ranking_add',
-        );
+            await logRankingActivityEvent(
+                user.id,
+                {
+                    id: newItem.id,
+                    title: newItem.title,
+                    tier: newItem.tier,
+                    posterUrl: newItem.posterUrl,
+                    year: newItem.year,
+                },
+                'ranking_add',
+            );
+        }
     };
 
     const handleContinue = () => {
-        navigate('/app', { replace: true });
+        navigate(user ? '/app' : '/auth', { replace: true });
     };
 
     // ── Derived state ───────────────────────────────────────────────────────────
@@ -537,7 +553,7 @@ const MovieOnboardingPage: React.FC = () => {
             <main className="max-w-2xl mx-auto px-4 py-10 space-y-6">
                 {/* Header */}
                 <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-[0.2em] text-indigo-300">Step 2 of 2</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-indigo-300">{user ? 'Step 2 of 2' : 'Get Started'}</p>
                     <h1 className="text-3xl font-bold">Build your Marquee</h1>
                     <p className="text-zinc-400 text-sm">
                         Pick at least <span className="text-white font-semibold">{REQUIRED_MOVIES} movies</span> you've seen
@@ -578,7 +594,7 @@ const MovieOnboardingPage: React.FC = () => {
                         onClick={handleContinue}
                         className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 text-black font-bold text-sm hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 animate-fade-in"
                     >
-                        Continue to Marquee
+                        {user ? 'Continue to Marquee' : 'Create your account'}
                         <ChevronRight size={16} />
                     </button>
                 )}

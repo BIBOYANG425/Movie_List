@@ -158,6 +158,34 @@ const RankingAppPage = () => {
     const fetchData = async () => {
       setLoading(true);
 
+      // Migrate onboarding picks from localStorage if present
+      const ONBOARDING_KEY = 'spool_onboarding_picks';
+      const stored = localStorage.getItem(ONBOARDING_KEY);
+      if (stored) {
+        try {
+          const picks: RankedItem[] = JSON.parse(stored);
+          if (picks.length > 0) {
+            const rows = picks.map(item => ({
+              user_id: user.id,
+              tmdb_id: item.id,
+              title: item.title,
+              year: item.year,
+              poster_url: item.posterUrl,
+              type: item.type,
+              genres: item.genres,
+              director: item.director ?? null,
+              tier: item.tier,
+              rank_position: item.rank,
+              bracket: item.bracket,
+              notes: item.notes ?? null,
+              updated_at: new Date().toISOString(),
+            }));
+            await supabase.from('user_rankings').upsert(rows, { onConflict: 'user_id,tmdb_id' });
+          }
+        } catch { /* ignore */ }
+        localStorage.removeItem(ONBOARDING_KEY);
+      }
+
       const [rankingsRes, watchlistRes] = await Promise.all([
         supabase
           .from('user_rankings')

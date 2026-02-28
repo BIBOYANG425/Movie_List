@@ -35,7 +35,7 @@ const App = () => {
         />
         <Route
           path="/onboarding/movies"
-          element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <MovieOnboardingPage />) : <Navigate to="/auth" replace />}
+          element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <MovieOnboardingPage />) : <MovieOnboardingPage />}
         />
         <Route
           path="/app"

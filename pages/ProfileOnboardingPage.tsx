@@ -8,6 +8,7 @@ import {
   updateMyProfile,
   uploadAvatarPhoto,
 } from '../services/friendsService';
+import { MIN_MOVIES_FOR_SCORES } from '../constants';
 
 const MAX_BIO_LENGTH = 280;
 
@@ -91,7 +92,15 @@ const ProfileOnboardingPage = () => {
     }
 
     await refreshProfile();
-    navigate('/onboarding/movies', { replace: true });
+
+    // Skip movie step if picks were already made during anonymous onboarding
+    let hasLocalPicks = false;
+    try {
+      const stored = JSON.parse(localStorage.getItem('spool_onboarding_picks') || '[]');
+      hasLocalPicks = stored.length >= MIN_MOVIES_FOR_SCORES;
+    } catch { /* ignore */ }
+
+    navigate(hasLocalPicks ? '/app' : '/onboarding/movies', { replace: true });
   };
 
   return (

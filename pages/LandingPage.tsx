@@ -116,7 +116,7 @@ function Nav({ onAuth }: { onAuth: (mode: string) => void }) {
           cursor: "pointer", transition: "transform 0.15s, opacity 0.15s",
         }}
           onMouseOver={e => e.currentTarget.style.opacity = "0.88"} onMouseOut={e => e.currentTarget.style.opacity = "1"}
-        >Sign up</button>
+        >Get started</button>
       </div>
     </nav>
   );
@@ -187,7 +187,7 @@ function Hero({ onAuth }: { onAuth: (mode: string) => void }) {
             }}
               onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(168,85,247,0.12)"; }}
               onMouseOut={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
-            >Create your account</button>
+            >Start ranking</button>
             <button onClick={() => onAuth("login")} style={{
               background: "transparent", color: C.cream, border: `1px solid ${C.border}`,
               borderRadius: 10, padding: "13px 28px", fontFamily: "var(--sans)", fontSize: 15,
@@ -460,10 +460,11 @@ export default function LandingPage() {
   const handleAuth = (mode: string) => {
     if (user) {
       navigate('/app');
-    } else {
-      // NOTE: AuthPage accepts 'mode' internally, but routing to AuthPage defaults to it.
-      // We'll just push to '/auth' as a unified login/signup form.
+    } else if (mode === 'login') {
       navigate('/auth');
+    } else {
+      // New users go straight to movie picking before auth
+      navigate('/onboarding/movies');
     }
   };
 
