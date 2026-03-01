@@ -2,9 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { RankedItem, Tier, MediaType, Bracket } from '../types';
-import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES, TIER_SCORE_RANGES } from '../constants';
+import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES } from '../constants';
 import { getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
-import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
+import { classifyBracket } from '../services/rankingAlgorithm';
+import { SpoolRankingEngine } from '../services/spoolRankingEngine';
+import { computePredictionSignals } from '../services/spoolPrediction';
+import { ComparisonRequest } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { logRankingActivityEvent } from '../services/friendsService';
@@ -21,13 +24,6 @@ function mergeAndDedup(results: TMDBMovie[]): TMDBMovie[] {
     return Array.from(map.values()).slice(0, 12);
 }
 
-function getComparisonMid(low: number, high: number, round: number, seed: number | null): number {
-    if (round === 0 && seed !== null) {
-        const maxIndex = Math.max(low, high - 1);
-        return Math.min(Math.max(seed, low), maxIndex);
-    }
-    return Math.floor((low + high) / 2);
-}
 
 const MovieOnboardingPage: React.FC = () => {
     const { user } = useAuth();
@@ -60,10 +56,8 @@ const MovieOnboardingPage: React.FC = () => {
     const [fromSuggestion, setFromSuggestion] = useState(false);
     const [modalStep, setModalStep] = useState<'tier' | 'compare'>('tier');
     const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
-    const [compLow, setCompLow] = useState(0);
-    const [compHigh, setCompHigh] = useState(0);
-    const [compHistory, setCompHistory] = useState<{ low: number; high: number }[]>([]);
-    const [compSeed, setCompSeed] = useState<number | null>(null);
+    const engineRef = useRef<SpoolRankingEngine | null>(null);
+    const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
     const [sessionId, setSessionId] = useState('');
     const [isRatingFetching, setIsRatingFetching] = useState(false);
 
@@ -223,8 +217,8 @@ const MovieOnboardingPage: React.FC = () => {
         setFromSuggestion(isSuggestion);
         setModalStep('tier');
         setSelectedTier(null);
-        setCompHistory([]);
-        setCompSeed(null);
+        engineRef.current = null;
+        setCurrentComparison(null);
     };
 
     const getTierItems = (tier: Tier) =>
@@ -239,35 +233,47 @@ const MovieOnboardingPage: React.FC = () => {
             // No existing items OR still in first 5 movies — insert immediately
             finishInsert(tier, Math.floor(tierItems.length / 2));
         } else {
-            // Spool adaptive seeding
-            const range = TIER_SCORE_RANGES[tier];
-            const tierItemScores = tierItems.map((_, idx) => computeTierScore(idx, tierItems.length, range.min, range.max));
-            const seedIdx = computeSeedIndex(tierItemScores, range.min, range.max, pendingGlobalScore);
+            const engine = new SpoolRankingEngine();
+            const signals = computePredictionSignals(
+                rankedItems,
+                pendingMovie.genres[0] ?? '',
+                classifyBracket(pendingMovie.genres),
+                pendingGlobalScore,
+                tier,
+            );
+            const newItem: RankedItem = {
+                id: pendingMovie.id, title: pendingMovie.title, year: pendingMovie.year,
+                posterUrl: pendingMovie.posterUrl ?? '', type: 'movie',
+                genres: pendingMovie.genres, tier, rank: 0,
+                bracket: classifyBracket(pendingMovie.genres), globalScore: pendingGlobalScore,
+            };
+            const result = engine.start(newItem, tier, rankedItems, signals);
+            engineRef.current = engine;
 
-            setCompLow(0);
-            setCompHigh(tierItems.length);
-            setCompHistory([]);
-            setCompSeed(seedIdx);
-            setModalStep('compare');
+            if (result.type === 'done') {
+                finishInsert(tier, result.finalRank!);
+            } else {
+                setCurrentComparison(result.comparison!);
+                setModalStep('compare');
+            }
         }
     };
 
     const handleCompareChoice = async (choice: 'new' | 'existing' | 'skip') => {
-        if (!selectedTier || !pendingMovie) return;
-        const tierItems = getTierItems(selectedTier);
-        const mid = getComparisonMid(compLow, compHigh, compHistory.length, compSeed);
+        if (!selectedTier || !pendingMovie || !engineRef.current || !currentComparison) return;
 
         // Log comparison
-        const pivotItem = tierItems[mid];
-        if (pivotItem && user) {
+        if (user) {
             try {
                 await supabase.from('comparison_logs').insert({
                     user_id: user.id,
                     session_id: sessionId,
-                    movie_a_tmdb_id: pendingMovie.id,
-                    movie_b_tmdb_id: pivotItem.id,
+                    movie_a_tmdb_id: currentComparison.movieA.id,
+                    movie_b_tmdb_id: currentComparison.movieB.id,
                     winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
-                    round: compHistory.length + 1,
+                    round: 0,
+                    phase: currentComparison.phase,
+                    question_text: currentComparison.question,
                 });
             } catch (err) {
                 console.error('Failed to log comparison:', err);
@@ -275,28 +281,29 @@ const MovieOnboardingPage: React.FC = () => {
         }
 
         if (choice === 'skip') {
-            finishInsert(selectedTier, mid);
+            const result = engineRef.current.skip();
+            finishInsert(selectedTier, result.finalRank!);
             return;
         }
 
-        setCompHistory(prev => [...prev, { low: compLow, high: compHigh }]);
+        const winnerId = choice === 'new'
+            ? currentComparison.movieA.id
+            : currentComparison.movieB.id;
+        const result = engineRef.current.submitChoice(winnerId);
 
-        const result = adaptiveNarrow(compLow, compHigh, mid, choice);
-
-        if (!result) {
-            finishInsert(selectedTier, choice === 'new' ? mid : mid + 1);
+        if (result.type === 'done') {
+            finishInsert(selectedTier, result.finalRank!);
         } else {
-            setCompLow(result.newLow);
-            setCompHigh(result.newHigh);
+            setCurrentComparison(result.comparison!);
         }
     };
 
     const handleCompareUndo = () => {
-        if (compHistory.length === 0) return;
-        const prev = compHistory[compHistory.length - 1];
-        setCompLow(prev.low);
-        setCompHigh(prev.high);
-        setCompHistory(h => h.slice(0, -1));
+        if (!engineRef.current) return;
+        const result = engineRef.current.undo();
+        if (result && result.comparison) {
+            setCurrentComparison(result.comparison);
+        }
     };
 
     const finishInsert = async (tier: Tier, rankIndex: number) => {
@@ -458,47 +465,30 @@ const MovieOnboardingPage: React.FC = () => {
                             </>
                         )}
 
-                        {modalStep === 'compare' && selectedTier && (() => {
-                            const tierItems = getTierItems(selectedTier);
-                            const mid = getComparisonMid(compLow, compHigh, compHistory.length, compSeed);
-                            const pivotItem = tierItems[mid];
-                            const totalRounds = Math.ceil(Math.log2(tierItems.length + 1));
-                            const currentRound = compHistory.length + 1;
-
-                            return (
+                        {modalStep === 'compare' && selectedTier && currentComparison && (
                                 <div className="p-4 space-y-4 animate-fade-in">
-                                    {/* Progress */}
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-zinc-400 text-xs">
-                                            Round <span className="text-white font-semibold">{currentRound}</span>
-                                            {' '}of ~<span className="text-white font-semibold">{totalRounds}</span>
-                                        </p>
-                                        <div className="flex gap-1">
-                                            {Array.from({ length: totalRounds }).map((_, i) => (
-                                                <div
-                                                    key={i}
-                                                    className={`h-1.5 w-4 rounded-full transition-colors ${i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'
-                                                        }`}
-                                                />
-                                            ))}
-                                        </div>
+                                    {/* Phase indicator */}
+                                    <div className="flex items-center justify-center">
+                                        <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded">
+                                            {currentComparison.phase.replace('_', '-')}
+                                        </span>
                                     </div>
 
-                                    <h4 className="text-center text-sm font-bold text-white">Which do you prefer?</h4>
+                                    <h4 className="text-center text-sm font-bold text-white">{currentComparison.question}</h4>
 
                                     {/* Head-to-head */}
                                     <div className="flex items-stretch gap-2">
-                                        {/* New item */}
+                                        {/* New item (movieA) */}
                                         <button
                                             onClick={() => handleCompareChoice('new')}
                                             className="flex-1 flex flex-col items-center gap-2 p-2 rounded-xl border-2 border-zinc-700 hover:border-indigo-500 hover:bg-indigo-500/5 transition-all active:scale-[0.97]"
                                         >
                                             <img
-                                                src={pendingMovie.posterUrl ?? ''}
-                                                alt={pendingMovie.title}
+                                                src={currentComparison.movieA.posterUrl ?? ''}
+                                                alt={currentComparison.movieA.title}
                                                 className="w-full aspect-[2/3] object-cover rounded-lg shadow-lg"
                                             />
-                                            <p className="font-bold text-white text-xs leading-tight text-center">{pendingMovie.title}</p>
+                                            <p className="font-bold text-white text-xs leading-tight text-center">{currentComparison.movieA.title}</p>
                                             <span className="text-[10px] text-indigo-400 font-semibold border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 rounded-full">NEW</span>
                                         </button>
 
@@ -509,19 +499,19 @@ const MovieOnboardingPage: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        {/* Pivot item */}
+                                        {/* Existing item (movieB) */}
                                         <button
                                             onClick={() => handleCompareChoice('existing')}
                                             className="flex-1 flex flex-col items-center gap-2 p-2 rounded-xl border-2 border-zinc-700 hover:border-zinc-400 hover:bg-zinc-400/5 transition-all active:scale-[0.97]"
                                         >
                                             <img
-                                                src={pivotItem?.posterUrl ?? ''}
-                                                alt={pivotItem?.title}
+                                                src={currentComparison.movieB.posterUrl ?? ''}
+                                                alt={currentComparison.movieB.title}
                                                 className="w-full aspect-[2/3] object-cover rounded-lg shadow-lg"
                                             />
-                                            <p className="font-bold text-white text-xs leading-tight text-center">{pivotItem?.title}</p>
+                                            <p className="font-bold text-white text-xs leading-tight text-center">{currentComparison.movieB.title}</p>
                                             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier]}`}>
-                                                {selectedTier} · #{mid + 1}
+                                                {selectedTier}
                                             </span>
                                         </button>
                                     </div>
@@ -530,7 +520,6 @@ const MovieOnboardingPage: React.FC = () => {
                                     <div className="flex items-center justify-between">
                                         <button
                                             onClick={handleCompareUndo}
-                                            disabled={compHistory.length === 0}
                                             className="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                         >
                                             <ArrowLeft size={13} />
@@ -544,8 +533,7 @@ const MovieOnboardingPage: React.FC = () => {
                                         </button>
                                     </div>
                                 </div>
-                            );
-                        })()}
+                        )}
                     </div>
                 </div>
             )}
