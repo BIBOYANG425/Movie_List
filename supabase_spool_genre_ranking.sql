@@ -44,8 +44,10 @@ CREATE INDEX IF NOT EXISTS idx_prediction_logs_user
 -- 5. RLS for prediction_logs
 ALTER TABLE prediction_logs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own prediction logs" ON prediction_logs;
 CREATE POLICY "Users can view own prediction logs" ON prediction_logs
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own prediction logs" ON prediction_logs;
 CREATE POLICY "Users can insert own prediction logs" ON prediction_logs
   FOR INSERT WITH CHECK (auth.uid() = user_id);

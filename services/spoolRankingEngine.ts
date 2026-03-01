@@ -35,6 +35,7 @@ interface EngineSnapshot {
   crossGenreAdjustment: number;
   comparisonResult: ComparisonRequest;
   comparedIds: Set<string>;
+  comparisonCount: number;
 }
 
 interface ScoredItem {
@@ -76,6 +77,9 @@ export class SpoolRankingEngine {
   // Track IDs of movies already compared against (for dedup in settlement)
   private comparedIds: Set<string> = new Set();
 
+  // Comparison counter (1-indexed, incremented each time a comparison is emitted)
+  private comparisonCount = 0;
+
   // ── Public API ──────────────────────────────────────────────────────────
 
   /**
@@ -101,6 +105,7 @@ export class SpoolRankingEngine {
     this.crossGenreAdjustment = 0;
     this.currentComparison = null;
     this.comparedIds = new Set();
+    this.comparisonCount = 0;
 
     const range = TIER_SCORE_RANGES[tier];
     this.primaryGenre = newMovie.genres.length > 0 ? newMovie.genres[0] : '';
@@ -210,6 +215,7 @@ export class SpoolRankingEngine {
     this.crossGenreAdjustment = snapshot.crossGenreAdjustment;
     this.currentComparison = snapshot.comparisonResult;
     this.comparedIds = snapshot.comparedIds;
+    this.comparisonCount = snapshot.comparisonCount;
 
     return {
       type: 'comparison',
@@ -419,11 +425,14 @@ export class SpoolRankingEngine {
     // Track this movie as compared for dedup
     this.comparedIds.add(movieB.id);
 
+    this.comparisonCount++;
+
     return {
       movieA: this.newMovie,
       movieB,
       question,
       phase,
+      round: this.comparisonCount,
     };
   }
 
@@ -537,6 +546,7 @@ export class SpoolRankingEngine {
       crossGenreAdjustment: this.crossGenreAdjustment,
       comparisonResult: { ...this.currentComparison },
       comparedIds: new Set(this.comparedIds),
+      comparisonCount: this.comparisonCount,
     });
   }
 }

@@ -355,7 +355,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         movieAId: currentComparison.movieA.id,
         movieBId: currentComparison.movieB.id,
         winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
-        round: 0,
+        round: currentComparison.round,
+        phase: currentComparison.phase,
+        questionText: currentComparison.question,
       });
     }
 

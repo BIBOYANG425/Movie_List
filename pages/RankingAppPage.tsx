@@ -506,6 +506,8 @@ const RankingAppPage = () => {
         movie_b_tmdb_id: log.movieBId,
         winner: log.winner,
         round: log.round,
+        phase: log.phase,
+        question_text: log.questionText,
       });
     } catch (err) {
       console.error('Failed to log comparison:', err);

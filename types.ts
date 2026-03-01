@@ -522,6 +522,8 @@ export interface ComparisonLogEntry {
   movieBId: string;
   winner: 'a' | 'b' | 'skip';
   round: number;
+  phase: EnginePhase;
+  questionText: string;
 }
 
 // ── Phase 9: Full Movie Card (Detail View) ───────────────────────────────────
@@ -667,6 +669,7 @@ export interface ComparisonRequest {
   movieB: RankedItem;
   question: string;
   phase: EnginePhase;
+  round: number;
 }
 
 export interface EngineResult {

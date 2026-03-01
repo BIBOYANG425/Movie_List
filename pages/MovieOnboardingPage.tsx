@@ -271,7 +271,7 @@ const MovieOnboardingPage: React.FC = () => {
                     movie_a_tmdb_id: currentComparison.movieA.id,
                     movie_b_tmdb_id: currentComparison.movieB.id,
                     winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
-                    round: 0,
+                    round: currentComparison.round,
                     phase: currentComparison.phase,
                     question_text: currentComparison.question,
                 });

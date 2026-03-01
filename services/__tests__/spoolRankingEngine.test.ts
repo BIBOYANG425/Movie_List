@@ -573,4 +573,38 @@ describe('SpoolRankingEngine', () => {
       expect(phases).not.toContain('cross_genre');
     });
   });
+
+  describe('comparison round counter', () => {
+    it('increments round on each comparison and resets on undo', () => {
+      const engine = new SpoolRankingEngine();
+      const allItems = [
+        makeItem('a1', Tier.A, 0, ['Action']),
+        makeItem('a2', Tier.A, 1, ['Action']),
+        makeItem('a3', Tier.A, 2, ['Drama']),
+      ];
+      const newMovie = makeNewMovie('new', ['Action'], Tier.A);
+      const signals = makeSignals();
+
+      const r1 = engine.start(newMovie, Tier.A, allItems, signals);
+      expect(r1.type).toBe('comparison');
+      expect(r1.comparison!.round).toBe(1);
+
+      const r2 = engine.submitChoice(newMovie.id);
+      if (r2.type === 'comparison') {
+        expect(r2.comparison!.round).toBe(2);
+
+        // Undo restores the snapshot from before round 2 was emitted,
+        // so the user re-sees round 1's comparison
+        const undone = engine.undo();
+        expect(undone).not.toBeNull();
+        expect(undone!.comparison!.round).toBe(1);
+
+        // Re-submitting from the restored state emits round 2 again
+        const r2b = engine.submitChoice(newMovie.id);
+        if (r2b.type === 'comparison') {
+          expect(r2b.comparison!.round).toBe(2);
+        }
+      }
+    });
+  });
 });
