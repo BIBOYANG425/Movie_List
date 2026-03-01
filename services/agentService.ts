@@ -12,7 +12,7 @@ import { hasConsent } from './consentService';
 
 export interface AgentContext {
   movie: { title: string; year: string; genres: string[]; director?: string };
-  ranking: { tier: string; score: number; primaryGenre?: string };
+  ranking: { tier: string; rankPosition: number; primaryGenre?: string };
   userProfile: {
     moodHistory: string[];
     topGenres: Record<string, number>;

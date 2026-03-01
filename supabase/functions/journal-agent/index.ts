@@ -42,7 +42,7 @@ interface MovieContext {
 
 interface RankingContext {
   tier: string
-  score: number
+  rankPosition: number
   primaryGenre?: string
 }
 
@@ -174,8 +174,8 @@ function validateRequestBody(
   if (!ranking.tier || typeof ranking.tier !== 'string') {
     return { valid: false, error: 'context.ranking.tier is required' }
   }
-  if (typeof ranking.score !== 'number') {
-    return { valid: false, error: 'context.ranking.score must be a number' }
+  if (typeof ranking.rankPosition !== 'number') {
+    return { valid: false, error: 'context.ranking.rankPosition must be a number' }
   }
 
   if (!ctx.userProfile || typeof ctx.userProfile !== 'object') {

@@ -105,7 +105,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
       },
       ranking: {
         tier: item.tier,
-        score: item.rank,
+        rankPosition: item.rank,
         primaryGenre: item.genres?.[0],
       },
       userProfile: {
@@ -177,16 +177,24 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
       const consent = await ensureConsentRecord(userId);
       if (cancelled) return;
       if (!consent?.consentProductImprovement) {
-        setMessages([
-          { role: 'agent', content: `I see you rated ${item.title} as ${item.tier} Tier. What stood out to you about this one?` },
-        ]);
+        // No AI consent — skip to blank draft form instead of dead-end chat
+        setPhase('draft');
         return;
       }
+
+      // Look up the ranking row UUID for session traceability
+      const { data: rankingRow } = await supabase
+        .from('user_rankings')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('tmdb_id', item.id)
+        .maybeSingle();
+      if (cancelled) return;
 
       const session = await createSession(
         userId,
         item.id,
-        undefined,
+        rankingRow?.id ?? undefined,
         context as unknown as Record<string, unknown>,
         'v1',
       );

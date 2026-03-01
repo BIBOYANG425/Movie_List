@@ -261,7 +261,7 @@ CREATE TABLE IF NOT EXISTS training_examples (
   output_generated jsonb NOT NULL DEFAULT '{}'::jsonb,
   output_corrected jsonb NOT NULL DEFAULT '{}'::jsonb,
   quality_signals jsonb NOT NULL DEFAULT '{}'::jsonb,
-  consent_tier text NOT NULL CHECK (consent_tier IN ('product_improvement','anonymized_research')),
+  consent_tier text NOT NULL DEFAULT 'none' CHECK (consent_tier IN ('none','product_improvement','anonymized_research')),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
