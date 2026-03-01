@@ -388,13 +388,20 @@ export async function sendAgentMessage(
   const latencyMs = Math.round(performance.now() - start);
 
   if (error) {
-    console.error('sendAgentMessage: Edge Function error:', error);
+    // Extract response body from FunctionsHttpError
+    const ctx = (error as { context?: Response }).context;
+    if (ctx) {
+      const body = await ctx.json().catch(() => ctx.text().catch(() => null));
+      console.error('sendAgentMessage: Edge Function error:', body);
+    } else {
+      console.error('sendAgentMessage: Edge Function error:', error.message);
+    }
     return null;
   }
 
   const reply = data?.reply;
   if (!reply || typeof reply !== 'string') {
-    console.error('sendAgentMessage: invalid reply from Edge Function:', data);
+    console.error('sendAgentMessage: invalid reply from Edge Function:', JSON.stringify(data));
     return null;
   }
 
