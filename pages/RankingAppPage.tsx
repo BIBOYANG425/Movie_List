@@ -17,7 +17,7 @@ import { NotificationBell } from '../components/NotificationBell';
 import { MovieListView } from '../components/MovieListView';
 import { AchievementsView } from '../components/AchievementsView';
 import { MediaDetailModal } from '../components/MediaDetailModal';
-import { JournalEntrySheet } from '../components/JournalEntrySheet';
+import { JournalConversation } from '../components/JournalConversation';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Toast } from '../components/Toast';
 import { LanguageToggle } from '../components/LanguageToggle';
@@ -873,7 +873,7 @@ const RankingAppPage = () => {
       {/* Journal Entry Sheet (after ranking) */}
       {journalSheetItem && user && (
         <ErrorBoundary>
-        <JournalEntrySheet
+        <JournalConversation
           isOpen={!!journalSheetItem}
           item={journalSheetItem}
           userId={user.id}

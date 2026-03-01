@@ -10,10 +10,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
-import { FriendProfile, RankedItem, UserProfileSummary, UserSearchResult } from '../types';
+import { FriendProfile, JournalEntry, RankedItem, UserProfileSummary, UserSearchResult } from '../types';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { JournalHomeView } from '../components/JournalHomeView';
-import { JournalEntrySheet } from '../components/JournalEntrySheet';
+import { JournalConversation } from '../components/JournalConversation';
 import { Toast } from '../components/Toast';
 import {
   AVATAR_ACCEPTED_MIME_TYPES,
@@ -71,6 +71,7 @@ const ProfilePage = () => {
   const [followers, setFollowers] = useState<FriendProfile[]>([]);
   const [following, setFollowing] = useState<FriendProfile[]>([]);
   const [journalEditEntry, setJournalEditEntry] = useState<RankedItem | null>(null);
+  const [journalExistingEntry, setJournalExistingEntry] = useState<JournalEntry | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const canSeeFullProfile = useMemo(() => {
@@ -557,6 +558,7 @@ const ProfilePage = () => {
                   currentUserId={user.id}
                   isOwnProfile={profile.isSelf}
                   onEditEntry={(entry) => {
+                    setJournalExistingEntry(entry);
                     setJournalEditEntry({
                       id: entry.tmdbId,
                       title: entry.title,
@@ -576,12 +578,13 @@ const ProfilePage = () => {
             {/* Journal edit sheet */}
             {journalEditEntry && user && (
               <ErrorBoundary>
-              <JournalEntrySheet
+              <JournalConversation
                 isOpen={!!journalEditEntry}
                 item={journalEditEntry}
                 userId={user.id}
-                onDismiss={() => setJournalEditEntry(null)}
-                onSaved={() => { setJournalEditEntry(null); setToastMessage(t('journal.saved')); }}
+                existingEntry={journalExistingEntry}
+                onDismiss={() => { setJournalEditEntry(null); setJournalExistingEntry(null); }}
+                onSaved={() => { setJournalEditEntry(null); setJournalExistingEntry(null); setToastMessage(t('journal.saved')); }}
               />
               </ErrorBoundary>
             )}
