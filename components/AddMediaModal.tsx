@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
-import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry } from '../types';
-import { TIER_COLORS, TIER_LABELS, TIER_SCORE_RANGES, BRACKET_LABELS } from '../constants';
+import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry, ComparisonRequest } from '../types';
+import { TIER_COLORS, TIER_LABELS, BRACKET_LABELS } from '../constants';
 import { searchMovies, searchPeople, getPersonFilmography, getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
-import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
+import { classifyBracket } from '../services/rankingAlgorithm';
+import { SpoolRankingEngine } from '../services/spoolRankingEngine';
+import { computePredictionSignals } from '../services/spoolPrediction';
 import { useAuth } from '../contexts/AuthContext';
 import { SkeletonList } from './SkeletonCard';
 
@@ -22,11 +24,6 @@ interface AddMediaModalProps {
 
 type Step = 'search' | 'tier' | 'notes' | 'compare';
 
-interface CompareSnapshot {
-  low: number;
-  high: number;
-}
-
 const TMDB_SEARCH_TIMEOUT_MS = 4500;
 
 function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
@@ -40,14 +37,6 @@ function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
   }
 
   return Array.from(byKey.values()).slice(0, 12);
-}
-
-function getComparisonMid(low: number, high: number, round: number, seed: number | null): number {
-  if (round === 0 && seed !== null) {
-    const maxIndex = Math.max(low, high - 1);
-    return Math.min(Math.max(seed, low), maxIndex);
-  }
-  return Math.floor((low + high) / 2);
 }
 
 export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem, preselectedTier, onCompare, onMovieInfoClick }) => {
@@ -74,11 +63,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   // Notes state
   const [notes, setNotes] = useState('');
 
-  // Binary search comparison state
-  const [compLow, setCompLow] = useState(0);
-  const [compHigh, setCompHigh] = useState(0);
-  const [compHistory, setCompHistory] = useState<CompareSnapshot[]>([]);
-  const [compSeed, setCompSeed] = useState<number | null>(null);
+  // Spool ranking engine state
+  const engineRef = useRef<SpoolRankingEngine | null>(null);
+  const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
   const [sessionId, setSessionId] = useState('');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -159,10 +146,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       setIsSearching(false);
       setSelectedTier(null);
       setNotes('');
-      setCompLow(0);
-      setCompHigh(0);
-      setCompHistory([]);
-      setCompSeed(null);
+      engineRef.current = null;
+      setCurrentComparison(null);
       setSessionId(globalThis.crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
       // If a watchlist item was pre-selected, skip to tier step
@@ -187,19 +172,22 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         setSelectedItem(asRankedItem);
         setSelectedTier(preselectedTier);
 
-        const tierItems = currentItems.filter(i => i.tier === preselectedTier).sort((a, b) => a.rank - b.rank);
-        if (tierItems.length === 0) {
-          onAdd({ ...asRankedItem, tier: preselectedTier, rank: 0 });
+        const engine = new SpoolRankingEngine();
+        const signals = computePredictionSignals(
+          currentItems,
+          asRankedItem.genres[0] ?? '',
+          asRankedItem.bracket ?? classifyBracket(asRankedItem.genres),
+          asRankedItem.globalScore,
+          preselectedTier,
+        );
+        const result = engine.start(asRankedItem, preselectedTier, currentItems, signals);
+        engineRef.current = engine;
+
+        if (result.type === 'done') {
+          onAdd({ ...asRankedItem, tier: preselectedTier, rank: result.finalRank! });
           onClose();
         } else {
-          const range = TIER_SCORE_RANGES[preselectedTier];
-          const tierItemScores = tierItems.map((_, idx) => computeTierScore(idx, tierItems.length, range.min, range.max));
-          const seedIdx = computeSeedIndex(tierItemScores, range.min, range.max, asRankedItem.globalScore);
-
-          setCompLow(0);
-          setCompHigh(tierItems.length);
-          setCompHistory([]);
-          setCompSeed(seedIdx);
+          setCurrentComparison(result.comparison!);
           setStep('compare');
         }
       } else {
@@ -321,25 +309,23 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       });
       onClose();
     } else {
-      // Spool adaptive seeding: Use global average if it falls within the tier
-      // Calculate derived scores for existing items in this tier
-      const range = TIER_SCORE_RANGES[selectedTier!];
-      const tierItemScores = tierItems.map((_, idx) =>
-        computeTierScore(idx, tierItems.length, range.min, range.max)
+      const engine = new SpoolRankingEngine();
+      const signals = computePredictionSignals(
+        currentItems,
+        selectedItem!.genres[0] ?? '',
+        selectedItem!.bracket ?? classifyBracket(selectedItem!.genres),
+        selectedItem!.globalScore,
+        selectedTier!,
       );
+      const result = engine.start(selectedItem!, selectedTier!, currentItems, signals);
+      engineRef.current = engine;
 
-      const seedIdx = computeSeedIndex(
-        tierItemScores,
-        range.min,
-        range.max,
-        selectedItem?.globalScore
-      );
-
-      setCompLow(0);
-      setCompHigh(tierItems.length);
-      setCompHistory([]);
-      setCompSeed(seedIdx);
-      setStep('compare');
+      if (result.type === 'done') {
+        handleInsertAt(result.finalRank!);
+      } else {
+        setCurrentComparison(result.comparison!);
+        setStep('compare');
+      }
     }
   };
 
@@ -360,46 +346,43 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   };
 
   const handleCompareChoice = (choice: 'new' | 'existing' | 'too_tough' | 'skip') => {
-    const mid = getComparisonMid(compLow, compHigh, compHistory.length, compSeed);
+    if (!engineRef.current || !currentComparison) return;
 
     // Log comparison
     if (onCompare && selectedItem && selectedTier) {
-      const tierItems = getTierItems(selectedTier);
-      const pivotItem = tierItems[mid];
-      if (pivotItem) {
-        onCompare({
-          sessionId,
-          movieAId: selectedItem.id,
-          movieBId: pivotItem.id,
-          winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
-          round: compHistory.length + 1,
-        });
-      }
+      onCompare({
+        sessionId,
+        movieAId: currentComparison.movieA.id,
+        movieBId: currentComparison.movieB.id,
+        winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
+        round: currentComparison.round,
+        phase: currentComparison.phase,
+        questionText: currentComparison.question,
+      });
     }
 
     if (choice === 'too_tough' || choice === 'skip') {
-      handleInsertAt(mid);
+      const result = engineRef.current.skip();
+      handleInsertAt(result.finalRank!);
       return;
     }
 
-    setCompHistory(prev => [...prev, { low: compLow, high: compHigh }]);
+    const winnerId = choice === 'new' ? selectedItem!.id : currentComparison.movieB.id;
+    const result = engineRef.current.submitChoice(winnerId);
 
-    const result = adaptiveNarrow(compLow, compHigh, mid, choice);
-
-    if (!result) {
-      handleInsertAt(choice === 'new' ? mid : mid + 1);
+    if (result.type === 'done') {
+      handleInsertAt(result.finalRank!);
     } else {
-      setCompLow(result.newLow);
-      setCompHigh(result.newHigh);
+      setCurrentComparison(result.comparison!);
     }
   };
 
   const handleUndo = () => {
-    if (compHistory.length === 0) return;
-    const prev = compHistory[compHistory.length - 1];
-    setCompLow(prev.low);
-    setCompHigh(prev.high);
-    setCompHistory(h => h.slice(0, -1));
+    if (!engineRef.current) return;
+    const result = engineRef.current.undo();
+    if (result && result.comparison) {
+      setCurrentComparison(result.comparison);
+    }
   };
 
   // ─── Render: Search ───────────────────────────────────────────────────────
@@ -830,31 +813,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   // ─── Render: Compare ──────────────────────────────────────────────────────
   const renderCompareStep = () => {
-    const tierItems = getTierItems(selectedTier!);
-    const mid = getComparisonMid(compLow, compHigh, compHistory.length, compSeed);
-    const pivotItem = tierItems[mid];
-    const totalRounds = Math.ceil(Math.log2(tierItems.length + 1));
-    const currentRound = compHistory.length + 1;
+    if (!currentComparison) return null;
 
     return (
       <div className="flex flex-col gap-5 animate-fade-in">
-        {/* Progress */}
-        <div className="flex items-center justify-between">
-          <p className="text-zinc-400 text-sm">
-            Round <span className="text-white font-semibold">{currentRound}</span>
-            {' '}of ~<span className="text-white font-semibold">{totalRounds}</span>
-          </p>
-          <div className="flex gap-1">
-            {Array.from({ length: totalRounds }).map((_, i) => (
-              <div
-                key={i}
-                className={`h-1.5 w-6 rounded-full transition-colors ${i < compHistory.length ? 'bg-indigo-500' : i === compHistory.length ? 'bg-zinc-500' : 'bg-zinc-800'}`}
-              />
-            ))}
-          </div>
-        </div>
-
-        <h3 className="text-center text-lg font-bold text-white">Which do you prefer?</h3>
+        <h3 className="text-center text-lg font-bold text-white">
+          {currentComparison.question}
+        </h3>
 
         {/* Head-to-head */}
         <div className="flex items-stretch gap-3">
@@ -864,13 +829,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-border hover:border-indigo-500 hover:bg-indigo-500/5 transition-all group active:scale-[0.97]"
           >
             <img
-              src={selectedItem?.posterUrl}
-              alt={selectedItem?.title}
+              src={currentComparison.movieA.posterUrl}
+              alt={currentComparison.movieA.title}
               className="w-full aspect-[2/3] object-cover rounded-xl shadow-lg"
             />
             <div className="text-center">
-              <p className="font-serif text-white text-sm leading-tight">{selectedItem?.title}</p>
-              <p className="text-xs text-dim mt-0.5">{selectedItem?.year}</p>
+              <p className="font-serif text-white text-sm leading-tight">{currentComparison.movieA.title}</p>
+              <p className="text-xs text-dim mt-0.5">{currentComparison.movieA.year}</p>
               <span className="inline-block mt-2 text-xs text-indigo-400 font-semibold border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 rounded-full">
                 NEW
               </span>
@@ -884,21 +849,21 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             </div>
           </div>
 
-          {/* Pivot item */}
+          {/* Comparison target */}
           <button
             onClick={() => handleCompareChoice('existing')}
             className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-border hover:border-zinc-400 hover:bg-zinc-400/5 transition-all group active:scale-[0.97]"
           >
             <img
-              src={pivotItem?.posterUrl}
-              alt={pivotItem?.title}
+              src={currentComparison.movieB.posterUrl}
+              alt={currentComparison.movieB.title}
               className="w-full aspect-[2/3] object-cover rounded-xl shadow-lg"
             />
             <div className="text-center">
-              <p className="font-bold text-white text-sm leading-tight">{pivotItem?.title}</p>
-              <p className="text-xs text-dim mt-0.5">{pivotItem?.year}</p>
-              <span className={`inline-block mt-2 text-xs font-semibold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]} `}>
-                {selectedTier} · #{mid + 1}
+              <p className="font-bold text-white text-sm leading-tight">{currentComparison.movieB.title}</p>
+              <p className="text-xs text-dim mt-0.5">{currentComparison.movieB.year}</p>
+              <span className={`inline-block mt-2 text-xs font-semibold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]}`}>
+                {selectedTier}
               </span>
             </div>
           </button>
@@ -908,8 +873,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         <div className="flex items-center justify-between mt-1">
           <button
             onClick={handleUndo}
-            disabled={compHistory.length === 0}
-            className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-white transition-colors"
           >
             <ArrowLeft size={15} />
             Undo

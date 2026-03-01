@@ -522,6 +522,8 @@ export interface ComparisonLogEntry {
   movieBId: string;
   winner: 'a' | 'b' | 'skip';
   round: number;
+  phase: EnginePhase;
+  questionText: string;
 }
 
 // ── Phase 9: Full Movie Card (Detail View) ───────────────────────────────────
@@ -657,3 +659,29 @@ export interface TasteProfile {
 }
 
 export type SuggestionPoolType = 'similar' | 'taste' | 'trending' | 'variety' | 'friend';
+
+// ── Spool: Genre-Anchored Ranking Engine ────────────────────────────────────
+
+export type EnginePhase = 'prediction' | 'probe' | 'escalation' | 'cross_genre' | 'settlement' | 'complete';
+
+export interface ComparisonRequest {
+  movieA: RankedItem;
+  movieB: RankedItem;
+  question: string;
+  phase: EnginePhase;
+  round: number;
+}
+
+export interface EngineResult {
+  type: 'comparison' | 'done';
+  comparison?: ComparisonRequest;
+  finalRank?: number;
+  finalScore?: number;
+}
+
+export interface PredictionSignals {
+  genreAffinity: number | null;
+  globalScore: number | null;
+  bracketAffinity: number | null;
+  totalRanked: number;
+}

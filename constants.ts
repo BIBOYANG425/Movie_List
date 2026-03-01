@@ -261,3 +261,27 @@ export const DEFAULT_POOL_SLOTS: Record<SuggestionPoolType, number> = {
 
 /** Minimum rankings before switching from generic to smart suggestions */
 export const SMART_SUGGESTION_THRESHOLD = 3;
+
+// ── Spool: Emotional Comparison Prompts ─────────────────────────────────────
+
+export const TIER_COMPARISON_PROMPTS: Record<Tier, string> = {
+  [Tier.S]: 'Which one changed something in you?',
+  [Tier.A]: 'Which experience stayed with you longer?',
+  [Tier.B]: 'Which one did you enjoy more in the moment?',
+  [Tier.C]: 'Which one disappointed you less?',
+  [Tier.D]: 'Which one was more forgettable?',
+};
+
+export const GENRE_COMPARISON_PROMPTS: Record<string, string> = {
+  Horror: 'Which one unsettled you more?',
+  Romance: 'Which one made you feel more?',
+  Comedy: 'Which one actually made you laugh?',
+  Drama: 'Which one hit closer to home?',
+  Thriller: 'Which one kept you more on edge?',
+  'Sci-Fi': 'Which world pulled you in deeper?',
+  Animation: 'Which one moved you more?',
+  Documentary: 'Which one changed how you see things?',
+};
+
+/** Weight for new user fallback threshold */
+export const NEW_USER_THRESHOLD = 15;

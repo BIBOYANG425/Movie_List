@@ -177,6 +177,7 @@ const RankingAppPage = () => {
               tier: item.tier,
               rank_position: item.rank,
               bracket: item.bracket,
+              primary_genre: item.genres[0] ?? null,
               notes: item.notes ?? null,
               updated_at: new Date().toISOString(),
             }));
@@ -335,6 +336,7 @@ const RankingAppPage = () => {
         tier: item.tier,
         rank_position: item.rank,
         bracket: item.bracket ?? classifyBracket(item.genres),
+        primary_genre: item.genres[0] ?? null,
         notes: item.notes ?? null,
         updated_at: new Date().toISOString(),
       }));
@@ -374,6 +376,7 @@ const RankingAppPage = () => {
         tier: item.tier,
         rank_position: item.rank,
         bracket: item.bracket ?? classifyBracket(item.genres),
+        primary_genre: item.genres[0] ?? null,
         notes: item.notes ?? null,
         updated_at: new Date().toISOString(),
       }));
@@ -503,6 +506,8 @@ const RankingAppPage = () => {
         movie_b_tmdb_id: log.movieBId,
         winner: log.winner,
         round: log.round,
+        phase: log.phase,
+        question_text: log.questionText,
       });
     } catch (err) {
       console.error('Failed to log comparison:', err);
