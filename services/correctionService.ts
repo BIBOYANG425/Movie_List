@@ -55,6 +55,21 @@ export function computeArrayDiff(
 }
 
 /**
+ * Compute array edit distance as the count of added + removed items (set semantics).
+ * Falls back to text Levenshtein distance if JSON parsing fails.
+ */
+export function computeArrayEditDistance(originalJson: string, finalJson: string): number {
+  try {
+    const origArr = JSON.parse(originalJson) as string[];
+    const finalArr = JSON.parse(finalJson) as string[];
+    const { added, removed } = computeArrayDiff(origArr, finalArr);
+    return added.length + removed.length;
+  } catch {
+    return computeEditDistance(originalJson, finalJson);
+  }
+}
+
+/**
  * Returns true if the two strings are different.
  */
 export function hasChanged(original: string, final: string): boolean {
@@ -141,7 +156,11 @@ export async function recordCorrection(
     fieldType
   );
 
-  const distance = editDistance ?? computeEditDistance(originalValue, finalValue);
+  const distance = editDistance ?? (
+    fieldType === 'array'
+      ? computeArrayEditDistance(originalValue, finalValue)
+      : computeEditDistance(originalValue, finalValue)
+  );
 
   const { data, error } = await supabase
     .from('user_corrections')

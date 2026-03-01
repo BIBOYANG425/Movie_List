@@ -112,6 +112,19 @@ export async function hasConsent(
   return (row as unknown as Record<string, boolean>)[column] === true;
 }
 
+/**
+ * Ensure a consent row exists for the user. Returns the existing row if found,
+ * otherwise creates one with DB defaults (product_improvement=true, others=false).
+ * Never overwrites flags on existing rows.
+ */
+export async function ensureConsentRecord(
+  userId: string,
+): Promise<UserDataConsent | null> {
+  const existing = await getConsent(userId);
+  if (existing) return existing;
+  return upsertConsent(userId, {});
+}
+
 export async function needsConsentPrompt(
   userId: string,
 ): Promise<boolean> {

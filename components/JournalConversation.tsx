@@ -2,10 +2,11 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { X, ChevronDown, ChevronUp, Eye, EyeOff, Users, AlertTriangle, Calendar, MapPin, Tv, Send, Sparkles, ArrowLeft, MessageSquare } from 'lucide-react';
 import { RankedItem, JournalEntry, StandoutPerformance, JournalVisibility } from '../types';
 import { TIER_COLORS, JOURNAL_REVIEW_PROMPTS, JOURNAL_TAKEAWAY_PROMPTS, JOURNAL_MAX_PHOTOS, JOURNAL_MAX_MOMENTS, PLATFORM_OPTIONS } from '../constants';
-import { upsertJournalEntry, getJournalEntry, uploadJournalPhoto, deleteJournalPhoto, UpsertJournalData } from '../services/journalService';
+import { upsertJournalEntry, getJournalEntry, uploadJournalPhoto, deleteJournalPhoto, getJournalStats, UpsertJournalData } from '../services/journalService';
 import { createSession, sendAgentMessage, requestReviewGeneration, endSession, AgentContext } from '../services/agentService';
+import { supabase } from '../lib/supabase';
 import { recordAllCorrections } from '../services/correctionService';
-import { needsConsentPrompt, upsertConsent } from '../services/consentService';
+import { ensureConsentRecord } from '../services/consentService';
 import { MoodTagSelector } from './journal/MoodTagSelector';
 import { VibeTagSelector } from './journal/VibeTagSelector';
 import { CastSelector } from './journal/CastSelector';
@@ -65,24 +66,55 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
   const userMessageCount = messages.filter((m) => m.role === 'user').length;
 
-  const buildContext = useCallback((): AgentContext => ({
-    movie: {
-      title: item.title,
-      year: item.year,
-      genres: item.genres,
-      director: item.director,
-    },
-    ranking: {
-      tier: item.tier,
-      score: item.rank,
-      primaryGenre: item.genres?.[0],
-    },
-    userProfile: {
-      moodHistory: [],
-      topGenres: {},
-      recentJournalCount: 0,
-    },
-  }), [item]);
+  const buildContext = useCallback(async (): Promise<AgentContext> => {
+    // Fetch recent mood history from journal entries
+    const { data: recentEntries } = await supabase
+      .from('journal_entries')
+      .select('mood_tags')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    const moodHistory = (recentEntries ?? [])
+      .flatMap((e: { mood_tags: string[] }) => e.mood_tags ?? [])
+      .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
+      .slice(0, 10);
+
+    // Fetch genre distribution from user rankings
+    const { data: rankings } = await supabase
+      .from('user_rankings')
+      .select('genres, tier')
+      .eq('user_id', userId);
+    const topGenres: Record<string, number> = {};
+    const tierWeights: Record<string, number> = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+    for (const r of (rankings ?? [])) {
+      const w = tierWeights[(r as { tier: string }).tier] ?? 3;
+      for (const g of ((r as { genres: string[] }).genres ?? [])) {
+        topGenres[g] = (topGenres[g] ?? 0) + w;
+      }
+    }
+
+    // Journal count
+    const stats = await getJournalStats(userId);
+
+    return {
+      movie: {
+        title: item.title,
+        year: item.year,
+        genres: item.genres,
+        director: item.director,
+      },
+      ranking: {
+        tier: item.tier,
+        score: item.rank,
+        primaryGenre: item.genres?.[0],
+      },
+      userProfile: {
+        moodHistory,
+        topGenres,
+        recentJournalCount: stats.totalEntries,
+      },
+    };
+  }, [item, userId]);
 
   // Populate from existing entry
   function populateFromEntry(entry: JournalEntry) {
@@ -110,30 +142,45 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
   // On open: create session or go to draft for existing entry
   useEffect(() => {
     if (!isOpen) return;
+    let cancelled = false;
 
-    if (existingEntry) {
-      populateFromEntry(existingEntry);
-      setPhase('draft');
-      return;
-    }
+    // Reset stale state from previous opens
+    setSessionId(null);
+    setMessages([]);
+    setGenerationId(null);
+    setGeneratedFields(null);
+    setSaveError(null);
 
-    // Try loading any saved entry — if found, go to draft phase
-    getJournalEntry(userId, item.id).then((entry) => {
+    const run = async () => {
+      // 1. Existing entry prop — go straight to draft
+      if (existingEntry) {
+        if (cancelled) return;
+        populateFromEntry(existingEntry);
+        setPhase('draft');
+        return;
+      }
+
+      // 2. Check DB for saved entry — if found, go to draft
+      const entry = await getJournalEntry(userId, item.id);
+      if (cancelled) return;
       if (entry) {
         populateFromEntry(entry);
         setPhase('draft');
         return;
       }
-    });
 
-    // Create agent session and send initial message
-    const initSession = async () => {
-      const context = buildContext();
+      // 3. No existing entry — start AI chat
+      setPhase('chat');
+      const context = await buildContext();
 
-      // Bootstrap consent if no row exists (default: product_improvement=true)
-      const needs = await needsConsentPrompt(userId);
-      if (needs) {
-        await upsertConsent(userId, { consentProductImprovement: true });
+      // Ensure consent row exists (relies on DB defaults, never auto-opts-in existing rows)
+      const consent = await ensureConsentRecord(userId);
+      if (cancelled) return;
+      if (!consent?.consentProductImprovement) {
+        setMessages([
+          { role: 'agent', content: `I see you rated ${item.title} as ${item.tier} Tier. What stood out to you about this one?` },
+        ]);
+        return;
       }
 
       const session = await createSession(
@@ -143,12 +190,13 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
         context as unknown as Record<string, unknown>,
         'v1',
       );
+      if (cancelled) return;
 
       if (session) {
         setSessionId(session.id);
-        // Send initial context to get first agent message
         setIsLoading(true);
         const result = await sendAgentMessage(session.id, `I just ranked ${item.title} (${item.year}) as ${item.tier} Tier.`, context);
+        if (cancelled) return;
         setIsLoading(false);
         if (result?.reply) {
           setMessages([
@@ -156,20 +204,19 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
             { role: 'agent', content: result.reply },
           ]);
         } else {
-          // Fallback if first message fails
           setMessages([
             { role: 'agent', content: `I see you rated ${item.title} as ${item.tier} Tier. What stood out to you about this one?` },
           ]);
         }
       } else {
-        // Session creation failed: show a fallback message
         setMessages([
           { role: 'agent', content: `I see you rated ${item.title} as ${item.tier} Tier. What stood out to you about this one?` },
         ]);
       }
     };
 
-    initSession();
+    void run();
+    return () => { cancelled = true; };
   }, [isOpen, item.id, userId, existingEntry, buildContext, item.title, item.year, item.tier]);
 
   // Slide-up animation
@@ -204,7 +251,8 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
     setIsLoading(true);
 
     if (sessionId) {
-      const result = await sendAgentMessage(sessionId, text, buildContext());
+      const context = await buildContext();
+      const result = await sendAgentMessage(sessionId, text, context);
       if (result?.reply) {
         setMessages((prev) => [...prev, { role: 'agent', content: result.reply }]);
       }
@@ -219,7 +267,8 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
     if (!sessionId || isLoading) return;
     setIsLoading(true);
 
-    const generation = await requestReviewGeneration(sessionId, buildContext());
+    const context = await buildContext();
+    const generation = await requestReviewGeneration(sessionId, context);
 
     if (generation) {
       setGenerationId(generation.id);

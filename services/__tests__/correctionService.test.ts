@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   detectCorrectionType,
   computeEditDistance,
+  computeArrayEditDistance,
   computeArrayDiff,
   hasChanged,
 } from '../correctionService';
@@ -144,6 +145,36 @@ describe('computeArrayDiff', () => {
     expect(result.kept).toEqual([]);
     expect(result.added).toEqual([]);
     expect(result.removed).toEqual([]);
+  });
+});
+
+describe('computeArrayEditDistance', () => {
+  it('returns 0 for identical arrays', () => {
+    expect(computeArrayEditDistance(
+      JSON.stringify(['a', 'b', 'c']),
+      JSON.stringify(['a', 'b', 'c']),
+    )).toBe(0);
+  });
+
+  it('returns correct count for add/remove combos', () => {
+    // removed: b, c; added: d => 3
+    expect(computeArrayEditDistance(
+      JSON.stringify(['a', 'b', 'c']),
+      JSON.stringify(['a', 'd']),
+    )).toBe(3);
+  });
+
+  it('returns 0 for reordered same elements (set semantics)', () => {
+    expect(computeArrayEditDistance(
+      JSON.stringify(['a', 'b', 'c']),
+      JSON.stringify(['c', 'a', 'b']),
+    )).toBe(0);
+  });
+
+  it('falls back to text distance for invalid JSON', () => {
+    const a = 'not json';
+    const b = 'also not json';
+    expect(computeArrayEditDistance(a, b)).toBe(computeEditDistance(a, b));
   });
 });
 
