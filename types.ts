@@ -685,3 +685,84 @@ export interface PredictionSignals {
   bracketAffinity: number | null;
   totalRanked: number;
 }
+
+// ── Journal Agent & Training Data ────────────────────────────────────────────
+
+// Consent
+export interface UserDataConsent {
+  userId: string;
+  consentProductImprovement: boolean;
+  consentAnonymizedResearch: boolean;
+  consentVoiceStorage: boolean;
+  consentVersion: number;
+  consentedAt?: string;
+  lastUpdatedAt: string;
+  createdAt: string;
+}
+
+// Layer 1
+export type SessionCompletionStatus = 'in_progress' | 'completed' | 'abandoned' | 'error';
+export type InputModality = 'text' | 'voice';
+export interface AgentSession {
+  id: string;
+  userId: string;
+  movieTmdbId?: string;
+  rankingId?: string;
+  contextSnapshot: Record<string, unknown>;
+  modelVersion: string;
+  promptVersion: string;
+  completionStatus: SessionCompletionStatus;
+  turnCount: number;
+  inputModality: InputModality;
+  startedAt: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export type AgentMessageRole = 'agent' | 'user';
+export type AgentMessageContentSource = 'voice_transcription' | 'typed' | 'generated';
+export interface AgentMessage {
+  id: string;
+  sessionId: string;
+  userId: string;
+  sequenceNumber: number;
+  role: AgentMessageRole;
+  content: string;
+  contentSource?: AgentMessageContentSource;
+  latencyMs?: number;
+  createdAt: string;
+}
+
+// Layer 2
+export interface AgentGeneration {
+  id: string;
+  sessionId: string;
+  userId: string;
+  rawLlmOutput: string;
+  generatedReviewText?: string;
+  generatedMoodTags: string[];
+  generatedFavoriteMoments: string[];
+  generatedPersonalTakeaway?: string;
+  generatedStandoutPerformances: string[];
+  confidenceScores: Record<string, unknown>;
+  promptTemplateHash: string;
+  modelId: string;
+  tokenCount?: number;
+  generationLatencyMs?: number;
+  createdAt: string;
+}
+
+// Layer 3
+export type CorrectionType = 'accept' | 'edit' | 'add' | 'remove' | 'rewrite';
+export interface UserCorrection {
+  id: string;
+  generationId: string;
+  userId: string;
+  fieldName: string;
+  correctionType: CorrectionType;
+  originalValue: string;
+  finalValue: string;
+  editDistance?: number;
+  timeSpentEditingMs?: number;
+  createdAt: string;
+}
