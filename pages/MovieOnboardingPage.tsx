@@ -355,6 +355,7 @@ const MovieOnboardingPage: React.FC = () => {
                 tier: item.tier,
                 rank_position: item.rank,
                 bracket: item.bracket,
+                primary_genre: item.genres[0] ?? null,
                 notes: null,
                 updated_at: new Date().toISOString(),
             }));

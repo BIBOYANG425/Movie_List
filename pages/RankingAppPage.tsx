@@ -177,6 +177,7 @@ const RankingAppPage = () => {
               tier: item.tier,
               rank_position: item.rank,
               bracket: item.bracket,
+              primary_genre: item.genres[0] ?? null,
               notes: item.notes ?? null,
               updated_at: new Date().toISOString(),
             }));
@@ -335,6 +336,7 @@ const RankingAppPage = () => {
         tier: item.tier,
         rank_position: item.rank,
         bracket: item.bracket ?? classifyBracket(item.genres),
+        primary_genre: item.genres[0] ?? null,
         notes: item.notes ?? null,
         updated_at: new Date().toISOString(),
       }));
@@ -374,6 +376,7 @@ const RankingAppPage = () => {
         tier: item.tier,
         rank_position: item.rank,
         bracket: item.bracket ?? classifyBracket(item.genres),
+        primary_genre: item.genres[0] ?? null,
         notes: item.notes ?? null,
         updated_at: new Date().toISOString(),
       }));
