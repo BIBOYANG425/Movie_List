@@ -215,7 +215,7 @@ describe('SpoolRankingEngine', () => {
   // ── Cross-genre phase ─────────────────────────────────────────────────────
 
   describe('cross-genre phase', () => {
-    it('confirmation: no score adjustment, proceeds to settlement', () => {
+    it('confirmation: no score adjustment, proceeds to settlement or done', () => {
       const engine = new SpoolRankingEngine();
       const newMovie = makeNewMovie('new', ['Action'], Tier.A);
       const allItems = [
@@ -232,25 +232,27 @@ describe('SpoolRankingEngine', () => {
       // Win probe -> escalation (only 1 same-genre, so skip escalation -> cross-genre)
       const afterProbe = engine.submitChoice('new');
 
-      // With only 1 same-genre peer and winning probe, we may jump to cross-genre
+      // With only 1 same-genre peer and winning probe, should jump to cross-genre
       let current = afterProbe;
       while (current.type === 'comparison' && current.comparison!.phase === 'escalation') {
         current = engine.submitChoice('new');
       }
-      // Now should be cross-genre
-      if (current.type === 'comparison' && current.comparison!.phase === 'cross_genre') {
-        // New movie wins cross-genre (confirms placement)
-        const settleResult = engine.submitChoice('new');
-        // After cross-genre confirmation -> settlement or done
-        if (settleResult.type === 'comparison') {
-          expect(settleResult.comparison!.phase).toBe('settlement');
-        } else {
-          expect(settleResult.type).toBe('done');
-        }
+
+      // Assert we reached cross-genre phase unconditionally
+      expect(current.type).toBe('comparison');
+      expect(current.comparison!.phase).toBe('cross_genre');
+
+      // New movie wins cross-genre (confirms placement)
+      const settleResult = engine.submitChoice('new');
+      // After cross-genre confirmation -> settlement or done
+      if (settleResult.type === 'comparison') {
+        expect(settleResult.comparison!.phase).toBe('settlement');
+      } else {
+        expect(settleResult.type).toBe('done');
       }
     });
 
-    it('contradiction: adjusts score, proceeds to settlement', () => {
+    it('contradiction: adjusts score, proceeds to settlement or done', () => {
       const engine = new SpoolRankingEngine();
       const newMovie = makeNewMovie('new', ['Action'], Tier.A);
       const allItems = [
@@ -267,16 +269,18 @@ describe('SpoolRankingEngine', () => {
         current = engine.submitChoice('new');
       }
 
-      if (current.type === 'comparison' && current.comparison!.phase === 'cross_genre') {
-        const crossGenreTarget = current.comparison!.movieB.id;
-        // New movie LOSES cross-genre (contradicts placement)
-        const result = engine.submitChoice(crossGenreTarget);
-        // Should proceed to settlement (score was adjusted down)
-        if (result.type === 'comparison') {
-          expect(result.comparison!.phase).toBe('settlement');
-        } else {
-          expect(result.type).toBe('done');
-        }
+      // Assert we reached cross-genre phase unconditionally
+      expect(current.type).toBe('comparison');
+      expect(current.comparison!.phase).toBe('cross_genre');
+
+      const crossGenreTarget = current.comparison!.movieB.id;
+      // New movie LOSES cross-genre (contradicts placement)
+      const result = engine.submitChoice(crossGenreTarget);
+      // Should proceed to settlement (score was adjusted down) or done
+      if (result.type === 'comparison') {
+        expect(result.comparison!.phase).toBe('settlement');
+      } else {
+        expect(result.type).toBe('done');
       }
     });
   });

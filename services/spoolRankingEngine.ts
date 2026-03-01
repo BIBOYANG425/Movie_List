@@ -34,6 +34,7 @@ interface EngineSnapshot {
   escalationIndex: number;
   crossGenreAdjustment: number;
   comparisonResult: ComparisonRequest;
+  comparedIds: Set<string>;
 }
 
 interface ScoredItem {
@@ -72,6 +73,9 @@ export class SpoolRankingEngine {
   // Current comparison (for validation)
   private currentComparison: ComparisonRequest | null = null;
 
+  // Track IDs of movies already compared against (for dedup in settlement)
+  private comparedIds: Set<string> = new Set();
+
   // ── Public API ──────────────────────────────────────────────────────────
 
   /**
@@ -96,6 +100,7 @@ export class SpoolRankingEngine {
     this.history = [];
     this.crossGenreAdjustment = 0;
     this.currentComparison = null;
+    this.comparedIds = new Set();
 
     const range = TIER_SCORE_RANGES[tier];
     this.primaryGenre = newMovie.genres.length > 0 ? newMovie.genres[0] : '';
@@ -204,6 +209,7 @@ export class SpoolRankingEngine {
     this.escalationIndex = snapshot.escalationIndex;
     this.crossGenreAdjustment = snapshot.crossGenreAdjustment;
     this.currentComparison = snapshot.comparisonResult;
+    this.comparedIds = snapshot.comparedIds;
 
     return {
       type: 'comparison',
@@ -245,12 +251,22 @@ export class SpoolRankingEngine {
 
       return this.emitEscalationComparison();
     } else {
-      // Probe LOSS -> search downward, then settlement
+      // Probe LOSS -> set ceiling, search downward through genre movies
       const probeTarget = this.sameGenreItems[this.probeIndex];
-      this.tentativeScore = Math.max(
-        TIER_SCORE_RANGES[this.tier].min,
-        probeTarget.score - 0.1,
-      );
+      const tierMin = TIER_SCORE_RANGES[this.tier].min;
+
+      // Look for same-genre items with score below the probe target
+      const genreBelowProbe = this.sameGenreItems
+        .filter((si) => si.score < probeTarget.score)
+        .sort((a, b) => b.score - a.score); // highest first (nearest below)
+
+      if (genreBelowProbe.length > 0) {
+        // Set tentative score to the next nearest lower genre movie
+        this.tentativeScore = genreBelowProbe[0].score;
+      } else {
+        // No genre movies below probe — use floor
+        this.tentativeScore = Math.max(tierMin, probeTarget.score - 0.5);
+      }
 
       // Skip to settlement
       this.phase = 'settlement';
@@ -400,6 +416,9 @@ export class SpoolRankingEngine {
     const genreB = movieB.genres.length > 0 ? movieB.genres[0] : '';
     const question = getComparisonPrompt(this.tier, genreA, genreB, phase);
 
+    // Track this movie as compared for dedup
+    this.comparedIds.add(movieB.id);
+
     return {
       movieA: this.newMovie,
       movieB,
@@ -446,17 +465,23 @@ export class SpoolRankingEngine {
 
   /**
    * Find a same-genre movie near the tentative score for settlement.
-   * Picks the closest same-genre item that hasn't been the probe or current target.
+   * Picks the closest same-genre item that hasn't already been compared against.
    * Returns null if no suitable target exists.
    */
   private findSettlementTarget(): ScoredItem | null {
     if (this.sameGenreItems.length === 0) return null;
 
-    // Find the same-genre item closest to tentative score
+    // Filter out movies already compared against
+    const candidates = this.sameGenreItems.filter(
+      (si) => !this.comparedIds.has(si.item.id),
+    );
+    if (candidates.length === 0) return null;
+
+    // Find the candidate closest to tentative score
     let best: ScoredItem | null = null;
     let bestDist = Infinity;
 
-    for (const si of this.sameGenreItems) {
+    for (const si of candidates) {
       const dist = Math.abs(si.score - this.tentativeScore);
       if (dist < bestDist) {
         bestDist = dist;
@@ -511,6 +536,7 @@ export class SpoolRankingEngine {
       escalationIndex: this.escalationIndex,
       crossGenreAdjustment: this.crossGenreAdjustment,
       comparisonResult: { ...this.currentComparison },
+      comparedIds: new Set(this.comparedIds),
     });
   }
 }
