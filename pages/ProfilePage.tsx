@@ -13,7 +13,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { FriendProfile, RankedItem, UserProfileSummary, UserSearchResult } from '../types';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { JournalHomeView } from '../components/JournalHomeView';
-import { JournalEntrySheet } from '../components/JournalEntrySheet';
+import { JournalConversation } from '../components/JournalConversation';
 import { Toast } from '../components/Toast';
 import {
   AVATAR_ACCEPTED_MIME_TYPES,
@@ -576,7 +576,7 @@ const ProfilePage = () => {
             {/* Journal edit sheet */}
             {journalEditEntry && user && (
               <ErrorBoundary>
-              <JournalEntrySheet
+              <JournalConversation
                 isOpen={!!journalEditEntry}
                 item={journalEditEntry}
                 userId={user.id}
