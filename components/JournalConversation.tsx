@@ -5,6 +5,7 @@ import { TIER_COLORS, JOURNAL_REVIEW_PROMPTS, JOURNAL_TAKEAWAY_PROMPTS, JOURNAL_
 import { upsertJournalEntry, getJournalEntry, uploadJournalPhoto, deleteJournalPhoto, UpsertJournalData } from '../services/journalService';
 import { createSession, sendAgentMessage, requestReviewGeneration, endSession, AgentContext } from '../services/agentService';
 import { recordAllCorrections } from '../services/correctionService';
+import { needsConsentPrompt, upsertConsent } from '../services/consentService';
 import { MoodTagSelector } from './journal/MoodTagSelector';
 import { VibeTagSelector } from './journal/VibeTagSelector';
 import { CastSelector } from './journal/CastSelector';
@@ -55,6 +56,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
   const [visibilityOverride, setVisibilityOverride] = useState<JournalVisibility | undefined>(undefined);
   const [showDetails, setShowDetails] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [loadedEntryId, setLoadedEntryId] = useState<string | null>(null);
 
@@ -115,16 +117,25 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
       return;
     }
 
-    // Try loading any saved entry
+    // Try loading any saved entry — if found, go to draft phase
     getJournalEntry(userId, item.id).then((entry) => {
       if (entry) {
         populateFromEntry(entry);
+        setPhase('draft');
+        return;
       }
     });
 
     // Create agent session and send initial message
     const initSession = async () => {
       const context = buildContext();
+
+      // Bootstrap consent if no row exists (default: product_improvement=true)
+      const needs = await needsConsentPrompt(userId);
+      if (needs) {
+        await upsertConsent(userId, { consentProductImprovement: true });
+      }
+
       const session = await createSession(
         userId,
         item.id,
@@ -145,13 +156,13 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
             { role: 'agent', content: result.reply },
           ]);
         } else {
-          // Fallback if session creation or first message fails
+          // Fallback if first message fails
           setMessages([
             { role: 'agent', content: `I see you rated ${item.title} as ${item.tier} Tier. What stood out to you about this one?` },
           ]);
         }
       } else {
-        // Consent denied or error: show a fallback message
+        // Session creation failed: show a fallback message
         setMessages([
           { role: 'agent', content: `I see you rated ${item.title} as ${item.tier} Tier. What stood out to you about this one?` },
         ]);
@@ -253,6 +264,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
   // Save journal entry
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       // Record corrections if we have generated fields
       if (generatedFields && generationId) {
@@ -293,13 +305,16 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
           endSession(sessionId, 'completed');
         }
         onSaved?.(result);
+        setVisible(false);
+        setTimeout(onDismiss, 300);
+      } else {
+        setSaveError('Failed to save. Please try again.');
       }
     } catch (err) {
       console.error('Failed to save journal entry:', err);
+      setSaveError('Failed to save. Please try again.');
     } finally {
       setSaving(false);
-      setVisible(false);
-      setTimeout(onDismiss, 300);
     }
   };
 
@@ -468,6 +483,11 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                 {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
+            {saveError && (
+              <div className="mx-4 mt-1 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400">
+                {saveError}
+              </div>
+            )}
 
             {/* Draft Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">

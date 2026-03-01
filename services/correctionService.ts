@@ -131,13 +131,14 @@ export async function recordCorrection(
   fieldName: string,
   originalValue: string,
   finalValue: string,
+  fieldType: 'text' | 'array' = 'text',
   editDistance?: number,
   timeSpentMs?: number
 ): Promise<UserCorrection | null> {
   const correctionType = detectCorrectionType(
     originalValue,
     finalValue,
-    'text'
+    fieldType
   );
 
   const distance = editDistance ?? computeEditDistance(originalValue, finalValue);
@@ -169,6 +170,8 @@ export async function recordCorrection(
  * Compare each field between generatedFields and finalFields,
  * creating a correction record for EVERY field (even accepts).
  */
+const ARRAY_FIELDS = new Set(['moodTags', 'favoriteMoments', 'standoutPerformances']);
+
 export async function recordAllCorrections(
   generationId: string,
   userId: string,
@@ -182,6 +185,7 @@ export async function recordAllCorrections(
     const original = generatedFields[fieldName] ?? '';
     const final = finalFields[fieldName] ?? '';
     const timeSpent = fieldTimings?.[fieldName];
+    const fieldType = ARRAY_FIELDS.has(fieldName) ? 'array' as const : 'text' as const;
 
     const correction = await recordCorrection(
       generationId,
@@ -189,6 +193,7 @@ export async function recordAllCorrections(
       fieldName,
       original,
       final,
+      fieldType,
       undefined,
       timeSpent
     );
