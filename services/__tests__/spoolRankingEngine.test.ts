@@ -574,6 +574,125 @@ describe('SpoolRankingEngine', () => {
     });
   });
 
+  // ── Non-contiguous rank handling ──────────────────────────────────────────
+
+  describe('non-contiguous ranks', () => {
+    it('computes correct scores when item ranks have gaps', () => {
+      const engine = new SpoolRankingEngine();
+      const newMovie = makeNewMovie('new', ['Drama'], Tier.B);
+      // Ranks have a gap: [0, 2] instead of [0, 1] — simulates removal without reindex
+      const allItems = [
+        makeItem('b1', Tier.B, 0, ['Drama']),
+        makeItem('b2', Tier.B, 2, ['Drama']),  // gap: rank 2 instead of 1
+      ];
+      const signals = makeSignals({ genreAffinity: 6.0, globalScore: 5.5, bracketAffinity: 5.0 });
+
+      let result = engine.start(newMovie, Tier.B, allItems, signals);
+      let safetyCounter = 0;
+
+      while (result.type === 'comparison' && safetyCounter < 20) {
+        result = engine.submitChoice('new'); // always win
+        safetyCounter++;
+      }
+
+      expect(result.type).toBe('done');
+      // Winning everything should place at rank 0 regardless of rank gaps
+      expect(result.finalRank).toBe(0);
+      // Score must be within B-tier bounds [5.0, 6.9]
+      expect(result.finalScore!).toBeGreaterThanOrEqual(5.0);
+      expect(result.finalScore!).toBeLessThanOrEqual(6.9);
+    });
+
+    it('handles large rank gaps correctly', () => {
+      const engine = new SpoolRankingEngine();
+      const newMovie = makeNewMovie('new', ['Action'], Tier.A);
+      // Ranks: [0, 5, 10] — large gaps
+      const allItems = [
+        makeItem('a1', Tier.A, 0, ['Action']),
+        makeItem('a2', Tier.A, 5, ['Action']),
+        makeItem('a3', Tier.A, 10, ['Comedy']),
+      ];
+      const signals = makeSignals();
+
+      let result = engine.start(newMovie, Tier.A, allItems, signals);
+      let safetyCounter = 0;
+
+      while (result.type === 'comparison' && safetyCounter < 20) {
+        result = engine.submitChoice('new');
+        safetyCounter++;
+      }
+
+      expect(result.type).toBe('done');
+      expect(result.finalRank).toBe(0);
+      expect(result.finalScore!).toBeGreaterThanOrEqual(7.0);
+      expect(result.finalScore!).toBeLessThanOrEqual(8.9);
+    });
+
+    it('produces valid tier scores for all items despite rank gaps', () => {
+      // This test directly checks that internal score computation stays within tier bounds
+      const engine = new SpoolRankingEngine();
+      const newMovie = makeNewMovie('new', ['Drama'], Tier.B);
+      // Ranks: [0, 3, 7] — simulates multiple deletions without reindex
+      const allItems = [
+        makeItem('b1', Tier.B, 0, ['Drama']),
+        makeItem('b2', Tier.B, 3, ['Drama']),
+        makeItem('b3', Tier.B, 7, ['Comedy']),
+      ];
+      const signals = makeSignals({ genreAffinity: 5.5, globalScore: 5.0, bracketAffinity: 5.0 });
+
+      // Start → probe. Then LOSE probe to exercise score adjustment path
+      const probeResult = engine.start(newMovie, Tier.B, allItems, signals);
+      expect(probeResult.type).toBe('comparison');
+      expect(probeResult.comparison!.phase).toBe('probe');
+
+      // Lose probe: new movie loses to existing
+      const lossResult = engine.submitChoice(probeResult.comparison!.movieB.id);
+
+      // Continue losing all comparisons
+      let result = lossResult;
+      let safetyCounter = 0;
+      while (result.type === 'comparison' && safetyCounter < 20) {
+        result = engine.submitChoice(result.comparison!.movieB.id);
+        safetyCounter++;
+      }
+
+      expect(result.type).toBe('done');
+      // Score must stay within B-tier bounds regardless of rank gaps
+      expect(result.finalScore!).toBeGreaterThanOrEqual(5.0);
+      expect(result.finalScore!).toBeLessThanOrEqual(6.9);
+    });
+  });
+
+  // ── Settlement should not lower score after winning ─────────────────────
+
+  describe('settlement score stability', () => {
+    it('winning settlement does not lower score below previously beaten items', () => {
+      const engine = new SpoolRankingEngine();
+      const newMovie = makeNewMovie('new', ['Drama'], Tier.A);
+      // 3 same-genre items + 1 cross-genre → enables settlement
+      const allItems = [
+        makeItem('a1', Tier.A, 0, ['Drama']),
+        makeItem('a2', Tier.A, 1, ['Drama']),
+        makeItem('a3', Tier.A, 2, ['Drama']),
+        makeItem('a4', Tier.A, 3, ['Comedy']),
+      ];
+      const signals = makeSignals();
+
+      let result = engine.start(newMovie, Tier.A, allItems, signals);
+      let safetyCounter = 0;
+
+      while (result.type === 'comparison' && safetyCounter < 20) {
+        // Win all comparisons including settlement
+        result = engine.submitChoice('new');
+        safetyCounter++;
+      }
+
+      expect(result.type).toBe('done');
+      // Winning all comparisons → should be at or near the top
+      expect(result.finalRank).toBe(0);
+    });
+  });
+
   describe('comparison round counter', () => {
     it('increments round on each comparison and resets on undo', () => {
       const engine = new SpoolRankingEngine();

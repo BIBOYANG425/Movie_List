@@ -28,7 +28,8 @@ export function computePredictionSignals(
       const tierPeers = allItems
         .filter((i) => i.tier === item.tier)
         .sort((a, b) => a.rank - b.rank);
-      return computeTierScore(item.rank, tierPeers.length, tierRange.min, tierRange.max);
+      const positionInTier = tierPeers.findIndex((p) => p.id === item.id);
+      return computeTierScore(positionInTier >= 0 ? positionInTier : 0, tierPeers.length, tierRange.min, tierRange.max);
     });
     genreAffinity = scores.reduce((a, b) => a + b, 0) / scores.length;
   }
@@ -48,7 +49,8 @@ export function computePredictionSignals(
       const tierPeers = allItems
         .filter((i) => i.tier === item.tier)
         .sort((a, b) => a.rank - b.rank);
-      return computeTierScore(item.rank, tierPeers.length, tierRange.min, tierRange.max);
+      const positionInTier = tierPeers.findIndex((p) => p.id === item.id);
+      return computeTierScore(positionInTier >= 0 ? positionInTier : 0, tierPeers.length, tierRange.min, tierRange.max);
     });
     bracketAffinity = scores.reduce((a, b) => a + b, 0) / scores.length;
   }

@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { RankedItem, Tier, MediaType, Bracket } from '../types';
-import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES } from '../constants';
+import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES, TIER_SCORE_RANGES } from '../constants';
 import { getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
-import { classifyBracket } from '../services/rankingAlgorithm';
+import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
 import { SpoolRankingEngine } from '../services/spoolRankingEngine';
 import { computePredictionSignals } from '../services/spoolPrediction';
 import { ComparisonRequest } from '../types';
@@ -57,6 +57,13 @@ const MovieOnboardingPage: React.FC = () => {
     const [modalStep, setModalStep] = useState<'tier' | 'compare'>('tier');
     const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
     const engineRef = useRef<SpoolRankingEngine | null>(null);
+    const isProcessingRef = useRef(false);
+    const smallTierRef = useRef<{
+        mode: 'compare_all' | 'seed' | 'quartile';
+        tierItems: RankedItem[];
+        low: number; high: number; mid: number;
+        round: number; seedIdx: number;
+    } | null>(null);
     const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
     const [sessionId, setSessionId] = useState('');
     const [isRatingFetching, setIsRatingFetching] = useState(false);
@@ -229,10 +236,33 @@ const MovieOnboardingPage: React.FC = () => {
         setSelectedTier(tier);
 
         const tierItems = getTierItems(tier);
-        if (tierItems.length === 0 || rankedItems.length < 5) {
-            // No existing items OR still in first 5 movies — insert immediately
-            finishInsert(tier, Math.floor(tierItems.length / 2));
+        const newItem: RankedItem = {
+            id: pendingMovie.id, title: pendingMovie.title, year: pendingMovie.year,
+            posterUrl: pendingMovie.posterUrl ?? '', type: 'movie',
+            genres: pendingMovie.genres, tier, rank: 0,
+            bracket: classifyBracket(pendingMovie.genres), globalScore: pendingGlobalScore,
+        };
+
+        if (tierItems.length === 0) {
+            // Empty tier — insert at 0
+            finishInsert(tier, 0);
+        } else if (tierItems.length <= 5) {
+            // 1-5 items — compare against every item (top to bottom)
+            smallTierRef.current = { mode: 'compare_all', tierItems, low: 0, high: tierItems.length, mid: 0, round: 1, seedIdx: 0 };
+            engineRef.current = null;
+            setCurrentComparison({ movieA: newItem, movieB: tierItems[0], question: 'Which do you prefer?', round: 1, phase: 'binary_search' });
+            setModalStep('compare');
+        } else if (tierItems.length <= 20) {
+            // 6-20 items — seed pivot then quartile narrowing
+            const range = TIER_SCORE_RANGES[tier];
+            const tierScores = tierItems.map((_, idx) => computeTierScore(idx, tierItems.length, range.min, range.max));
+            const seedIdx = computeSeedIndex(tierScores, range.min, range.max, pendingGlobalScore);
+            smallTierRef.current = { mode: 'seed', tierItems, low: 0, high: tierItems.length, mid: seedIdx, round: 1, seedIdx };
+            engineRef.current = null;
+            setCurrentComparison({ movieA: newItem, movieB: tierItems[seedIdx], question: 'Which do you prefer?', round: 1, phase: 'binary_search' });
+            setModalStep('compare');
         } else {
+            // Large tier — use genre-anchored SpoolRankingEngine
             const engine = new SpoolRankingEngine();
             const signals = computePredictionSignals(
                 rankedItems,
@@ -260,41 +290,100 @@ const MovieOnboardingPage: React.FC = () => {
     };
 
     const handleCompareChoice = async (choice: 'new' | 'existing' | 'skip') => {
-        if (!selectedTier || !pendingMovie || !engineRef.current || !currentComparison) return;
+        if (!selectedTier || !pendingMovie || !currentComparison) return;
+        if (!engineRef.current && !smallTierRef.current) return;
+        if (isProcessingRef.current) return;
+        isProcessingRef.current = true;
 
-        // Log comparison
-        if (user) {
-            try {
-                await supabase.from('comparison_logs').insert({
-                    user_id: user.id,
-                    session_id: sessionId,
-                    movie_a_tmdb_id: currentComparison.movieA.id,
-                    movie_b_tmdb_id: currentComparison.movieB.id,
-                    winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
-                    round: currentComparison.round,
-                    phase: currentComparison.phase,
-                    question_text: currentComparison.question,
-                });
-            } catch (err) {
-                console.error('Failed to log comparison:', err);
+        try {
+            // Log comparison
+            if (user) {
+                try {
+                    await supabase.from('comparison_logs').insert({
+                        user_id: user.id,
+                        session_id: sessionId,
+                        movie_a_tmdb_id: currentComparison.movieA.id,
+                        movie_b_tmdb_id: currentComparison.movieB.id,
+                        winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
+                        round: currentComparison.round,
+                        phase: currentComparison.phase,
+                        question_text: currentComparison.question,
+                    });
+                } catch (err) {
+                    console.error('Failed to log comparison:', err);
+                }
             }
-        }
 
-        if (choice === 'skip') {
-            const result = engineRef.current.skip();
-            finishInsert(selectedTier, result.finalRank!);
-            return;
-        }
+            // Small tier path (≤ 20 items)
+            if (smallTierRef.current) {
+                const st = smallTierRef.current;
+                const movieA = currentComparison.movieA;
 
-        const winnerId = choice === 'new'
-            ? currentComparison.movieA.id
-            : currentComparison.movieB.id;
-        const result = engineRef.current.submitChoice(winnerId);
+                if (choice === 'skip') {
+                    smallTierRef.current = null;
+                    finishInsert(selectedTier, st.mid);
+                    return;
+                }
 
-        if (result.type === 'done') {
-            finishInsert(selectedTier, result.finalRank!);
-        } else {
-            setCurrentComparison(result.comparison!);
+                const nextRound = st.round + 1;
+                const setNext = (mid: number, mode?: typeof st.mode, low?: number, high?: number) => {
+                    smallTierRef.current = { ...st, mode: mode ?? st.mode, low: low ?? st.low, high: high ?? st.high, mid, round: nextRound };
+                    setCurrentComparison({ movieA, movieB: st.tierItems[mid], question: 'Which do you prefer?', round: nextRound, phase: 'binary_search' });
+                };
+                const done = (rank: number) => { smallTierRef.current = null; finishInsert(selectedTier, rank); };
+
+                if (st.mode === 'compare_all') {
+                    if (choice === 'new') { done(st.mid); }
+                    else if (st.mid + 1 >= st.tierItems.length) { done(st.tierItems.length); }
+                    else { setNext(st.mid + 1); }
+                } else if (st.mode === 'seed') {
+                    if (choice === 'new') {
+                        if (st.mid === 0) { done(0); }
+                        else { setNext(0, 'quartile', 0, st.mid); }
+                    } else {
+                        const newLow = st.mid + 1;
+                        if (newLow >= st.tierItems.length) { done(st.tierItems.length); }
+                        else {
+                            const newHigh = st.tierItems.length;
+                            const nextMid = Math.min(newLow + Math.floor((newHigh - newLow) * 0.75), newHigh - 1);
+                            setNext(nextMid, 'quartile', newLow, newHigh);
+                        }
+                    }
+                } else {
+                    // quartile narrowing
+                    const newLow = choice === 'new' ? st.low : st.mid + 1;
+                    const newHigh = choice === 'new' ? st.mid : st.high;
+                    if (newLow >= newHigh) { done(newLow); }
+                    else {
+                        const ratio = choice === 'new' ? 0.25 : 0.75;
+                        const nextMid = Math.max(newLow, Math.min(newLow + Math.floor((newHigh - newLow) * ratio), newHigh - 1));
+                        setNext(nextMid, 'quartile', newLow, newHigh);
+                    }
+                }
+                return;
+            }
+
+            // SpoolRankingEngine path (large tiers > 20)
+            if (!engineRef.current) return;
+
+            if (choice === 'skip') {
+                const result = engineRef.current.skip();
+                finishInsert(selectedTier, result.finalRank!);
+                return;
+            }
+
+            const winnerId = choice === 'new'
+                ? currentComparison.movieA.id
+                : currentComparison.movieB.id;
+            const result = engineRef.current.submitChoice(winnerId);
+
+            if (result.type === 'done') {
+                finishInsert(selectedTier, result.finalRank!);
+            } else {
+                setCurrentComparison(result.comparison!);
+            }
+        } finally {
+            isProcessingRef.current = false;
         }
     };
 
