@@ -142,10 +142,11 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
   // On open: create session or go to draft for existing entry
   useEffect(() => {
     if (!isOpen) return;
+    // If a session is already active for this item, don't reinitialize
+    if (sessionId || phase === 'draft') return;
     let cancelled = false;
 
-    // Reset stale state from previous opens
-    setSessionId(null);
+    // Reset stale state for fresh opens
     setMessages([]);
     setGenerationId(null);
     setGeneratedFields(null);
@@ -225,7 +226,8 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
     void run();
     return () => { cancelled = true; };
-  }, [isOpen, item.id, userId, existingEntry, buildContext, item.title, item.year, item.tier]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, item.id, userId, existingEntry]);
 
   // Slide-up animation
   useEffect(() => {

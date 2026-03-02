@@ -225,14 +225,14 @@ async function callKimiAPI(
   const timeoutId = setTimeout(() => controller.abort(), 25000)
 
   try {
-    const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+    const response = await fetch('https://api.moonshot.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'kimi-latest',
+        model: 'kimi-k2-0905-preview',
         messages: [
           { role: 'system', content: systemPrompt },
           ...messages,
@@ -244,6 +244,7 @@ async function callKimiAPI(
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error')
+      console.error(`Kimi API error: ${response.status} — ${errorText}`)
       throw new Error(
         `Kimi API returned ${response.status}: ${errorText}`
       )
@@ -381,6 +382,7 @@ Deno.serve(async (req: Request) => {
         kimiResponse = await callKimiAPI(systemPrompt, messages)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Kimi API call failed'
+        console.error(`Kimi API error: ${message}`)
         return new Response(
           JSON.stringify({ error: `AI service error: ${message}` }),
           {
