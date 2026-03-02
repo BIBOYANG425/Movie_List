@@ -662,7 +662,7 @@ export type SuggestionPoolType = 'similar' | 'taste' | 'trending' | 'variety' | 
 
 // ── Spool: Genre-Anchored Ranking Engine ────────────────────────────────────
 
-export type EnginePhase = 'prediction' | 'probe' | 'escalation' | 'cross_genre' | 'settlement' | 'complete';
+export type EnginePhase = 'prediction' | 'probe' | 'escalation' | 'cross_genre' | 'settlement' | 'complete' | 'binary_search';
 
 export interface ComparisonRequest {
   movieA: RankedItem;

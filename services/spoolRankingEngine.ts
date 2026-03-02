@@ -115,9 +115,9 @@ export class SpoolRankingEngine {
       .filter((item) => item.tier === tier)
       .sort((a, b) => a.rank - b.rank);
 
-    this.tierItems = tierItemsRaw.map((item) => ({
+    this.tierItems = tierItemsRaw.map((item, index) => ({
       item,
-      score: computeTierScore(item.rank, tierItemsRaw.length, range.min, range.max),
+      score: computeTierScore(index, tierItemsRaw.length, range.min, range.max),
     }));
 
     // Split by genre

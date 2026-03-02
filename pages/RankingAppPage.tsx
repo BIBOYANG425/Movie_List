@@ -402,6 +402,8 @@ const RankingAppPage = () => {
     if (!user) return;
     const removedItem = items.find((item) => item.id === id);
 
+    let affectedTierItems: RankedItem[] = [];
+
     setItems((prev) => {
       const without = prev.filter((i) => i.id !== id);
       const tiers = new Set(without.map((i) => i.tier));
@@ -413,6 +415,10 @@ const RankingAppPage = () => {
           .sort((a, b) => a.rank - b.rank)
           .map((item, idx) => ({ ...item, rank: idx }));
         result = [...result, ...tierItems];
+        // Track items in the removed movie's tier for DB reindex
+        if (removedItem && tier === removedItem.tier) {
+          affectedTierItems = tierItems;
+        }
       });
 
       return result;
@@ -423,6 +429,28 @@ const RankingAppPage = () => {
       .delete()
       .eq('user_id', user.id)
       .eq('tmdb_id', id);
+
+    // Persist reindexed ranks for remaining items in the affected tier
+    if (affectedTierItems.length > 0) {
+      const rowsToUpdate = affectedTierItems.map(item => ({
+        user_id: user.id,
+        tmdb_id: item.id,
+        title: item.title,
+        year: item.year,
+        poster_url: item.posterUrl,
+        type: item.type,
+        genres: item.genres,
+        director: item.director ?? null,
+        tier: item.tier,
+        rank_position: item.rank,
+        bracket: item.bracket ?? classifyBracket(item.genres),
+        primary_genre: item.genres[0] ?? null,
+        notes: item.notes ?? null,
+        updated_at: new Date().toISOString(),
+      }));
+      const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
+      if (error) console.error('Failed to reindex ranks after removal:', error);
+    }
 
     if (removedItem) {
       await logRankingActivityEvent(
