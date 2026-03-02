@@ -61,8 +61,10 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
   const [visible, setVisible] = useState(false);
   const [loadedEntryId, setLoadedEntryId] = useState<string | null>(null);
 
+  const [chatError, setChatError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const initRef = useRef(false);
 
   const userMessageCount = messages.filter((m) => m.role === 'user').length;
 
@@ -139,11 +141,66 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
     }
   }
 
+  // Shared init logic — used by useEffect and retry
+  const initSession = useCallback(async (cancelled: () => boolean) => {
+    setPhase('chat');
+    setChatError(null);
+    const context = await buildContext();
+
+    const consent = await ensureConsentRecord(userId);
+    if (cancelled()) return;
+    if (!consent?.consentProductImprovement) {
+      setPhase('draft');
+      return;
+    }
+
+    const { data: rankingRow } = await supabase
+      .from('user_rankings')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('tmdb_id', item.id)
+      .maybeSingle();
+    if (cancelled()) return;
+
+    const session = await createSession(
+      userId,
+      item.id,
+      rankingRow?.id ?? undefined,
+      context as unknown as Record<string, unknown>,
+      'v1',
+    );
+    if (cancelled()) return;
+
+    if (!session) {
+      setChatError('Could not start AI session. Tap retry or skip to form.');
+      return;
+    }
+
+    setSessionId(session.id);
+    setIsLoading(true);
+    const result = await sendAgentMessage(session.id, `I just ranked ${item.title} (${item.year}) as ${item.tier} Tier.`, context);
+    if (cancelled()) return;
+    setIsLoading(false);
+
+    if (result?.reply) {
+      setMessages([
+        { role: 'user', content: `I just ranked ${item.title} (${item.year}) as ${item.tier} Tier.` },
+        { role: 'agent', content: result.reply },
+      ]);
+    } else {
+      setChatError('AI is not responding. Tap retry or skip to form.');
+    }
+  }, [buildContext, userId, item]);
+
   // On open: create session or go to draft for existing entry
   useEffect(() => {
-    if (!isOpen) return;
-    // If a session is already active for this item, don't reinitialize
-    if (sessionId || phase === 'draft') return;
+    if (!isOpen) {
+      initRef.current = false;
+      return;
+    }
+    // Prevent duplicate init (ref-based guard is synchronous, unlike state)
+    if (sessionId || phase === 'draft' || initRef.current) return;
+    initRef.current = true;
     let cancelled = false;
 
     // Reset stale state for fresh opens
@@ -151,6 +208,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
     setGenerationId(null);
     setGeneratedFields(null);
     setSaveError(null);
+    setChatError(null);
 
     const run = async () => {
       // 1. Existing entry prop — go straight to draft
@@ -171,63 +229,23 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
       }
 
       // 3. No existing entry — start AI chat
-      setPhase('chat');
-      const context = await buildContext();
-
-      // Ensure consent row exists (relies on DB defaults, never auto-opts-in existing rows)
-      const consent = await ensureConsentRecord(userId);
-      if (cancelled) return;
-      if (!consent?.consentProductImprovement) {
-        // No AI consent — skip to blank draft form instead of dead-end chat
-        setPhase('draft');
-        return;
-      }
-
-      // Look up the ranking row UUID for session traceability
-      const { data: rankingRow } = await supabase
-        .from('user_rankings')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('tmdb_id', item.id)
-        .maybeSingle();
-      if (cancelled) return;
-
-      const session = await createSession(
-        userId,
-        item.id,
-        rankingRow?.id ?? undefined,
-        context as unknown as Record<string, unknown>,
-        'v1',
-      );
-      if (cancelled) return;
-
-      if (session) {
-        setSessionId(session.id);
-        setIsLoading(true);
-        const result = await sendAgentMessage(session.id, `I just ranked ${item.title} (${item.year}) as ${item.tier} Tier.`, context);
-        if (cancelled) return;
-        setIsLoading(false);
-        if (result?.reply) {
-          setMessages([
-            { role: 'user', content: `I just ranked ${item.title} (${item.year}) as ${item.tier} Tier.` },
-            { role: 'agent', content: result.reply },
-          ]);
-        } else {
-          setMessages([
-            { role: 'agent', content: `I see you rated ${item.title} as ${item.tier} Tier. What stood out to you about this one?` },
-          ]);
-        }
-      } else {
-        setMessages([
-          { role: 'agent', content: `I see you rated ${item.title} as ${item.tier} Tier. What stood out to you about this one?` },
-        ]);
-      }
+      await initSession(() => cancelled);
     };
 
     void run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, item.id, userId, existingEntry]);
+
+  // Retry handler for failed sessions
+  const handleRetry = useCallback(async () => {
+    setChatError(null);
+    setSessionId(null);
+    setMessages([]);
+    setIsLoading(false);
+    initRef.current = true;
+    await initSession(() => false);
+  }, [initSession]);
 
   // Slide-up animation
   useEffect(() => {
@@ -247,6 +265,9 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
     if (sessionId) {
       endSession(sessionId, 'abandoned');
     }
+    initRef.current = false;
+    setSessionId(null);
+    setChatError(null);
     setVisible(false);
     setTimeout(onDismiss, 300);
   }, [sessionId, onDismiss]);
@@ -256,6 +277,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
     const text = inputText.trim();
     if (!text || isLoading) return;
 
+    setChatError(null);
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
     setInputText('');
     setIsLoading(true);
@@ -265,7 +287,11 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
       const result = await sendAgentMessage(sessionId, text, context);
       if (result?.reply) {
         setMessages((prev) => [...prev, { role: 'agent', content: result.reply }]);
+      } else {
+        setChatError('Message failed to send. Try again or skip to form.');
       }
+    } else {
+      setChatError('No active session. Tap retry or skip to form.');
     }
 
     setIsLoading(false);
@@ -275,10 +301,17 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
   // Chat: generate review
   const handleGenerate = useCallback(async () => {
     if (!sessionId || isLoading) return;
+    setChatError(null);
     setIsLoading(true);
 
     const context = await buildContext();
     const generation = await requestReviewGeneration(sessionId, context);
+
+    if (!generation) {
+      setChatError('Failed to generate review. Try again or skip to form.');
+      setIsLoading(false);
+      return;
+    }
 
     if (generation) {
       setGenerationId(generation.id);
@@ -483,6 +516,18 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                       <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
                     </span>
                   </div>
+                </div>
+              )}
+              {chatError && (
+                <div className="flex flex-col items-center gap-2 py-2">
+                  <p className="text-xs text-red-400">{chatError}</p>
+                  <button
+                    onClick={handleRetry}
+                    disabled={isLoading}
+                    className="px-3 py-1.5 text-xs text-indigo-300 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-full transition-colors disabled:opacity-50"
+                  >
+                    Retry
+                  </button>
                 </div>
               )}
               <div ref={messagesEndRef} />
