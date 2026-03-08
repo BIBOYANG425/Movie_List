@@ -241,7 +241,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
             {/* Modal Container */}
             <div
-                className="relative w-full max-h-[90vh] rounded-3xl max-w-md bg-card shadow-2xl flex flex-col overflow-hidden"
+                className="relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl sm:max-w-md bg-card sm:shadow-2xl flex flex-col overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Close Button */}
