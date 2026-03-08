@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Camera,
   Search,
+  Upload,
   UserMinus,
   UserPlus,
   Users,
@@ -15,6 +16,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { JournalHomeView } from '../components/JournalHomeView';
 import { JournalConversation } from '../components/JournalConversation';
 import { Toast } from '../components/Toast';
+import { LetterboxdImportModal } from '../components/LetterboxdImportModal';
 import {
   AVATAR_ACCEPTED_MIME_TYPES,
   AVATAR_MAX_FILE_BYTES,
@@ -73,6 +75,7 @@ const ProfilePage = () => {
   const [journalEditEntry, setJournalEditEntry] = useState<RankedItem | null>(null);
   const [journalExistingEntry, setJournalExistingEntry] = useState<JournalEntry | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const canSeeFullProfile = useMemo(() => {
     if (!profile) return false;
@@ -394,13 +397,22 @@ const ProfilePage = () => {
                 <p className="text-[11px] text-zinc-500 text-right">{bioInput.length}/{MAX_BIO_LENGTH}</p>
               </div>
 
-              <button
-                onClick={handleProfileSave}
-                disabled={profileBusy}
-                className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition-colors disabled:opacity-50"
-              >
-                {profileBusy ? t('profile.saving') : t('profile.saveProfile')}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleProfileSave}
+                  disabled={profileBusy}
+                  className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition-colors disabled:opacity-50"
+                >
+                  {profileBusy ? t('profile.saving') : t('profile.saveProfile')}
+                </button>
+                <button
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                >
+                  <Upload size={14} />
+                  Import from Letterboxd
+                </button>
+              </div>
             </div>
           )}
 
@@ -593,6 +605,15 @@ const ProfilePage = () => {
 
         {toastMessage && (
           <Toast message={toastMessage} onDone={() => setToastMessage(null)} />
+        )}
+
+        {user && (
+          <LetterboxdImportModal
+            isOpen={isImportModalOpen}
+            onClose={() => setIsImportModalOpen(false)}
+            userId={user.id}
+            onImportComplete={() => { loadProfile(); }}
+          />
         )}
       </main>
     </div>
