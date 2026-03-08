@@ -1,0 +1,153 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+
+  --background: #0F1419;
+  --foreground: #F5F3EF;
+
+  --accent-primary: #8BA8BA;
+  --accent-subtle: #D4C5B0;
+
+  --gold: #D4C5B0;
+  --gold-muted: #B8A998;
+
+  --card: #1C2128;
+  --card-foreground: #F5F3EF;
+  --popover: #1C2128;
+  --popover-foreground: #F5F3EF;
+
+  --primary: #D4C5B0;
+  --primary-foreground: #0F1419;
+
+  --secondary: #252C35;
+  --secondary-foreground: #F5F3EF;
+
+  --muted: #252C35;
+  --muted-foreground: #9BA3AB;
+
+  --accent: #8BA8BA;
+  --accent-foreground: #0F1419;
+
+  --destructive: #D4183D;
+  --destructive-foreground: #F5F3EF;
+
+  --border: #252C35;
+  --input: #252C35;
+  --input-background: #1C2128;
+
+  --ring: #8BA8BA;
+
+  --font-serif: 'Cormorant Garamond', serif;
+  --font-sans: 'Source Sans 3', sans-serif;
+
+  --radius: 0.5rem;
+
+  /* Keep vibrant tier colors from current app */
+  --tier-s: #A855F7;
+  --tier-a: #3B82F6;
+  --tier-b: #10B981;
+  --tier-c: #F59E0B;
+  --tier-d: #EF4444;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-ring: var(--ring);
+  --color-gold: var(--gold);
+  --color-gold-muted: var(--gold-muted);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-tier-s: var(--tier-s);
+  --color-tier-a: var(--tier-a);
+  --color-tier-b: var(--tier-b);
+  --color-tier-c: var(--tier-c);
+  --color-tier-d: var(--tier-d);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-family-serif: var(--font-serif);
+  --font-family-sans: var(--font-sans);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+
+  html {
+    font-size: var(--font-size);
+  }
+
+  h1 {
+    font-family: var(--font-serif);
+    font-size: 2.5rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+
+  h2 {
+    font-family: var(--font-serif);
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+
+  h3 {
+    font-family: var(--font-serif);
+    font-size: 1.5rem;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  h4 {
+    font-family: var(--font-serif);
+    font-size: 1.25rem;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+}
