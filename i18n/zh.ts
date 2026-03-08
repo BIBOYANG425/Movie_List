@@ -2,6 +2,7 @@ const zh: Record<string, string> = {
   // ── Nav ──────────────────────────────────────────────────────────────────
   'nav.all': '全部',
   'nav.movies': '电影',
+  'nav.tv': '剧集',
   'nav.addItem': '添加',
   'nav.logOut': '退出',
   'nav.myProfile': '我的主页',
@@ -46,6 +47,7 @@ const zh: Record<string, string> = {
   'stats.tasteDNA': '你的品味 DNA',
   'stats.genreDistribution': '你排名中的类型分布',
   'stats.movies': '电影',
+  'stats.tvSeasons': '剧季',
 
   // ── Feed ─────────────────────────────────────────────────────────────────
   'feed.friendsFeed': '好友动态',
@@ -191,6 +193,15 @@ const zh: Record<string, string> = {
   'landing.terms': '条款',
   'landing.contact': '联系',
   'landing.copyright': '\u00A9 2026 Spool',
+
+  // ── TV Shows ────────────────────────────────────────────────────────────
+  'tv.searchShows': '搜索电视剧...',
+  'tv.selectSeason': '选择一季',
+  'tv.seasonCount': '季',
+  'tv.episodeCount': '集',
+  'tv.seasons': '季',
+  'tv.creator': '创作者',
+  'tv.status': '状态',
 
   // ── Language toggle ──────────────────────────────────────────────────────
   'lang.toggle': '中文',

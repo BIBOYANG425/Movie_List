@@ -6,12 +6,12 @@
  * Add to Vercel: Project Settings → Environment Variables → VITE_TMDB_API_KEY
  */
 
-import { ALL_TMDB_GENRES, DEFAULT_POOL_SLOTS, SMART_SUGGESTION_THRESHOLD, TIER_WEIGHTS } from '../constants';
+import { ALL_TMDB_GENRES, ALL_TV_GENRES, DEFAULT_POOL_SLOTS, SMART_SUGGESTION_THRESHOLD, TIER_WEIGHTS } from '../constants';
 import { TasteProfile } from '../types';
 import { supabase } from '../lib/supabase';
 
-const TMDB_BASE = 'https://api.themoviedb.org/3';
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+export const TMDB_BASE = 'https://api.themoviedb.org/3';
+export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 const DEFAULT_TMDB_SEARCH_TIMEOUT_MS = 4500;
 
 /** Read the user's locale from localStorage and return the TMDB language code. */
@@ -21,7 +21,7 @@ function getTmdbLocale(): string {
 }
 
 // Full genre map from TMDB (stable — rarely changes)
-const GENRE_MAP: Record<number, string> = {
+export const GENRE_MAP: Record<number, string> = {
   28: 'Action',
   12: 'Adventure',
   16: 'Animation',
@@ -1119,4 +1119,787 @@ export async function getExtendedMovieDetails(tmdbNumericId: number): Promise<{
     console.error('TMDB extended details fetch failed:', err);
     return null;
   }
+}
+
+// ── TV Show Types & Service Functions ───────────────────────────────────────
+
+/** TMDB TV genre ID → name mapping */
+export const TV_GENRE_MAP: Record<number, string> = {
+  10759: 'Action & Adventure',
+  16: 'Animation',
+  35: 'Comedy',
+  80: 'Crime',
+  99: 'Documentary',
+  18: 'Drama',
+  10751: 'Family',
+  10762: 'Kids',
+  9648: 'Mystery',
+  10763: 'News',
+  10764: 'Reality',
+  10765: 'Sci-Fi & Fantasy',
+  10766: 'Soap',
+  10767: 'Talk',
+  10768: 'War & Politics',
+  37: 'Western',
+};
+
+/**
+ * Normalize compound TV genre names to movie-compatible genre names
+ * for bracket classification. E.g. "Action & Adventure" → ["Action", "Adventure"]
+ */
+export function normalizeTVGenres(tvGenreNames: string[]): string[] {
+  const COMPOUND_MAP: Record<string, string[]> = {
+    'Action & Adventure': ['Action', 'Adventure'],
+    'Sci-Fi & Fantasy': ['Sci-Fi', 'Fantasy'],
+    'War & Politics': ['War'],
+    'Kids': ['Family'],
+    'News': [],
+    'Reality': [],
+    'Soap': ['Drama'],
+    'Talk': [],
+  };
+
+  const result: string[] = [];
+  for (const g of tvGenreNames) {
+    if (COMPOUND_MAP[g]) {
+      result.push(...COMPOUND_MAP[g]);
+    } else {
+      result.push(g);
+    }
+  }
+  return [...new Set(result)].slice(0, 3);
+}
+
+export interface TMDBTVShow {
+  id: string;
+  tmdbId: number;
+  name: string;
+  year: string;
+  posterUrl: string | null;
+  backdropUrl?: string | null;
+  genres: string[];
+  overview: string;
+  seasonCount: number;
+  status: string;
+  creators: string[];
+  voteAverage?: number;
+  seasons?: TMDBTVSeasonSummary[];
+}
+
+export interface TMDBTVSeasonSummary {
+  seasonNumber: number;
+  name: string;
+  posterUrl: string | null;
+  episodeCount: number;
+  airDate: string | null;
+}
+
+export interface TMDBTVSeason {
+  id: number;
+  showTmdbId: number;
+  seasonNumber: number;
+  name: string;
+  showName: string;
+  posterUrl: string | null;
+  episodeCount: number;
+  airDate: string | null;
+  overview: string;
+}
+
+function mapTVGenres(genreIds: number[]): string[] {
+  return genreIds
+    .map(id => TV_GENRE_MAP[id])
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+/**
+ * Search TMDB for TV shows matching *query*.
+ */
+export async function searchTVShows(
+  query: string,
+  timeoutMs: number = DEFAULT_TMDB_SEARCH_TIMEOUT_MS,
+): Promise<TMDBTVShow[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !query.trim()) return [];
+
+  try {
+    const url = new URL(`${TMDB_BASE}/search/tv`);
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('query', query);
+    url.searchParams.set('language', getTmdbLocale());
+    url.searchParams.set('page', '1');
+    url.searchParams.set('include_adult', 'false');
+
+    const res = await fetchWithTimeout(url.toString(), timeoutMs);
+    if (!res.ok) return [];
+
+    const data = await res.json();
+
+    return (data.results as any[])
+      .filter((s: any) => s.poster_path)
+      .slice(0, 12)
+      .map((s: any): TMDBTVShow => ({
+        id: `tv_${s.id}`,
+        tmdbId: s.id,
+        name: s.name,
+        year: s.first_air_date ? s.first_air_date.slice(0, 4) : '—',
+        posterUrl: s.poster_path ? `${TMDB_IMAGE_BASE}${s.poster_path}` : null,
+        backdropUrl: s.backdrop_path ? `${TMDB_IMAGE_BASE}${s.backdrop_path}` : null,
+        genres: mapTVGenres(s.genre_ids ?? []),
+        overview: s.overview ?? '',
+        seasonCount: 0,  // not available in search results
+        status: '',
+        creators: [],
+        voteAverage: typeof s.vote_average === 'number' ? s.vote_average : undefined,
+      }));
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return [];
+    console.error('TMDB TV search failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch full TV show details including seasons list.
+ * Filters out season 0 (specials).
+ */
+export async function getTVShowDetails(showId: number): Promise<TMDBTVShow | null> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !showId) return null;
+
+  try {
+    const res = await fetchWithTimeout(
+      `${TMDB_BASE}/tv/${showId}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+      5000,
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    const genres = (data.genres as any[] ?? []).map((g: any) => g.name as string);
+    const seasons: TMDBTVSeasonSummary[] = (data.seasons as any[] ?? [])
+      .filter((s: any) => s.season_number > 0)
+      .map((s: any) => ({
+        seasonNumber: s.season_number,
+        name: s.name,
+        posterUrl: s.poster_path ? `${TMDB_IMAGE_BASE}${s.poster_path}` : null,
+        episodeCount: s.episode_count ?? 0,
+        airDate: s.air_date ?? null,
+      }));
+
+    return {
+      id: `tv_${data.id}`,
+      tmdbId: data.id,
+      name: data.name,
+      year: data.first_air_date ? data.first_air_date.slice(0, 4) : '—',
+      posterUrl: data.poster_path ? `${TMDB_IMAGE_BASE}${data.poster_path}` : null,
+      backdropUrl: data.backdrop_path ? `${TMDB_IMAGE_BASE}${data.backdrop_path}` : null,
+      genres,
+      overview: data.overview ?? '',
+      seasonCount: seasons.length,
+      status: data.status ?? '',
+      creators: (data.created_by as any[] ?? []).map((c: any) => c.name as string),
+      voteAverage: typeof data.vote_average === 'number' ? data.vote_average : undefined,
+      seasons,
+    };
+  } catch (err) {
+    console.error('TMDB TV show details failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch details for a specific TV season.
+ */
+export async function getTVSeasonDetails(
+  showId: number,
+  seasonNum: number,
+  showName: string = '',
+): Promise<TMDBTVSeason | null> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !showId) return null;
+
+  try {
+    const res = await fetchWithTimeout(
+      `${TMDB_BASE}/tv/${showId}/season/${seasonNum}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+      5000,
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    return {
+      id: data.id,
+      showTmdbId: showId,
+      seasonNumber: data.season_number,
+      name: data.name ?? `Season ${seasonNum}`,
+      showName,
+      posterUrl: data.poster_path ? `${TMDB_IMAGE_BASE}${data.poster_path}` : null,
+      episodeCount: (data.episodes as any[] ?? []).length,
+      airDate: data.air_date ?? null,
+      overview: data.overview ?? '',
+    };
+  } catch (err) {
+    console.error('TMDB TV season details failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch the global average score (vote_average) for a TV show.
+ */
+export async function getTVShowGlobalScore(showId: number): Promise<number | undefined> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !showId) return undefined;
+
+  try {
+    const res = await fetchWithTimeout(
+      `${TMDB_BASE}/tv/${showId}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+      4000,
+    );
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return typeof data.vote_average === 'number' ? data.vote_average : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// ── TV Smart Suggestions ──────────────────────────────────────────────────────
+
+/** Reverse map: TV genre name → TMDB TV genre ID */
+const TV_GENRE_NAME_TO_ID: Record<string, number> = Object.fromEntries(
+  Object.entries(TV_GENRE_MAP).map(([id, name]) => [name, Number(id)])
+);
+
+/**
+ * Maps normalized genre names (from tv_rankings, e.g. "Action", "Sci-Fi")
+ * back to TMDB TV genre IDs for /discover/tv queries.
+ * Handles compound mappings: "Action" → 10759 (Action & Adventure),
+ * "Sci-Fi" or "Fantasy" → 10765 (Sci-Fi & Fantasy), "Drama" → 18, etc.
+ */
+export function tvGenreNamesToIds(names: string[]): number[] {
+  const NORMALIZED_TO_TV_ID: Record<string, number> = {
+    'Action': 10759,       // Action & Adventure
+    'Adventure': 10759,    // Action & Adventure
+    'Sci-Fi': 10765,       // Sci-Fi & Fantasy
+    'Fantasy': 10765,      // Sci-Fi & Fantasy
+    'War': 10768,          // War & Politics
+    // Direct matches (same ID in both movie and TV)
+    'Animation': 16,
+    'Comedy': 35,
+    'Crime': 80,
+    'Documentary': 99,
+    'Drama': 18,
+    'Family': 10751,
+    'Mystery': 9648,
+    'Western': 37,
+  };
+
+  const ids = new Set<number>();
+  for (const name of names) {
+    const id = NORMALIZED_TO_TV_ID[name] ?? TV_GENRE_NAME_TO_ID[name];
+    if (id !== undefined) ids.add(id);
+  }
+  return [...ids];
+}
+
+/** Map a raw TMDB TV result (from discover/similar/trending) to TMDBTVShow */
+function mapTmdbTVResult(s: any): TMDBTVShow | null {
+  if (!s.poster_path) return null;
+  return {
+    id: `tv_${s.id}`,
+    tmdbId: s.id,
+    name: s.name ?? s.original_name ?? '',
+    year: s.first_air_date ? s.first_air_date.slice(0, 4) : '—',
+    posterUrl: `${TMDB_IMAGE_BASE}${s.poster_path}`,
+    genres: mapTVGenres(s.genre_ids ?? []),
+    overview: s.overview ?? '',
+    seasonCount: s.number_of_seasons ?? 0,
+    status: '',
+    creators: [],
+  };
+}
+
+function dedupTV(shows: TMDBTVShow[]): TMDBTVShow[] {
+  const seen = new Set<number>();
+  return shows.filter(s => {
+    if (seen.has(s.tmdbId)) return false;
+    seen.add(s.tmdbId);
+    return true;
+  });
+}
+
+function interleaveTV(a: TMDBTVShow[], b: TMDBTVShow[]): TMDBTVShow[] {
+  const mixed: TMDBTVShow[] = [];
+  const maxLen = Math.max(a.length, b.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (i < a.length) mixed.push(a[i]);
+    if (i < b.length) mixed.push(b[i]);
+  }
+  return mixed;
+}
+
+/**
+ * Build a taste profile from ranked TV items.
+ * Uses `creator` instead of `director`, extracts show TMDB IDs from
+ * `tv_{showId}_s{n}` pattern, and uses ALL_TV_GENRES for underexposed detection.
+ */
+export function buildTVTasteProfile(items: { id: string; genres: string[]; year: string; tier: string; creator?: string }[]): TasteProfile {
+  if (items.length === 0) {
+    return {
+      weightedGenres: {},
+      topDirectors: [],
+      decadeDistribution: {},
+      preferredDecade: null,
+      underexposedGenres: [...ALL_TV_GENRES],
+      topMovieIds: [],
+      totalRanked: 0,
+    };
+  }
+
+  const tierWeights = TIER_WEIGHTS as Record<string, number>;
+
+  // Tier-weighted genre scores
+  const genreScores = new Map<string, number>();
+  for (const item of items) {
+    const w = tierWeights[item.tier] ?? 3;
+    for (const g of item.genres) {
+      genreScores.set(g, (genreScores.get(g) ?? 0) + w);
+    }
+  }
+
+  // Decade distribution (tier-weighted)
+  const decadeScores = new Map<string, number>();
+  for (const item of items) {
+    if (item.year && item.year.length >= 4) {
+      const yr = parseInt(item.year.slice(0, 4), 10);
+      if (!isNaN(yr)) {
+        const decade = `${Math.floor(yr / 10) * 10}s`;
+        const w = tierWeights[item.tier] ?? 3;
+        decadeScores.set(decade, (decadeScores.get(decade) ?? 0) + w);
+      }
+    }
+  }
+
+  let preferredDecade: string | null = null;
+  let maxDecadeScore = 0;
+  for (const [decade, score] of decadeScores) {
+    if (score > maxDecadeScore) {
+      maxDecadeScore = score;
+      preferredDecade = decade;
+    }
+  }
+
+  // Creator frequency (tier-weighted) — stored in topDirectors for type reuse
+  const creatorScores = new Map<string, number>();
+  for (const item of items) {
+    if (item.creator) {
+      const w = tierWeights[item.tier] ?? 3;
+      creatorScores.set(item.creator, (creatorScores.get(item.creator) ?? 0) + w);
+    }
+  }
+  const topDirectors = [...creatorScores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([name, score]) => ({ name, score }));
+
+  // Underexposed TV genres (raw TV genre names for /discover/tv queries).
+  // Items store normalized genres ("Action", "Sci-Fi"), so we reverse-map:
+  // a raw TV genre is "exposed" if any of its normalized forms have >= 2 counts.
+  const genreCounts = new Map<string, number>();
+  for (const item of items) {
+    for (const g of item.genres) {
+      genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
+    }
+  }
+  const TV_GENRE_NORMALIZED_FORMS: Record<string, string[]> = {
+    'Action & Adventure': ['Action', 'Adventure'],
+    'Sci-Fi & Fantasy': ['Sci-Fi', 'Fantasy'],
+    'War & Politics': ['War'],
+    'Kids': ['Family'],
+    'Soap': ['Drama'],
+    // These normalize to [] in normalizeTVGenres() — non-rankable content.
+    // Empty array here ensures they're never injected into the variety pool.
+    'News': [],
+    'Reality': [],
+    'Talk': [],
+  };
+  const underexposedGenres = ALL_TV_GENRES.filter(rawGenre => {
+    const normalizedForms = TV_GENRE_NORMALIZED_FORMS[rawGenre] ?? [rawGenre];
+    // Genres with no normalized forms (News/Reality/Talk) are skipped entirely
+    if (normalizedForms.length === 0) return false;
+    return !normalizedForms.some(n => (genreCounts.get(n) ?? 0) >= 2);
+  });
+
+  // S/A tier show TMDB IDs — extract from tv_{showId}_s{n} pattern, deduplicated
+  const showIdSet = new Set<number>();
+  for (const item of items) {
+    if (item.tier === 'S' || item.tier === 'A') {
+      const match = item.id.match(/^tv_(\d+)_s\d+$/);
+      if (match) showIdSet.add(parseInt(match[1], 10));
+    }
+  }
+  const topMovieIds = [...showIdSet];
+
+  return {
+    weightedGenres: Object.fromEntries(genreScores),
+    topDirectors,
+    decadeDistribution: Object.fromEntries(decadeScores),
+    preferredDecade,
+    underexposedGenres,
+    topMovieIds,
+    totalRanked: items.length,
+  };
+}
+
+/**
+ * Fetch random S/A-tier TV shows from friends that the user hasn't ranked.
+ * Deduplicates by show_tmdb_id since friends may rank different seasons.
+ */
+export async function getFriendTVSuggestionPicks(
+  userId: string,
+  excludeIds: Set<string>,
+  limit: number = 2,
+): Promise<TMDBTVShow[]> {
+  try {
+    const { data: follows } = await supabase
+      .from('friend_follows')
+      .select('following_id')
+      .eq('follower_id', userId);
+
+    const friendIds = follows?.map((f: { following_id: string }) => f.following_id) ?? [];
+    if (friendIds.length === 0) return [];
+
+    const { data: friendRankings } = await supabase
+      .from('tv_rankings')
+      .select('tmdb_id, show_tmdb_id, title, poster_url, year, genres')
+      .in('user_id', friendIds)
+      .in('tier', ['S', 'A'])
+      .limit(100);
+
+    if (!friendRankings || friendRankings.length === 0) return [];
+
+    // Deduplicate by show_tmdb_id
+    const candidates = friendRankings
+      .filter((r: any) => !excludeIds.has(`tv_${r.show_tmdb_id}`) && r.poster_url)
+      .reduce((acc: any[], r: any) => {
+        if (!acc.some((a: any) => a.show_tmdb_id === r.show_tmdb_id)) acc.push(r);
+        return acc;
+      }, []);
+
+    const picked = shuffle(candidates).slice(0, limit);
+
+    return picked.map((r: any): TMDBTVShow => ({
+      id: `tv_${r.show_tmdb_id}`,
+      tmdbId: r.show_tmdb_id,
+      name: r.title,
+      year: r.year ?? '—',
+      posterUrl: r.poster_url,
+      genres: r.genres ?? [],
+      overview: '',
+      seasonCount: 0,
+      status: '',
+      creators: [],
+    }));
+  } catch (err) {
+    console.error('Friend TV suggestion picks failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch GENERIC TV suggestions: 50% popular recent + 50% classic high-rated.
+ */
+export async function getGenericTVSuggestions(
+  excludeIds: Set<string> = new Set(),
+  page: number = 1,
+  excludeTitles: Set<string> = new Set(),
+): Promise<TMDBTVShow[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey) return [];
+
+  const currentYear = new Date().getFullYear();
+
+  const isExcluded = (s: TMDBTVShow) =>
+    excludeIds.has(s.id) || excludeTitles.has(s.name.toLowerCase());
+
+  try {
+    const recentUrl = new URL(`${TMDB_BASE}/discover/tv`);
+    recentUrl.searchParams.set('api_key', apiKey);
+    recentUrl.searchParams.set('language', getTmdbLocale());
+    recentUrl.searchParams.set('sort_by', 'popularity.desc');
+    recentUrl.searchParams.set('include_adult', 'false');
+    recentUrl.searchParams.set('first_air_date.gte', `${currentYear - 2}-01-01`);
+    recentUrl.searchParams.set('vote_count.gte', '30');
+    recentUrl.searchParams.set('page', String(page));
+
+    const classicUrl = new URL(`${TMDB_BASE}/discover/tv`);
+    classicUrl.searchParams.set('api_key', apiKey);
+    classicUrl.searchParams.set('language', getTmdbLocale());
+    classicUrl.searchParams.set('sort_by', 'vote_average.desc');
+    classicUrl.searchParams.set('include_adult', 'false');
+    classicUrl.searchParams.set('first_air_date.lte', `${currentYear - 5}-12-31`);
+    classicUrl.searchParams.set('vote_count.gte', '500');
+    classicUrl.searchParams.set('page', String(page));
+
+    const [recentRes, classicRes] = await Promise.all([
+      fetch(recentUrl.toString()),
+      fetch(classicUrl.toString()),
+    ]);
+
+    if (!recentRes.ok || !classicRes.ok) return [];
+
+    const [recentData, classicData] = await Promise.all([
+      recentRes.json(),
+      classicRes.json(),
+    ]);
+
+    const newShows = (recentData.results as any[])
+      .map(mapTmdbTVResult)
+      .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
+      .slice(0, 6);
+
+    const classics = (classicData.results as any[])
+      .map(mapTmdbTVResult)
+      .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
+      .slice(0, 6);
+
+    return shuffle(dedupTV(interleaveTV(newShows, classics)).slice(0, 12));
+  } catch (err) {
+    console.error('TMDB generic TV suggestions failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Smart 5-pool TV suggestion system.
+ * Pools: Similar | Taste (weighted genres + decade) | Trending | Variety | Friend
+ */
+export async function getSmartTVSuggestions(
+  profile: TasteProfile,
+  excludeIds: Set<string> = new Set(),
+  page: number = 1,
+  excludeTitles: Set<string> = new Set(),
+  userId?: string,
+  poolSlots: Record<string, number> = DEFAULT_POOL_SLOTS,
+): Promise<TMDBTVShow[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey) return [];
+
+  if (profile.totalRanked < SMART_SUGGESTION_THRESHOLD) {
+    return getGenericTVSuggestions(excludeIds, page, excludeTitles);
+  }
+
+  const isExcluded = (s: TMDBTVShow) =>
+    excludeIds.has(s.id) || excludeTitles.has(s.name.toLowerCase());
+
+  const topGenres = Object.entries(profile.weightedGenres)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name]) => name);
+  const genreParam = tvGenreNamesToIds(topGenres).join(',');
+
+  const fetches: Promise<TMDBTVShow[]>[] = [];
+
+  // Pool 1: Similar (from random S/A show)
+  fetches.push((async (): Promise<TMDBTVShow[]> => {
+    if (profile.topMovieIds.length === 0) return [];
+    const pickId = profile.topMovieIds[Math.floor(Math.random() * profile.topMovieIds.length)];
+    try {
+      const res = await fetch(
+        `${TMDB_BASE}/tv/${pickId}/similar?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.results as any[])
+        .map(mapTmdbTVResult)
+        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
+        .slice(0, poolSlots.similar + 2);
+    } catch { return []; }
+  })());
+
+  // Pool 2: Taste (weighted genres + decade bias)
+  fetches.push((async (): Promise<TMDBTVShow[]> => {
+    const url = new URL(`${TMDB_BASE}/discover/tv`);
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('language', getTmdbLocale());
+    url.searchParams.set('sort_by', 'vote_average.desc');
+    url.searchParams.set('include_adult', 'false');
+    url.searchParams.set('vote_count.gte', '100');
+    if (genreParam) url.searchParams.set('with_genres', genreParam);
+
+    if (profile.preferredDecade) {
+      const decadeStart = parseInt(profile.preferredDecade, 10);
+      if (!isNaN(decadeStart) && Math.random() < 0.5) {
+        url.searchParams.set('first_air_date.gte', `${decadeStart}-01-01`);
+        url.searchParams.set('first_air_date.lte', `${decadeStart + 9}-12-31`);
+      }
+    }
+
+    url.searchParams.set('page', String(page + Math.floor(Math.random() * 3)));
+
+    try {
+      const res = await fetch(url.toString());
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.results as any[])
+        .map(mapTmdbTVResult)
+        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
+        .slice(0, poolSlots.taste + 2);
+    } catch { return []; }
+  })());
+
+  // Pool 3: Trending
+  fetches.push((async (): Promise<TMDBTVShow[]> => {
+    try {
+      const res = await fetch(
+        `${TMDB_BASE}/trending/tv/week?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.results as any[])
+        .map(mapTmdbTVResult)
+        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
+        .slice(0, poolSlots.trending + 2);
+    } catch { return []; }
+  })());
+
+  // Pool 4: Variety (underexposed genres, lower vote threshold)
+  fetches.push((async (): Promise<TMDBTVShow[]> => {
+    if (profile.underexposedGenres.length === 0) return [];
+    const pickGenres = shuffle(profile.underexposedGenres).slice(0, 2);
+    // underexposedGenres are raw TV genre names, map directly
+    const varietyIds = pickGenres
+      .map(g => TV_GENRE_NAME_TO_ID[g])
+      .filter((id): id is number => id !== undefined);
+    if (varietyIds.length === 0) return [];
+
+    const url = new URL(`${TMDB_BASE}/discover/tv`);
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('language', getTmdbLocale());
+    url.searchParams.set('sort_by', 'popularity.desc');
+    url.searchParams.set('include_adult', 'false');
+    url.searchParams.set('vote_count.gte', '50');
+    url.searchParams.set('with_genres', varietyIds.join(','));
+    url.searchParams.set('page', String(1 + Math.floor(Math.random() * 3)));
+
+    try {
+      const res = await fetch(url.toString());
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.results as any[])
+        .map(mapTmdbTVResult)
+        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
+        .slice(0, poolSlots.variety + 2);
+    } catch { return []; }
+  })());
+
+  // Pool 5: Friend picks
+  fetches.push(
+    userId
+      ? getFriendTVSuggestionPicks(userId, excludeIds, poolSlots.friend + 1)
+      : Promise.resolve([])
+  );
+
+  const [similarShows, tasteShows, trendingShows, varietyShows, friendShows] =
+    await Promise.all(fetches);
+
+  const result: TMDBTVShow[] = [];
+  const used = new Set<number>();
+
+  const take = (pool: TMDBTVShow[], count: number) => {
+    for (const s of pool) {
+      if (result.length >= 12) break;
+      if (count <= 0) break;
+      if (used.has(s.tmdbId)) continue;
+      used.add(s.tmdbId);
+      result.push(s);
+      count--;
+    }
+  };
+
+  take(similarShows, poolSlots.similar);
+  take(tasteShows, poolSlots.taste);
+  take(trendingShows, poolSlots.trending);
+  take(varietyShows, poolSlots.variety);
+  take(friendShows, poolSlots.friend);
+
+  const remaining = [...tasteShows, ...similarShows, ...trendingShows, ...varietyShows];
+  take(remaining, 12 - result.length);
+
+  return shuffle(result);
+}
+
+/**
+ * Smart TV backfill: TMDB recommendations for random ranked shows.
+ * Falls back to variety discover if insufficient.
+ */
+export async function getSmartTVBackfill(
+  profile: TasteProfile,
+  excludeIds: Set<string> = new Set(),
+  page: number = 1,
+  excludeTitles: Set<string> = new Set(),
+): Promise<TMDBTVShow[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey) return [];
+
+  const isExcluded = (s: TMDBTVShow) =>
+    excludeIds.has(s.id) || excludeTitles.has(s.name.toLowerCase());
+
+  if (profile.topMovieIds.length === 0) {
+    return getGenericTVSuggestions(excludeIds, page, excludeTitles);
+  }
+
+  let shows: TMDBTVShow[] = [];
+
+  const sampleIds = shuffle(profile.topMovieIds).slice(0, 2);
+  try {
+    const reqs = sampleIds.map(id =>
+      fetch(`${TMDB_BASE}/tv/${id}/recommendations?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`)
+        .then(r => r.ok ? r.json() : { results: [] })
+    );
+    const results = await Promise.all(reqs);
+    for (const data of results) {
+      const mapped = (data.results as any[])
+        .map(mapTmdbTVResult)
+        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s));
+      shows.push(...mapped);
+    }
+  } catch (err) {
+    console.error('Smart TV backfill recommendations failed:', err);
+  }
+
+  shows = dedupTV(shows);
+
+  if (shows.length < 12 && profile.underexposedGenres.length > 0) {
+    try {
+      const pickGenres = shuffle(profile.underexposedGenres).slice(0, 2);
+      const varietyIds = pickGenres
+        .map(g => TV_GENRE_NAME_TO_ID[g])
+        .filter((id): id is number => id !== undefined);
+      if (varietyIds.length > 0) {
+        const url = new URL(`${TMDB_BASE}/discover/tv`);
+        url.searchParams.set('api_key', apiKey);
+        url.searchParams.set('language', getTmdbLocale());
+        url.searchParams.set('sort_by', 'popularity.desc');
+        url.searchParams.set('include_adult', 'false');
+        url.searchParams.set('vote_count.gte', '50');
+        url.searchParams.set('with_genres', varietyIds.join(','));
+        url.searchParams.set('page', String(page));
+
+        const res = await fetch(url.toString());
+        if (res.ok) {
+          const data = await res.json();
+          const varietyShows = (data.results as any[])
+            .map(mapTmdbTVResult)
+            .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s));
+          shows = dedupTV([...shows, ...varietyShows]);
+        }
+      }
+    } catch (err) {
+      console.error('Smart TV backfill variety fallback failed:', err);
+    }
+  }
+
+  return shuffle(shows).slice(0, 20);
 }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { RankedItem } from '../types';
-import { GripVertical, Film, Star, StickyNote, Trash2 } from 'lucide-react';
+import { GripVertical, Film, Tv, Star, StickyNote, Trash2 } from 'lucide-react';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
 import { MediaDetailModal } from './MediaDetailModal';
 
@@ -40,6 +40,13 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
           #{rank + 1}
         </div>
 
+        {/* Season Badge (TV) */}
+        {item.type === 'tv_season' && item.seasonNumber && (
+          <div className="absolute top-2 left-14 z-10 bg-purple-500/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] font-bold text-white border border-white/10 shadow-lg">
+            S{item.seasonNumber}
+          </div>
+        )}
+
         {/* Score Badge */}
         {showScore && (
           <div className="absolute top-2 right-2 z-10 bg-indigo-500/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-xs font-bold text-white border border-white/10 flex items-center gap-1 shadow-lg">
@@ -63,7 +70,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
         <div className="absolute bottom-0 left-0 right-0 p-3 pt-6">
           <h3 className="text-sm font-semibold text-white leading-tight truncate">{item.title}</h3>
           <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-400">
-            <Film size={12} />
+            {item.type === 'tv_season' ? <Tv size={12} /> : <Film size={12} />}
             <span>{item.year}</span>
             {item.notes && (
               <StickyNote size={10} className="text-amber-400 ml-auto" />

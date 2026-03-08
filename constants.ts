@@ -250,6 +250,14 @@ export const ALL_TMDB_GENRES = [
   'Romance', 'Sci-Fi', 'TV Movie', 'Thriller', 'War', 'Western',
 ];
 
+// Excludes News, Reality, Talk — they normalize to [] (non-rankable content)
+// and would stay permanently "underexposed", polluting the variety pool.
+export const ALL_TV_GENRES = [
+  'Action & Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary',
+  'Drama', 'Family', 'Kids', 'Mystery',
+  'Sci-Fi & Fantasy', 'Soap', 'War & Politics', 'Western',
+];
+
 /** Default slot distribution for the 5-pool suggestion system */
 export const DEFAULT_POOL_SLOTS: Record<SuggestionPoolType, number> = {
   similar: 3,

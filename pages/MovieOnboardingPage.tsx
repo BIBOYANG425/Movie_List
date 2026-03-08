@@ -65,7 +65,7 @@ const MovieOnboardingPage: React.FC = () => {
         round: number; seedIdx: number;
     } | null>(null);
     const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
-    const [sessionId, setSessionId] = useState('');
+    const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
     const [isRatingFetching, setIsRatingFetching] = useState(false);
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ const MovieOnboardingPage: React.FC = () => {
     // ── Load existing rankings on mount ─────────────────────────────────────────
 
     useEffect(() => {
-        setSessionId(globalThis.crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2));
+        setSessionId(crypto.randomUUID());
 
         if (user) {
             // Authenticated: load from Supabase
