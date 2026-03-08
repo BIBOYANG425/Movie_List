@@ -3,6 +3,7 @@ import { X, Search, Plus, ArrowLeft, Loader2, Film, ChevronRight, Bookmark, Refr
 import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry, ComparisonRequest } from '../types';
 import { TIER_SCORE_RANGES } from '../constants';
 import { searchMovies, searchPeople, getPersonFilmography, getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { fuzzyFilterLocal, getBestCorrectedQuery, mergeAndDedupSearchResults } from '../services/fuzzySearch';
 import { classifyBracket, computeSeedIndex, computeTierScore } from '../services/rankingAlgorithm';
 import { SpoolRankingEngine } from '../services/spoolRankingEngine';
 import { computePredictionSignals } from '../services/spoolPrediction';
@@ -29,19 +30,6 @@ type Step = 'search' | 'tier' | 'notes' | 'compare';
 
 const TMDB_SEARCH_TIMEOUT_MS = 4500;
 
-function mergeAndDedupSearchResults(results: TMDBMovie[]): TMDBMovie[] {
-  const byKey = new Map<string, TMDBMovie>();
-
-  for (const movie of results) {
-    const key = movie.tmdbId > 0
-      ? `tmdb:${movie.tmdbId}`
-      : `title:${movie.title.toLowerCase().trim()}`;
-    if (!byKey.has(key)) byKey.set(key, movie);
-  }
-
-  return Array.from(byKey.values()).slice(0, 12);
-}
-
 export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem, preselectedTier, onCompare, onMovieInfoClick }) => {
   const { user } = useAuth();
   const [step, setStep] = useState<Step>('search');
@@ -56,6 +44,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
   const [isRatingFetching, setIsRatingFetching] = useState(false);
+  const [correctedQuery, setCorrectedQuery] = useState<string | null>(null);
 
   // Two-pool suggestion system
   const suggestionPageRef = useRef(1);
@@ -79,6 +68,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   const getExcludeIds = () => new Set<string>([
     ...currentItems.map(i => i.id),
@@ -151,11 +141,15 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   // Reset on open/close
   useEffect(() => {
     if (isOpen) {
+      searchRequestIdRef.current += 1;
       setSearchTerm('');
       setSearchResults([]);
+      setDirectorProfiles([]);
+      setSelectedDirector(null);
       setIsSearching(false);
       setSelectedTier(null);
       setNotes('');
+      setCorrectedQuery(null);
       engineRef.current = null;
       setCurrentComparison(null);
       setSessionId(crypto.randomUUID());
@@ -216,10 +210,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     const normalizedQuery = searchTerm.trim();
+    const requestId = ++searchRequestIdRef.current;
+
     if (!normalizedQuery) {
       setSearchResults([]);
       setDirectorProfiles([]);
       setSelectedDirector(null);
+      setCorrectedQuery(null);
       setIsSearching(false);
       return;
     }
@@ -232,7 +229,39 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         searchPeople(normalizedQuery, TMDB_SEARCH_TIMEOUT_MS),
       ]);
 
-      setSearchResults(mergeAndDedupSearchResults(tmdbResults));
+      // Stale check — a newer search was fired while we were awaiting
+      if (requestId !== searchRequestIdRef.current) return;
+
+      // Fuzzy-match against local pools (suggestions + backfill)
+      const localPool = [...suggestions, ...backfillPoolRef.current];
+      const fuzzyMatches = fuzzyFilterLocal(normalizedQuery, localPool, m => m.title);
+      const merged = mergeAndDedupSearchResults([...tmdbResults, ...fuzzyMatches]);
+
+      let corrected: string | null = null;
+
+      // If TMDB returned few results, try a corrected query
+      if (tmdbResults.length < 3) {
+        const titleDict = [
+          ...currentItems.map(i => i.title),
+          ...suggestions.map(m => m.title),
+          ...backfillPoolRef.current.map(m => m.title),
+        ];
+        const bestMatch = getBestCorrectedQuery(normalizedQuery, titleDict);
+        if (bestMatch && bestMatch.toLowerCase() !== normalizedQuery.toLowerCase()) {
+          corrected = bestMatch;
+          const correctedResults = await searchMovies(bestMatch, TMDB_SEARCH_TIMEOUT_MS);
+          // Stale check again after second await
+          if (requestId !== searchRequestIdRef.current) return;
+          const finalMerged = mergeAndDedupSearchResults([...merged, ...correctedResults]);
+          setSearchResults(finalMerged);
+        } else {
+          setSearchResults(merged);
+        }
+      } else {
+        setSearchResults(merged);
+      }
+
+      setCorrectedQuery(corrected);
       setDirectorProfiles(people);
       setSelectedDirector(null);
       setIsSearching(false);
@@ -486,6 +515,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           <Loader2 className="absolute right-3 top-3.5 text-muted animate-spin" size={18} />
         )}
       </div>
+
+      {/* Corrected query hint */}
+      {correctedQuery && !isSearching && (
+        <p className="text-xs text-muted-foreground italic px-1">
+          Showing results for <span className="font-semibold text-accent">"{correctedQuery}"</span>
+        </p>
+      )}
 
       {/* No API key warning */}
       {!hasTmdbKey() && (
