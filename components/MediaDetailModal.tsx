@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { RankedItem, Tier, MovieSocialStats, StreamingAvailability, Bracket } from '../types';
-import { X, Star, MessageCircle, Link, ChevronRight } from 'lucide-react';
+import { X, Star, MessageCircle, Link, ChevronRight, Check, RefreshCw } from 'lucide-react';
 import { getExtendedMovieDetails, getTVSeasonDetails, getTVShowDetails, TMDBMovie } from '../services/tmdbService';
 import { getMovieSocialStats, getTVSocialStats } from '../services/friendsService';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { JournalConversation } from './JournalConversation';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface MediaDetailModalProps {
     initialItem?: RankedItem;
@@ -13,6 +16,7 @@ interface MediaDetailModalProps {
     onSaveForLater?: (movie: TMDBMovie) => void;
     onStartRanking?: (movie: TMDBMovie) => void;
     onOpenJournal?: (tmdbId: string) => void;
+    onRerank?: (item: RankedItem) => void;
 }
 
 interface TVSeasonViewModel {
@@ -37,7 +41,7 @@ function parseTVSeasonId(id: string): { showTmdbId: number; seasonNumber: number
     };
 }
 
-export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem, tmdbId, onClose, onSaveForLater, onStartRanking, onOpenJournal }) => {
+export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem, tmdbId, onClose, onSaveForLater, onStartRanking, onOpenJournal, onRerank }) => {
     const tvTarget = initialItem?.type === 'tv_season'
         ? {
             showTmdbId: initialItem.showTmdbId ?? parseTVSeasonId(tmdbId)?.showTmdbId ?? 0,
@@ -74,6 +78,26 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
     const [rankContext, setRankContext] = useState<{ above: string, below: string, date: string } | null>(null);
 
     const [socialStats, setSocialStats] = useState<MovieSocialStats | null>(null);
+    const [journalOpen, setJournalOpen] = useState(false);
+    const [linkCopied, setLinkCopied] = useState(false);
+    const { user } = useAuth();
+
+    const handleShare = async () => {
+        const url = `${window.location.origin}/app?movieId=${encodeURIComponent(tmdbId)}`;
+        try {
+            if (navigator.share) {
+                await navigator.share({ title: detailTitle ?? 'Check this out on Spool', url });
+            } else {
+                await navigator.clipboard.writeText(url);
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2000);
+            }
+        } catch {
+            await navigator.clipboard.writeText(url);
+            setLinkCopied(true);
+            setTimeout(() => setLinkCopied(false), 2000);
+        }
+    };
     const [socialLoading, setSocialLoading] = useState(true);
 
     useEffect(() => {
@@ -372,7 +396,11 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                         )}
                                     </div>
 
-                                    <button className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-border/30 rounded-xl text-xs font-bold transition flex items-center gap-2">
+                                    <button
+                                        onClick={() => { if (rankedItem && onRerank) { onRerank(rankedItem); onClose(); } }}
+                                        className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-border/30 rounded-xl text-xs font-bold transition flex items-center gap-2"
+                                    >
+                                        <RefreshCw size={12} />
                                         Re-rank
                                     </button>
                                 </div>
@@ -492,18 +520,22 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                 </div>
 
                 {/* 🎯 Action Footer (Sticky Bottom) */}
-                <div className="absolute bottom-0 left-0 right-0 bg-background border-t border-border p-4 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.5)] flex items-center gap-3">
+                <div className="flex-shrink-0 bg-background border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(0,0,0,0.5)] flex items-center gap-3">
                     {rankedItem ? (
                         <>
                             <button
-                                onClick={() => { if (onOpenJournal) onOpenJournal(tmdbId); }}
+                                onClick={() => setJournalOpen(true)}
                                 className="flex-1 bg-gold hover:bg-gold-muted text-foreground font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-gold/20 active:scale-[0.98]"
                             >
                                 <MessageCircle size={18} />
                                 Leave a Review
                             </button>
-                            <button className="w-12 h-12 flex items-center justify-center bg-white/5 border border-border/30 rounded-xl hover:bg-white/10 transition text-muted-foreground hover:text-foreground" title="Share with a Friend">
-                                <Link size={18} />
+                            <button
+                                onClick={handleShare}
+                                className="w-12 h-12 flex items-center justify-center bg-white/5 border border-border/30 rounded-xl hover:bg-white/10 transition text-muted-foreground hover:text-foreground"
+                                title={linkCopied ? 'Link copied!' : 'Share link'}
+                            >
+                                {linkCopied ? <Check size={18} className="text-green-400" /> : <Link size={18} />}
                             </button>
                         </>
                     ) : (
@@ -536,6 +568,18 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                 </div>
 
             </div>
+
+            {journalOpen && rankedItem && user && (
+                <ErrorBoundary>
+                    <JournalConversation
+                        isOpen={journalOpen}
+                        item={rankedItem}
+                        userId={user.id}
+                        onDismiss={() => setJournalOpen(false)}
+                        onSaved={() => setJournalOpen(false)}
+                    />
+                </ErrorBoundary>
+            )}
         </div>
     );
 };

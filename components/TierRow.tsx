@@ -31,9 +31,11 @@ interface TierRowProps {
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDropOnItem?: (e: React.DragEvent, id: string) => void;
   onDelete: (id: string) => void;
+  onOpenJournal?: (tmdbId: string) => void;
+  onRerank?: (item: RankedItem) => void;
 }
 
-export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showScores, onDrop, onDragStart, onDropOnItem, onDelete }) => {
+export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showScores, onDrop, onDragStart, onDropOnItem, onDelete, onOpenJournal, onRerank }) => {
   const { t } = useTranslation();
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -87,6 +89,8 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showSco
               }}
               onDrop={onDropOnItem}
               onDelete={onDelete}
+              onOpenJournal={onOpenJournal}
+              onRerank={onRerank}
             />
           ))
         )}

@@ -13,9 +13,11 @@ interface MediaCardProps {
   onDragOver?: (e: React.DragEvent, id: string) => void;
   onDrop?: (e: React.DragEvent, id: string) => void;
   onDelete: (id: string) => void;
+  onOpenJournal?: (tmdbId: string) => void;
+  onRerank?: (item: RankedItem) => void;
 }
 
-export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showScore = true, onDragStart, onDragOver, onDrop, onDelete }) => {
+export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showScore = true, onDragStart, onDragOver, onDrop, onDelete, onOpenJournal, onRerank }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleClick = (e: React.MouseEvent) => {
@@ -105,6 +107,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
           initialItem={item}
           tmdbId={item.id}
           onClose={() => setIsOpen(false)}
+          onOpenJournal={onOpenJournal}
+          onRerank={onRerank}
         />
       )}
     </>
