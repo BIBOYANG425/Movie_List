@@ -1120,3 +1120,246 @@ export async function getExtendedMovieDetails(tmdbNumericId: number): Promise<{
     return null;
   }
 }
+
+// ── TV Show Types & Service Functions ───────────────────────────────────────
+
+/** TMDB TV genre ID → name mapping */
+export const TV_GENRE_MAP: Record<number, string> = {
+  10759: 'Action & Adventure',
+  16: 'Animation',
+  35: 'Comedy',
+  80: 'Crime',
+  99: 'Documentary',
+  18: 'Drama',
+  10751: 'Family',
+  10762: 'Kids',
+  9648: 'Mystery',
+  10763: 'News',
+  10764: 'Reality',
+  10765: 'Sci-Fi & Fantasy',
+  10766: 'Soap',
+  10767: 'Talk',
+  10768: 'War & Politics',
+  37: 'Western',
+};
+
+/**
+ * Normalize compound TV genre names to movie-compatible genre names
+ * for bracket classification. E.g. "Action & Adventure" → ["Action", "Adventure"]
+ */
+export function normalizeTVGenres(tvGenreNames: string[]): string[] {
+  const COMPOUND_MAP: Record<string, string[]> = {
+    'Action & Adventure': ['Action', 'Adventure'],
+    'Sci-Fi & Fantasy': ['Sci-Fi', 'Fantasy'],
+    'War & Politics': ['War'],
+    'Kids': ['Family'],
+    'News': [],
+    'Reality': [],
+    'Soap': ['Drama'],
+    'Talk': [],
+  };
+
+  const result: string[] = [];
+  for (const g of tvGenreNames) {
+    if (COMPOUND_MAP[g]) {
+      result.push(...COMPOUND_MAP[g]);
+    } else {
+      result.push(g);
+    }
+  }
+  return [...new Set(result)].slice(0, 3);
+}
+
+export interface TMDBTVShow {
+  id: string;
+  tmdbId: number;
+  name: string;
+  year: string;
+  posterUrl: string | null;
+  backdropUrl?: string | null;
+  genres: string[];
+  overview: string;
+  seasonCount: number;
+  status: string;
+  creators: string[];
+  voteAverage?: number;
+  seasons?: TMDBTVSeasonSummary[];
+}
+
+export interface TMDBTVSeasonSummary {
+  seasonNumber: number;
+  name: string;
+  posterUrl: string | null;
+  episodeCount: number;
+  airDate: string | null;
+}
+
+export interface TMDBTVSeason {
+  id: number;
+  showTmdbId: number;
+  seasonNumber: number;
+  name: string;
+  showName: string;
+  posterUrl: string | null;
+  episodeCount: number;
+  airDate: string | null;
+  overview: string;
+}
+
+function mapTVGenres(genreIds: number[]): string[] {
+  return genreIds
+    .map(id => TV_GENRE_MAP[id])
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+/**
+ * Search TMDB for TV shows matching *query*.
+ */
+export async function searchTVShows(
+  query: string,
+  timeoutMs: number = DEFAULT_TMDB_SEARCH_TIMEOUT_MS,
+): Promise<TMDBTVShow[]> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !query.trim()) return [];
+
+  try {
+    const url = new URL(`${TMDB_BASE}/search/tv`);
+    url.searchParams.set('api_key', apiKey);
+    url.searchParams.set('query', query);
+    url.searchParams.set('language', getTmdbLocale());
+    url.searchParams.set('page', '1');
+    url.searchParams.set('include_adult', 'false');
+
+    const res = await fetchWithTimeout(url.toString(), timeoutMs);
+    if (!res.ok) return [];
+
+    const data = await res.json();
+
+    return (data.results as any[])
+      .filter((s: any) => s.poster_path)
+      .slice(0, 12)
+      .map((s: any): TMDBTVShow => ({
+        id: `tv_${s.id}`,
+        tmdbId: s.id,
+        name: s.name,
+        year: s.first_air_date ? s.first_air_date.slice(0, 4) : '—',
+        posterUrl: s.poster_path ? `${TMDB_IMAGE_BASE}${s.poster_path}` : null,
+        backdropUrl: s.backdrop_path ? `${TMDB_IMAGE_BASE}${s.backdrop_path}` : null,
+        genres: mapTVGenres(s.genre_ids ?? []),
+        overview: s.overview ?? '',
+        seasonCount: 0,  // not available in search results
+        status: '',
+        creators: [],
+        voteAverage: typeof s.vote_average === 'number' ? s.vote_average : undefined,
+      }));
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return [];
+    console.error('TMDB TV search failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch full TV show details including seasons list.
+ * Filters out season 0 (specials).
+ */
+export async function getTVShowDetails(showId: number): Promise<TMDBTVShow | null> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !showId) return null;
+
+  try {
+    const res = await fetchWithTimeout(
+      `${TMDB_BASE}/tv/${showId}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+      5000,
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    const genres = (data.genres as any[] ?? []).map((g: any) => g.name as string);
+    const seasons: TMDBTVSeasonSummary[] = (data.seasons as any[] ?? [])
+      .filter((s: any) => s.season_number > 0)
+      .map((s: any) => ({
+        seasonNumber: s.season_number,
+        name: s.name,
+        posterUrl: s.poster_path ? `${TMDB_IMAGE_BASE}${s.poster_path}` : null,
+        episodeCount: s.episode_count ?? 0,
+        airDate: s.air_date ?? null,
+      }));
+
+    return {
+      id: `tv_${data.id}`,
+      tmdbId: data.id,
+      name: data.name,
+      year: data.first_air_date ? data.first_air_date.slice(0, 4) : '—',
+      posterUrl: data.poster_path ? `${TMDB_IMAGE_BASE}${data.poster_path}` : null,
+      backdropUrl: data.backdrop_path ? `${TMDB_IMAGE_BASE}${data.backdrop_path}` : null,
+      genres,
+      overview: data.overview ?? '',
+      seasonCount: seasons.length,
+      status: data.status ?? '',
+      creators: (data.created_by as any[] ?? []).map((c: any) => c.name as string),
+      voteAverage: typeof data.vote_average === 'number' ? data.vote_average : undefined,
+      seasons,
+    };
+  } catch (err) {
+    console.error('TMDB TV show details failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch details for a specific TV season.
+ */
+export async function getTVSeasonDetails(
+  showId: number,
+  seasonNum: number,
+  showName: string = '',
+): Promise<TMDBTVSeason | null> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !showId) return null;
+
+  try {
+    const res = await fetchWithTimeout(
+      `${TMDB_BASE}/tv/${showId}/season/${seasonNum}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+      5000,
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    return {
+      id: data.id,
+      showTmdbId: showId,
+      seasonNumber: data.season_number,
+      name: data.name ?? `Season ${seasonNum}`,
+      showName,
+      posterUrl: data.poster_path ? `${TMDB_IMAGE_BASE}${data.poster_path}` : null,
+      episodeCount: (data.episodes as any[] ?? []).length,
+      airDate: data.air_date ?? null,
+      overview: data.overview ?? '',
+    };
+  } catch (err) {
+    console.error('TMDB TV season details failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch the global average score (vote_average) for a TV show.
+ */
+export async function getTVShowGlobalScore(showId: number): Promise<number | undefined> {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey || !showId) return undefined;
+
+  try {
+    const res = await fetchWithTimeout(
+      `${TMDB_BASE}/tv/${showId}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+      4000,
+    );
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    return typeof data.vote_average === 'number' ? data.vote_average : undefined;
+  } catch {
+    return undefined;
+  }
+}

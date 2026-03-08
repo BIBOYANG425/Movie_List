@@ -10,16 +10,18 @@ import { useTranslation } from '../contexts/LanguageContext';
 interface StatsViewProps {
   items: RankedItem[];
   userId: string;
+  mediaMode?: 'movies' | 'tv';
 }
 
-export const StatsView: React.FC<StatsViewProps> = ({ items, userId }) => {
+export const StatsView: React.FC<StatsViewProps> = ({ items, userId, mediaMode = 'movies' }) => {
   const { t } = useTranslation();
   const [genreProfile, setGenreProfile] = useState<GenreProfileItem[]>([]);
 
   useEffect(() => {
     if (!userId) return;
-    getGenreProfile(userId).then(setGenreProfile).catch(console.error);
-  }, [userId]);
+    const mediaType = mediaMode === 'tv' ? 'tv_season' : 'movie';
+    getGenreProfile(userId, mediaType).then(setGenreProfile).catch(console.error);
+  }, [userId, mediaMode]);
   const tierCounts = Object.values(Tier).map(tier => ({
     name: tier,
     value: items.filter(i => i.tier === tier).length,
@@ -29,8 +31,9 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId }) => {
   // Normalized hex colors for recharts
   const COLORS = ['#FCD34D', '#4ADE80', '#60A5FA', '#A1A1AA', '#F87171'];
 
+  const mediaLabel = mediaMode === 'tv' ? t('stats.tvSeasons') : t('stats.movies');
   const typeData = [
-    { name: 'Movies', value: items.filter(i => i.type === 'movie').length },
+    { name: mediaLabel, value: items.length },
   ];
 
   return (
@@ -80,7 +83,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId }) => {
         <div className="flex justify-center gap-6 mt-4 text-sm text-zinc-400">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-indigo-400"></div>
-            <span>{t('stats.movies')}</span>
+            <span>{mediaLabel}</span>
           </div>
         </div>
       </div>

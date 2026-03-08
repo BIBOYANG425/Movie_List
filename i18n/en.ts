@@ -2,6 +2,7 @@ const en = {
   // ── Nav ──────────────────────────────────────────────────────────────────
   'nav.all': 'All',
   'nav.movies': 'Movies',
+  'nav.tv': 'TV',
   'nav.addItem': 'Add Item',
   'nav.logOut': 'Log out',
   'nav.myProfile': 'My profile',
@@ -46,6 +47,7 @@ const en = {
   'stats.tasteDNA': 'Your Taste DNA',
   'stats.genreDistribution': 'Genre distribution across your rankings',
   'stats.movies': 'Movies',
+  'stats.tvSeasons': 'TV Seasons',
 
   // ── Feed ─────────────────────────────────────────────────────────────────
   'feed.friendsFeed': 'Friends Feed',
@@ -191,6 +193,15 @@ const en = {
   'landing.terms': 'Terms',
   'landing.contact': 'Contact',
   'landing.copyright': '\u00A9 2026 Spool',
+
+  // ── TV Shows ────────────────────────────────────────────────────────────
+  'tv.searchShows': 'Search TV shows...',
+  'tv.selectSeason': 'Select a season',
+  'tv.seasonCount': 'seasons',
+  'tv.episodeCount': 'episodes',
+  'tv.seasons': 'Seasons',
+  'tv.creator': 'Creator',
+  'tv.status': 'Status',
 
   // ── Language toggle ──────────────────────────────────────────────────────
   'lang.toggle': 'EN',

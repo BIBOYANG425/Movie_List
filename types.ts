@@ -13,7 +13,7 @@ export enum Bracket {
   Animation = 'Animation',
 }
 
-export type MediaType = 'movie';
+export type MediaType = 'movie' | 'tv_season';
 
 export interface MediaItem {
   id: string;
@@ -25,6 +25,11 @@ export interface MediaItem {
   director?: string;
   bracket?: Bracket;
   globalScore?: number; // TMDb vote_average (0–10), used to seed comparisons
+  creator?: string;          // TV show creator
+  showTmdbId?: number;       // TMDB show ID
+  seasonNumber?: number;     // 1-based season number
+  seasonTitle?: string;      // "Season 1" or custom name
+  episodeCount?: number;     // episodes in the season
 }
 
 export interface RankedItem extends MediaItem {

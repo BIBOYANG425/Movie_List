@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, BarChart2, Bookmark, Compass, LayoutGrid, LogOut, Plus, Rss, RotateCcw, UserCircle2, UsersRound } from 'lucide-react';
+import { BarChart2, Bookmark, Compass, Film, LayoutGrid, Plus, Rss, RotateCcw, Tv, UserCircle2, UsersRound } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType, Bracket, ComparisonLogEntry } from '../types';
 import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE, BRACKETS, BRACKET_LABELS } from '../constants';
 import { computeTierScore, classifyBracket } from '../services/rankingAlgorithm';
 import { TierRow } from '../components/TierRow';
 import { AddMediaModal } from '../components/AddMediaModal';
+import { AddTVSeasonModal } from '../components/AddTVSeasonModal';
 import { StatsView } from '../components/StatsView';
 import { Watchlist } from '../components/Watchlist';
 import { SocialFeedView } from '../components/SocialFeedView';
@@ -131,21 +132,63 @@ function rowToWatchlistItem(row: any): WatchlistItem {
   };
 }
 
+function rowToTVRankedItem(row: any): RankedItem {
+  return {
+    id: row.tmdb_id,
+    title: row.title,
+    year: row.year ?? '',
+    posterUrl: row.poster_url ?? '',
+    type: 'tv_season',
+    genres: row.genres ?? [],
+    creator: row.creator,
+    showTmdbId: row.show_tmdb_id,
+    seasonNumber: row.season_number,
+    seasonTitle: row.season_title,
+    episodeCount: row.episode_count,
+    tier: row.tier as Tier,
+    rank: row.rank_position,
+    bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
+    notes: row.notes,
+  };
+}
+
+function rowToTVWatchlistItem(row: any): WatchlistItem {
+  return {
+    id: row.tmdb_id,
+    title: row.title,
+    year: row.year ?? '',
+    posterUrl: row.poster_url ?? '',
+    type: 'tv_season',
+    genres: row.genres ?? [],
+    creator: row.creator,
+    showTmdbId: row.show_tmdb_id,
+    seasonNumber: row.season_number,
+    seasonTitle: row.season_title,
+    episodeCount: row.episode_count,
+    addedAt: row.added_at,
+  };
+}
+
 const RankingAppPage = () => {
   const { user, profile, signOut } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [items, setItems] = useState<RankedItem[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [tvItems, setTvItems] = useState<RankedItem[]>([]);
+  const [tvWatchlist, setTvWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTVModalOpen, setIsTVModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'feed' | 'discover' | 'groups'>('ranking');
   const [groupSubTab, setGroupSubTab] = useState<'parties' | 'rankings' | 'polls' | 'lists' | 'badges'>('parties');
+  const [mediaMode, setMediaMode] = useState<'movies' | 'tv'>('movies');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
   const [migrationState, setMigrationState] = useState<{ item: RankedItem, targetTier: Tier } | null>(null);
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | TMDBMovie | null>(null);
+  const [preselectedTVItem, setPreselectedTVItem] = useState<RankedItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [journalSheetItem, setJournalSheetItem] = useState<RankedItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -187,7 +230,7 @@ const RankingAppPage = () => {
         localStorage.removeItem(ONBOARDING_KEY);
       }
 
-      const [rankingsRes, watchlistRes] = await Promise.all([
+      const [rankingsRes, watchlistRes, tvRankingsRes, tvWatchlistRes] = await Promise.all([
         supabase
           .from('user_rankings')
           .select('*')
@@ -199,10 +242,23 @@ const RankingAppPage = () => {
           .select('*')
           .eq('user_id', user.id)
           .order('added_at', { ascending: false }),
+        supabase
+          .from('tv_rankings')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('tier')
+          .order('rank_position'),
+        supabase
+          .from('tv_watchlist_items')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('added_at', { ascending: false }),
       ]);
 
       if (rankingsRes.data) setItems(rankingsRes.data.map(rowToRankedItem));
       if (watchlistRes.data) setWatchlist(watchlistRes.data.map(rowToWatchlistItem));
+      if (tvRankingsRes.data) setTvItems(tvRankingsRes.data.map(rowToTVRankedItem));
+      if (tvWatchlistRes.data) setTvWatchlist(tvWatchlistRes.data.map(rowToTVWatchlistItem));
 
       setLoading(false);
     };
@@ -215,10 +271,16 @@ const RankingAppPage = () => {
 
   const handleReset = async () => {
     if (!user) return;
-    if (!window.confirm('Reset your list? This cannot be undone.')) return;
+    const label = mediaMode === 'tv' ? 'TV' : 'movie';
+    if (!window.confirm(`Reset your ${label} list? This cannot be undone.`)) return;
 
-    await supabase.from('user_rankings').delete().eq('user_id', user.id);
-    setItems([]);
+    if (mediaMode === 'tv') {
+      await supabase.from('tv_rankings').delete().eq('user_id', user.id);
+      setTvItems([]);
+    } else {
+      await supabase.from('user_rankings').delete().eq('user_id', user.id);
+      setItems([]);
+    }
   };
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -507,9 +569,255 @@ const RankingAppPage = () => {
       .eq('tmdb_id', id);
   };
 
+  const addToTVWatchlist = async (item: WatchlistItem) => {
+    if (!user) return;
+    if (tvWatchlist.some((w) => w.id === item.id)) return;
+
+    setTvWatchlist((prev) => [item, ...prev]);
+
+    await supabase.from('tv_watchlist_items').upsert({
+      user_id: user.id,
+      tmdb_id: item.id,
+      show_tmdb_id: item.showTmdbId ?? 0,
+      season_number: item.seasonNumber ?? 0,
+      title: item.title,
+      season_title: item.seasonTitle ?? null,
+      year: item.year,
+      poster_url: item.posterUrl,
+      type: 'tv_season',
+      genres: item.genres,
+      creator: item.creator ?? null,
+    }, { onConflict: 'user_id,tmdb_id' });
+
+    setToastMessage(t('toast.movieSaved'));
+  };
+
+  const removeTVFromWatchlist = async (id: string) => {
+    if (!user) return;
+
+    setTvWatchlist((prev) => prev.filter((w) => w.id !== id));
+
+    await supabase
+      .from('tv_watchlist_items')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('tmdb_id', id);
+  };
+
   const rankFromWatchlist = (item: WatchlistItem) => {
-    setPreselectedForRank(item);
-    setIsModalOpen(true);
+    if (item.type === 'tv_season') {
+      // Convert watchlist item to RankedItem for preselection
+      const tvItem: RankedItem = {
+        id: item.id,
+        title: item.title,
+        year: item.year,
+        posterUrl: item.posterUrl,
+        type: 'tv_season',
+        genres: item.genres,
+        creator: item.creator,
+        showTmdbId: item.showTmdbId,
+        seasonNumber: item.seasonNumber,
+        seasonTitle: item.seasonTitle,
+        episodeCount: item.episodeCount,
+        bracket: classifyBracket(item.genres),
+        tier: Tier.B,
+        rank: 0,
+      };
+      setPreselectedTVItem(tvItem);
+      setIsTVModalOpen(true);
+    } else {
+      setPreselectedForRank(item);
+      setIsModalOpen(true);
+    }
+  };
+
+  // ─── TV CRUD ──────────────────────────────────────────────────────────────
+
+  const persistTVRankings = async (updatedItems: RankedItem[]) => {
+    if (!user || updatedItems.length === 0) return;
+    const rows = updatedItems.map(item => ({
+      user_id: user.id,
+      tmdb_id: item.id,
+      show_tmdb_id: item.showTmdbId ?? 0,
+      season_number: item.seasonNumber ?? 0,
+      title: item.title,
+      season_title: item.seasonTitle ?? null,
+      year: item.year,
+      poster_url: item.posterUrl,
+      type: 'tv_season',
+      genres: item.genres,
+      creator: item.creator ?? null,
+      tier: item.tier,
+      rank_position: item.rank,
+      bracket: item.bracket ?? classifyBracket(item.genres),
+      primary_genre: item.genres[0] ?? null,
+      notes: item.notes ?? null,
+      episode_count: item.episodeCount ?? null,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase.from('tv_rankings').upsert(rows, { onConflict: 'user_id,tmdb_id' });
+    if (error) console.error('Failed to save TV ranking:', error);
+  };
+
+  const addTVItem = async (newItem: RankedItem) => {
+    if (!user) return;
+
+    let updatedTierList: RankedItem[] = [];
+
+    setTvItems((prev) => {
+      const tierItems = prev
+        .filter((i) => i.tier === newItem.tier && i.id !== newItem.id)
+        .sort((a, b) => a.rank - b.rank);
+      const otherItems = prev.filter((i) => i.tier !== newItem.tier && i.id !== newItem.id);
+
+      const newTierList = [...tierItems];
+      newTierList.splice(newItem.rank, 0, newItem);
+
+      updatedTierList = newTierList.map((item, index) => ({ ...item, rank: index }));
+      return [...otherItems, ...updatedTierList];
+    });
+
+    await persistTVRankings(updatedTierList);
+  };
+
+  const removeTVItem = async (id: string) => {
+    if (!user) return;
+    const removedItem = tvItems.find((item) => item.id === id);
+
+    let affectedTierItems: RankedItem[] = [];
+
+    setTvItems((prev) => {
+      const without = prev.filter((i) => i.id !== id);
+      const tiers = new Set(without.map((i) => i.tier));
+      let result: RankedItem[] = [];
+
+      tiers.forEach((tier) => {
+        const tierItems = without
+          .filter((i) => i.tier === tier)
+          .sort((a, b) => a.rank - b.rank)
+          .map((item, idx) => ({ ...item, rank: idx }));
+        result = [...result, ...tierItems];
+        if (removedItem && tier === removedItem.tier) {
+          affectedTierItems = tierItems;
+        }
+      });
+
+      return result;
+    });
+
+    await supabase
+      .from('tv_rankings')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('tmdb_id', id);
+
+    if (affectedTierItems.length > 0) {
+      await persistTVRankings(affectedTierItems);
+    }
+  };
+
+  const handleTVDrop = async (e: React.DragEvent, targetTier: Tier) => {
+    e.preventDefault();
+    if (!draggedItemId || !user) return;
+
+    const droppedId = draggedItemId;
+    const movedItem = tvItems.find((i) => i.id === droppedId);
+    setDraggedItemId(null);
+
+    if (!movedItem) return;
+    const sourceTier = movedItem.tier;
+
+    let affectedItems: RankedItem[] = [];
+
+    setTvItems((prev) => {
+      const item = prev.find((i) => i.id === droppedId);
+      if (!item) return prev;
+
+      const rest = prev.filter((i) => i.id !== droppedId);
+
+      // Reindex source tier (gap left by moved item)
+      const sourceTierItems = rest
+        .filter((i) => i.tier === sourceTier)
+        .sort((a, b) => a.rank - b.rank)
+        .map((it, idx) => ({ ...it, rank: idx }));
+
+      // Target tier: add moved item at the end, then reindex
+      const targetTierItems = rest
+        .filter((i) => i.tier === targetTier)
+        .sort((a, b) => a.rank - b.rank);
+      const newRank = targetTierItems.length;
+      const movedWithNewTier = { ...item, tier: targetTier, rank: newRank };
+      const updatedTargetItems = [...targetTierItems, movedWithNewTier].map((it, idx) => ({ ...it, rank: idx }));
+
+      // Other tiers unchanged
+      const otherItems = rest.filter((i) => i.tier !== sourceTier && i.tier !== targetTier);
+
+      // Collect all items that need DB persistence (both tiers)
+      affectedItems = sourceTier === targetTier
+        ? updatedTargetItems
+        : [...sourceTierItems, ...updatedTargetItems];
+
+      return [...otherItems, ...sourceTierItems, ...updatedTargetItems].filter(
+        // Deduplicate: if source === target, sourceTierItems is empty (item was removed)
+        (item, idx, arr) => arr.findIndex(a => a.id === item.id) === idx
+      );
+    });
+
+    if (affectedItems.length > 0) {
+      await persistTVRankings(affectedItems);
+    }
+  };
+
+  const handleTVDropOnItem = async (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedItemId || !user || draggedItemId === targetId) return;
+
+    const droppedId = draggedItemId;
+    const movedItem = tvItems.find((i) => i.id === droppedId);
+    const targetItem = tvItems.find((i) => i.id === targetId);
+
+    if (!movedItem || !targetItem) {
+      setDraggedItemId(null);
+      return;
+    }
+
+    // Cross-tier drop on an item → delegate to tier-level drop handler
+    if (movedItem.tier !== targetItem.tier) {
+      await handleTVDrop(e, targetItem.tier);
+      return;
+    }
+
+    setDraggedItemId(null);
+
+    let updatedTierList: RankedItem[] = [];
+    setTvItems((prev) => {
+      const tierItems = prev.filter(i => i.tier === targetItem.tier).sort((a, b) => a.rank - b.rank);
+      const otherItems = prev.filter(i => i.tier !== targetItem.tier);
+
+      const oldIndex = tierItems.findIndex(i => i.id === droppedId);
+      const newIndex = tierItems.findIndex(i => i.id === targetId);
+
+      if (oldIndex === -1 || newIndex === -1) return prev;
+
+      const [removed] = tierItems.splice(oldIndex, 1);
+      tierItems.splice(newIndex, 0, removed);
+
+      updatedTierList = tierItems.map((item, idx) => ({ ...item, rank: idx }));
+      return [...otherItems, ...updatedTierList];
+    });
+
+    if (updatedTierList.length > 0) {
+      await persistTVRankings(updatedTierList);
+    }
+  };
+
+  const handleAddTVItem = async (newItem: RankedItem) => {
+    await addTVItem(newItem);
+    if (preselectedTVItem) {
+      await removeTVFromWatchlist(preselectedTVItem.id);
+      setPreselectedTVItem(null);
+    }
   };
 
   const handleAddItem = async (newItem: RankedItem) => {
@@ -544,27 +852,33 @@ const RankingAppPage = () => {
 
   const watchlistIds = useMemo(() => new Set(watchlist.map((w) => w.id)), [watchlist]);
 
+  // Active items based on media mode
+  const activeItems = mediaMode === 'movies' ? items : tvItems;
+  const activeWatchlist = mediaMode === 'movies' ? watchlist : tvWatchlist;
+
   const bracketCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    items.forEach(i => {
+    activeItems.forEach(i => {
       const b = i.bracket ?? 'Commercial';
       counts[b] = (counts[b] ?? 0) + 1;
     });
     return counts;
-  }, [items]);
+  }, [activeItems]);
 
   const availableGenres = useMemo(() => {
     const genres = new Set<string>();
-    items.forEach(i => {
+    activeItems.forEach(i => {
       if (activeBracket === 'all' || i.bracket === activeBracket) {
         i.genres.forEach(g => genres.add(g));
       }
     });
     return Array.from(genres).sort();
-  }, [items, activeBracket]);
+  }, [activeItems, activeBracket]);
 
   const filteredItems = useMemo(() => {
-    let filtered = filterType === 'all' ? items : items.filter((i) => i.type === filterType);
+    let filtered = mediaMode === 'movies'
+      ? (filterType === 'all' ? items : items.filter((i) => i.type === filterType))
+      : tvItems;
     if (activeBracket !== 'all') {
       filtered = filtered.filter(i => i.bracket === activeBracket);
     }
@@ -572,10 +886,10 @@ const RankingAppPage = () => {
       filtered = filtered.filter(i => i.genres.includes(activeGenre));
     }
     return filtered;
-  }, [items, filterType, activeBracket, activeGenre]);
+  }, [items, tvItems, mediaMode, filterType, activeBracket, activeGenre]);
 
   const localizedItems = useLocalizedItems(filteredItems);
-  const localizedWatchlist = useLocalizedWatchlist(watchlist);
+  const localizedWatchlist = useLocalizedWatchlist(activeWatchlist);
 
   const scoreMap = useMemo(() => computeScores(localizedItems), [localizedItems]);
   const showScores = localizedItems.length >= MIN_MOVIES_FOR_SCORES;
@@ -604,20 +918,24 @@ const RankingAppPage = () => {
 
           <div className="flex items-center gap-6">
             <div className="hidden md:flex bg-card rounded-lg p-1 border border-border">
-              {(['all', 'movie'] as const).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setFilterType(type)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold capitalize transition-all ${filterType === type ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'
-                    }`}
-                >
-                  {type === 'all' ? t('nav.all') : t('nav.movies')}
-                </button>
-              ))}
+              <button
+                onClick={() => setMediaMode('movies')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'movies' ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
+              >
+                <Film size={13} />
+                {t('nav.movies')}
+              </button>
+              <button
+                onClick={() => setMediaMode('tv')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'tv' ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
+              >
+                <Tv size={13} />
+                {t('nav.tv')}
+              </button>
             </div>
 
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => mediaMode === 'tv' ? setIsTVModalOpen(true) : setIsModalOpen(true)}
               className="bg-cream text-bg px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity"
             >
               <Plus size={16} />
@@ -670,9 +988,9 @@ const RankingAppPage = () => {
               title={t('tab.watchlist')}
             >
               <Bookmark size={20} />
-              {watchlist.length > 0 && (
+              {activeWatchlist.length > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full bg-emerald-500 text-bg flex items-center justify-center">
-                  {watchlist.length > 9 ? '9+' : watchlist.length}
+                  {activeWatchlist.length > 9 ? '9+' : activeWatchlist.length}
                 </span>
               )}
             </button>
@@ -727,7 +1045,7 @@ const RankingAppPage = () => {
                 className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === 'all' ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
               >
                 All
-                <span className="ml-1.5 text-[10px] opacity-50">{items.length}</span>
+                <span className="ml-1.5 text-[10px] opacity-50">{activeItems.length}</span>
               </button>
               {BRACKETS.map(bracket => {
                 const count = bracketCounts[bracket] ?? 0;
@@ -777,10 +1095,10 @@ const RankingAppPage = () => {
                 items={localizedItems.filter((i) => i.tier === tier).sort((a, b) => a.rank - b.rank)}
                 scoreMap={scoreMap}
                 showScores={showScores}
-                onDrop={(e, tier) => handleDrop(e, tier)}
-                onDropOnItem={handleDropOnItem}
+                onDrop={mediaMode === 'tv' ? (e, tier) => handleTVDrop(e, tier) : (e, tier) => handleDrop(e, tier)}
+                onDropOnItem={mediaMode === 'tv' ? handleTVDropOnItem : handleDropOnItem}
                 onDragStart={handleDragStart}
-                onDelete={removeItem}
+                onDelete={mediaMode === 'tv' ? removeTVItem : removeItem}
               />
             ))}
           </div>
@@ -788,10 +1106,14 @@ const RankingAppPage = () => {
         )}
 
         {activeTab === 'watchlist' && (
-          <Watchlist items={localizedWatchlist} onRemove={removeFromWatchlist} onRank={rankFromWatchlist} />
+          <Watchlist
+            items={localizedWatchlist}
+            onRemove={mediaMode === 'tv' ? removeTVFromWatchlist : removeFromWatchlist}
+            onRank={rankFromWatchlist}
+          />
         )}
 
-        {activeTab === 'stats' && user && <StatsView items={localizedItems} userId={user.id} />}
+        {activeTab === 'stats' && user && <StatsView items={localizedItems} userId={user.id} mediaMode={mediaMode} />}
 
         {activeTab === 'feed' && user && (
           <SocialFeedView userId={user.id} />
@@ -855,6 +1177,18 @@ const RankingAppPage = () => {
         preselectedTier={migrationState ? migrationState.targetTier : undefined}
         onCompare={handleCompareLog}
         onMovieInfoClick={(id) => setSearchParams({ movieId: id })}
+      />
+      </ErrorBoundary>
+
+      <ErrorBoundary>
+      <AddTVSeasonModal
+        isOpen={isTVModalOpen}
+        onClose={() => { setIsTVModalOpen(false); setPreselectedTVItem(null); }}
+        onAdd={handleAddTVItem}
+        onSaveForLater={addToTVWatchlist}
+        currentItems={tvItems}
+        onCompare={handleCompareLog}
+        preselectedItem={preselectedTVItem}
       />
       </ErrorBoundary>
 

@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Search, Plus, ArrowLeft, Loader2, Film, StickyNote, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
+import { X, Search, Plus, ArrowLeft, Loader2, Film, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry, ComparisonRequest } from '../types';
-import { TIER_COLORS, TIER_LABELS, BRACKET_LABELS, TIER_SCORE_RANGES } from '../constants';
+import { TIER_SCORE_RANGES } from '../constants';
 import { searchMovies, searchPeople, getPersonFilmography, getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
-import { classifyBracket, computeSeedIndex, adaptiveNarrow, computeTierScore } from '../services/rankingAlgorithm';
+import { classifyBracket, computeSeedIndex, computeTierScore } from '../services/rankingAlgorithm';
 import { SpoolRankingEngine } from '../services/spoolRankingEngine';
 import { computePredictionSignals } from '../services/spoolPrediction';
 import { useAuth } from '../contexts/AuthContext';
 import { SkeletonList } from './SkeletonCard';
+import { TierPicker } from './shared/TierPicker';
+import { NotesStep } from './shared/NotesStep';
+import { ComparisonStep } from './shared/ComparisonStep';
 
 interface AddMediaModalProps {
   isOpen: boolean;
@@ -73,7 +76,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     round: number; seedIdx: number;
   } | null>(null);
   const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
-  const [sessionId, setSessionId] = useState('');
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -155,7 +158,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       setNotes('');
       engineRef.current = null;
       setCurrentComparison(null);
-      setSessionId(globalThis.crypto?.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+      setSessionId(crypto.randomUUID());
 
       // If a watchlist item was pre-selected, skip to tier step
       if (preselectedItem && !preselectedTier) {
@@ -763,216 +766,36 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   // ─── Render: Tier ─────────────────────────────────────────────────────────
   const renderTierStep = () => (
-    <div className="space-y-5 animate-fade-in">
-      {/* Selected movie preview */}
-      <div className="flex items-center gap-4 bg-elevated p-4 rounded-xl border border-border">
-        {selectedItem?.posterUrl ? (
-          <img src={selectedItem.posterUrl} alt="" className="w-14 h-20 object-cover rounded-lg shadow-lg flex-shrink-0" />
-        ) : (
-          <div className="w-14 h-20 bg-card rounded-lg flex items-center justify-center flex-shrink-0">
-            <Film size={20} className="text-muted" />
-          </div>
-        )}
-        <div>
-          <h3 className="font-serif text-lg leading-tight text-white">{selectedItem?.title}</h3>
-          <p className="text-dim text-sm mt-0.5">{selectedItem?.year}</p>
-          <p className="text-muted text-sm mt-1">How does this tier feel?</p>
-        </div>
-      </div>
-
-      {/* Bracket selector */}
-      <div className="space-y-1.5">
-        <p className="text-xs text-zinc-500 font-medium">Category</p>
-        <div className="flex gap-1.5">
-          {Object.values(Bracket).map((b) => (
-            <button
-              key={b}
-              type="button"
-              onClick={() => setSelectedItem(prev => prev ? { ...prev, bracket: b } : prev)}
-              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                selectedItem?.bracket === b
-                  ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                  : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'
-              }`}
-            >
-              {BRACKET_LABELS[b]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid gap-2.5">
-        {Object.values(Tier).map((tier) => (
-          <button
-            key={tier}
-            onClick={() => handleSelectTier(tier)}
-            className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${TIER_COLORS[tier]}`}
-          >
-            <div className="flex items-center gap-4">
-              <span className="text-2xl font-black">{tier}</span>
-              <span className="font-semibold opacity-90">{TIER_LABELS[tier]}</span>
-            </div>
-            <span className="text-xs font-mono opacity-50 bg-black/20 px-2 py-1 rounded">
-              {currentItems.filter(i => i.tier === tier).length} items
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
+    <TierPicker
+      selectedItem={selectedItem}
+      currentItems={currentItems}
+      onSelectTier={handleSelectTier}
+      onBracketChange={(b) => setSelectedItem(prev => prev ? { ...prev, bracket: b } : prev)}
+    />
   );
 
   // ─── Render: Notes ────────────────────────────────────────────────────────
-  const MAX_NOTES = 280;
-
   const renderNotesStep = () => (
-    <div className="flex flex-col gap-5 animate-fade-in">
-      {/* Movie preview */}
-      <div className="flex items-center gap-4 bg-elevated p-4 rounded-xl border border-border">
-        {selectedItem?.posterUrl ? (
-          <img
-            src={selectedItem.posterUrl}
-            alt=""
-            className="w-12 h-[72px] object-cover rounded-lg shadow-md flex-shrink-0"
-          />
-        ) : (
-          <div className="w-12 h-[72px] bg-card rounded-lg flex items-center justify-center flex-shrink-0">
-            <Film size={18} className="text-muted" />
-          </div>
-        )}
-        <div>
-          <p className="font-serif text-white leading-tight">{selectedItem?.title}</p>
-          <p className="text-dim text-xs mt-0.5">{selectedItem?.year}</p>
-          <span className={`inline-block mt-2 text-xs font-bold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]}`}>
-            {selectedTier} — {TIER_LABELS[selectedTier!]}
-          </span>
-        </div>
-      </div>
-
-      {/* Notes textarea */}
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
-          <StickyNote size={15} className="text-amber-400" />
-          Your thoughts
-          <span className="text-dim font-normal text-xs">(optional)</span>
-        </label>
-        <div className="relative">
-          <textarea
-            autoFocus
-            rows={4}
-            maxLength={MAX_NOTES}
-            placeholder="What stood out? A scene, a feeling, why it deserves this tier..."
-            className="w-full bg-card border border-border rounded-xl py-3 px-4 text-white placeholder:text-muted focus:outline-none focus:border-amber-500/60 transition-colors resize-none text-sm leading-relaxed"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-          {/* Character count */}
-          <span className={`absolute bottom-3 right-3 text-xs tabular-nums transition-colors ${notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-dim'}`}>
-            {notes.length}/{MAX_NOTES}
-          </span>
-        </div>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex flex-col gap-2 pt-1">
-        <button
-          onClick={proceedFromNotes}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-white text-black font-semibold text-sm hover:bg-zinc-200 transition-colors"
-        >
-          Continue
-          <ChevronRight size={16} />
-        </button>
-        <button
-          onClick={() => { setNotes(''); proceedFromNotes(); }}
-          className="w-full py-2.5 rounded-xl text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
-        >
-          Skip — add without notes
-        </button>
-      </div>
-    </div>
+    <NotesStep
+      selectedItem={selectedItem}
+      selectedTier={selectedTier}
+      notes={notes}
+      onNotesChange={setNotes}
+      onContinue={proceedFromNotes}
+      onSkip={() => { setNotes(''); proceedFromNotes(); }}
+    />
   );
 
   // ─── Render: Compare ──────────────────────────────────────────────────────
   const renderCompareStep = () => {
     if (!currentComparison) return null;
-
     return (
-      <div className="flex flex-col gap-5 animate-fade-in">
-        <h3 className="text-center text-lg font-bold text-white">
-          {currentComparison.question}
-        </h3>
-
-        {/* Head-to-head */}
-        <div className="flex items-stretch gap-3">
-          {/* New item */}
-          <button
-            onClick={() => handleCompareChoice('new')}
-            className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-border hover:border-indigo-500 hover:bg-indigo-500/5 transition-all group active:scale-[0.97]"
-          >
-            <img
-              src={currentComparison.movieA.posterUrl}
-              alt={currentComparison.movieA.title}
-              className="w-full aspect-[2/3] object-cover rounded-xl shadow-lg"
-            />
-            <div className="text-center">
-              <p className="font-serif text-white text-sm leading-tight">{currentComparison.movieA.title}</p>
-              <p className="text-xs text-dim mt-0.5">{currentComparison.movieA.year}</p>
-              <span className="inline-block mt-2 text-xs text-indigo-400 font-semibold border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 rounded-full">
-                NEW
-              </span>
-            </div>
-          </button>
-
-          {/* OR divider */}
-          <div className="flex items-center justify-center flex-shrink-0">
-            <div className="w-9 h-9 rounded-full bg-card border border-border flex items-center justify-center text-xs font-black text-muted">
-              OR
-            </div>
-          </div>
-
-          {/* Comparison target */}
-          <button
-            onClick={() => handleCompareChoice('existing')}
-            className="flex-1 flex flex-col items-center gap-3 p-3 rounded-2xl border-2 border-border hover:border-zinc-400 hover:bg-zinc-400/5 transition-all group active:scale-[0.97]"
-          >
-            <img
-              src={currentComparison.movieB.posterUrl}
-              alt={currentComparison.movieB.title}
-              className="w-full aspect-[2/3] object-cover rounded-xl shadow-lg"
-            />
-            <div className="text-center">
-              <p className="font-bold text-white text-sm leading-tight">{currentComparison.movieB.title}</p>
-              <p className="text-xs text-dim mt-0.5">{currentComparison.movieB.year}</p>
-              <span className={`inline-block mt-2 text-xs font-semibold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier!]}`}>
-                {selectedTier}
-              </span>
-            </div>
-          </button>
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center justify-between mt-1">
-          <button
-            onClick={handleUndo}
-            className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-white transition-colors"
-          >
-            <ArrowLeft size={15} />
-            Undo
-          </button>
-          <button
-            onClick={() => handleCompareChoice('too_tough')}
-            className="px-4 py-2 rounded-full border border-zinc-700 text-sm font-semibold text-zinc-300 hover:bg-zinc-800 hover:border-zinc-500 transition-all"
-          >
-            Too tough
-          </button>
-          <button
-            onClick={() => handleCompareChoice('skip')}
-            className="flex items-center gap-1.5 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-          >
-            Skip
-            <ArrowLeft size={15} className="rotate-180" />
-          </button>
-        </div>
-      </div>
+      <ComparisonStep
+        comparison={currentComparison}
+        selectedTier={selectedTier}
+        onChoice={handleCompareChoice}
+        onUndo={handleUndo}
+      />
     );
   };
 
