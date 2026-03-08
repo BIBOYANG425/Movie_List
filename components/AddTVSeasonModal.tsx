@@ -7,6 +7,7 @@ import {
   buildTVTasteProfile, getSmartTVSuggestions, getSmartTVBackfill, hasTmdbKey,
   TMDBTVShow, TMDBTVSeasonSummary,
 } from '../services/tmdbService';
+import { fuzzyFilterLocal, getBestCorrectedQuery } from '../services/fuzzySearch';
 import { classifyBracket, computeSeedIndex, computeTierScore } from '../services/rankingAlgorithm';
 import { SpoolRankingEngine } from '../services/spoolRankingEngine';
 import { computePredictionSignals } from '../services/spoolPrediction';
@@ -51,6 +52,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
   const [notes, setNotes] = useState('');
+  const [correctedQuery, setCorrectedQuery] = useState<string | null>(null);
   const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
 
@@ -63,6 +65,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   const backfillPageRef = useRef(1);
 
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestIdRef = useRef(0);
   const engineRef = useRef<SpoolRankingEngine | null>(null);
   const smallTierRef = useRef<{
     mode: 'compare_all' | 'seed' | 'quartile';
@@ -196,11 +199,14 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
 
     let cancelled = false;
 
+    searchRequestIdRef.current += 1;
     setSearchTerm('');
     setSearchResults([]);
     setSelectedShow(null);
     setSelectedTier(null);
     setNotes('');
+    setCorrectedQuery(null);
+    setIsSearching(false);
     setCurrentComparison(null);
     setSessionId(crypto.randomUUID());
     engineRef.current = null;
@@ -247,15 +253,61 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   // ─── Search ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    const requestId = ++searchRequestIdRef.current;
+
     if (!searchTerm.trim()) {
       setSearchResults([]);
+      setCorrectedQuery(null);
+      setIsSearching(false);
       return;
     }
 
     setIsSearching(true);
+
     searchTimeoutRef.current = setTimeout(async () => {
-      const results = await searchTVShows(searchTerm);
-      setSearchResults(results);
+      const query = searchTerm.trim();
+      const tmdbResults = await searchTVShows(query);
+
+      // Stale check
+      if (requestId !== searchRequestIdRef.current) return;
+
+      // Fuzzy-match against local pools
+      const localPool = [...suggestions, ...backfillPoolRef.current];
+      const fuzzyMatches = fuzzyFilterLocal(query, localPool, s => s.name);
+
+      // Dedup by tmdbId
+      const byKey = new Map<string, TMDBTVShow>();
+      for (const show of [...tmdbResults, ...fuzzyMatches]) {
+        const key = `tmdb:${show.tmdbId}`;
+        if (!byKey.has(key)) byKey.set(key, show);
+      }
+      let merged = Array.from(byKey.values()).slice(0, 12);
+
+      let corrected: string | null = null;
+
+      // If TMDB returned few results, try a corrected query
+      if (tmdbResults.length < 3) {
+        const titleDict = [
+          ...currentItems.filter(i => i.type === 'tv_season').map(i => i.title),
+          ...suggestions.map(s => s.name),
+          ...backfillPoolRef.current.map(s => s.name),
+        ];
+        const bestMatch = getBestCorrectedQuery(query, titleDict);
+        if (bestMatch && bestMatch.toLowerCase() !== query.toLowerCase()) {
+          corrected = bestMatch;
+          const correctedResults = await searchTVShows(bestMatch);
+          // Stale check again after second await
+          if (requestId !== searchRequestIdRef.current) return;
+          for (const show of correctedResults) {
+            const key = `tmdb:${show.tmdbId}`;
+            if (!byKey.has(key)) byKey.set(key, show);
+          }
+          merged = Array.from(byKey.values()).slice(0, 12);
+        }
+      }
+
+      setCorrectedQuery(corrected);
+      setSearchResults(merged);
       setIsSearching(false);
     }, 350);
 
@@ -545,6 +597,13 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                   <Loader2 className="absolute right-3 top-3.5 text-muted animate-spin" size={18} />
                 )}
               </div>
+
+              {/* Corrected query hint */}
+              {correctedQuery && !isSearching && (
+                <p className="text-xs text-muted-foreground italic px-1">
+                  Showing results for <span className="font-semibold text-accent">"{correctedQuery}"</span>
+                </p>
+              )}
 
               {showLoading && (
                 <div className="flex items-center justify-center py-8">
