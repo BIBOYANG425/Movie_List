@@ -43,10 +43,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId, mediaMode =
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={tierCounts}>
-              <XAxis dataKey="name" stroke="#71717a" />
-              <YAxis stroke="#71717a" />
+              <XAxis dataKey="name" stroke="#252C35" tick={{ fill: '#9BA3AB' }} />
+              <YAxis stroke="#252C35" tick={{ fill: '#9BA3AB' }} />
               <Tooltip
-                contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff' }}
+                contentStyle={{ backgroundColor: '#1C2128', borderColor: '#252C35', color: '#fff' }}
                 cursor={{ fill: 'rgba(255,255,255,0.05)' }}
               />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
@@ -73,10 +73,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId, mediaMode =
                 paddingAngle={5}
                 dataKey="value"
               >
-                <Cell fill="#818cf8" />
-                <Cell fill="#f472b6" />
+                <Cell fill="#D4C5B0" />
+                <Cell fill="#8BA8BA" />
               </Pie>
-              <Tooltip contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff' }} />
+              <Tooltip contentStyle={{ backgroundColor: '#1C2128', borderColor: '#252C35', color: '#fff' }} />
             </PieChart>
           </ResponsiveContainer>
         </div>
