@@ -235,13 +235,13 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
     if (!detailTitle) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md transition-opacity">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md transition-opacity">
             {/* Click outside to close */}
             <div className="absolute inset-0" onClick={onClose} />
 
             {/* Modal Container */}
             <div
-                className="relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl sm:max-w-md bg-card sm:shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:slide-in-from-right duration-300"
+                className="relative w-full max-h-[90vh] rounded-3xl max-w-md bg-card shadow-2xl flex flex-col overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Close Button */}
