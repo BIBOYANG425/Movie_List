@@ -1071,6 +1071,21 @@ const RankingAppPage = () => {
                 onDropOnItem={mediaMode === 'tv' ? handleTVDropOnItem : handleDropOnItem}
                 onDragStart={handleDragStart}
                 onDelete={mediaMode === 'tv' ? removeTVItem : removeItem}
+                onOpenJournal={(movieId) => {
+                  const ranked = items.find(i => i.id === movieId) ?? tvItems.find(i => i.id === movieId);
+                  if (ranked) setJournalSheetItem(ranked);
+                }}
+                onRerank={(item) => {
+                  if (mediaMode === 'tv') {
+                    removeTVItem(item.id);
+                    setPreselectedTVItem(item);
+                    setIsTVModalOpen(true);
+                  } else {
+                    removeItem(item.id);
+                    setPreselectedForRank(item);
+                    setIsModalOpen(true);
+                  }
+                }}
               />
             ))}
           </div>
@@ -1210,6 +1225,14 @@ const RankingAppPage = () => {
                 setSearchParams(newParams);
                 setJournalSheetItem(ranked);
               }
+            }}
+            onRerank={(item) => {
+              const newParams = new URLSearchParams(searchParams);
+              newParams.delete('movieId');
+              setSearchParams(newParams);
+              removeItem(item.id);
+              setPreselectedForRank(item);
+              setIsModalOpen(true);
             }}
             {...(foundItem ? { initialItem: foundItem } : {})}
           />
