@@ -452,7 +452,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-[60] flex flex-col">
       {/* Backdrop */}
       <div
         className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
@@ -461,10 +461,10 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
       {/* Sheet */}
       <div
-        className={`relative w-full max-w-md bg-card rounded-t-2xl shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
+        className={`relative w-full sm:max-w-md bg-card sm:rounded-t-2xl shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
-        style={{ maxHeight: '80vh' }}
+        style={{ height: '100%', maxHeight: '100vh' }}
         onClick={(e) => e.stopPropagation()}
       >
         {phase === 'chat' ? (
