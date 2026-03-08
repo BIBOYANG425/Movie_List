@@ -38,15 +38,15 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId, mediaMode =
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
-        <h3 className="text-lg font-bold text-zinc-100 mb-4">{t('stats.tierDistribution')}</h3>
+      <div className="bg-card border border-border p-6 rounded-xl">
+        <h3 className="text-lg font-bold text-foreground mb-4">{t('stats.tierDistribution')}</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={tierCounts}>
-              <XAxis dataKey="name" stroke="#71717a" />
-              <YAxis stroke="#71717a" />
+              <XAxis dataKey="name" stroke="#252C35" tick={{ fill: '#9BA3AB' }} />
+              <YAxis stroke="#252C35" tick={{ fill: '#9BA3AB' }} />
               <Tooltip
-                contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff' }}
+                contentStyle={{ backgroundColor: '#1C2128', borderColor: '#252C35', color: '#fff' }}
                 cursor={{ fill: 'rgba(255,255,255,0.05)' }}
               />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
@@ -59,8 +59,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId, mediaMode =
         </div>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
-        <h3 className="text-lg font-bold text-zinc-100 mb-4">{t('stats.mediaSplit')}</h3>
+      <div className="bg-card border border-border p-6 rounded-xl">
+        <h3 className="text-lg font-bold text-foreground mb-4">{t('stats.mediaSplit')}</h3>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -73,27 +73,27 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId, mediaMode =
                 paddingAngle={5}
                 dataKey="value"
               >
-                <Cell fill="#818cf8" />
-                <Cell fill="#f472b6" />
+                <Cell fill="#D4C5B0" />
+                <Cell fill="#8BA8BA" />
               </Pie>
-              <Tooltip contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', color: '#fff' }} />
+              <Tooltip contentStyle={{ backgroundColor: '#1C2128', borderColor: '#252C35', color: '#fff' }} />
             </PieChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex justify-center gap-6 mt-4 text-sm text-zinc-400">
+        <div className="flex justify-center gap-6 mt-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-indigo-400"></div>
+            <div className="w-3 h-3 rounded-full bg-accent"></div>
             <span>{mediaLabel}</span>
           </div>
         </div>
       </div>
 
       {/* Your Taste DNA */}
-      <div className="md:col-span-2 bg-zinc-900 border border-zinc-800 p-6 rounded-xl">
+      <div className="md:col-span-2 bg-card border border-border p-6 rounded-xl">
         <div className="flex items-center gap-2 mb-4">
-          <Star size={18} className="text-amber-500" />
-          <h3 className="text-lg font-bold text-zinc-100">{t('stats.tasteDNA')}</h3>
-          <span className="text-xs text-zinc-500">{t('stats.genreDistribution')}</span>
+          <Star size={18} className="text-gold" />
+          <h3 className="text-lg font-bold text-foreground">{t('stats.tasteDNA')}</h3>
+          <span className="text-xs text-muted-foreground">{t('stats.genreDistribution')}</span>
         </div>
         <GenreRadarChart genres={genreProfile} />
       </div>

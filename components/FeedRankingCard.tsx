@@ -35,7 +35,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
   commentCount,
 }) => {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors">
+    <div className="bg-card border border-border rounded-xl p-4 hover:border-border transition-colors">
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
         <Link to={`/profile/${card.userId}`}>
@@ -46,18 +46,18 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
               className="w-8 h-8 rounded-full object-cover"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs text-zinc-300">
+            <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs text-muted-foreground">
               {card.username.charAt(0).toUpperCase()}
             </div>
           )}
         </Link>
         <Link
           to={`/profile/${card.userId}`}
-          className="text-sm font-medium text-white hover:underline"
+          className="text-sm font-medium text-foreground hover:underline"
         >
           {card.displayName || card.username}
         </Link>
-        <span className="ml-auto text-xs text-zinc-500">
+        <span className="ml-auto text-xs text-muted-foreground">
           {relativeDate(card.createdAt)}
         </span>
         <FeedCardMenu
@@ -81,7 +81,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
         )}
         <div className="flex flex-col gap-1 min-w-0">
           {card.mediaTitle && (
-            <span className="font-medium text-white truncate">
+            <span className="font-medium text-foreground truncate">
               {card.mediaTitle}
             </span>
           )}
@@ -95,7 +95,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
             </span>
           )}
           {card.bracket && (
-            <span className="text-xs text-zinc-500">{card.bracket}</span>
+            <span className="text-xs text-muted-foreground">{card.bracket}</span>
           )}
         </div>
       </div>
@@ -109,7 +109,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
         />
         <button
           onClick={() => onOpenComments(card.id)}
-          className="flex items-center gap-1 text-xs text-zinc-400 hover:text-white transition-colors ml-auto"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
         >
           <MessageCircle className="w-4 h-4" />
           {commentCount > 0 && <span>{commentCount}</span>}

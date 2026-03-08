@@ -102,29 +102,29 @@ export const MoviePollView: React.FC<MoviePollViewProps> = ({ userId }) => {
 
             {/* Create form */}
             {showCreate && (
-                <div className="bg-zinc-900/60 rounded-xl border border-zinc-800/30 p-4 space-y-3">
+                <div className="bg-card/60 rounded-xl border border-border/30 p-4 space-y-3">
                     <input
                         type="text"
                         placeholder="Your question..."
                         value={newQuestion}
                         onChange={(e) => setNewQuestion(e.target.value)}
-                        className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 border border-zinc-700 focus:border-pink-500 focus:outline-none"
+                        className="w-full bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground border border-border focus:border-pink-500 focus:outline-none"
                     />
 
                     <div className="space-y-2">
-                        <p className="text-xs text-zinc-500">Options (2–8):</p>
+                        <p className="text-xs text-muted-foreground">Options (2–8):</p>
                         {newOptions.map((opt, idx) => (
                             <div key={idx} className="flex items-center gap-2">
-                                <span className="text-xs text-zinc-600 w-5 text-center">{idx + 1}.</span>
+                                <span className="text-xs text-muted-foreground/60 w-5 text-center">{idx + 1}.</span>
                                 <input
                                     type="text"
                                     placeholder={`Movie ${idx + 1}...`}
                                     value={opt.title}
                                     onChange={(e) => updateOption(idx, e.target.value)}
-                                    className="flex-1 bg-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 border border-zinc-700 focus:border-pink-500 focus:outline-none"
+                                    className="flex-1 bg-secondary rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground border border-border focus:border-pink-500 focus:outline-none"
                                 />
                                 {newOptions.length > 2 && (
-                                    <button onClick={() => removeOption(idx)} className="text-zinc-600 hover:text-zinc-400">
+                                    <button onClick={() => removeOption(idx)} className="text-muted-foreground/60 hover:text-muted-foreground">
                                         <X size={14} />
                                     </button>
                                 )}
@@ -141,13 +141,13 @@ export const MoviePollView: React.FC<MoviePollViewProps> = ({ userId }) => {
                     </div>
 
                     <div className="flex gap-2 justify-end">
-                        <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300">
+                        <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-muted-foreground">
                             Cancel
                         </button>
                         <button
                             onClick={handleCreate}
                             disabled={!newQuestion.trim() || newOptions.filter((o) => o.title.trim()).length < 2}
-                            className="px-4 py-1.5 rounded-lg bg-pink-600 text-white text-xs font-semibold hover:bg-pink-500 disabled:opacity-40 transition-colors"
+                            className="px-4 py-1.5 rounded-lg bg-pink-600 text-foreground text-xs font-semibold hover:bg-pink-500 disabled:opacity-40 transition-colors"
                         >
                             Create Poll
                         </button>
@@ -157,7 +157,7 @@ export const MoviePollView: React.FC<MoviePollViewProps> = ({ userId }) => {
 
             {/* Poll list */}
             {polls.length === 0 ? (
-                <div className="text-center py-16 text-zinc-500">
+                <div className="text-center py-16 text-muted-foreground">
                     <Vote size={40} className="mx-auto mb-3 opacity-40" />
                     <p className="text-sm">No polls yet. Create one to vote with friends!</p>
                 </div>
@@ -174,12 +174,12 @@ export const MoviePollView: React.FC<MoviePollViewProps> = ({ userId }) => {
                         return (
                             <div
                                 key={poll.id}
-                                className="bg-zinc-900/60 rounded-xl border border-zinc-800/30 p-4 space-y-3"
+                                className="bg-card/60 rounded-xl border border-border/30 p-4 space-y-3"
                             >
                                 <div className="flex items-start justify-between">
                                     <div>
-                                        <h3 className="text-sm font-bold text-zinc-100">{poll.question}</h3>
-                                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                                        <h3 className="text-sm font-bold text-foreground">{poll.question}</h3>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">
                                             by {poll.creatorUsername || 'you'} · {poll.totalVotes ?? 0} votes
                                             {closed && <span className="ml-1 text-red-400">· Closed</span>}
                                         </p>
@@ -187,7 +187,7 @@ export const MoviePollView: React.FC<MoviePollViewProps> = ({ userId }) => {
                                     {poll.createdBy === userId && !closed && (
                                         <button
                                             onClick={() => handleClose(poll.id)}
-                                            className="text-[10px] text-zinc-500 hover:text-zinc-300 px-2 py-0.5 rounded border border-zinc-700"
+                                            className="text-[10px] text-muted-foreground hover:text-muted-foreground px-2 py-0.5 rounded border border-border"
                                         >
                                             Close
                                         </button>
@@ -209,12 +209,12 @@ export const MoviePollView: React.FC<MoviePollViewProps> = ({ userId }) => {
                                                 disabled={closed}
                                                 className={`w-full relative overflow-hidden rounded-lg p-2.5 text-left transition-all ${isVoted
                                                         ? 'ring-1 ring-pink-500 bg-pink-500/10'
-                                                        : 'bg-zinc-800/50 hover:bg-zinc-800'
+                                                        : 'bg-secondary/30 hover:bg-secondary'
                                                     } ${closed ? 'cursor-default' : 'cursor-pointer'}`}
                                             >
                                                 {/* Bar fill */}
                                                 <div
-                                                    className={`absolute inset-y-0 left-0 transition-all duration-500 ${isWinner ? 'bg-pink-500/20' : 'bg-zinc-700/30'
+                                                    className={`absolute inset-y-0 left-0 transition-all duration-500 ${isWinner ? 'bg-pink-500/20' : 'bg-secondary/30'
                                                         }`}
                                                     style={{ width: `${pct}%` }}
                                                 />
@@ -224,13 +224,13 @@ export const MoviePollView: React.FC<MoviePollViewProps> = ({ userId }) => {
                                                         {opt.posterUrl && (
                                                             <img src={opt.posterUrl} alt="" className="w-6 h-9 rounded object-cover" />
                                                         )}
-                                                        <span className="text-xs font-medium text-zinc-200 truncate">
+                                                        <span className="text-xs font-medium text-foreground truncate">
                                                             {opt.title}
                                                         </span>
                                                         {isVoted && <Check size={12} className="text-pink-400" />}
                                                         {isWinner && <span className="text-[10px] text-pink-400 font-bold">🏆</span>}
                                                     </div>
-                                                    <span className="text-[10px] text-zinc-400 font-semibold ml-2">
+                                                    <span className="text-[10px] text-muted-foreground font-semibold ml-2">
                                                         {votes}
                                                     </span>
                                                 </div>

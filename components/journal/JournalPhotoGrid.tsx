@@ -45,7 +45,7 @@ export const JournalPhotoGrid: React.FC<JournalPhotoGridProps> = ({ photoPaths, 
               <button
                 type="button"
                 onClick={() => onRemove(path)}
-                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center text-white hover:bg-red-500/80 transition-colors"
+                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center text-foreground hover:bg-red-500/80 transition-colors"
               >
                 <X size={12} />
               </button>
@@ -54,13 +54,13 @@ export const JournalPhotoGrid: React.FC<JournalPhotoGridProps> = ({ photoPaths, 
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="w-full h-full border-2 border-dashed border-zinc-800 rounded-lg flex flex-col items-center justify-center text-zinc-600 hover:border-zinc-600 hover:text-zinc-400 transition-colors"
+              className="w-full h-full border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center text-muted-foreground/60 hover:border-border hover:text-muted-foreground transition-colors"
             >
               <Plus size={20} />
               <span className="text-[10px] mt-1">Add</span>
             </button>
           ) : (
-            <div className="w-full h-full border-2 border-dashed border-zinc-900 rounded-lg" />
+            <div className="w-full h-full border-2 border-dashed border-background rounded-lg" />
           )}
         </div>
       ))}

@@ -7,12 +7,12 @@ interface SkeletonCardProps {
 }
 
 const Shimmer = ({ className }: { className?: string }) => (
-  <div className={`animate-pulse bg-zinc-800 rounded ${className ?? ""}`} />
+  <div className={`animate-pulse bg-secondary rounded ${className ?? ""}`} />
 );
 
 function FeedSkeleton() {
   return (
-    <div className="flex items-start gap-3 rounded-xl bg-zinc-900 p-4">
+    <div className="flex items-start gap-3 rounded-xl bg-card p-4">
       <Shimmer className="h-16 w-16 shrink-0 rounded-lg" />
       <div className="flex flex-1 flex-col gap-2">
         <Shimmer className="h-4 w-3/4 rounded" />
@@ -29,7 +29,7 @@ function FeedSkeleton() {
 
 function JournalSkeleton() {
   return (
-    <div className="flex items-start gap-3 rounded-xl bg-zinc-900 p-4">
+    <div className="flex items-start gap-3 rounded-xl bg-card p-4">
       <Shimmer className="h-16 w-16 shrink-0 rounded-lg" />
       <div className="flex flex-1 flex-col gap-2">
         <Shimmer className="h-4 w-2/3 rounded" />
@@ -48,7 +48,7 @@ function JournalSkeleton() {
 
 function SuggestionSkeleton() {
   return (
-    <div className="flex flex-col gap-2 rounded-xl bg-zinc-900 p-3">
+    <div className="flex flex-col gap-2 rounded-xl bg-card p-3">
       <Shimmer className="aspect-[2/3] w-full rounded-lg" />
       <Shimmer className="h-4 w-3/4 rounded" />
     </div>

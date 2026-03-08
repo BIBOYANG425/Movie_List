@@ -110,7 +110,7 @@ export const GroupRankingView: React.FC<GroupRankingViewProps> = ({ userId }) =>
     if (loading) {
         return (
             <div className="flex items-center justify-center py-12">
-                <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
             </div>
         );
     }
@@ -121,7 +121,7 @@ export const GroupRankingView: React.FC<GroupRankingViewProps> = ({ userId }) =>
             <div className="space-y-4">
                 <button
                     onClick={() => { setSelectedGroup(null); setConsensus([]); }}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1"
+                    className="text-xs text-muted-foreground hover:text-muted-foreground flex items-center gap-1"
                 >
                     ← Back to groups
                 </button>
@@ -130,16 +130,16 @@ export const GroupRankingView: React.FC<GroupRankingViewProps> = ({ userId }) =>
                     <div>
                         <h3 className="text-lg font-bold">{selectedGroup.name}</h3>
                         {selectedGroup.description && (
-                            <p className="text-xs text-zinc-500 mt-0.5">{selectedGroup.description}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{selectedGroup.description}</p>
                         )}
                     </div>
-                    <span className="text-xs text-zinc-500 flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Users size={12} /> {selectedGroup.memberCount ?? 0} members
                     </span>
                 </div>
 
                 {consensus.length === 0 ? (
-                    <div className="text-center py-12 text-zinc-500">
+                    <div className="text-center py-12 text-muted-foreground">
                         <Layers size={32} className="mx-auto mb-2 opacity-40" />
                         <p className="text-sm">No movies ranked yet. Add movies from your personal rankings!</p>
                     </div>
@@ -148,17 +148,17 @@ export const GroupRankingView: React.FC<GroupRankingViewProps> = ({ userId }) =>
                         {consensus.map((movie) => (
                             <div
                                 key={movie.tmdbId}
-                                className="flex items-center gap-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/30"
+                                className="flex items-center gap-3 p-3 rounded-xl bg-card/60 border border-border/30"
                             >
                                 {movie.posterUrl ? (
                                     <img src={movie.posterUrl} alt="" className="w-10 h-[60px] rounded-lg object-cover flex-shrink-0" />
                                 ) : (
-                                    <div className="w-10 h-[60px] rounded-lg bg-zinc-800 flex-shrink-0" />
+                                    <div className="w-10 h-[60px] rounded-lg bg-secondary flex-shrink-0" />
                                 )}
 
                                 <div className="flex-1 min-w-0">
-                                    <h4 className="text-sm font-semibold text-zinc-100 truncate">{movie.title}</h4>
-                                    <p className="text-[11px] text-zinc-500 mt-0.5">{movie.year}</p>
+                                    <h4 className="text-sm font-semibold text-foreground truncate">{movie.title}</h4>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">{movie.year}</p>
 
                                     {/* Individual tier badges */}
                                     <div className="flex gap-1 mt-1.5 flex-wrap">
@@ -202,41 +202,41 @@ export const GroupRankingView: React.FC<GroupRankingViewProps> = ({ userId }) =>
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <Crown size={18} className="text-indigo-500" />
+                    <Crown size={18} className="text-gold" />
                     <h2 className="text-lg font-bold">Group Rankings</h2>
                 </div>
                 <button
                     onClick={() => setShowCreate(!showCreate)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-500/15 text-indigo-400 text-xs font-semibold hover:bg-indigo-500/25 transition-colors"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gold/15 text-accent text-xs font-semibold hover:bg-gold/25 transition-colors"
                 >
                     <Plus size={14} /> New Group
                 </button>
             </div>
 
             {showCreate && (
-                <div className="bg-zinc-900/60 rounded-xl border border-zinc-800/30 p-4 space-y-3">
+                <div className="bg-card/60 rounded-xl border border-border/30 p-4 space-y-3">
                     <input
                         type="text"
                         placeholder="Group name..."
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
-                        className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 border border-zinc-700 focus:border-indigo-500 focus:outline-none"
+                        className="w-full bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground border border-border focus:border-gold focus:outline-none"
                     />
                     <input
                         type="text"
                         placeholder="Description (optional)"
                         value={newDesc}
                         onChange={(e) => setNewDesc(e.target.value)}
-                        className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 border border-zinc-700 focus:border-indigo-500 focus:outline-none"
+                        className="w-full bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground border border-border focus:border-gold focus:outline-none"
                     />
                     <div className="flex gap-2 justify-end">
-                        <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300">
+                        <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-muted-foreground">
                             Cancel
                         </button>
                         <button
                             onClick={handleCreate}
                             disabled={!newName.trim()}
-                            className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-500 disabled:opacity-40 transition-colors"
+                            className="px-4 py-1.5 rounded-lg bg-gold text-foreground text-xs font-semibold hover:bg-gold disabled:opacity-40 transition-colors"
                         >
                             Create Group
                         </button>
@@ -245,7 +245,7 @@ export const GroupRankingView: React.FC<GroupRankingViewProps> = ({ userId }) =>
             )}
 
             {groups.length === 0 ? (
-                <div className="text-center py-16 text-zinc-500">
+                <div className="text-center py-16 text-muted-foreground">
                     <Crown size={40} className="mx-auto mb-3 opacity-40" />
                     <p className="text-sm">No group rankings yet. Create one and invite friends!</p>
                 </div>
@@ -255,18 +255,18 @@ export const GroupRankingView: React.FC<GroupRankingViewProps> = ({ userId }) =>
                         <button
                             key={group.id}
                             onClick={() => handleSelectGroup(group)}
-                            className="w-full flex items-center gap-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/30 hover:border-zinc-700 transition-all text-left"
+                            className="w-full flex items-center gap-3 p-3 rounded-xl bg-card/60 border border-border/30 hover:border-border transition-all text-left"
                         >
-                            <div className="w-10 h-10 rounded-lg bg-indigo-500/15 flex items-center justify-center flex-shrink-0">
-                                <Layers size={18} className="text-indigo-400" />
+                            <div className="w-10 h-10 rounded-lg bg-gold/15 flex items-center justify-center flex-shrink-0">
+                                <Layers size={18} className="text-accent" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <h3 className="text-sm font-semibold text-zinc-100 truncate">{group.name}</h3>
+                                <h3 className="text-sm font-semibold text-foreground truncate">{group.name}</h3>
                                 {group.description && (
-                                    <p className="text-[11px] text-zinc-500 truncate">{group.description}</p>
+                                    <p className="text-[11px] text-muted-foreground truncate">{group.description}</p>
                                 )}
                             </div>
-                            <div className="flex flex-col items-end gap-0.5 flex-shrink-0 text-[10px] text-zinc-500">
+                            <div className="flex flex-col items-end gap-0.5 flex-shrink-0 text-[10px] text-muted-foreground">
                                 <span className="flex items-center gap-0.5"><Users size={10} /> {group.memberCount ?? 0}</span>
                                 <span>{group.entryCount ?? 0} movies</span>
                             </div>

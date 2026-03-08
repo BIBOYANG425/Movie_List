@@ -37,11 +37,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     return (
-      <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6 text-center">
-        <p className="text-zinc-400 text-sm mb-3">Something went wrong</p>
+      <div className="rounded-xl bg-card border border-border p-6 text-center">
+        <p className="text-muted-foreground text-sm mb-3">Something went wrong</p>
         <button
           onClick={this.handleReset}
-          className="px-4 py-1.5 text-sm rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+          className="px-4 py-1.5 text-sm rounded-lg bg-secondary text-muted-foreground hover:bg-secondary transition-colors"
         >
           Try again
         </button>

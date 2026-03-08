@@ -478,7 +478,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           type="text"
           autoFocus
           placeholder="Search any movie..."
-          className="w-full bg-card border border-border rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
+          className="w-full bg-card border border-border rounded-xl py-3 pl-10 pr-4 text-foreground placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -489,9 +489,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
       {/* No API key warning */}
       {!hasTmdbKey() && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 text-sm text-yellow-300">
+        <div className="bg-gold/10 border border-yellow-500/20 rounded-xl p-4 text-sm text-yellow-300">
           <p className="font-semibold mb-1">TMDB API key not configured</p>
-          <p className="text-yellow-400/70 text-xs">
+          <p className="text-gold/70 text-xs">
             Add <code className="bg-black/30 px-1 rounded">VITE_TMDB_API_KEY</code> to your Vercel environment variables to enable live search.
           </p>
         </div>
@@ -504,10 +504,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           <div className="space-y-2">
             {[1, 2, 3].map(i => (
               <div key={i} className="flex items-center gap-3 p-2 rounded-lg animate-pulse">
-                <div className="w-12 h-16 bg-zinc-800 rounded flex-shrink-0" />
+                <div className="w-12 h-16 bg-secondary rounded flex-shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-zinc-800 rounded w-3/4" />
-                  <div className="h-2 bg-zinc-800 rounded w-1/2" />
+                  <div className="h-3 bg-secondary rounded w-3/4" />
+                  <div className="h-2 bg-secondary rounded w-1/2" />
                 </div>
               </div>
             ))}
@@ -517,32 +517,32 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {/* People (directors & actors) */}
         {!isSearching && !selectedDirector && directorProfiles.length > 0 && (
           <div className="space-y-1 pb-2">
-            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">People</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">People</p>
             {directorProfiles.map(person => (
               <button
                 key={person.id}
                 onClick={() => handleOpenDirector(person)}
-                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-zinc-800/80 transition-colors w-full text-left"
+                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-secondary/50 transition-colors w-full text-left"
               >
                 {person.photoUrl ? (
-                  <img src={person.photoUrl} alt={person.name} className="w-10 h-10 object-cover rounded-full bg-zinc-800 flex-shrink-0 shadow-md" />
+                  <img src={person.photoUrl} alt={person.name} className="w-10 h-10 object-cover rounded-full bg-secondary flex-shrink-0 shadow-md" />
                 ) : (
-                  <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center flex-shrink-0 text-zinc-600 text-sm font-bold">
+                  <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center flex-shrink-0 text-muted-foreground/60 text-sm font-bold">
                     {person.name.charAt(0)}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="font-semibold text-white truncate text-sm">{person.name}</p>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${person.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                    <p className="font-semibold text-foreground truncate text-sm">{person.name}</p>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${person.role === 'Director' ? 'bg-amber-500/15 text-gold' : 'bg-gold/15 text-accent'}`}>
                       {person.role}
                     </span>
                   </div>
                   {person.knownFor.length > 0 && (
-                    <p className="text-[11px] text-zinc-500 truncate">Known for: {person.knownFor.join(', ')}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">Known for: {person.knownFor.join(', ')}</p>
                   )}
                 </div>
-                <ChevronRight size={14} className="text-zinc-600 flex-shrink-0" />
+                <ChevronRight size={14} className="text-muted-foreground/60 flex-shrink-0" />
               </button>
             ))}
           </div>
@@ -551,7 +551,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {/* Director loading */}
         {directorLoading && (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+            <Loader2 className="w-5 h-5 text-gold animate-spin" />
           </div>
         )}
 
@@ -560,7 +560,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           <div className="space-y-3 animate-fade-in">
             <button
               onClick={() => setSelectedDirector(null)}
-              className="flex items-center gap-1 text-xs text-dim hover:text-white transition-colors"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft size={14} />
               Back to results
@@ -570,18 +570,18 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               {selectedDirector.photoUrl ? (
                 <img src={selectedDirector.photoUrl} alt={selectedDirector.name} className="w-16 h-16 object-cover rounded-xl shadow-lg flex-shrink-0" />
               ) : (
-                <div className="w-16 h-16 bg-elevated rounded-xl flex items-center justify-center flex-shrink-0 text-2xl font-bold text-dim">
+                <div className="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center flex-shrink-0 text-2xl font-bold text-muted-foreground">
                   {selectedDirector.name.charAt(0)}
                 </div>
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-serif text-white">{selectedDirector.name}</h3>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${selectedDirector.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                  <h3 className="text-base font-serif text-foreground">{selectedDirector.name}</h3>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${selectedDirector.role === 'Director' ? 'bg-amber-500/15 text-gold' : 'bg-gold/15 text-accent'}`}>
                     {selectedDirector.role}
                   </span>
                 </div>
-                <p className="text-[11px] text-dim">
+                <p className="text-[11px] text-muted-foreground">
                   {selectedDirector.placeOfBirth && <span>{selectedDirector.placeOfBirth}</span>}
                   {selectedDirector.birthday && <span> · Born {selectedDirector.birthday}</span>}
                 </p>
@@ -589,12 +589,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             </div>
 
             {selectedDirector.biography && (
-              <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-3">{selectedDirector.biography}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">{selectedDirector.biography}</p>
             )}
 
             <div className="grid grid-cols-3 gap-2">
               {selectedDirector.movies.filter(m => !isAlreadyOwned(m)).map(movie => (
-                <div key={movie.id} className="relative group flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-1.5 transition-colors">
+                <div key={movie.id} className="relative group flex flex-col items-center text-center rounded-xl hover:bg-secondary/60 p-1.5 transition-colors">
                   <button
                     onClick={() => {
                       onClose();
@@ -605,13 +605,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                     <img
                       src={movie.posterUrl!}
                       alt={movie.title}
-                      className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-all mb-1.5"
+                      className="w-full aspect-[2/3] object-cover rounded-lg bg-secondary shadow-md group-hover:shadow-lg transition-all mb-1.5"
                     />
                   </button>
-                  <button onClick={() => handleSelectMovie(movie)} className="text-[11px] font-medium text-zinc-300 leading-tight line-clamp-2 hover:text-indigo-400 transition-colors w-full text-left">
+                  <button onClick={() => handleSelectMovie(movie)} className="text-[11px] font-medium text-muted-foreground leading-tight line-clamp-2 hover:text-accent transition-colors w-full text-left">
                     {movie.title}
                   </button>
-                  <p className="text-[10px] text-zinc-600 w-full text-left">{movie.year}</p>
+                  <p className="text-[10px] text-muted-foreground/60 w-full text-left">{movie.year}</p>
                 </div>
               ))}
             </div>
@@ -622,12 +622,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {!isSearching && !selectedDirector && filteredSearchResults.length > 0 && (
           <div className="space-y-1">
             {directorProfiles.length > 0 && (
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider pt-1">Movies</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pt-1">Movies</p>
             )}
             {filteredSearchResults.map((movie) => (
               <div
                 key={movie.id}
-                className="flex items-center gap-3 p-2 rounded-xl hover:bg-elevated transition-colors group"
+                className="flex items-center gap-3 p-2 rounded-xl hover:bg-secondary transition-colors group"
               >
                 <div
                   className="cursor-pointer relative flex-shrink-0"
@@ -637,20 +637,20 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                   }}
                 >
                   {movie.posterUrl ? (
-                    <img src={movie.posterUrl} alt={movie.title} className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 shadow-md hover:scale-105 transition-transform" />
+                    <img src={movie.posterUrl} alt={movie.title} className="w-12 h-[72px] object-cover rounded-lg bg-secondary shadow-md hover:scale-105 transition-transform" />
                   ) : (
-                    <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Film size={20} className="text-zinc-600" />
+                    <div className="w-12 h-[72px] bg-secondary rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Film size={20} className="text-muted-foreground/60" />
                     </div>
                   )}
                 </div>
                 <button onClick={() => handleSelectMovie(movie)} className="flex-1 min-w-0 text-left">
-                  <p className="font-semibold text-white group-hover:text-indigo-400 transition-colors truncate leading-tight">{movie.title}</p>
-                  <p className="text-xs text-zinc-500 mt-0.5">{movie.year}</p>
+                  <p className="font-semibold text-foreground group-hover:text-accent transition-colors truncate leading-tight">{movie.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{movie.year}</p>
                   {movie.genres && movie.genres.length > 0 && (
                     <div className="flex gap-1 mt-1.5 flex-wrap">
                       {movie.genres.map(g => (
-                        <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">{g}</span>
+                        <span key={g} className="text-[10px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded-full border border-border">{g}</span>
                       ))}
                     </div>
                   )}
@@ -660,12 +660,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                     <button
                       onClick={() => handleBookmark(movie)}
                       title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
-                      className={`p-1.5 rounded-lg transition-colors ${isBookmarked(movie.id) ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10'}`}
+                      className={`p-1.5 rounded-lg transition-colors ${isBookmarked(movie.id) ? 'text-emerald-400 bg-emerald-500/10' : 'text-muted-foreground/40 hover:text-emerald-400 hover:bg-emerald-500/10'}`}
                     >
                       <Bookmark size={16} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
                     </button>
                   )}
-                  <button onClick={() => handleSelectMovie(movie)} className="p-1.5 rounded-lg text-zinc-700 group-hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors" title="Rank this movie">
+                  <button onClick={() => handleSelectMovie(movie)} className="p-1.5 rounded-lg text-muted-foreground/40 group-hover:text-muted-foreground hover:bg-secondary/50 transition-colors" title="Rank this movie">
                     <Plus size={18} />
                   </button>
                 </div>
@@ -676,7 +676,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
         {/* Empty state */}
         {!isSearching && !selectedDirector && searchTerm.trim() && filteredSearchResults.length === 0 && directorProfiles.length === 0 && (
-          <div className="text-center py-12 text-zinc-500 text-sm">
+          <div className="text-center py-12 text-muted-foreground text-sm">
             <Film size={32} className="mx-auto mb-3 opacity-30" />
             <p>No results for "{searchTerm}"</p>
             <p className="text-xs mt-1 opacity-60">Try a different title, director name, or check spelling</p>
@@ -687,10 +687,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {!isSearching && !searchTerm.trim() && (
           <>
             {isRatingFetching && (
-              <div className="absolute inset-0 bg-zinc-950/50 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
-                <div className="flex flex-col items-center gap-3 bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-2xl">
-                  <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-                  <p className="text-sm font-semibold text-zinc-300">Fetching global ranking...</p>
+              <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
+                <div className="flex flex-col items-center gap-3 bg-card border border-border p-6 rounded-2xl shadow-2xl">
+                  <Loader2 className="w-8 h-8 text-gold animate-spin" />
+                  <p className="text-sm font-semibold text-muted-foreground">Fetching global ranking...</p>
                 </div>
               </div>
             )}
@@ -702,12 +702,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             {!suggestionsLoading && filteredSuggestions.length > 0 ? (
               <div>
                 <div className="flex items-center justify-between mb-3 px-1">
-                  <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     {hasBackfillMixed ? 'Based on your taste' : 'Popular right now'}
                   </p>
                   <button
                     onClick={handleRefreshSuggestions}
-                    className="flex items-center gap-1 text-[10px] font-semibold text-zinc-600 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800"
+                    className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground/60 hover:text-muted-foreground transition-colors px-2 py-1 rounded-lg hover:bg-secondary"
                     title="Show different suggestions"
                   >
                     <RefreshCw size={11} />
@@ -717,7 +717,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 <div className="grid grid-cols-3 gap-2">
                   {filteredSuggestions.map((movie) => (
                     <div key={movie.id} className="relative group">
-                      <div className="flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors w-full">
+                      <div className="flex flex-col items-center text-center rounded-xl hover:bg-secondary/60 p-2 transition-colors w-full">
                         <button
                           onClick={() => {
                             onClose();
@@ -728,13 +728,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                           <img
                             src={movie.posterUrl!}
                             alt={movie.title}
-                            className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg hover:scale-105 transition-all mb-1.5"
+                            className="w-full aspect-[2/3] object-cover rounded-lg bg-secondary shadow-md group-hover:shadow-lg hover:scale-105 transition-all mb-1.5"
                           />
                         </button>
-                        <button onClick={() => handleSelectMovie(movie, true)} className="text-xs font-medium text-zinc-300 leading-tight line-clamp-2 hover:text-indigo-400 transition-colors w-full text-left">
+                        <button onClick={() => handleSelectMovie(movie, true)} className="text-xs font-medium text-muted-foreground leading-tight line-clamp-2 hover:text-accent transition-colors w-full text-left">
                           {movie.title}
                         </button>
-                        <p className="text-[10px] text-zinc-600 w-full text-left">{movie.year}</p>
+                        <p className="text-[10px] text-muted-foreground/60 w-full text-left">{movie.year}</p>
                       </div>
                       {onSaveForLater && (
                         <button
@@ -742,7 +742,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                           title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
                           className={`absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md ${isBookmarked(movie.id)
                             ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
-                            : 'bg-black/60 text-zinc-500 border border-zinc-700 opacity-0 group-hover:opacity-100 hover:text-emerald-400 hover:bg-emerald-500/20'
+                            : 'bg-black/60 text-muted-foreground border border-border opacity-0 group-hover:opacity-100 hover:text-emerald-400 hover:bg-emerald-500/20'
                             }`}
                         >
                           <Bookmark size={12} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
@@ -753,7 +753,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 </div>
               </div>
             ) : !suggestionsLoading ? (
-              <div className="text-center py-12 text-zinc-600 text-sm">
+              <div className="text-center py-12 text-muted-foreground/60 text-sm">
                 <Search size={32} className="mx-auto mb-3 opacity-30" />
                 <p>Type a movie title to search</p>
               </div>
@@ -801,7 +801,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const getStepTitle = () => {
     switch (step) {
-      case 'search': return 'Add to Marquee';
+      case 'search': return 'Add to Spool';
       case 'tier': return 'Assign Tier';
       case 'notes': return 'Add a Note';
       case 'compare': return 'Head-to-Head';
@@ -815,19 +815,19 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-zinc-950 border border-zinc-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/50 flex-shrink-0">
+        <div className="flex items-center justify-between p-5 border-b border-border bg-card/30 flex-shrink-0">
           <div className="flex items-center gap-3">
             {step !== 'search' && (
-              <button onClick={handleBack} className="text-zinc-400 hover:text-white transition-colors">
+              <button onClick={handleBack} className="text-muted-foreground hover:text-foreground transition-colors">
                 <ArrowLeft size={20} />
               </button>
             )}
-            <h2 className="text-xl font-bold text-white">{getStepTitle()}</h2>
+            <h2 className="text-xl font-bold text-foreground">{getStepTitle()}</h2>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X size={24} />
           </button>
         </div>

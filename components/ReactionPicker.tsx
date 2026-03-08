@@ -36,8 +36,8 @@ export const ReactionPicker: React.FC<ReactionPickerProps> = ({
             onClick={() => onToggle(type)}
             className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
               isActive
-                ? 'bg-indigo-500/20 border-indigo-500/40 text-white'
-                : 'bg-zinc-800/50 border-zinc-800 text-zinc-400 hover:border-zinc-600'
+                ? 'bg-accent/20 border-gold/40 text-foreground'
+                : 'bg-secondary/30 border-border text-muted-foreground hover:border-border'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
             <span>{emoji}</span>

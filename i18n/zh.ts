@@ -202,6 +202,10 @@ const zh: Record<string, string> = {
   'tv.seasons': '季',
   'tv.creator': '创作者',
   'tv.status': '状态',
+  'tv.addSeason': '添加电视剧季',
+  'tv.assignTier': '分配等级',
+  'tv.addNote': '添加备注',
+  'tv.headToHead': '对决比较',
 
   // ── Language toggle ──────────────────────────────────────────────────────
   'lang.toggle': '中文',

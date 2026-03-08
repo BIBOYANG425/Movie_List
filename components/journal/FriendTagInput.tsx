@@ -84,37 +84,37 @@ export const FriendTagInput: React.FC<FriendTagInputProps> = ({ currentUserId, s
 
       {/* Search */}
       <div className="relative">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
           placeholder="Search friends..."
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+          className="w-full bg-card border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
         />
       </div>
 
       {/* Results */}
-      {searching && <p className="text-xs text-zinc-600 py-1">Searching...</p>}
+      {searching && <p className="text-xs text-muted-foreground/60 py-1">Searching...</p>}
       {results.length > 0 && (
         <div className="max-h-36 overflow-y-auto space-y-0.5">
           {results.map((user) => (
             <button
               key={user.id}
               type="button"
-              className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left text-zinc-300 hover:bg-zinc-800/50 transition-colors"
+              className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left text-muted-foreground hover:bg-secondary/30 transition-colors"
               onClick={() => addUser(user)}
             >
               {user.avatarUrl ? (
                 <img src={user.avatarUrl} alt={user.username} className="w-6 h-6 rounded-full object-cover" />
               ) : (
-                <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-500">
+                <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-[10px] text-muted-foreground">
                   {user.username[0]?.toUpperCase()}
                 </div>
               )}
               <div className="min-w-0">
                 <p className="text-xs font-medium truncate">@{user.username}</p>
-                {user.displayName && <p className="text-[10px] text-zinc-500 truncate">{user.displayName}</p>}
+                {user.displayName && <p className="text-[10px] text-muted-foreground truncate">{user.displayName}</p>}
               </div>
             </button>
           ))}

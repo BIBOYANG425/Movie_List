@@ -2,24 +2,25 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useTranslation } from "../contexts/LanguageContext";
+import SpoolLogo from "../components/SpoolLogo";
 
 /* ─── palette ─── */
 const C = {
-  bg: "#08080B",
-  surface: "#111116",
-  card: "#16161D",
-  elevated: "#1C1C25",
+  bg: "#0F1419",
+  surface: "#1C2128",
+  card: "#1C2128",
+  elevated: "#252C35",
   tierS: "#A855F7",
   tierA: "#3B82F6",
   tierB: "#10B981",
   tierC: "#F59E0B",
   tierD: "#EF4444",
-  cream: "#F0EBE3",
-  text: "#C8C3BC",
-  dim: "#706D67",
-  muted: "#4A4843",
-  border: "rgba(240,235,227,0.06)",
-  glow: "rgba(168,85,247,0.08)",
+  cream: "#F5F3EF",
+  text: "#9BA3AB",
+  dim: "#9BA3AB",
+  muted: "#252C35",
+  border: "rgba(245,243,239,0.06)",
+  glow: "rgba(212,197,176,0.08)",
 };
 
 const TIER_COLORS: Record<string, string> = { S: C.tierS, A: C.tierA, B: C.tierB, C: C.tierC, D: C.tierD };
@@ -100,8 +101,8 @@ function Nav({ onAuth, t, locale, toggleLocale }: { onAuth: (mode: string) => vo
       transition: "all 0.35s ease",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <SpoolLogo size={22} />
-        <span style={{ fontFamily: "var(--serif)", fontSize: 19, color: C.cream, letterSpacing: "-0.03em" }}>spool</span>
+        <SpoolLogo size="sm" showWordmark={false} />
+        <span style={{ fontFamily: "var(--serif)", fontSize: 19, color: C.cream, letterSpacing: "-0.03em" }}>Spool</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <button onClick={toggleLocale} style={{
@@ -128,20 +129,6 @@ function Nav({ onAuth, t, locale, toggleLocale }: { onAuth: (mode: string) => vo
         >{t('landing.startRanking')}</button>
       </div>
     </nav>
-  );
-}
-
-/* ─── logo ─── */
-function SpoolLogo({ size = 28 }: { size?: number }) {
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: "50%",
-      background: `conic-gradient(from 180deg, ${C.tierS}, ${C.tierA}, ${C.tierB}, ${C.tierC}, ${C.tierD}, ${C.tierS})`,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      boxShadow: `0 0 ${size * 0.6}px ${C.tierS}25`,
-    }}>
-      <div style={{ width: size * 0.4, height: size * 0.4, borderRadius: "50%", background: C.bg }} />
-    </div>
   );
 }
 
@@ -451,8 +438,8 @@ function Footer({ t }: { t: (key: any) => string }) {
       maxWidth: 1120, margin: "0 auto", flexWrap: "wrap", gap: 16,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <SpoolLogo size={18} />
-        <span style={{ fontFamily: "var(--serif)", fontSize: 14, color: C.muted }}>spool</span>
+        <SpoolLogo size="sm" showWordmark={false} />
+        <span style={{ fontFamily: "var(--serif)", fontSize: 14, color: C.muted }}>Spool</span>
       </div>
       <div style={{ display: "flex", gap: 24 }}>
         {links.map(link => (

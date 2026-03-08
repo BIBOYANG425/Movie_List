@@ -217,13 +217,13 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
             {/* Modal Container */}
             <div
-                className="relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl sm:max-w-md bg-surface sm:shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:slide-in-from-right duration-300"
+                className="relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl sm:max-w-md bg-card sm:shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom sm:slide-in-from-right duration-300"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Close Button */}
                 <button
                     onClick={onClose}
-                    className="absolute top-4 right-4 z-20 p-2 bg-black/50 backdrop-blur-md rounded-full text-white/70 hover:text-white hover:bg-black/80 transition"
+                    className="absolute top-4 right-4 z-20 p-2 bg-black/50 backdrop-blur-md rounded-full text-foreground/70 hover:text-foreground hover:bg-black/80 transition"
                 >
                     <X size={20} />
                 </button>
@@ -232,23 +232,23 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                 <div className="flex-1 overflow-y-auto overflow-x-hidden hide-scrollbar">
 
                     {/* 🎬 Hero Section */}
-                    <div className="relative w-full pb-6 border-b border-white/10">
+                    <div className="relative w-full pb-6 border-b border-border/30">
                         {/* Backdrop */}
-                        <div className="absolute inset-0 h-80 bg-surface overflow-hidden">
+                        <div className="absolute inset-0 h-80 bg-card overflow-hidden">
                             {detailBackdropUrl ? (
                                 <img src={detailBackdropUrl} className="w-full h-full object-cover opacity-60 mix-blend-screen animate-fade-in" />
                             ) : (
-                                <div className="w-full h-full animate-pulse bg-zinc-800" />
+                                <div className="w-full h-full animate-pulse bg-secondary" />
                             )}
                             <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/80 to-transparent" />
                         </div>
 
                         <div className="relative pt-32 px-6 flex flex-col items-center">
-                            <div className="w-32 sm:w-40 aspect-[2/3] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden border border-white/10 shrink-0">
+                            <div className="w-32 sm:w-40 aspect-[2/3] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden border border-border/30 shrink-0">
                                 <img src={detailPosterUrl} className="w-full h-full object-cover" />
                             </div>
 
-                            <h2 className="mt-5 text-3xl font-serif text-white text-center leading-tight tracking-tight">
+                            <h2 className="mt-5 text-3xl font-serif text-foreground text-center leading-tight tracking-tight">
                                 {detailTitle}
                             </h2>
 
@@ -259,8 +259,8 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 </p>
                             )}
 
-                            <div className="mt-2 flex items-center justify-center gap-2 text-sm text-zinc-400">
-                                <span className="font-semibold text-zinc-300">{detailYear}</span>
+                            <div className="mt-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                                <span className="font-semibold text-muted-foreground">{detailYear}</span>
                                 {director && (
                                     <>
                                         <span>·</span>
@@ -278,7 +278,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                             {detailGenres.length > 0 && (
                                 <div className="mt-3 flex flex-wrap justify-center gap-1.5">
                                     {detailGenres.map(g => (
-                                        <span key={g} className="px-2.5 py-1 text-[11px] font-bold tracking-wider uppercase bg-white/5 border border-white/10 rounded-full text-zinc-300">
+                                        <span key={g} className="px-2.5 py-1 text-[11px] font-bold tracking-wider uppercase bg-white/5 border border-border/30 rounded-full text-muted-foreground">
                                             {g}
                                         </span>
                                     ))}
@@ -286,7 +286,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                             )}
 
                             {detailOverview && (
-                                <p className="mt-5 text-sm text-zinc-300 text-center leading-relaxed max-w-md">
+                                <p className="mt-5 text-sm text-muted-foreground text-center leading-relaxed max-w-md">
                                     {detailOverview}
                                 </p>
                             )}
@@ -294,10 +294,10 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                             {/* Streaming Badges */}
                             {streaming?.flatrate && streaming.flatrate.length > 0 && (
                                 <div className="mt-6 flex flex-col items-center">
-                                    <span className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2">Stream Now</span>
+                                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Stream Now</span>
                                     <div className="flex gap-2">
                                         {streaming.flatrate.map(p => (
-                                            <div key={p.providerId} className="w-8 h-8 rounded-lg overflow-hidden border border-white/10 opacity-80 hover:opacity-100 transition shadow-sm" title={p.providerName}>
+                                            <div key={p.providerId} className="w-8 h-8 rounded-lg overflow-hidden border border-border/30 opacity-80 hover:opacity-100 transition shadow-sm" title={p.providerName}>
                                                 <img src={p.logoUrl} alt={p.providerName} className="w-full h-full object-cover" />
                                             </div>
                                         ))}
@@ -308,92 +308,92 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                     </div>
 
                     {/* 📊 Scores Banner */}
-                    <div className="px-6 py-6 border-b border-white/10 flex justify-between gap-4">
-                        <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-white/10">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Global Score</span>
+                    <div className="px-6 py-6 border-b border-border/30 flex justify-between gap-4">
+                        <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-border/30">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Global Score</span>
                             <div className="flex items-center gap-1">
-                                <Star size={14} className="text-amber-500 fill-current" />
-                                <span className="text-xl font-black text-white">{detailVoteAverage?.toFixed(1) || '--'}</span>
+                                <Star size={14} className="text-gold fill-current" />
+                                <span className="text-xl font-black text-foreground">{detailVoteAverage?.toFixed(1) || '--'}</span>
                             </div>
                         </div>
 
-                        <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.1)]">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mb-1">Your Score</span>
+                        <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-gold/20 shadow-[0_0_15px_rgba(99,102,241,0.1)]">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Your Score</span>
                             <div className="flex items-center gap-1">
                                 {rankedItem ? (
                                     <>
                                         <span className={`w-2 h-2 rounded-full ${TIER_COLORS[rankedItem.tier].replace('border-', 'bg-').replace('text-', 'bg-')}`} />
-                                        <span className="text-xl font-black text-white">{rankedItem.tier}</span>
+                                        <span className="text-xl font-black text-foreground">{rankedItem.tier}</span>
                                     </>
                                 ) : (
-                                    <span className="text-xl font-bold text-zinc-600">--</span>
+                                    <span className="text-xl font-bold text-muted-foreground/60">--</span>
                                 )}
                             </div>
-                            {rankedItem && <span className="text-[9px] text-zinc-400 mt-1">Tier</span>}
+                            {rankedItem && <span className="text-[9px] text-muted-foreground mt-1">Tier</span>}
                         </div>
 
-                        <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-white/10">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Friend Avg</span>
+                        <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-border/30">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Friend Avg</span>
                             <div className="flex items-center gap-1">
                                 {socialStats?.avgFriendRankPosition !== undefined ? (
-                                    <span className="text-xl font-black text-white">#{socialStats.avgFriendRankPosition + 1}</span>
+                                    <span className="text-xl font-black text-foreground">#{socialStats.avgFriendRankPosition + 1}</span>
                                 ) : (
-                                    <span className="text-xl font-bold text-zinc-600">--</span>
+                                    <span className="text-xl font-bold text-muted-foreground/60">--</span>
                                 )}
                             </div>
                         </div>
                     </div>
 
                     {/* 📊 Your Ranking Context */}
-                    <div className="px-6 py-8 border-b border-white/10">
+                    <div className="px-6 py-8 border-b border-border/30">
                         {rankedItem ? (
-                            <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                            <div className="bg-white/5 border border-border/30 rounded-2xl p-5">
                                 <div className="flex items-start justify-between">
                                     <div>
                                         <div className="flex items-center gap-2">
                                             <div className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${TIER_COLORS[rankedItem.tier]}`}>
                                                 {rankedItem.tier}
                                             </div>
-                                            <h3 className="text-lg font-bold text-white">Your Rank: #{rankedItem.rank + 1}</h3>
+                                            <h3 className="text-lg font-bold text-foreground">Your Rank: #{rankedItem.rank + 1}</h3>
                                         </div>
 
                                         {(rankContext?.above || rankContext?.below) && (
-                                            <div className="mt-2 text-sm text-zinc-400 leading-relaxed">
-                                                {rankContext.above && <span>Ranked above <span className="text-zinc-200 italic">{rankContext.above}</span></span>}
+                                            <div className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                                                {rankContext.above && <span>Ranked above <span className="text-foreground italic">{rankContext.above}</span></span>}
                                                 {rankContext.above && rankContext.below && <span> · </span>}
-                                                {rankContext.below && <span>Ranked below <span className="text-zinc-200 italic">{rankContext.below}</span></span>}
+                                                {rankContext.below && <span>Ranked below <span className="text-foreground italic">{rankContext.below}</span></span>}
                                             </div>
                                         )}
 
                                         {rankContext?.date && (
-                                            <div className="mt-3 flex items-center gap-1.5 text-xs text-zinc-500 font-mono uppercase tracking-wide">
+                                            <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground font-mono uppercase tracking-wide">
                                                 <Star size={12} /> Watched {rankContext.date}
                                             </div>
                                         )}
                                     </div>
 
-                                    <button className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition flex items-center gap-2">
+                                    <button className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-border/30 rounded-xl text-xs font-bold transition flex items-center gap-2">
                                         Re-rank
                                     </button>
                                 </div>
                             </div>
                         ) : (
-                            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
-                                <h3 className="text-lg font-bold text-white mb-1">Not yet ranked</h3>
-                                <p className="text-sm text-zinc-400 mb-4">
+                            <div className="bg-white/5 border border-border/30 rounded-2xl p-6 text-center">
+                                <h3 className="text-lg font-bold text-foreground mb-1">Not yet ranked</h3>
+                                <p className="text-sm text-muted-foreground mb-4">
                                     Add this {isTVSeason ? 'season' : 'movie'} to your lists to compare it to your favorites.
                                 </p>
                                 {!isTVSeason && (
                                     <div className="flex justify-center gap-3">
                                         <button
                                             onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
-                                            className="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-xl text-sm transition"
+                                            className="px-5 py-2.5 bg-gold hover:bg-gold-muted text-foreground font-bold rounded-xl text-sm transition"
                                         >
                                             ✅ I've Watched This
                                         </button>
                                         <button
                                             onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
-                                            className="px-5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-bold rounded-xl text-sm transition border border-white/10"
+                                            className="px-5 py-2.5 bg-white/10 hover:bg-white/15 text-foreground font-bold rounded-xl text-sm transition border border-border/30"
                                         >
                                             📌 Want-to-Watch
                                         </button>
@@ -405,70 +405,70 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
                     {/* 👥 Friends' Corner */}
                     <div className="px-6 py-8">
-                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">What Your Friends Think</h3>
+                        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">What Your Friends Think</h3>
 
                         {socialLoading ? (
-                            <div className="animate-pulse flex gap-3 h-16 bg-white/5 rounded-xl border border-white/10" />
+                            <div className="animate-pulse flex gap-3 h-16 bg-white/5 rounded-xl border border-border/30" />
                         ) : socialStats && socialStats.friendsWatched > 0 ? (
                             <div className="space-y-4">
 
                                 <div className="flex items-center gap-4">
                                     <div className="flex -space-x-2">
                                         {socialStats.friendAvatars.map((url, i) => (
-                                            <div key={i} className="w-8 h-8 rounded-full border-2 border-[#0a0a0c] bg-zinc-800 overflow-hidden">
+                                            <div key={i} className="w-8 h-8 rounded-full border-2 border-[#0a0a0c] bg-secondary overflow-hidden">
                                                 <img src={url} className="w-full h-full object-cover" />
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="text-sm font-medium text-zinc-300">
-                                        <span className="text-white font-bold">{socialStats.friendsWatched} friends</span> watched
+                                    <div className="text-sm font-medium text-muted-foreground">
+                                        <span className="text-foreground font-bold">{socialStats.friendsWatched} friends</span> watched
                                     </div>
                                 </div>
 
                                 {socialStats.avgFriendRankPosition !== undefined && (
-                                    <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-lg text-indigo-400 text-sm font-semibold">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                                    <div className="inline-flex items-center gap-2 bg-accent/10 border border-gold/20 px-3 py-1.5 rounded-lg text-accent text-sm font-semibold">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-accent" />
                                         Avg rank: #{socialStats.avgFriendRankPosition + 1}
                                     </div>
                                 )}
 
                                 {socialStats.topFriendReview && (
-                                    <div className="bg-white/5 border border-white/10 rounded-xl p-4 mt-2">
-                                        <p className="text-base text-zinc-200 font-medium italic">"{socialStats.topFriendReview.body}"</p>
-                                        <div className="flex items-center gap-2 mt-3 text-xs text-zinc-400">
+                                    <div className="bg-white/5 border border-border/30 rounded-xl p-4 mt-2">
+                                        <p className="text-base text-foreground font-medium italic">"{socialStats.topFriendReview.body}"</p>
+                                        <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
                                             <img src={socialStats.topFriendReview.avatarUrl} className="w-5 h-5 rounded-full" />
-                                            <span className="font-semibold text-zinc-300">{socialStats.topFriendReview.username}</span>
-                                            <span>ranked it <span className="font-bold text-white">#{socialStats.topFriendReview.rankPosition + 1}</span></span>
+                                            <span className="font-semibold text-muted-foreground">{socialStats.topFriendReview.username}</span>
+                                            <span>ranked it <span className="font-bold text-foreground">#{socialStats.topFriendReview.rankPosition + 1}</span></span>
                                         </div>
                                     </div>
                                 )}
 
                                 {socialStats?.recentActivity && socialStats.recentActivity.length > 0 && (
-                                    <div className="mt-6 pt-6 border-t border-white/5">
-                                        <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Recent Activity</h4>
+                                    <div className="mt-6 pt-6 border-t border-border/20">
+                                        <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Recent Activity</h4>
                                         <div className="space-y-4">
                                             {socialStats.recentActivity.map(activity => (
                                                 <div key={activity.id} className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full border border-zinc-800 bg-zinc-800 overflow-hidden flex-shrink-0">
+                                                    <div className="w-8 h-8 rounded-full border border-border bg-secondary overflow-hidden flex-shrink-0">
                                                         {activity.avatarUrl ? (
                                                             <img src={activity.avatarUrl} className="w-full h-full object-cover" />
                                                         ) : (
-                                                            <div className="w-full h-full flex items-center justify-center text-[10px] text-zinc-500 font-bold bg-zinc-900">
+                                                            <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground font-bold bg-card">
                                                                 {activity.username.charAt(0).toUpperCase()}
                                                             </div>
                                                         )}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-xs text-zinc-300">
-                                                            <span className="font-bold text-white">{activity.username}</span>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            <span className="font-bold text-foreground">{activity.username}</span>
                                                             {' '}
                                                             {activity.action === 'ranked' && (
-                                                                <>ranked this <span className={`text-[10px] font-bold ${TIER_COLORS[activity.tier || ''] || 'text-zinc-400'}`}>{activity.tier || 'in their list'}</span></>
+                                                                <>ranked this <span className={`text-[10px] font-bold ${TIER_COLORS[activity.tier || ''] || 'text-muted-foreground'}`}>{activity.tier || 'in their list'}</span></>
                                                             )}
                                                             {activity.action === 'reviewed' && 'left a review.'}
                                                             {activity.action === 'bookmarked' && 'added this to their watchlist.'}
                                                         </p>
-                                                        <p className="text-[10px] text-zinc-500 mt-0.5">
+                                                        <p className="text-[10px] text-muted-foreground mt-0.5">
                                                             {new Date(activity.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                                         </p>
                                                     </div>
@@ -478,13 +478,13 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                     </div>
                                 )}
 
-                                <button className="flex items-center gap-2 text-sm text-indigo-400 font-bold hover:text-indigo-300 transition group mt-6">
+                                <button className="flex items-center gap-2 text-sm text-accent font-bold hover:text-accent transition group mt-6">
                                     See all {socialStats.friendsWatched} friend rankings
                                     <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                 </button>
                             </div>
                         ) : (
-                            <div className="text-sm text-zinc-500 italic bg-white/5 p-4 rounded-xl border-dashed border border-white/10">
+                            <div className="text-sm text-muted-foreground italic bg-white/5 p-4 rounded-xl border-dashed border border-border/30">
                                 None of your friends have ranked this yet. Be exploring and invite them!
                             </div>
                         )}
@@ -492,17 +492,17 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                 </div>
 
                 {/* 🎯 Action Footer (Sticky Bottom) */}
-                <div className="absolute bottom-0 left-0 right-0 bg-bg border-t border-border p-4 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.5)] flex items-center gap-3">
+                <div className="absolute bottom-0 left-0 right-0 bg-background border-t border-border p-4 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.5)] flex items-center gap-3">
                     {rankedItem ? (
                         <>
                             <button
                                 onClick={() => { if (onOpenJournal) onOpenJournal(tmdbId); }}
-                                className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]"
+                                className="flex-1 bg-gold hover:bg-gold-muted text-foreground font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-gold/20 active:scale-[0.98]"
                             >
                                 <MessageCircle size={18} />
                                 Leave a Review
                             </button>
-                            <button className="w-12 h-12 flex items-center justify-center bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition text-zinc-400 hover:text-white" title="Share with a Friend">
+                            <button className="w-12 h-12 flex items-center justify-center bg-white/5 border border-border/30 rounded-xl hover:bg-white/10 transition text-muted-foreground hover:text-foreground" title="Share with a Friend">
                                 <Link size={18} />
                             </button>
                         </>
@@ -511,7 +511,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                             {isTVSeason ? (
                                 <button
                                     onClick={onClose}
-                                    className="flex-1 bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]"
+                                    className="flex-1 bg-white/5 border border-border/30 text-foreground font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]"
                                 >
                                     Close
                                 </button>
@@ -519,13 +519,13 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 <>
                                     <button
                                         onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
-                                        className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]"
+                                        className="flex-1 bg-gold hover:bg-gold-muted text-foreground font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-gold/20 active:scale-[0.98]"
                                     >
                                         ✅ Watched
                                     </button>
                                     <button
                                         onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
-                                        className="px-6 bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]"
+                                        className="px-6 bg-white/5 border border-border/30 text-foreground font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]"
                                     >
                                         📌 Want-to-Watch
                                     </button>

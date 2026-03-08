@@ -42,7 +42,7 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
     await toggleJournalLike(currentUserId, entry.id, newLiked);
   };
 
-  const tierColorClass = entry.ratingTier ? TIER_COLORS[entry.ratingTier]?.split(' ')[0] : 'text-zinc-400';
+  const tierColorClass = entry.ratingTier ? TIER_COLORS[entry.ratingTier]?.split(' ')[0] : 'text-muted-foreground';
   const reviewTruncated = entry.reviewText && entry.reviewText.length > 200;
   const displayText = expanded ? entry.reviewText : entry.reviewText?.slice(0, 200);
 
@@ -51,7 +51,7 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
     .filter(Boolean);
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-3.5">
+    <div className="bg-card/30 border border-border rounded-xl p-3.5">
       <div className="flex gap-3">
         {/* Poster */}
         {entry.posterUrl && (
@@ -66,21 +66,21 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
           {/* Title + tier + date */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold text-zinc-100 truncate">{entry.title}</h4>
+              <h4 className="text-sm font-semibold text-foreground truncate">{entry.title}</h4>
               <div className="flex items-center gap-2 mt-0.5">
                 {entry.ratingTier && (
                   <span className={`text-xs font-bold ${tierColorClass}`}>{entry.ratingTier}</span>
                 )}
-                <span className="text-[10px] text-zinc-600">{timeAgo(entry.createdAt)}</span>
+                <span className="text-[10px] text-muted-foreground/60">{timeAgo(entry.createdAt)}</span>
                 {entry.containsSpoilers && (
-                  <span className="text-[10px] text-amber-500 font-medium">Spoiler</span>
+                  <span className="text-[10px] text-gold font-medium">Spoiler</span>
                 )}
               </div>
             </div>
             {isOwnProfile && onEdit && (
               <button
                 onClick={() => onEdit(entry)}
-                className="p-1.5 text-zinc-600 hover:text-zinc-300 transition-colors"
+                className="p-1.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
               >
                 <Edit3 size={14} />
               </button>
@@ -90,14 +90,14 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
           {/* Review text */}
           {entry.reviewText && (
             <div className="mt-2">
-              <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-line">
+              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
                 {displayText}
                 {reviewTruncated && !expanded && '...'}
               </p>
               {reviewTruncated && (
                 <button
                   onClick={() => setExpanded(!expanded)}
-                  className="flex items-center gap-0.5 text-[10px] text-indigo-400 hover:text-indigo-300 mt-1"
+                  className="flex items-center gap-0.5 text-[10px] text-accent hover:text-accent mt-1"
                 >
                   {expanded ? <><ChevronUp size={10} /> less</> : <><ChevronDown size={10} /> read more</>}
                 </button>
@@ -111,7 +111,7 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
               {moodChips.map((tag) => (
                 <span
                   key={tag!.id}
-                  className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] bg-zinc-800 text-zinc-400 border border-zinc-700/50"
+                  className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] bg-secondary text-muted-foreground border border-border/50"
                 >
                   {tag!.emoji} {tag!.label}
                 </span>
@@ -125,7 +125,7 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
             <button
               onClick={handleLike}
               className={`flex items-center gap-1 text-xs transition-colors ${
-                liked ? 'text-pink-400' : 'text-zinc-600 hover:text-zinc-400'
+                liked ? 'text-pink-400' : 'text-muted-foreground/60 hover:text-muted-foreground'
               }`}
             >
               <Heart size={13} fill={liked ? 'currentColor' : 'none'} />
@@ -134,14 +134,14 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
 
             {/* Photo count */}
             {entry.photoPaths.length > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
                 <Camera size={11} /> {entry.photoPaths.length}
               </span>
             )}
 
             {/* Moments count */}
             {entry.favoriteMoments.filter(Boolean).length > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-zinc-600">
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
                 <Sparkles size={11} /> {entry.favoriteMoments.filter(Boolean).length}
               </span>
             )}

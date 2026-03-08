@@ -234,7 +234,7 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
       <div>
         {cardElement}
         {openCommentEventId === card.id && (
-          <div className="mt-1 bg-zinc-900 border border-zinc-800 border-t-0 rounded-b-xl px-4 pb-4">
+          <div className="mt-1 bg-card border border-border border-t-0 rounded-b-xl px-4 pb-4">
             <FeedCommentThread
               comments={comments}
               commentCount={card.commentCount}
@@ -260,8 +260,8 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
           onClick={() => handleTabChange('friends')}
           className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
             filters.tab === 'friends'
-              ? 'bg-elevated text-cream shadow-lg'
-              : 'text-dim hover:text-muted'
+              ? 'bg-secondary text-foreground shadow-lg'
+              : 'text-muted-foreground hover:text-muted'
           }`}
         >
           <Rss size={16} />
@@ -271,8 +271,8 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
           onClick={() => handleTabChange('explore')}
           className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
             filters.tab === 'explore'
-              ? 'bg-elevated text-cream shadow-lg'
-              : 'text-dim hover:text-muted'
+              ? 'bg-secondary text-foreground shadow-lg'
+              : 'text-muted-foreground hover:text-muted'
           }`}
         >
           <Compass size={16} />
@@ -289,8 +289,8 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
           <SkeletonList count={4} variant="feed" />
         </div>
       ) : cards.length === 0 ? (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8 text-center">
-          <p className="text-zinc-400 text-sm">
+        <div className="rounded-xl border border-border bg-card/50 p-8 text-center">
+          <p className="text-muted-foreground text-sm">
             {filters.tab === 'friends'
               ? t('feed.emptyFriends')
               : t('feed.emptyExplore')}
@@ -304,7 +304,7 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
           {hasMore && (
             <div ref={observerRef} className="flex items-center justify-center py-4">
               {loadingMore && (
-                <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
               )}
             </div>
           )}

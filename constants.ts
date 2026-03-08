@@ -11,11 +11,11 @@ export const TIER_COLORS = {
 };
 
 export const TIER_LABELS = {
-  [Tier.S]: 'Masterpiece',
-  [Tier.A]: 'Excellent',
+  [Tier.S]: 'Transcendent',
+  [Tier.A]: 'Exceptional',
   [Tier.B]: 'Good',
   [Tier.C]: 'Mediocre',
-  [Tier.D]: 'Poor',
+  [Tier.D]: 'Disappointing',
 };
 
 export const TIER_USER_PROMPTS = {

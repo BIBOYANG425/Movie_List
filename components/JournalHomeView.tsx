@@ -96,20 +96,20 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
       {/* Stats bar */}
       {stats && stats.totalEntries > 0 && (
         <div className="flex items-center gap-4 px-1">
-          <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <BookOpen size={13} />
-            <span><strong className="text-zinc-200">{stats.totalEntries}</strong> {t('journal.entries')}</span>
+            <span><strong className="text-foreground">{stats.totalEntries}</strong> {t('journal.entries')}</span>
           </div>
           {mostCommonMoodTag && (
-            <div className="flex items-center gap-1 text-xs text-zinc-400">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <span>{mostCommonMoodTag.emoji}</span>
               <span>{t('journal.mostFelt')}</span>
             </div>
           )}
           {stats.currentStreak > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Flame size={13} className="text-orange-400" />
-              <span><strong className="text-zinc-200">{stats.currentStreak}</strong> {t('journal.dayStreak')}</span>
+              <span><strong className="text-foreground">{stats.currentStreak}</strong> {t('journal.dayStreak')}</span>
             </div>
           )}
         </div>
@@ -117,13 +117,13 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
 
       {/* Search */}
       <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
           placeholder={t('journal.search')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+          className="w-full bg-card border border-border rounded-xl pl-9 pr-3 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
         />
       </div>
 
@@ -159,8 +159,8 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
         {/* Empty state */}
         {!loading && entries.length === 0 && (
           <div className="py-12 text-center">
-            <Film size={32} className="mx-auto text-zinc-700 mb-3" />
-            <p className="text-sm text-zinc-500">
+            <Film size={32} className="mx-auto text-muted-foreground/40 mb-3" />
+            <p className="text-sm text-muted-foreground">
               {isOwnProfile
                 ? t('journal.emptyOwn')
                 : t('journal.emptyOther')}

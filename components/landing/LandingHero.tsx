@@ -49,7 +49,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onEnterApp }) => {
           <div className="flex flex-wrap gap-3 reveal-up" style={{ animationDelay: '360ms' }}>
             <button onClick={onEnterApp} className="landing-cta-primary">
               <Clapperboard size={18} />
-              Enter Marquee
+              Enter Spool
             </button>
             <a href="#visual-demo" className="landing-cta-secondary">
               <PlayCircle size={18} />

@@ -58,7 +58,7 @@ export const SharedWatchlistListView: React.FC<SharedWatchlistViewProps> = ({
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Bookmark size={18} className="text-violet-400" />
-                    <h2 className="text-lg font-bold text-white">Shared Watchlists</h2>
+                    <h2 className="text-lg font-bold text-foreground">Shared Watchlists</h2>
                 </div>
                 <button
                     onClick={() => setShowCreate(!showCreate)}
@@ -76,14 +76,14 @@ export const SharedWatchlistListView: React.FC<SharedWatchlistViewProps> = ({
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         placeholder="Watchlist name..."
-                        className="flex-1 px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
+                        className="flex-1 px-3 py-2 text-sm bg-secondary border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:border-violet-500"
                         maxLength={100}
                         onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                     />
                     <button
                         onClick={handleCreate}
                         disabled={!newName.trim()}
-                        className="px-4 py-2 text-sm font-semibold rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-4 py-2 text-sm font-semibold rounded-lg bg-violet-500 text-foreground hover:bg-violet-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         Create
                     </button>
@@ -91,9 +91,9 @@ export const SharedWatchlistListView: React.FC<SharedWatchlistViewProps> = ({
             )}
 
             {watchlists.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
+                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/60">
                     <Users size={40} className="mb-3 opacity-30" />
-                    <p className="text-sm font-medium text-zinc-500">No shared watchlists yet</p>
+                    <p className="text-sm font-medium text-muted-foreground">No shared watchlists yet</p>
                     <p className="text-xs mt-1 opacity-60 max-w-xs text-center">
                         Create one to start picking movies to watch together with friends.
                     </p>
@@ -104,20 +104,20 @@ export const SharedWatchlistListView: React.FC<SharedWatchlistViewProps> = ({
                         <button
                             key={wl.id}
                             onClick={() => onOpenWatchlist?.(wl.id)}
-                            className="w-full flex items-center gap-3 p-3 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors text-left group"
+                            className="w-full flex items-center gap-3 p-3 rounded-xl bg-card border border-border hover:border-border transition-colors text-left group"
                         >
                             <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0">
                                 <Film size={18} className="text-violet-400" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-white truncate">{wl.name}</p>
-                                <div className="flex items-center gap-2 mt-0.5 text-xs text-zinc-500">
+                                <p className="text-sm font-semibold text-foreground truncate">{wl.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                                     <span>{wl.memberCount} {wl.memberCount === 1 ? 'member' : 'members'}</span>
-                                    <span className="text-zinc-700">·</span>
+                                    <span className="text-muted-foreground/40">·</span>
                                     <span>{wl.itemCount} {wl.itemCount === 1 ? 'movie' : 'movies'}</span>
                                 </div>
                             </div>
-                            <ChevronRight size={16} className="text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+                            <ChevronRight size={16} className="text-muted-foreground/60 group-hover:text-muted-foreground transition-colors" />
                         </button>
                     ))}
                 </div>
@@ -144,14 +144,14 @@ export const SharedWatchlistDetailView: React.FC<SharedWatchlistDetailViewProps>
                     {onBack && (
                         <button
                             onClick={onBack}
-                            className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
                         >
                             ←
                         </button>
                     )}
                     <div>
-                        <h2 className="text-lg font-bold text-white">{watchlist.name}</h2>
-                        <p className="text-xs text-zinc-500">
+                        <h2 className="text-lg font-bold text-foreground">{watchlist.name}</h2>
+                        <p className="text-xs text-muted-foreground">
                             Created by {watchlist.creatorUsername}
                         </p>
                     </div>
@@ -159,7 +159,7 @@ export const SharedWatchlistDetailView: React.FC<SharedWatchlistDetailViewProps>
                 <div className="flex gap-2">
                     <button
                         onClick={() => onInviteMember?.(watchlist.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700 hover:border-zinc-600 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-muted-foreground border border-border hover:border-border transition-colors"
                     >
                         <UserPlus size={13} />
                         Invite
@@ -177,7 +177,7 @@ export const SharedWatchlistDetailView: React.FC<SharedWatchlistDetailViewProps>
             {/* Members */}
             {watchlist.members && watchlist.members.length > 0 && (
                 <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-zinc-500 mr-1">Members:</span>
+                    <span className="text-xs text-muted-foreground mr-1">Members:</span>
                     <div className="flex -space-x-2">
                         {watchlist.members.slice(0, 6).map((member) => (
                             <Link key={member.userId} to={`/profile/${member.userId}`}>
@@ -185,12 +185,12 @@ export const SharedWatchlistDetailView: React.FC<SharedWatchlistDetailViewProps>
                                     src={member.avatarUrl || `https://api.dicebear.com/8.x/thumbs/svg?seed=${member.username}`}
                                     alt={member.username}
                                     title={member.displayName || member.username}
-                                    className="w-7 h-7 rounded-full border-2 border-zinc-900 object-cover hover:ring-2 hover:ring-violet-500/50 transition-all"
+                                    className="w-7 h-7 rounded-full border-2 border-background object-cover hover:ring-2 hover:ring-violet-500/50 transition-all"
                                 />
                             </Link>
                         ))}
                         {watchlist.members.length > 6 && (
-                            <div className="w-7 h-7 rounded-full bg-zinc-800 border-2 border-zinc-900 flex items-center justify-center text-[10px] font-bold text-zinc-400">
+                            <div className="w-7 h-7 rounded-full bg-secondary border-2 border-background flex items-center justify-center text-[10px] font-bold text-muted-foreground">
                                 +{watchlist.members.length - 6}
                             </div>
                         )}
@@ -200,9 +200,9 @@ export const SharedWatchlistDetailView: React.FC<SharedWatchlistDetailViewProps>
 
             {/* Items */}
             {(!watchlist.items || watchlist.items.length === 0) ? (
-                <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground/60">
                     <Film size={36} className="mb-2 opacity-30" />
-                    <p className="text-sm text-zinc-500">No movies added yet</p>
+                    <p className="text-sm text-muted-foreground">No movies added yet</p>
                     <p className="text-xs mt-1 opacity-60">Add some movies for the group to vote on!</p>
                 </div>
             ) : (
@@ -210,10 +210,10 @@ export const SharedWatchlistDetailView: React.FC<SharedWatchlistDetailViewProps>
                     {watchlist.items.map((item) => (
                         <div
                             key={item.id}
-                            className="group relative rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-all"
+                            className="group relative rounded-xl overflow-hidden bg-card border border-border hover:border-border transition-all"
                         >
                             {/* Poster */}
-                            <div className="relative aspect-[2/3] w-full bg-zinc-800">
+                            <div className="relative aspect-[2/3] w-full bg-secondary">
                                 {item.posterUrl ? (
                                     <img
                                         src={item.posterUrl}
@@ -222,7 +222,7 @@ export const SharedWatchlistDetailView: React.FC<SharedWatchlistDetailViewProps>
                                     />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center">
-                                        <Film size={24} className="text-zinc-700" />
+                                        <Film size={24} className="text-muted-foreground/40" />
                                     </div>
                                 )}
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
@@ -231,8 +231,8 @@ export const SharedWatchlistDetailView: React.FC<SharedWatchlistDetailViewProps>
                                 <button
                                     onClick={() => onVote?.(watchlist.id, item.id)}
                                     className={`absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold transition-all ${item.viewerHasVoted
-                                            ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/25'
-                                            : 'bg-zinc-900/80 text-zinc-400 hover:bg-violet-500/20 hover:text-violet-400 border border-zinc-700'
+                                            ? 'bg-violet-500 text-foreground shadow-lg shadow-violet-500/25'
+                                            : 'bg-card/50 text-muted-foreground hover:bg-violet-500/20 hover:text-violet-400 border border-border'
                                         }`}
                                 >
                                     <ThumbsUp size={11} className={item.viewerHasVoted ? 'fill-current' : ''} />
@@ -242,10 +242,10 @@ export const SharedWatchlistDetailView: React.FC<SharedWatchlistDetailViewProps>
 
                             {/* Info */}
                             <div className="absolute bottom-0 left-0 right-0 p-2.5 pt-6">
-                                <p className="text-xs font-semibold text-white leading-tight truncate">
+                                <p className="text-xs font-semibold text-foreground leading-tight truncate">
                                     {item.mediaTitle}
                                 </p>
-                                <p className="text-[10px] text-zinc-500 mt-0.5">
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
                                     Added by {item.addedByUsername}
                                 </p>
                             </div>

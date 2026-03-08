@@ -265,26 +265,26 @@ const ProfilePage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (notFound || !profile) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <div className="min-h-screen bg-background text-foreground">
         <main className="max-w-4xl mx-auto px-4 py-10 space-y-4">
           <Link
             to="/app"
-            className="inline-flex items-center gap-2 text-sm text-zinc-300 hover:text-white"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft size={14} />
             {t('profile.backToApp')}
           </Link>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-6">
+          <div className="rounded-xl border border-border/30 bg-card/50 p-6">
             <h1 className="text-xl font-bold">{t('profile.notFound')}</h1>
-            <p className="text-zinc-400 mt-2">{t('profile.notFoundHint')}</p>
+            <p className="text-muted-foreground mt-2">{t('profile.notFoundHint')}</p>
           </div>
         </main>
       </div>
@@ -292,30 +292,30 @@ const ProfilePage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-background text-foreground">
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         <div className="flex items-center justify-between">
           <Link
             to="/app"
-            className="inline-flex items-center gap-2 text-sm text-zinc-300 hover:text-white"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft size={14} />
             {t('profile.backToApp')}
           </Link>
         </div>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 space-y-5">
+        <section className="rounded-2xl border border-border/30 bg-card/50 p-6 space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
             <div className="flex items-center gap-4">
               <img
                 src={avatarPreview}
                 alt={profile.username}
-                className="w-20 h-20 rounded-2xl object-cover border border-zinc-700 bg-zinc-800"
+                className="w-20 h-20 rounded-2xl object-cover border border-border bg-secondary"
               />
               <div>
                 <h1 className="text-2xl font-bold">{profile.displayName ?? profile.username}</h1>
-                <p className="text-zinc-400 text-sm mt-0.5">@{profile.username}</p>
-                <p className="text-zinc-400 text-sm mt-1">
+                <p className="text-muted-foreground text-sm mt-0.5">@{profile.username}</p>
+                <p className="text-muted-foreground text-sm mt-1">
                   {profile.isSelf
                     ? t('profile.yourProfile')
                     : profile.isMutual
@@ -325,10 +325,10 @@ const ProfilePage = () => {
                         : t('profile.notConnected')}
                 </p>
                 <div className="flex items-center gap-3 mt-3 text-sm">
-                  <span className="text-zinc-300">
+                  <span className="text-muted-foreground">
                     <strong>{profile.followersCount}</strong> {t('profile.followers')}
                   </span>
-                  <span className="text-zinc-300">
+                  <span className="text-muted-foreground">
                     <strong>{profile.followingCount}</strong> {t('profile.following')}
                   </span>
                 </div>
@@ -340,7 +340,7 @@ const ProfilePage = () => {
                 <button
                   onClick={handleUnfollow}
                   disabled={followBusy}
-                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:text-red-300 hover:border-red-400 transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:text-red-300 hover:border-red-400 transition-colors disabled:opacity-50"
                 >
                   <UserMinus size={14} />
                   {t('profile.unfollow')}
@@ -359,12 +359,12 @@ const ProfilePage = () => {
           </div>
 
           {(profile.bio && canSeeFullProfile) && (
-            <p className="text-sm text-zinc-300 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">{profile.bio}</p>
+            <p className="text-sm text-muted-foreground rounded-lg border border-border/30 bg-background px-3 py-2">{profile.bio}</p>
           )}
 
           {profile.isSelf && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 space-y-4">
-              <div className="flex items-center gap-2 text-sm text-zinc-300">
+            <div className="rounded-xl border border-border/30 bg-background p-4 space-y-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Camera size={14} />
                 {t('profile.editProfile')}
               </div>
@@ -373,41 +373,41 @@ const ProfilePage = () => {
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/gif"
                 onChange={(e) => handleAvatarFile(e.target.files?.[0] ?? null)}
-                className="block text-xs text-zinc-400 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-700 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-zinc-600"
+                className="block text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary/80 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-foreground hover:file:bg-secondary/60"
               />
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-zinc-400">{t('profile.displayName')}</label>
+                <label className="text-xs font-semibold text-muted-foreground">{t('profile.displayName')}</label>
                 <input
                   value={displayNameInput}
                   onChange={(e) => setDisplayNameInput(e.target.value.slice(0, 60))}
                   placeholder={t('profile.displayNameHint')}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-zinc-400">{t('profile.bio')}</label>
+                <label className="text-xs font-semibold text-muted-foreground">{t('profile.bio')}</label>
                 <textarea
                   value={bioInput}
                   onChange={(e) => setBioInput(e.target.value.slice(0, MAX_BIO_LENGTH))}
-                  className="w-full h-20 resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  className="w-full h-20 resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
                   placeholder={t('profile.bioHint')}
                 />
-                <p className="text-[11px] text-zinc-500 text-right">{bioInput.length}/{MAX_BIO_LENGTH}</p>
+                <p className="text-[11px] text-muted-foreground text-right">{bioInput.length}/{MAX_BIO_LENGTH}</p>
               </div>
 
               <div className="flex gap-3">
                 <button
                   onClick={handleProfileSave}
                   disabled={profileBusy}
-                  className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition-colors disabled:opacity-50"
+                  className="rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-foreground hover:bg-gold-muted transition-colors disabled:opacity-50"
                 >
                   {profileBusy ? t('profile.saving') : t('profile.saveProfile')}
                 </button>
                 <button
                   onClick={() => setIsImportModalOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors"
                 >
                   <Upload size={14} />
                   Import from Letterboxd
@@ -417,14 +417,14 @@ const ProfilePage = () => {
           )}
 
           {statusMessage && (
-            <p className="text-xs text-zinc-300 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">{statusMessage}</p>
+            <p className="text-xs text-muted-foreground rounded-md border border-border/30 bg-background px-3 py-2">{statusMessage}</p>
           )}
         </section>
 
         {/* Find Friends section (own profile only) */}
         {profile.isSelf && (
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
-            <div className="flex items-center gap-2 text-zinc-200">
+          <section className="rounded-xl border border-border/30 bg-card/50 p-4 space-y-3">
+            <div className="flex items-center gap-2 text-foreground">
               <Search size={16} />
               <h3 className="font-semibold">{t('profile.findFriends')}</h3>
             </div>
@@ -433,11 +433,11 @@ const ProfilePage = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('profile.searchUsername')}
-                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
               />
               <button
                 type="submit"
-                className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 transition-colors"
+                className="rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-foreground hover:bg-gold-muted transition-colors"
               >
                 {searching ? t('profile.searching') : t('profile.search')}
               </button>
@@ -448,13 +448,13 @@ const ProfilePage = () => {
                 {searchResults.map((row) => (
                   <div
                     key={row.id}
-                    className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2"
+                    className="flex items-center justify-between rounded-lg border border-border/30 bg-background px-3 py-2"
                   >
                     <Link to={`/profile/${row.id}`} className="flex items-center gap-2 min-w-0">
                       <img
                         src={row.avatarUrl}
                         alt={row.username}
-                        className="w-7 h-7 rounded-md object-cover bg-zinc-800"
+                        className="w-7 h-7 rounded-md object-cover bg-secondary"
                       />
                       <span className="text-sm font-medium truncate">{row.displayName ?? row.username}</span>
                     </Link>
@@ -462,7 +462,7 @@ const ProfilePage = () => {
                       <button
                         onClick={() => handleSearchUnfollow(row.id)}
                         disabled={searchActionUserId === row.id}
-                        className="inline-flex items-center gap-1 rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
                       >
                         <UserMinus size={12} />
                         {t('profile.unfollow')}
@@ -483,7 +483,7 @@ const ProfilePage = () => {
             )}
 
             {searchAttempted && !searching && searchResults.length === 0 && (
-              <p className="text-xs text-zinc-500 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2">
+              <p className="text-xs text-muted-foreground rounded-md border border-border/30 bg-background px-3 py-2">
                 {t('profile.noUsersFound')}
               </p>
             )}
@@ -491,12 +491,12 @@ const ProfilePage = () => {
         )}
 
         {!canSeeFullProfile && (
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-6">
+          <section className="rounded-xl border border-border/30 bg-card/50 p-6">
             <div className="flex items-center gap-2">
-              <Users size={16} className="text-zinc-400" />
+              <Users size={16} className="text-muted-foreground" />
               <h2 className="font-semibold">{t('profile.friendsOnly')}</h2>
             </div>
-            <p className="text-zinc-400 text-sm mt-2">
+            <p className="text-muted-foreground text-sm mt-2">
               {t('profile.friendsOnlyHint')}
             </p>
           </section>
@@ -505,56 +505,56 @@ const ProfilePage = () => {
         {canSeeFullProfile && (
           <>
             <section className="grid md:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+              <div className="rounded-xl border border-border/30 bg-card/50 p-4">
                 <h2 className="font-semibold mb-3">{t('profile.followers')}</h2>
                 {followers.length === 0 ? (
-                  <p className="text-sm text-zinc-500">{t('profile.noFollowers')}</p>
+                  <p className="text-sm text-muted-foreground">{t('profile.noFollowers')}</p>
                 ) : (
                   <div className="space-y-2">
                     {followers.map((row) => (
                       <Link
                         key={row.id}
                         to={`/profile/${row.id}`}
-                        className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 hover:border-zinc-600 transition-colors"
+                        className="flex items-center gap-3 rounded-lg border border-border/30 bg-background px-3 py-2 hover:border-border transition-colors"
                       >
                         <img
                           src={row.avatarUrl}
                           alt={row.username}
-                          className="w-8 h-8 rounded-lg object-cover bg-zinc-800"
+                          className="w-8 h-8 rounded-lg object-cover bg-secondary"
                         />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{row.displayName ?? row.username}</p>
-                          <p className="text-xs text-zinc-500 truncate">@{row.username}</p>
+                          <p className="text-xs text-muted-foreground truncate">@{row.username}</p>
                         </div>
-                        <p className="text-xs text-zinc-500">{relativeDate(row.followedAt ?? '')}</p>
+                        <p className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '')}</p>
                       </Link>
                     ))}
                   </div>
                 )}
               </div>
 
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+              <div className="rounded-xl border border-border/30 bg-card/50 p-4">
                 <h2 className="font-semibold mb-3">{t('profile.following')}</h2>
                 {following.length === 0 ? (
-                  <p className="text-sm text-zinc-500">{t('profile.notFollowing')}</p>
+                  <p className="text-sm text-muted-foreground">{t('profile.notFollowing')}</p>
                 ) : (
                   <div className="space-y-2">
                     {following.map((row) => (
                       <Link
                         key={row.id}
                         to={`/profile/${row.id}`}
-                        className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 hover:border-zinc-600 transition-colors"
+                        className="flex items-center gap-3 rounded-lg border border-border/30 bg-background px-3 py-2 hover:border-border transition-colors"
                       >
                         <img
                           src={row.avatarUrl}
                           alt={row.username}
-                          className="w-8 h-8 rounded-lg object-cover bg-zinc-800"
+                          className="w-8 h-8 rounded-lg object-cover bg-secondary"
                         />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{row.displayName ?? row.username}</p>
-                          <p className="text-xs text-zinc-500 truncate">@{row.username}</p>
+                          <p className="text-xs text-muted-foreground truncate">@{row.username}</p>
                         </div>
-                        <p className="text-xs text-zinc-500">{relativeDate(row.followedAt ?? '')}</p>
+                        <p className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '')}</p>
                       </Link>
                     ))}
                   </div>
@@ -564,7 +564,7 @@ const ProfilePage = () => {
 
             {profile && user && (
               <ErrorBoundary>
-              <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+              <section className="rounded-xl border border-border/30 bg-card/50 p-4">
                 <JournalHomeView
                   userId={profile.id}
                   currentUserId={user.id}

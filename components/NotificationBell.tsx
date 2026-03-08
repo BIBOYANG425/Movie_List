@@ -10,10 +10,10 @@ const NOTIF_ICONS: Record<NotificationType, { icon: React.ReactNode; color: stri
     party_invite: { icon: <Tv size={14} />, color: 'text-violet-400' },
     party_rsvp: { icon: <Check size={14} />, color: 'text-emerald-400' },
     poll_vote: { icon: <Vote size={14} />, color: 'text-pink-400' },
-    poll_closed: { icon: <Vote size={14} />, color: 'text-amber-400' },
-    list_like: { icon: <List size={14} />, color: 'text-indigo-400' },
-    badge_unlock: { icon: <Award size={14} />, color: 'text-amber-400' },
-    group_invite: { icon: <UserPlus size={14} />, color: 'text-indigo-400' },
+    poll_closed: { icon: <Vote size={14} />, color: 'text-gold' },
+    list_like: { icon: <List size={14} />, color: 'text-accent' },
+    badge_unlock: { icon: <Award size={14} />, color: 'text-gold' },
+    group_invite: { icon: <UserPlus size={14} />, color: 'text-accent' },
     ranking_comment: { icon: <MessageCircle size={14} />, color: 'text-emerald-400' },
     journal_tag: { icon: <Film size={14} />, color: 'text-purple-400' },
 };
@@ -84,41 +84,41 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) =>
         <div className="relative" ref={dropdownRef}>
             <button
                 onClick={handleOpen}
-                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 transition-colors relative"
+                className="p-2 rounded-lg text-muted-foreground hover:text-muted-foreground hover:bg-card transition-colors relative"
                 title="Notifications"
             >
                 <Bell size={20} />
                 {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 text-[9px] font-bold text-white flex items-center justify-center animate-pulse">
+                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 text-[9px] font-bold text-foreground flex items-center justify-center animate-pulse">
                         {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                 )}
             </button>
 
             {open && (
-                <div className="absolute right-0 top-full mt-2 w-80 max-h-[420px] overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50">
-                    <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-4 py-2.5 flex items-center justify-between">
+                <div className="absolute right-0 top-full mt-2 w-80 max-h-[420px] overflow-y-auto bg-card border border-border rounded-xl shadow-2xl z-50">
+                    <div className="sticky top-0 bg-card border-b border-border px-4 py-2.5 flex items-center justify-between">
                         <h3 className="text-sm font-bold">{t('notifications.title')}</h3>
-                        <span className="text-[10px] text-zinc-500">{notifications.length} {t('notifications.recent')}</span>
+                        <span className="text-[10px] text-muted-foreground">{notifications.length} {t('notifications.recent')}</span>
                     </div>
 
                     {loading ? (
                         <div className="flex items-center justify-center py-8">
-                            <div className="w-5 h-5 border-2 border-zinc-600 border-t-transparent rounded-full animate-spin" />
+                            <div className="w-5 h-5 border-2 border-border border-t-transparent rounded-full animate-spin" />
                         </div>
                     ) : notifications.length === 0 ? (
-                        <div className="text-center py-8 text-zinc-500">
+                        <div className="text-center py-8 text-muted-foreground">
                             <Bell size={24} className="mx-auto mb-2 opacity-40" />
                             <p className="text-xs">{t('notifications.empty')}</p>
                         </div>
                     ) : (
-                        <div className="divide-y divide-zinc-800/50">
+                        <div className="divide-y divide-border/50">
                             {notifications.map((notif) => {
                                 const style = NOTIF_ICONS[notif.type] || NOTIF_ICONS.new_follower;
                                 return (
                                     <div
                                         key={notif.id}
-                                        className={`flex items-start gap-3 px-4 py-3 hover:bg-zinc-800/50 transition-colors ${!notif.isRead ? 'bg-zinc-800/20' : ''
+                                        className={`flex items-start gap-3 px-4 py-3 hover:bg-secondary/30 transition-colors ${!notif.isRead ? 'bg-secondary/20' : ''
                                             }`}
                                     >
                                         {/* Actor avatar or icon */}
@@ -128,25 +128,25 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) =>
                                                     <img src={notif.actorAvatar} alt="" className="w-full h-full object-cover" />
                                                 </div>
                                             ) : (
-                                                <div className={`w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center ${style.color}`}>
+                                                <div className={`w-8 h-8 rounded-full bg-secondary flex items-center justify-center ${style.color}`}>
                                                     {style.icon}
                                                 </div>
                                             )}
                                         </div>
 
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-xs text-zinc-200 leading-relaxed">
+                                            <p className="text-xs text-foreground leading-relaxed">
                                                 {notif.actorUsername && (
                                                     <span className="font-semibold">{notif.actorUsername} </span>
                                                 )}
                                                 {notif.title}
                                             </p>
                                             {notif.body && (
-                                                <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{notif.body}</p>
+                                                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{notif.body}</p>
                                             )}
                                         </div>
 
-                                        <span className="text-[10px] text-zinc-600 flex-shrink-0 mt-0.5">
+                                        <span className="text-[10px] text-muted-foreground/60 flex-shrink-0 mt-0.5">
                                             {timeAgo(notif.createdAt)}
                                         </span>
 
