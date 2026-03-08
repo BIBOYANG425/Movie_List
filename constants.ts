@@ -49,7 +49,7 @@ export const BRACKET_LABELS: Record<Bracket, string> = {
 };
 
 /** Scores are hidden until the user has ranked at least this many movies. */
-export const MIN_MOVIES_FOR_SCORES = 10;
+export const MIN_MOVIES_FOR_SCORES = 5;
 
 /**
  * Sticky-tier tolerance (maximum). Actual tolerance scales down as the list

@@ -83,8 +83,14 @@ const MovieOnboardingPage: React.FC = () => {
     useEffect(() => {
         setSessionId(crypto.randomUUID());
 
+        // Always check localStorage first — anonymous picks may exist from before sign-up
+        let localPicks: RankedItem[] = [];
+        try {
+            localPicks = JSON.parse(localStorage.getItem(ONBOARDING_STORAGE_KEY) || '[]');
+        } catch { /* ignore */ }
+
         if (user) {
-            // Authenticated: load from Supabase
+            // Authenticated: load from Supabase, merging any localStorage picks
             (async () => {
                 const { data } = await supabase
                     .from('user_rankings')
@@ -92,29 +98,50 @@ const MovieOnboardingPage: React.FC = () => {
                     .eq('user_id', user.id)
                     .order('tier')
                     .order('rank_position');
-                if (data) {
-                    setRankedItems(data.map((row: any): RankedItem => ({
-                        id: row.tmdb_id,
-                        title: row.title,
-                        year: row.year ?? '',
-                        posterUrl: row.poster_url ?? '',
-                        type: row.type as MediaType,
-                        genres: row.genres ?? [],
-                        director: row.director,
-                        tier: row.tier as Tier,
-                        rank: row.rank_position,
-                        bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
-                        notes: row.notes,
-                    })));
+
+                const dbItems: RankedItem[] = (data ?? []).map((row: any): RankedItem => ({
+                    id: row.tmdb_id,
+                    title: row.title,
+                    year: row.year ?? '',
+                    posterUrl: row.poster_url ?? '',
+                    type: row.type as MediaType,
+                    genres: row.genres ?? [],
+                    director: row.director,
+                    tier: row.tier as Tier,
+                    rank: row.rank_position,
+                    bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
+                    notes: row.notes,
+                }));
+
+                if (dbItems.length > 0) {
+                    setRankedItems(dbItems);
+                } else if (localPicks.length > 0) {
+                    // New account with pre-signup picks: migrate to Supabase
+                    setRankedItems(localPicks);
+                    const rows = localPicks.map(item => ({
+                        user_id: user.id,
+                        tmdb_id: item.id,
+                        title: item.title,
+                        year: item.year,
+                        poster_url: item.posterUrl,
+                        type: item.type,
+                        genres: item.genres,
+                        director: item.director ?? null,
+                        tier: item.tier,
+                        rank_position: item.rank,
+                        bracket: item.bracket,
+                        primary_genre: item.genres[0] ?? null,
+                        notes: item.notes ?? null,
+                        updated_at: new Date().toISOString(),
+                    }));
+                    await supabase.from('user_rankings').upsert(rows, { onConflict: 'user_id,tmdb_id' });
+                    localStorage.removeItem(ONBOARDING_STORAGE_KEY);
                 }
                 setLoading(false);
             })();
         } else {
             // Anonymous: load from localStorage
-            try {
-                const stored = JSON.parse(localStorage.getItem(ONBOARDING_STORAGE_KEY) || '[]');
-                if (stored.length > 0) setRankedItems(stored);
-            } catch { /* ignore */ }
+            if (localPicks.length > 0) setRankedItems(localPicks);
             setLoading(false);
         }
     }, [user]);
