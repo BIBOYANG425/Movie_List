@@ -1951,9 +1951,11 @@ export async function getTrendingAmongFriends(
  */
 export async function getGenreProfile(
   userId: string,
+  mediaType: 'movie' | 'tv_season' = 'movie',
 ): Promise<GenreProfileItem[]> {
+  const rankingTable = mediaType === 'tv_season' ? 'tv_rankings' : 'user_rankings';
   const { data: rankings } = await supabase
-    .from('user_rankings')
+    .from(rankingTable)
     .select('genres, tier')
     .eq('user_id', userId);
 
@@ -1992,6 +1994,130 @@ export async function getGenreProfile(
 
   items.sort((a, b) => b.count - a.count);
   return items;
+}
+
+async function getMediaSocialStats(
+  currentUserId: string,
+  tmdbId: string,
+  rankingTable: 'user_rankings' | 'tv_rankings',
+): Promise<MovieSocialStats | null> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+
+  try {
+    const { data: follows, error: followsError } = await supabase
+      .from('friend_follows')
+      .select('following_id')
+      .eq('follower_id', currentUserId);
+
+    if (followsError || !follows) return null;
+
+    const friendIds = follows.map((f) => f.following_id);
+    if (friendIds.length === 0) {
+      return {
+        movieId: tmdbId,
+        timesRanked: 0,
+        friendsWatched: 0,
+        friendAvatars: [],
+        moodConsensus: [],
+      };
+    }
+
+    const { data: friendRankings, error: rankingsError } = await supabase
+      .from(rankingTable)
+      .select('user_id, rank_position, tier, profiles:user_id(username, avatar_url)')
+      .eq('tmdb_id', tmdbId)
+      .in('user_id', friendIds);
+
+    if (rankingsError) return null;
+
+    const friendsWatched = friendRankings?.length || 0;
+    const friendAvatars = (friendRankings || [])
+      .map((r) => (r.profiles as any)?.avatar_url)
+      .filter(Boolean)
+      .slice(0, 5);
+
+    let avgFriendRankPosition: number | undefined;
+    if (friendsWatched > 0) {
+      const sum = friendRankings!.reduce((acc, r) => acc + r.rank_position, 0);
+      avgFriendRankPosition = Math.round(sum / friendsWatched);
+    }
+
+    const { data: friendReviews } = await supabase
+      .from('movie_reviews')
+      .select('user_id, body, profiles:user_id(username, avatar_url)')
+      .eq('media_item_id', tmdbId)
+      .in('user_id', friendIds)
+      .order('like_count', { ascending: false })
+      .limit(1);
+
+    let topFriendReview;
+    if (friendReviews && friendReviews.length > 0) {
+      const rev = friendReviews[0];
+      const rankData = friendRankings?.find((r) => r.user_id === rev.user_id);
+      topFriendReview = {
+        userId: rev.user_id,
+        username: (rev.profiles as any).username,
+        avatarUrl: (rev.profiles as any).avatar_url,
+        body: rev.body,
+        rankPosition: rankData?.rank_position ?? 0,
+        tier: rankData?.tier ?? Tier.C,
+      };
+    }
+
+    const moodConsensus: MoodTag[] = [];
+
+    const { count: timesRanked } = await supabase
+      .from(rankingTable)
+      .select('*', { count: 'exact', head: true })
+      .eq('tmdb_id', tmdbId);
+
+    const { data: activityData, error: activityError } = await supabase
+      .from('activity_events')
+      .select('id, actor_id, event_type, media_tier, created_at, profiles:actor_id(username, avatar_url)')
+      .eq('media_tmdb_id', tmdbId)
+      .in('actor_id', friendIds)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    const recentActivity: FriendActivityItem[] = [];
+    if (!activityError && activityData) {
+      activityData.forEach((event) => {
+        let action: FriendActivityItem['action'] | null = null;
+
+        if (event.event_type === 'ranking_add' || event.event_type === 'ranking_move') action = 'ranked';
+        else if (event.event_type === 'review' || event.event_type === 'review_add') action = 'reviewed';
+        else if (event.event_type === 'watchlist_add') action = 'bookmarked';
+
+        if (action) {
+          recentActivity.push({
+            id: event.id,
+            userId: event.actor_id,
+            username: (event.profiles as any)?.username || 'A friend',
+            avatarUrl: (event.profiles as any)?.avatar_url,
+            action,
+            tier: event.media_tier as Tier | undefined,
+            timestamp: event.created_at,
+          });
+        }
+      });
+    }
+
+    return {
+      movieId: tmdbId,
+      timesRanked: timesRanked || 0,
+      friendsWatched,
+      friendAvatars,
+      avgFriendRankPosition,
+      topFriendReview,
+      moodConsensus,
+      divisiveMatchup: undefined,
+      globalAvgRankPosition: undefined,
+      recentActivity,
+    };
+  } catch (err) {
+    console.error('Failed to fetch media social stats:', err);
+    return null;
+  }
 }
 
 // ── Phase 3: Watch Parties ──────────────────────────────────────────────────
@@ -2705,133 +2831,9 @@ export async function checkAndGrantBadges(userId: string): Promise<string[]> {
 // ── Phase 9: Full Movie Card (Detail View) ───────────────────────────────────
 
 export async function getMovieSocialStats(currentUserId: string, tmdbId: string): Promise<MovieSocialStats | null> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  return getMediaSocialStats(currentUserId, tmdbId, 'user_rankings');
+}
 
-  try {
-    // 1. Get user's following list
-    const { data: follows, error: followsError } = await supabase
-      .from('friend_follows')
-      .select('following_id')
-      .eq('follower_id', currentUserId);
-
-    if (followsError || !follows) return null;
-
-    const friendIds = follows.map(f => f.following_id);
-    if (friendIds.length === 0) {
-      return {
-        movieId: tmdbId,
-        timesRanked: 0,
-        friendsWatched: 0,
-        friendAvatars: [],
-        moodConsensus: [],
-      };
-    }
-
-    // 2. Get friends' rankings for this movie
-    const { data: friendRankings, error: rankingsError } = await supabase
-      .from('user_rankings')
-      .select('user_id, rank_position, tier, profiles:user_id(username, avatar_url)')
-      .eq('tmdb_id', tmdbId)
-      .in('user_id', friendIds);
-
-    if (rankingsError) return null;
-
-    const friendsWatched = friendRankings?.length || 0;
-    const friendAvatars = (friendRankings || [])
-      .map(r => (r.profiles as any)?.avatar_url)
-      .filter(Boolean)
-      .slice(0, 5);
-
-    let avgFriendRankPosition: number | undefined = undefined;
-    if (friendsWatched > 0) {
-      const sum = friendRankings!.reduce((acc, r) => acc + r.rank_position, 0);
-      avgFriendRankPosition = Math.round(sum / friendsWatched);
-    }
-
-    // 3. Get friends' reviews for this movie
-    const { data: friendReviews, error: reviewsError } = await supabase
-      .from('movie_reviews')
-      .select('user_id, body, profiles:user_id(username, avatar_url)')
-      .eq('media_item_id', tmdbId)
-      .in('user_id', friendIds)
-      .order('like_count', { ascending: false })
-      .limit(1);
-
-    let topFriendReview;
-    if (friendReviews && friendReviews.length > 0) {
-      const rev = friendReviews[0];
-      const rankData = friendRankings?.find(r => r.user_id === rev.user_id);
-      topFriendReview = {
-        userId: rev.user_id,
-        username: (rev.profiles as any).username,
-        avatarUrl: (rev.profiles as any).avatar_url,
-        body: rev.body,
-        rankPosition: rankData?.rank_position ?? 0,
-        tier: rankData?.tier ?? Tier.C,
-      };
-    }
-
-    // 4. (stub) Global metrics and mood consensus
-    // In a real app, mood consensus would parse the review body for emojis or 
-    // fetch from a `movie_moods` table.
-    const moodConsensus: MoodTag[] = [];
-
-    // Global average rank and times ranked would ideally be aggregated offline 
-    // or via a database view/RPC. For now, we'll fetch a small count to simulate it.
-    const { count: timesRanked } = await supabase
-      .from('user_rankings')
-      .select('*', { count: 'exact', head: true })
-      .eq('tmdb_id', tmdbId);
-
-    // Divisive matchup would also be a complex query. Stubbed for MVP.
-    const divisiveMatchup = undefined;
-
-    // 5. Get recent friend activity stream for this movie
-    const { data: activityData, error: activityError } = await supabase
-      .from('activity_events')
-      .select('id, actor_id, event_type, media_tier, created_at, profiles:actor_id(username, avatar_url)')
-      .eq('media_tmdb_id', tmdbId)
-      .in('actor_id', friendIds)
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    const recentActivity: FriendActivityItem[] = [];
-    if (!activityError && activityData) {
-      activityData.forEach(event => {
-        let action: FriendActivityItem['action'] | null = null;
-
-        if (event.event_type === 'ranking_add' || event.event_type === 'ranking_move') action = 'ranked';
-        else if (event.event_type === 'review' || event.event_type === 'review_add') action = 'reviewed';
-        else if (event.event_type === 'watchlist_add') action = 'bookmarked';
-
-        if (action) {
-          recentActivity.push({
-            id: event.id,
-            userId: event.actor_id,
-            username: (event.profiles as any)?.username || 'A friend',
-            avatarUrl: (event.profiles as any)?.avatar_url,
-            action,
-            tier: event.media_tier as Tier | undefined,
-            timestamp: event.created_at
-          });
-        }
-      });
-    }
-
-    return {
-      movieId: tmdbId,
-      timesRanked: timesRanked || 0,
-      friendsWatched,
-      friendAvatars,
-      avgFriendRankPosition,
-      topFriendReview,
-      moodConsensus,
-      divisiveMatchup,
-      globalAvgRankPosition: undefined, // Stubbed for now
-      recentActivity,
-    };
-  } catch (err) {
-    console.error('Failed to fetch movie social stats:', err);
-    return null;
-  }
+export async function getTVSocialStats(currentUserId: string, tmdbId: string): Promise<MovieSocialStats | null> {
+  return getMediaSocialStats(currentUserId, tmdbId, 'tv_rankings');
 }

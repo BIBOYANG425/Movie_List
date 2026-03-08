@@ -36,6 +36,19 @@ async function fetchChineseTitles(tmdbIds: string[]): Promise<Record<string, Tit
     const batch = missing.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async (id) => {
+        // Handle TV IDs: "tv_{showId}_s{seasonNum}" → fetch /tv/{showId}
+        const tvMatch = id.match(/^tv_(\d+)_s\d+$/);
+        if (tvMatch) {
+          const showId = tvMatch[1];
+          const res = await fetch(
+            `${TMDB_BASE}/tv/${showId}?api_key=${apiKey}&language=zh-CN`,
+          );
+          if (!res.ok) return null;
+          const data = await res.json();
+          return { id, title: data.name as string, overview: data.overview as string | undefined };
+        }
+
+        // Handle movie IDs: "tmdb_{id}" → fetch /movie/{id}
         const numericId = id.replace('tmdb_', '');
         const res = await fetch(
           `${TMDB_BASE}/movie/${numericId}?api_key=${apiKey}&language=zh-CN`,

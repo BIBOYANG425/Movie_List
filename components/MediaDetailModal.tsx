@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { RankedItem, Tier, MovieSocialStats, StreamingAvailability, Bracket } from '../types';
-import { X, Film, Star, MessageCircle, Link, StickyNote, ThumbsUp, ChevronRight } from 'lucide-react';
-import { getExtendedMovieDetails, TMDBMovie } from '../services/tmdbService';
-import { getMovieSocialStats } from '../services/friendsService';
+import { X, Star, MessageCircle, Link, ChevronRight } from 'lucide-react';
+import { getExtendedMovieDetails, getTVSeasonDetails, getTVShowDetails, TMDBMovie } from '../services/tmdbService';
+import { getMovieSocialStats, getTVSocialStats } from '../services/friendsService';
 import { TIER_COLORS, TIER_LABELS } from '../constants';
 import { supabase } from '../lib/supabase';
 
@@ -15,25 +15,66 @@ interface MediaDetailModalProps {
     onOpenJournal?: (tmdbId: string) => void;
 }
 
+interface TVSeasonViewModel {
+    title: string;
+    year: string;
+    posterUrl: string;
+    backdropUrl?: string | null;
+    overview: string;
+    genres: string[];
+    creator?: string;
+    seasonTitle?: string;
+    episodeCount?: number;
+    voteAverage?: number;
+}
+
+function parseTVSeasonId(id: string): { showTmdbId: number; seasonNumber: number } | null {
+    const match = id.match(/^tv_(\d+)_s(\d+)$/);
+    if (!match) return null;
+    return {
+        showTmdbId: Number(match[1]),
+        seasonNumber: Number(match[2]),
+    };
+}
+
 export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem, tmdbId, onClose, onSaveForLater, onStartRanking, onOpenJournal }) => {
-    const defaultMovie: TMDBMovie | null = initialItem ? {
+    const tvTarget = initialItem?.type === 'tv_season'
+        ? {
+            showTmdbId: initialItem.showTmdbId ?? parseTVSeasonId(tmdbId)?.showTmdbId ?? 0,
+            seasonNumber: initialItem.seasonNumber ?? parseTVSeasonId(tmdbId)?.seasonNumber ?? 0,
+        }
+        : parseTVSeasonId(tmdbId);
+    const isTVSeason = Boolean(tvTarget);
+    const rankingTable = isTVSeason ? 'tv_rankings' : 'user_rankings';
+
+    const defaultMovie: TMDBMovie | null = initialItem && !isTVSeason ? {
         ...initialItem,
-        tmdbId: parseInt(initialItem.id, 10),
+        type: 'movie' as const,
+        tmdbId: parseInt(initialItem.id.replace(/^tmdb_/, ''), 10),
         overview: ''
+    } : null;
+    const defaultTVDetails: TVSeasonViewModel | null = isTVSeason && initialItem ? {
+        title: initialItem.title,
+        year: initialItem.year,
+        posterUrl: initialItem.posterUrl,
+        backdropUrl: null,
+        overview: '',
+        genres: initialItem.genres,
+        creator: initialItem.creator,
+        seasonTitle: initialItem.seasonTitle,
+        episodeCount: initialItem.episodeCount,
     } : null;
 
     const [movie, setMovie] = useState<TMDBMovie | null>(defaultMovie);
-    const [extendedDetailsLoaded, setExtendedDetailsLoaded] = useState(false);
+    const [tvDetails, setTvDetails] = useState<TVSeasonViewModel | null>(defaultTVDetails);
     const [streaming, setStreaming] = useState<StreamingAvailability | null>(null);
-    const [director, setDirector] = useState<string | null>(initialItem?.director ?? null);
+    const [director, setDirector] = useState<string | null>(initialItem?.director ?? initialItem?.creator ?? null);
 
     const [rankedItem, setRankedItem] = useState<RankedItem | null>(initialItem ?? null);
     const [rankContext, setRankContext] = useState<{ above: string, below: string, date: string } | null>(null);
 
     const [socialStats, setSocialStats] = useState<MovieSocialStats | null>(null);
     const [socialLoading, setSocialLoading] = useState(true);
-
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
     useEffect(() => {
         // Esc to close
@@ -45,84 +86,129 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
     }, [onClose]);
 
     useEffect(() => {
+        let didCancel = false;
+
         const fetchData = async () => {
             const { data: userData } = await supabase.auth.getUser();
             const userId = userData.user?.id;
-            if (userId) setCurrentUserId(userId);
+            if (didCancel) return;
 
-            // Fetch Extended TMDB (Backdrop, Watch Providers, Runtime)
-            if (!movie?.backdropUrl || !streaming) {
+            if (isTVSeason && tvTarget?.showTmdbId && tvTarget.seasonNumber) {
+                const [show, season] = await Promise.all([
+                    getTVShowDetails(tvTarget.showTmdbId),
+                    getTVSeasonDetails(tvTarget.showTmdbId, tvTarget.seasonNumber, initialItem?.title ?? ''),
+                ]);
+
+                if (!didCancel && (show || season)) {
+                    setTvDetails((prev) => ({
+                        title: show?.name ?? prev?.title ?? initialItem?.title ?? '',
+                        year: season?.airDate?.slice(0, 4) ?? show?.year ?? prev?.year ?? initialItem?.year ?? '',
+                        posterUrl: season?.posterUrl ?? show?.posterUrl ?? prev?.posterUrl ?? initialItem?.posterUrl ?? '',
+                        backdropUrl: show?.backdropUrl ?? prev?.backdropUrl ?? null,
+                        overview: season?.overview || show?.overview || prev?.overview || '',
+                        genres: show?.genres ?? prev?.genres ?? initialItem?.genres ?? [],
+                        creator: show?.creators[0] ?? prev?.creator ?? initialItem?.creator,
+                        seasonTitle: season?.name ?? prev?.seasonTitle ?? initialItem?.seasonTitle,
+                        episodeCount: season?.episodeCount ?? prev?.episodeCount ?? initialItem?.episodeCount,
+                        voteAverage: show?.voteAverage ?? prev?.voteAverage,
+                    }));
+                    setDirector(show?.creators[0] ?? initialItem?.creator ?? null);
+                }
+            } else if (!movie?.backdropUrl || !streaming) {
                 // tmdbId might be "tmdb_123" or "123"
                 const numericId = parseInt(tmdbId.replace('tmdb_', ''), 10);
                 if (!isNaN(numericId)) {
                     const extended = await getExtendedMovieDetails(numericId);
-                    if (extended) {
+                    if (!didCancel && extended) {
                         setMovie(prev => ({ ...prev, ...extended.movie } as TMDBMovie));
                         setStreaming(extended.streaming);
                         if (extended.director) setDirector(extended.director);
-                        setExtendedDetailsLoaded(true);
                     }
                 }
             }
 
-            if (userId) {
-                // Fetch User's specific ranking context (what did they rank above/below?)
-                const { data: ranks } = await supabase
-                    .from('user_rankings')
-                    .select('*')
-                    .eq('user_id', userId)
-                    .order('tier')
-                    .order('rank_position');
+            if (!userId) {
+                if (!didCancel) setSocialLoading(false);
+                return;
+            }
 
-                if (ranks) {
-                    const myItemIndex = ranks.findIndex(r => r.tmdb_id === tmdbId);
-                    if (myItemIndex !== -1) {
-                        const item = ranks[myItemIndex];
-                        if (!rankedItem) {
-                            setRankedItem({
-                                id: item.tmdb_id,
-                                title: item.title,
-                                year: item.year,
-                                posterUrl: item.poster_url,
-                                type: 'movie',
-                                genres: item.genres,
-                                director: item.director,
-                                tier: item.tier as Tier,
-                                rank: item.rank_position,
-                                bracket: item.bracket as Bracket,
-                                notes: item.notes,
-                            });
-                        }
+            // Fetch User's specific ranking context from the correct table
+            const { data: ranks } = await supabase
+                .from(rankingTable)
+                .select('*')
+                .eq('user_id', userId)
+                .order('tier')
+                .order('rank_position');
 
-                        // Compute "Ranked above X, below Y" within same tier
-                        const sameTier = ranks.filter(r => r.tier === item.tier).sort((a, b) => a.rank_position - b.rank_position);
-                        const subIndex = sameTier.findIndex(r => r.tmdb_id === tmdbId);
-
-                        let aboveStr = '';
-                        let belowStr = '';
-                        if (subIndex > 0) aboveStr = sameTier[subIndex - 1].title;
-                        if (subIndex < sameTier.length - 1) belowStr = sameTier[subIndex + 1].title;
-
-                        setRankContext({
-                            above: aboveStr,
-                            below: belowStr,
-                            date: new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            if (ranks) {
+                const myItemIndex = ranks.findIndex(r => r.tmdb_id === tmdbId);
+                if (myItemIndex !== -1) {
+                    const item = ranks[myItemIndex];
+                    if (!rankedItem) {
+                        setRankedItem({
+                            id: item.tmdb_id,
+                            title: item.title,
+                            year: item.year,
+                            posterUrl: item.poster_url,
+                            type: isTVSeason ? 'tv_season' : 'movie',
+                            genres: item.genres,
+                            director: isTVSeason ? undefined : item.director,
+                            creator: isTVSeason ? item.creator : undefined,
+                            showTmdbId: isTVSeason ? item.show_tmdb_id : undefined,
+                            seasonNumber: isTVSeason ? item.season_number : undefined,
+                            seasonTitle: isTVSeason ? item.season_title : undefined,
+                            episodeCount: isTVSeason ? item.episode_count : undefined,
+                            tier: item.tier as Tier,
+                            rank: item.rank_position,
+                            bracket: item.bracket as Bracket,
+                            notes: item.notes,
                         });
                     }
-                }
 
-                // Fetch Social Stats
-                setSocialLoading(true);
-                const stats = await getMovieSocialStats(userId, tmdbId);
+                    // Compute "Ranked above X, below Y" within same tier
+                    const sameTier = ranks.filter(r => r.tier === item.tier).sort((a, b) => a.rank_position - b.rank_position);
+                    const subIndex = sameTier.findIndex(r => r.tmdb_id === tmdbId);
+
+                    let aboveStr = '';
+                    let belowStr = '';
+                    if (subIndex > 0) aboveStr = sameTier[subIndex - 1].title;
+                    if (subIndex < sameTier.length - 1) belowStr = sameTier[subIndex + 1].title;
+
+                    setRankContext({
+                        above: aboveStr,
+                        below: belowStr,
+                        date: new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    });
+                }
+            }
+
+            setSocialLoading(true);
+            const stats = isTVSeason
+                ? await getTVSocialStats(userId, tmdbId)
+                : await getMovieSocialStats(userId, tmdbId);
+            if (!didCancel) {
                 setSocialStats(stats);
                 setSocialLoading(false);
             }
         };
 
         fetchData();
-    }, [tmdbId, initialItem]);
+        return () => {
+            didCancel = true;
+        };
+    }, [tmdbId, initialItem, isTVSeason, rankingTable, tvTarget?.showTmdbId, tvTarget?.seasonNumber]);
 
-    if (!movie) return null;
+    const detailTitle = isTVSeason ? (tvDetails?.title ?? initialItem?.title ?? '') : (movie?.title ?? '');
+    const detailYear = isTVSeason ? (tvDetails?.year ?? initialItem?.year ?? '') : (movie?.year ?? '');
+    const detailPosterUrl = isTVSeason ? (tvDetails?.posterUrl ?? initialItem?.posterUrl ?? '') : (movie?.posterUrl ?? '');
+    const detailBackdropUrl = isTVSeason ? (tvDetails?.backdropUrl ?? null) : (movie?.backdropUrl ?? null);
+    const detailGenres = isTVSeason ? (tvDetails?.genres ?? initialItem?.genres ?? []) : (movie?.genres ?? []);
+    const detailOverview = isTVSeason ? (tvDetails?.overview ?? '') : (movie?.overview ?? '');
+    const detailSeasonTitle = isTVSeason ? (tvDetails?.seasonTitle ?? initialItem?.seasonTitle) : undefined;
+    const detailEpisodeCount = isTVSeason ? (tvDetails?.episodeCount ?? initialItem?.episodeCount) : undefined;
+    const detailVoteAverage = isTVSeason ? tvDetails?.voteAverage : movie?.voteAverage;
+
+    if (!detailTitle) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md transition-opacity">
@@ -149,8 +235,8 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                     <div className="relative w-full pb-6 border-b border-white/10">
                         {/* Backdrop */}
                         <div className="absolute inset-0 h-80 bg-surface overflow-hidden">
-                            {movie.backdropUrl ? (
-                                <img src={movie.backdropUrl} className="w-full h-full object-cover opacity-60 mix-blend-screen animate-fade-in" />
+                            {detailBackdropUrl ? (
+                                <img src={detailBackdropUrl} className="w-full h-full object-cover opacity-60 mix-blend-screen animate-fade-in" />
                             ) : (
                                 <div className="w-full h-full animate-pulse bg-zinc-800" />
                             )}
@@ -159,22 +245,29 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
                         <div className="relative pt-32 px-6 flex flex-col items-center">
                             <div className="w-32 sm:w-40 aspect-[2/3] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden border border-white/10 shrink-0">
-                                <img src={movie.posterUrl!} className="w-full h-full object-cover" />
+                                <img src={detailPosterUrl} className="w-full h-full object-cover" />
                             </div>
 
                             <h2 className="mt-5 text-3xl font-serif text-white text-center leading-tight tracking-tight">
-                                {movie.title}
+                                {detailTitle}
                             </h2>
 
+                            {isTVSeason && detailSeasonTitle && (
+                                <p className="mt-1 text-sm text-purple-400 font-medium text-center">
+                                    {detailSeasonTitle}
+                                    {detailEpisodeCount ? ` · ${detailEpisodeCount} episodes` : ''}
+                                </p>
+                            )}
+
                             <div className="mt-2 flex items-center justify-center gap-2 text-sm text-zinc-400">
-                                <span className="font-semibold text-zinc-300">{movie.year}</span>
+                                <span className="font-semibold text-zinc-300">{detailYear}</span>
                                 {director && (
                                     <>
                                         <span>·</span>
                                         <span>{director}</span>
                                     </>
                                 )}
-                                {movie.runtime && (
+                                {!isTVSeason && movie?.runtime && (
                                     <>
                                         <span>·</span>
                                         <span>{Math.floor(movie.runtime / 60)}h {movie.runtime % 60}m</span>
@@ -182,9 +275,9 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 )}
                             </div>
 
-                            {movie.genres && movie.genres.length > 0 && (
+                            {detailGenres.length > 0 && (
                                 <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-                                    {movie.genres.map(g => (
+                                    {detailGenres.map(g => (
                                         <span key={g} className="px-2.5 py-1 text-[11px] font-bold tracking-wider uppercase bg-white/5 border border-white/10 rounded-full text-zinc-300">
                                             {g}
                                         </span>
@@ -192,9 +285,9 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 </div>
                             )}
 
-                            {movie.overview && (
+                            {detailOverview && (
                                 <p className="mt-5 text-sm text-zinc-300 text-center leading-relaxed max-w-md">
-                                    {movie.overview}
+                                    {detailOverview}
                                 </p>
                             )}
 
@@ -220,7 +313,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                             <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Global Score</span>
                             <div className="flex items-center gap-1">
                                 <Star size={14} className="text-amber-500 fill-current" />
-                                <span className="text-xl font-black text-white">{movie.voteAverage?.toFixed(1) || '--'}</span>
+                                <span className="text-xl font-black text-white">{detailVoteAverage?.toFixed(1) || '--'}</span>
                             </div>
                         </div>
 
@@ -287,21 +380,25 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                         ) : (
                             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
                                 <h3 className="text-lg font-bold text-white mb-1">Not yet ranked</h3>
-                                <p className="text-sm text-zinc-400 mb-4">Add this movie to your lists to compare it to your favorites.</p>
-                                <div className="flex justify-center gap-3">
-                                    <button
-                                        onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
-                                        className="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-xl text-sm transition"
-                                    >
-                                        ✅ I've Watched This
-                                    </button>
-                                    <button
-                                        onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
-                                        className="px-5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-bold rounded-xl text-sm transition border border-white/10"
-                                    >
-                                        📌 Want-to-Watch
-                                    </button>
-                                </div>
+                                <p className="text-sm text-zinc-400 mb-4">
+                                    Add this {isTVSeason ? 'season' : 'movie'} to your lists to compare it to your favorites.
+                                </p>
+                                {!isTVSeason && (
+                                    <div className="flex justify-center gap-3">
+                                        <button
+                                            onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
+                                            className="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold rounded-xl text-sm transition"
+                                        >
+                                            ✅ I've Watched This
+                                        </button>
+                                        <button
+                                            onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
+                                            className="px-5 py-2.5 bg-white/10 hover:bg-white/15 text-white font-bold rounded-xl text-sm transition border border-white/10"
+                                        >
+                                            📌 Want-to-Watch
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -411,18 +508,29 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                         </>
                     ) : (
                         <>
-                            <button
-                                onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
-                                className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]"
-                            >
-                                ✅ Watched
-                            </button>
-                            <button
-                                onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
-                                className="px-6 bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]"
-                            >
-                                📌 Want-to-Watch
-                            </button>
+                            {isTVSeason ? (
+                                <button
+                                    onClick={onClose}
+                                    className="flex-1 bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]"
+                                >
+                                    Close
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => { if (movie && onStartRanking) onStartRanking(movie); }}
+                                        className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-[0.98]"
+                                    >
+                                        ✅ Watched
+                                    </button>
+                                    <button
+                                        onClick={() => { if (movie && onSaveForLater) onSaveForLater(movie); }}
+                                        className="px-6 bg-white/5 border border-white/10 text-white font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 hover:bg-white/10 active:scale-[0.98]"
+                                    >
+                                        📌 Want-to-Watch
+                                    </button>
+                                </>
+                            )}
                         </>
                     )}
                 </div>
