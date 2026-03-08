@@ -10,8 +10,8 @@ import { ALL_TMDB_GENRES, DEFAULT_POOL_SLOTS, SMART_SUGGESTION_THRESHOLD, TIER_W
 import { TasteProfile } from '../types';
 import { supabase } from '../lib/supabase';
 
-const TMDB_BASE = 'https://api.themoviedb.org/3';
-const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+export const TMDB_BASE = 'https://api.themoviedb.org/3';
+export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 const DEFAULT_TMDB_SEARCH_TIMEOUT_MS = 4500;
 
 /** Read the user's locale from localStorage and return the TMDB language code. */
@@ -21,7 +21,7 @@ function getTmdbLocale(): string {
 }
 
 // Full genre map from TMDB (stable — rarely changes)
-const GENRE_MAP: Record<number, string> = {
+export const GENRE_MAP: Record<number, string> = {
   28: 'Action',
   12: 'Adventure',
   16: 'Animation',
