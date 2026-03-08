@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { BarChart2, Bookmark, Compass, Film, LayoutGrid, Plus, Rss, RotateCcw, Tv, UserCircle2, UsersRound } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, RotateCcw, Tv, Film } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType, Bracket, ComparisonLogEntry } from '../types';
 import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE, BRACKETS, BRACKET_LABELS } from '../constants';
 import { computeTierScore, classifyBracket } from '../services/rankingAlgorithm';
@@ -22,6 +22,7 @@ import { JournalConversation } from '../components/JournalConversation';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Toast } from '../components/Toast';
 import { LanguageToggle } from '../components/LanguageToggle';
+import AppLayout from '../components/AppLayout';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
@@ -180,7 +181,7 @@ const RankingAppPage = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTVModalOpen, setIsTVModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'feed' | 'discover' | 'groups'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'feed' | 'discover' | 'groups' | 'journal' | 'achievements'>('ranking');
   const [groupSubTab, setGroupSubTab] = useState<'parties' | 'rankings' | 'polls' | 'lists' | 'badges'>('parties');
   const [mediaMode, setMediaMode] = useState<'movies' | 'tv'>('movies');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
@@ -897,153 +898,80 @@ const RankingAppPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-bg text-text font-sans pb-20">
-      <nav className="sticky top-0 z-40 h-14 px-8 flex items-center justify-between bg-bg/80 backdrop-blur-[24px] saturate-[1.4] border-b border-border transition-all duration-350">
-        <div className="flex items-center gap-7">
-          <Link
-            to="/"
-            className="flex items-center gap-2"
+  const handleViewChange = (view: string) => {
+    if (view === 'profile' && user) {
+      navigate(`/profile/${user.id}`);
+      return;
+    }
+    setActiveTab(view as typeof activeTab);
+  };
+
+  const topBar = (
+    <div className="sticky top-0 z-40 h-14 px-4 lg:px-8 flex items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/20">
+      <div className="flex items-center gap-4">
+        <h1 className="font-serif text-xl text-foreground tracking-tight">{t('ranking.myCanon')}</h1>
+        <div className="hidden md:flex bg-card/50 rounded-lg p-1 border border-border/30">
+          <button
+            onClick={() => setMediaMode('movies')}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'movies' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
           >
-            <div className="w-[22px] h-[22px] rounded-full bg-[conic-gradient(from_180deg,#A855F7,#3B82F6,#10B981,#F59E0B,#EF4444,#A855F7)] flex items-center justify-center shadow-[0_0_13.2px_rgba(168,85,247,0.15)]">
-              <div className="w-[8.8px] h-[8.8px] rounded-full bg-bg" />
-            </div>
-            <span className="font-serif text-[19px] text-cream tracking-[-0.03em]">spool</span>
-          </Link>
-
-          <div className="flex items-center gap-6">
-            <div className="hidden md:flex bg-card rounded-lg p-1 border border-border">
-              <button
-                onClick={() => setMediaMode('movies')}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'movies' ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
-              >
-                <Film size={13} />
-                {t('nav.movies')}
-              </button>
-              <button
-                onClick={() => setMediaMode('tv')}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'tv' ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
-              >
-                <Tv size={13} />
-                {t('nav.tv')}
-              </button>
-            </div>
-
-            <button
-              onClick={() => mediaMode === 'tv' ? setIsTVModalOpen(true) : setIsModalOpen(true)}
-              className="bg-cream text-bg px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 hover:opacity-90 transition-opacity"
-            >
-              <Plus size={16} />
-              <span className="hidden sm:inline">{t('nav.addItem')}</span>
-            </button>
-
-            <button
-              onClick={signOut}
-              title="Sign out"
-              className="text-text hover:text-cream text-[13px] font-medium transition-colors"
-            >
-              {t('nav.logOut')}
-            </button>
-            <LanguageToggle />
-            {user && (
-              <Link
-                to={`/profile/${user.id}`}
-                title={t('nav.myProfile')}
-                className="text-text hover:text-cream transition-colors"
-              >
-                <UserCircle2 size={18} />
-              </Link>
-            )}
-          </div>
+            <Film size={13} />
+            {t('nav.movies')}
+          </button>
+          <button
+            onClick={() => setMediaMode('tv')}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'tv' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <Tv size={13} />
+            {t('nav.tv')}
+          </button>
         </div>
-      </nav>
+      </div>
 
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-4xl font-serif text-cream mb-2 tracking-[-0.02em]">{t('ranking.myCanon')}</h1>
-            <p className="text-dim text-sm max-w-md">
-              {t('ranking.subtitle')}
-            </p>
-          </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => mediaMode === 'tv' ? setIsTVModalOpen(true) : setIsModalOpen(true)}
+          className="bg-gold text-background px-4 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 hover:bg-gold-muted transition-colors active:scale-95"
+        >
+          <Plus size={16} />
+          <span className="hidden sm:inline">{t('nav.addItem')}</span>
+        </button>
+        {user && <NotificationBell userId={user.id} />}
+        <LanguageToggle />
+        <button
+          onClick={handleReset}
+          title={t('tab.resetRankings')}
+          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors"
+        >
+          <RotateCcw size={18} />
+        </button>
+        <button
+          onClick={signOut}
+          title="Sign out"
+          className="text-muted-foreground hover:text-foreground text-[13px] font-medium transition-colors"
+        >
+          {t('nav.logOut')}
+        </button>
+      </div>
+    </div>
+  );
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab('ranking')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'ranking' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
-                }`}
-              title={t('tab.rankings')}
-            >
-              <LayoutGrid size={20} />
-            </button>
-            <button
-              onClick={() => setActiveTab('watchlist')}
-              className={`p-2 rounded-lg transition-colors relative ${activeTab === 'watchlist' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
-                }`}
-              title={t('tab.watchlist')}
-            >
-              <Bookmark size={20} />
-              {activeWatchlist.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 text-[9px] font-bold rounded-full bg-emerald-500 text-bg flex items-center justify-center">
-                  {activeWatchlist.length > 9 ? '9+' : activeWatchlist.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'stats' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
-                }`}
-              title={t('tab.stats')}
-            >
-              <BarChart2 size={20} />
-            </button>
-            <button
-              onClick={() => setActiveTab('feed')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'feed' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
-                }`}
-              title={t('tab.feed')}
-            >
-              <Rss size={20} />
-            </button>
-            <button
-              onClick={() => setActiveTab('discover')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'discover' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
-                }`}
-              title={t('tab.discover')}
-            >
-              <Compass size={20} />
-            </button>
-            <button
-              onClick={() => setActiveTab('groups')}
-              className={`p-2 rounded-lg transition-colors ${activeTab === 'groups' ? 'bg-elevated text-cream' : 'text-dim hover:bg-card'
-                }`}
-              title={t('tab.groups')}
-            >
-              <UsersRound size={20} />
-            </button>
-            {user && <NotificationBell userId={user.id} />}
-            <button
-              onClick={handleReset}
-              title={t('tab.resetRankings')}
-              className="p-2 rounded-lg text-muted hover:text-dim hover:bg-card transition-colors"
-            >
-              <RotateCcw size={18} />
-            </button>
-          </div>
-        </header>
+  return (
+    <AppLayout activeView={activeTab} onViewChange={handleViewChange} topBar={topBar}>
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
 
         {activeTab === 'ranking' && (
           <div className="space-y-4">
-            <div className="flex bg-card rounded-lg p-1 overflow-x-auto border border-border scrollbar-hide">
+            <div className="flex bg-card/50 rounded-lg p-1 overflow-x-auto border border-border/30 scrollbar-hide">
               <button
                 onClick={() => { setActiveBracket('all'); setActiveGenre(null); }}
-                className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === 'all' ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'}`}
+                className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === 'all' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 All
                 <span className="ml-1.5 text-[10px] opacity-50">{activeItems.length}</span>
@@ -1054,7 +982,7 @@ const RankingAppPage = () => {
                   <button
                     key={bracket}
                     onClick={() => { setActiveBracket(bracket); setActiveGenre(null); }}
-                    className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === bracket ? 'bg-elevated text-cream shadow' : 'text-dim hover:text-muted'} ${count === 0 ? 'opacity-40' : ''}`}
+                    className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === bracket ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'} ${count === 0 ? 'opacity-40' : ''}`}
                   >
                     {BRACKET_LABELS[bracket]}
                     <span className="ml-1.5 text-[10px] opacity-50">{count}</span>
@@ -1064,10 +992,10 @@ const RankingAppPage = () => {
             </div>
 
             {availableGenres.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-zinc-800">
+              <div className="flex gap-2 overflow-x-auto pb-2">
                 <button
                   onClick={() => setActiveGenre(null)}
-                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${!activeGenre ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'}`}
+                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${!activeGenre ? 'bg-accent/20 text-accent border-accent/30' : 'bg-transparent text-muted-foreground border-border hover:border-border/60'}`}
                 >
                   {t('ranking.allGenres')}
                 </button>
@@ -1075,7 +1003,7 @@ const RankingAppPage = () => {
                   <button
                     key={genre}
                     onClick={() => setActiveGenre(genre === activeGenre ? null : genre)}
-                    className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${genre === activeGenre ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'}`}
+                    className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${genre === activeGenre ? 'bg-accent/20 text-accent border-accent/30' : 'bg-transparent text-muted-foreground border-border hover:border-border/60'}`}
                   >
                     {genre}
                   </button>
@@ -1133,7 +1061,7 @@ const RankingAppPage = () => {
         {activeTab === 'groups' && user && (
           <div className="space-y-4">
             {/* Group sub-tabs */}
-            <div className="flex gap-2 bg-card rounded-xl p-1 border border-border overflow-x-auto">
+            <div className="flex gap-2 bg-card/50 rounded-xl p-1 border border-border/30 overflow-x-auto">
               {[
                 { key: 'parties' as const, label: t('groups.parties') },
                 { key: 'rankings' as const, label: t('groups.rankings') },
@@ -1145,8 +1073,8 @@ const RankingAppPage = () => {
                   key={key}
                   onClick={() => setGroupSubTab(key)}
                   className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${groupSubTab === key
-                    ? 'bg-elevated text-cream shadow-lg'
-                    : 'text-dim hover:text-muted'
+                    ? 'bg-secondary text-foreground shadow-lg'
+                    : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
                   {label}
@@ -1160,7 +1088,18 @@ const RankingAppPage = () => {
             {groupSubTab === 'badges' && <AchievementsView userId={user.id} />}
           </div>
         )}
-      </main>
+
+        {activeTab === 'journal' && user && (
+          <div className="text-center py-16 text-muted-foreground">
+            <p className="font-serif text-xl text-foreground mb-2">Journal</p>
+            <p className="text-sm">Select a ranked movie to write a journal entry.</p>
+          </div>
+        )}
+
+        {activeTab === 'achievements' && user && (
+          <AchievementsView userId={user.id} />
+        )}
+      </div>
 
       <ErrorBoundary>
       <AddMediaModal
@@ -1250,7 +1189,7 @@ const RankingAppPage = () => {
       {toastMessage && (
         <Toast message={toastMessage} onDone={() => setToastMessage(null)} />
       )}
-    </div>
+    </AppLayout>
   );
 };
 
