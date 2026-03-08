@@ -679,6 +679,19 @@ const RankingAppPage = () => {
     });
 
     await persistTVRankings(updatedTierList);
+
+    await logRankingActivityEvent(
+      user.id,
+      {
+        id: newItem.id,
+        title: newItem.title,
+        tier: newItem.tier,
+        posterUrl: newItem.posterUrl,
+        notes: newItem.notes,
+        year: newItem.year,
+      },
+      'ranking_add',
+    );
   };
 
   const removeTVItem = async (id: string) => {
@@ -714,6 +727,21 @@ const RankingAppPage = () => {
 
     if (affectedTierItems.length > 0) {
       await persistTVRankings(affectedTierItems);
+    }
+
+    if (removedItem) {
+      await logRankingActivityEvent(
+        user.id,
+        {
+          id: removedItem.id,
+          title: removedItem.title,
+          tier: removedItem.tier,
+          posterUrl: removedItem.posterUrl,
+          notes: removedItem.notes,
+          year: removedItem.year,
+        },
+        'ranking_remove',
+      );
     }
   };
 
@@ -766,6 +794,21 @@ const RankingAppPage = () => {
 
     if (affectedItems.length > 0) {
       await persistTVRankings(affectedItems);
+    }
+
+    if (movedItem) {
+      await logRankingActivityEvent(
+        user.id,
+        {
+          id: movedItem.id,
+          title: movedItem.title,
+          tier: targetTier,
+          posterUrl: movedItem.posterUrl,
+          notes: movedItem.notes,
+          year: movedItem.year,
+        },
+        'ranking_move',
+      );
     }
   };
 
@@ -916,7 +959,7 @@ const RankingAppPage = () => {
     <div className="sticky top-0 z-40 h-14 px-4 lg:px-8 flex items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/20">
       <div className="flex items-center gap-4">
         <h1 className="font-serif text-xl text-foreground tracking-tight">{t('ranking.myCanon')}</h1>
-        <div className="hidden md:flex bg-card/50 rounded-lg p-1 border border-border/30">
+        <div className="flex bg-card/50 rounded-lg p-1 border border-border/30">
           <button
             onClick={() => setMediaMode('movies')}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'movies' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}

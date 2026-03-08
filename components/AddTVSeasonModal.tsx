@@ -11,6 +11,7 @@ import { classifyBracket, computeSeedIndex, computeTierScore } from '../services
 import { SpoolRankingEngine } from '../services/spoolRankingEngine';
 import { computePredictionSignals } from '../services/spoolPrediction';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from '../contexts/LanguageContext';
 import { TierPicker } from './shared/TierPicker';
 import { NotesStep } from './shared/NotesStep';
 import { ComparisonStep } from './shared/ComparisonStep';
@@ -40,6 +41,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   preselectedItem,
 }) => {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -489,11 +491,11 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   // ─── Step titles ──────────────────────────────────────────────────────────
   const getStepTitle = () => {
     switch (step) {
-      case 'search': return 'Add TV Season';
-      case 'show_detail': return selectedShow?.name ?? 'Select Season';
-      case 'tier': return 'Assign Tier';
-      case 'notes': return 'Add a Note';
-      case 'compare': return 'Head-to-Head';
+      case 'search': return t('tv.addSeason');
+      case 'show_detail': return selectedShow?.name ?? t('tv.selectSeason');
+      case 'tier': return t('tv.assignTier');
+      case 'notes': return t('tv.addNote');
+      case 'compare': return t('tv.headToHead');
     }
   };
 
@@ -534,7 +536,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                 <input
                   type="text"
                   autoFocus
-                  placeholder="Search TV shows..."
+                  placeholder={t('tv.searchShows')}
                   className="w-full bg-card border border-border rounded-xl py-3 pl-10 pr-4 text-foreground placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}

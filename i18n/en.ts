@@ -202,6 +202,10 @@ const en = {
   'tv.seasons': 'Seasons',
   'tv.creator': 'Creator',
   'tv.status': 'Status',
+  'tv.addSeason': 'Add TV Season',
+  'tv.assignTier': 'Assign Tier',
+  'tv.addNote': 'Add a Note',
+  'tv.headToHead': 'Head-to-Head',
 
   // ── Language toggle ──────────────────────────────────────────────────────
   'lang.toggle': 'EN',
