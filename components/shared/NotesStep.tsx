@@ -24,7 +24,7 @@ export const NotesStep: React.FC<NotesStepProps> = ({
 }) => (
   <div className="flex flex-col gap-5 animate-fade-in">
     {/* Item preview */}
-    <div className="flex items-center gap-4 bg-elevated p-4 rounded-xl border border-border">
+    <div className="flex items-center gap-4 bg-secondary p-4 rounded-xl border border-border">
       {selectedItem?.posterUrl ? (
         <img
           src={selectedItem.posterUrl}
@@ -37,8 +37,8 @@ export const NotesStep: React.FC<NotesStepProps> = ({
         </div>
       )}
       <div>
-        <p className="font-serif text-white leading-tight">{selectedItem?.title}</p>
-        <p className="text-dim text-xs mt-0.5">{selectedItem?.year}</p>
+        <p className="font-serif text-foreground leading-tight">{selectedItem?.title}</p>
+        <p className="text-muted-foreground text-xs mt-0.5">{selectedItem?.year}</p>
         {selectedItem?.seasonTitle && (
           <p className="text-muted text-[11px] mt-0.5">{selectedItem.seasonTitle}</p>
         )}
@@ -52,10 +52,10 @@ export const NotesStep: React.FC<NotesStepProps> = ({
 
     {/* Notes textarea */}
     <div className="space-y-2">
-      <label className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
-        <StickyNote size={15} className="text-amber-400" />
+      <label className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+        <StickyNote size={15} className="text-gold" />
         Your thoughts
-        <span className="text-dim font-normal text-xs">(optional)</span>
+        <span className="text-muted-foreground font-normal text-xs">(optional)</span>
       </label>
       <div className="relative">
         <textarea
@@ -63,11 +63,11 @@ export const NotesStep: React.FC<NotesStepProps> = ({
           rows={4}
           maxLength={MAX_NOTES}
           placeholder="What stood out? A scene, a feeling, why it deserves this tier..."
-          className="w-full bg-card border border-border rounded-xl py-3 px-4 text-white placeholder:text-muted focus:outline-none focus:border-amber-500/60 transition-colors resize-none text-sm leading-relaxed"
+          className="w-full bg-card border border-border rounded-xl py-3 px-4 text-foreground placeholder:text-muted focus:outline-none focus:border-amber-500/60 transition-colors resize-none text-sm leading-relaxed"
           value={notes}
           onChange={(e) => onNotesChange(e.target.value)}
         />
-        <span className={`absolute bottom-3 right-3 text-xs tabular-nums transition-colors ${notes.length > MAX_NOTES * 0.9 ? 'text-amber-400' : 'text-dim'}`}>
+        <span className={`absolute bottom-3 right-3 text-xs tabular-nums transition-colors ${notes.length > MAX_NOTES * 0.9 ? 'text-gold' : 'text-muted-foreground'}`}>
           {notes.length}/{MAX_NOTES}
         </span>
       </div>
@@ -77,14 +77,14 @@ export const NotesStep: React.FC<NotesStepProps> = ({
     <div className="flex flex-col gap-2 pt-1">
       <button
         onClick={onContinue}
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-white text-black font-semibold text-sm hover:bg-zinc-200 transition-colors"
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gold text-background font-semibold text-sm hover:bg-foreground/20 transition-colors"
       >
         Continue
         <ChevronRight size={16} />
       </button>
       <button
         onClick={onSkip}
-        className="w-full py-2.5 rounded-xl text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
+        className="w-full py-2.5 rounded-xl text-muted-foreground hover:text-muted-foreground text-sm transition-colors"
       >
         Skip — add without notes
       </button>

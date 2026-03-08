@@ -16,7 +16,7 @@ export const LandingCTA: React.FC<LandingCTAProps> = ({ onEnterApp }) => {
           </p>
         </div>
         <button onClick={onEnterApp} className="landing-cta-primary min-h-11">
-          Enter Marquee
+          Enter Spool
           <ArrowRight size={18} />
         </button>
       </div>

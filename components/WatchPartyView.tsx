@@ -26,9 +26,9 @@ import {
 
 const RSVP_STYLES: Record<RsvpStatus, { bg: string; text: string; label: string }> = {
     going: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', label: 'Going' },
-    maybe: { bg: 'bg-amber-500/15', text: 'text-amber-400', label: 'Maybe' },
+    maybe: { bg: 'bg-amber-500/15', text: 'text-gold', label: 'Maybe' },
     not_going: { bg: 'bg-red-500/15', text: 'text-red-400', label: "Can't Go" },
-    pending: { bg: 'bg-zinc-700/30', text: 'text-zinc-400', label: 'Pending' },
+    pending: { bg: 'bg-secondary/30', text: 'text-muted-foreground', label: 'Pending' },
 };
 
 interface WatchPartyViewProps {
@@ -129,12 +129,12 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
             <div className="space-y-4">
                 <button
                     onClick={() => setSelectedParty(null)}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1"
+                    className="text-xs text-muted-foreground hover:text-muted-foreground flex items-center gap-1"
                 >
                     ← Back to parties
                 </button>
 
-                <div className="bg-zinc-900/60 rounded-2xl border border-zinc-800/30 p-5 space-y-4">
+                <div className="bg-card/60 rounded-2xl border border-border/30 p-5 space-y-4">
                     <div className="flex gap-4">
                         {selectedParty.moviePosterUrl && (
                             <img
@@ -146,9 +146,9 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
                         <div className="flex-1">
                             <h3 className="text-lg font-bold">{selectedParty.title}</h3>
                             {selectedParty.movieTitle && (
-                                <p className="text-sm text-indigo-400 mt-0.5"><Film size={12} className="inline mr-1" />{selectedParty.movieTitle}</p>
+                                <p className="text-sm text-accent mt-0.5"><Film size={12} className="inline mr-1" />{selectedParty.movieTitle}</p>
                             )}
-                            <div className="flex items-center gap-3 mt-2 text-xs text-zinc-400">
+                            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                                 <span className="flex items-center gap-1"><Calendar size={12} />{formatDate(selectedParty.scheduledAt)}</span>
                                 {selectedParty.location && (
                                     <span className="flex items-center gap-1"><MapPin size={12} />{selectedParty.location}</span>
@@ -163,12 +163,12 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
                     </div>
 
                     {selectedParty.notes && (
-                        <p className="text-sm text-zinc-400 border-t border-zinc-800/30 pt-3">{selectedParty.notes}</p>
+                        <p className="text-sm text-muted-foreground border-t border-border/30 pt-3">{selectedParty.notes}</p>
                     )}
 
                     {/* RSVP buttons */}
-                    <div className="border-t border-zinc-800/30 pt-3">
-                        <p className="text-xs text-zinc-500 mb-2">Your RSVP:</p>
+                    <div className="border-t border-border/30 pt-3">
+                        <p className="text-xs text-muted-foreground mb-2">Your RSVP:</p>
                         <div className="flex gap-2">
                             {(['going', 'maybe', 'not_going'] as RsvpStatus[]).map((status) => {
                                 const style = RSVP_STYLES[status];
@@ -179,7 +179,7 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
                                         onClick={() => handleRsvp(selectedParty.id, status)}
                                         className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${isActive
                                                 ? `${style.bg} ${style.text} ring-1 ring-current`
-                                                : 'bg-zinc-800/50 text-zinc-500 hover:text-zinc-300'
+                                                : 'bg-secondary/30 text-muted-foreground hover:text-muted-foreground'
                                             }`}
                                     >
                                         {status === 'going' && <Check size={12} className="inline mr-1" />}
@@ -193,8 +193,8 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
                     </div>
 
                     {/* Members */}
-                    <div className="border-t border-zinc-800/30 pt-3">
-                        <p className="text-xs text-zinc-500 mb-2">
+                    <div className="border-t border-border/30 pt-3">
+                        <p className="text-xs text-muted-foreground mb-2">
                             Guests ({members.filter((m) => m.rsvp === 'going').length} going)
                         </p>
                         <div className="space-y-1.5">
@@ -202,16 +202,16 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
                                 const style = RSVP_STYLES[m.rsvp];
                                 return (
                                     <div key={m.userId} className="flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded-full bg-zinc-700 overflow-hidden flex-shrink-0">
+                                        <div className="w-6 h-6 rounded-full bg-secondary overflow-hidden flex-shrink-0">
                                             {m.avatarUrl ? (
                                                 <img src={m.avatarUrl} alt="" className="w-full h-full object-cover" />
                                             ) : (
-                                                <div className="w-full h-full bg-indigo-600 flex items-center justify-center text-[9px] text-white font-bold">
+                                                <div className="w-full h-full bg-gold flex items-center justify-center text-[9px] text-foreground font-bold">
                                                     {m.username?.[0]?.toUpperCase() || '?'}
                                                 </div>
                                             )}
                                         </div>
-                                        <span className="text-xs text-zinc-300 flex-1">{m.displayName || m.username}</span>
+                                        <span className="text-xs text-muted-foreground flex-1">{m.displayName || m.username}</span>
                                         <span className={`text-[10px] font-semibold ${style.text}`}>{style.label}</span>
                                     </div>
                                 );
@@ -240,42 +240,42 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
 
             {/* Create form */}
             {showCreate && (
-                <div className="bg-zinc-900/60 rounded-xl border border-zinc-800/30 p-4 space-y-3">
+                <div className="bg-card/60 rounded-xl border border-border/30 p-4 space-y-3">
                     <input
                         type="text"
                         placeholder="Party title..."
                         value={newTitle}
                         onChange={(e) => setNewTitle(e.target.value)}
-                        className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 border border-zinc-700 focus:border-violet-500 focus:outline-none"
+                        className="w-full bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground border border-border focus:border-violet-500 focus:outline-none"
                     />
                     <input
                         type="datetime-local"
                         value={newDate}
                         onChange={(e) => setNewDate(e.target.value)}
-                        className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 border border-zinc-700 focus:border-violet-500 focus:outline-none"
+                        className="w-full bg-secondary rounded-lg px-3 py-2 text-sm text-foreground border border-border focus:border-violet-500 focus:outline-none"
                     />
                     <input
                         type="text"
                         placeholder="Location (optional)"
                         value={newLocation}
                         onChange={(e) => setNewLocation(e.target.value)}
-                        className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 border border-zinc-700 focus:border-violet-500 focus:outline-none"
+                        className="w-full bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground border border-border focus:border-violet-500 focus:outline-none"
                     />
                     <textarea
                         placeholder="Notes (optional)"
                         value={newNotes}
                         onChange={(e) => setNewNotes(e.target.value)}
                         rows={2}
-                        className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 border border-zinc-700 focus:border-violet-500 focus:outline-none resize-none"
+                        className="w-full bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground border border-border focus:border-violet-500 focus:outline-none resize-none"
                     />
                     <div className="flex gap-2 justify-end">
-                        <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300">
+                        <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-muted-foreground">
                             Cancel
                         </button>
                         <button
                             onClick={handleCreate}
                             disabled={!newTitle.trim() || !newDate}
-                            className="px-4 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-500 disabled:opacity-40 transition-colors"
+                            className="px-4 py-1.5 rounded-lg bg-violet-600 text-foreground text-xs font-semibold hover:bg-violet-500 disabled:opacity-40 transition-colors"
                         >
                             Create Party
                         </button>
@@ -285,7 +285,7 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
 
             {/* Party list */}
             {parties.length === 0 ? (
-                <div className="text-center py-16 text-zinc-500">
+                <div className="text-center py-16 text-muted-foreground">
                     <Tv size={40} className="mx-auto mb-3 opacity-40" />
                     <p className="text-sm">No watch parties yet. Create one to get started!</p>
                 </div>
@@ -295,18 +295,18 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
                         <button
                             key={party.id}
                             onClick={() => handleSelectParty(party)}
-                            className="w-full flex items-center gap-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/30 hover:border-zinc-700 transition-all text-left"
+                            className="w-full flex items-center gap-3 p-3 rounded-xl bg-card/60 border border-border/30 hover:border-border transition-all text-left"
                         >
                             {party.moviePosterUrl ? (
                                 <img src={party.moviePosterUrl} alt="" className="w-10 h-[60px] rounded-lg object-cover flex-shrink-0" />
                             ) : (
-                                <div className="w-10 h-[60px] rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
-                                    <Tv size={16} className="text-zinc-600" />
+                                <div className="w-10 h-[60px] rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
+                                    <Tv size={16} className="text-muted-foreground/60" />
                                 </div>
                             )}
                             <div className="flex-1 min-w-0">
-                                <h3 className="text-sm font-semibold text-zinc-100 truncate">{party.title}</h3>
-                                <p className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-2">
+                                <h3 className="text-sm font-semibold text-foreground truncate">{party.title}</h3>
+                                <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2">
                                     <span className="flex items-center gap-1"><Calendar size={10} />{formatDate(party.scheduledAt)}</span>
                                     {party.location && <span className="flex items-center gap-1"><MapPin size={10} />{party.location}</span>}
                                 </p>
@@ -318,7 +318,7 @@ export const WatchPartyView: React.FC<WatchPartyViewProps> = ({ userId }) => {
                                     </span>
                                 )}
                                 {party.goingCount !== undefined && (
-                                    <span className="text-[10px] text-zinc-500 flex items-center gap-0.5">
+                                    <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                                         <Users size={10} /> {party.goingCount} going
                                     </span>
                                 )}

@@ -34,7 +34,7 @@ const BADGE_CATALOG: BadgeDefinition[] = [
 ];
 
 const CATEGORY_STYLES: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-    milestone: { label: 'Milestones', color: 'text-amber-400', icon: <Trophy size={14} /> },
+    milestone: { label: 'Milestones', color: 'text-gold', icon: <Trophy size={14} /> },
     social: { label: 'Social', color: 'text-blue-400', icon: <Users size={14} /> },
     taste: { label: 'Taste', color: 'text-purple-400', icon: <Star size={14} /> },
     special: { label: 'Special', color: 'text-emerald-400', icon: <Zap size={14} /> },
@@ -79,15 +79,15 @@ export const AchievementsView: React.FC<AchievementsViewProps> = ({ userId, isOw
         <div className="space-y-6">
             {/* Summary */}
             <div className="flex items-center gap-3">
-                <Award size={20} className="text-amber-500" />
+                <Award size={20} className="text-gold" />
                 <h2 className="text-lg font-bold">Achievements</h2>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-muted-foreground">
                     {achievements.length}/{BADGE_CATALOG.length} unlocked
                 </span>
             </div>
 
             {/* Progress bar */}
-            <div className="bg-zinc-800 rounded-full h-2 overflow-hidden">
+            <div className="bg-secondary rounded-full h-2 overflow-hidden">
                 <div
                     className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all duration-500"
                     style={{ width: `${(achievements.length / BADGE_CATALOG.length) * 100}%` }}
@@ -111,26 +111,26 @@ export const AchievementsView: React.FC<AchievementsViewProps> = ({ userId, isOw
                                     <div
                                         key={badge.key}
                                         className={`relative rounded-xl p-3 border transition-all ${unlocked
-                                                ? 'bg-zinc-900/80 border-zinc-700 hover:border-zinc-600'
-                                                : 'bg-zinc-900/30 border-zinc-800/30 opacity-50'
+                                                ? 'bg-card/50 border-border hover:border-border'
+                                                : 'bg-card/30 border-border/30 opacity-50'
                                             }`}
                                     >
                                         <div className="text-2xl mb-1.5">
-                                            {unlocked ? badge.icon : <Lock size={20} className="text-zinc-700" />}
+                                            {unlocked ? badge.icon : <Lock size={20} className="text-muted-foreground/40" />}
                                         </div>
-                                        <h4 className={`text-xs font-semibold ${unlocked ? 'text-zinc-200' : 'text-zinc-600'}`}>
+                                        <h4 className={`text-xs font-semibold ${unlocked ? 'text-foreground' : 'text-muted-foreground/60'}`}>
                                             {badge.name}
                                         </h4>
-                                        <p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+                                        <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
                                             {badge.description}
                                         </p>
                                         {unlocked && achievement && (
-                                            <p className="text-[9px] text-zinc-600 mt-1">
+                                            <p className="text-[9px] text-muted-foreground/60 mt-1">
                                                 {new Date(achievement.unlockedAt).toLocaleDateString()}
                                             </p>
                                         )}
                                         {!unlocked && (
-                                            <p className="text-[9px] text-zinc-700 mt-1">{badge.requirement}</p>
+                                            <p className="text-[9px] text-muted-foreground/40 mt-1">{badge.requirement}</p>
                                         )}
                                     </div>
                                 );

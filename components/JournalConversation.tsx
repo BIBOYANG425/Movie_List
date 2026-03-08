@@ -461,7 +461,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
       {/* Sheet */}
       <div
-        className={`relative w-full max-w-md bg-surface rounded-t-2xl shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
+        className={`relative w-full max-w-md bg-card rounded-t-2xl shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ maxHeight: '80vh' }}
@@ -470,19 +470,19 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
         {phase === 'chat' ? (
           <>
             {/* Chat Header */}
-            <div className="flex items-center gap-3 p-4 border-b border-zinc-800 shrink-0">
+            <div className="flex items-center gap-3 p-4 border-b border-border shrink-0">
               {item.posterUrl && (
                 <img src={item.posterUrl} alt={item.title} className="w-10 h-14 rounded object-cover" />
               )}
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-zinc-100 truncate">{item.title}</h3>
-                <span className={`text-xs font-bold ${TIER_COLORS[item.tier]?.split(' ')[0] ?? 'text-zinc-400'}`}>
+                <h3 className="text-sm font-semibold text-foreground truncate">{item.title}</h3>
+                <span className={`text-xs font-bold ${TIER_COLORS[item.tier]?.split(' ')[0] ?? 'text-muted-foreground'}`}>
                   {item.tier} Tier
                 </span>
               </div>
               <button
                 onClick={handleSkipToForm}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 rounded-full transition-colors"
+                className="flex items-center gap-1 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-full transition-colors"
               >
                 <MessageSquare size={12} />
                 Skip to form
@@ -499,8 +499,8 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                   <div
                     className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
                       msg.role === 'agent'
-                        ? 'bg-zinc-800 text-zinc-200'
-                        : 'bg-indigo-500/20 text-zinc-200'
+                        ? 'bg-secondary text-foreground'
+                        : 'bg-accent/20 text-foreground'
                     }`}
                   >
                     {msg.content}
@@ -509,7 +509,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
               ))}
               {isLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-zinc-800 rounded-2xl px-3.5 py-2.5 text-sm text-zinc-400">
+                  <div className="bg-secondary rounded-2xl px-3.5 py-2.5 text-sm text-muted-foreground">
                     <span className="inline-flex gap-1">
                       <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
                       <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
@@ -524,7 +524,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                   <button
                     onClick={handleRetry}
                     disabled={isLoading}
-                    className="px-3 py-1.5 text-xs text-indigo-300 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-full transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 text-xs text-accent bg-accent/20 hover:bg-gold/30 border border-accent/30 rounded-full transition-colors disabled:opacity-50"
                   >
                     Retry
                   </button>
@@ -534,7 +534,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
             </div>
 
             {/* Input area */}
-            <div className="p-4 border-t border-zinc-800 shrink-0 space-y-2">
+            <div className="p-4 border-t border-border shrink-0 space-y-2">
               <div className="flex gap-2">
                 <input
                   ref={inputRef}
@@ -544,12 +544,12 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
                   placeholder="Share your thoughts..."
                   disabled={isLoading}
-                  className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 disabled:opacity-50"
+                  className="flex-1 bg-card border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border disabled:opacity-50"
                 />
                 <button
                   onClick={handleSendMessage}
                   disabled={!inputText.trim() || isLoading}
-                  className="p-2.5 bg-indigo-500 hover:bg-indigo-400 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="p-2.5 bg-gold hover:bg-gold-muted text-foreground rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send size={16} />
                 </button>
@@ -558,7 +558,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                 <button
                   onClick={handleGenerate}
                   disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 text-sm font-medium rounded-xl border border-indigo-500/30 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-accent/20 hover:bg-gold/30 text-accent text-sm font-medium rounded-xl border border-accent/30 transition-colors disabled:opacity-50"
                 >
                   <Sparkles size={14} />
                   Generate my review
@@ -569,20 +569,20 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
         ) : (
           <>
             {/* Draft Header */}
-            <div className="flex items-center gap-3 p-4 border-b border-zinc-800 shrink-0">
+            <div className="flex items-center gap-3 p-4 border-b border-border shrink-0">
               {messages.length > 0 && (
                 <button
                   onClick={handleBackToChat}
-                  className="p-1.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+                  className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ArrowLeft size={18} />
                 </button>
               )}
-              <h3 className="flex-1 text-sm font-semibold text-zinc-100">Your Review Draft</h3>
+              <h3 className="flex-1 text-sm font-semibold text-foreground">Your Review Draft</h3>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="px-4 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-semibold rounded-full transition-colors disabled:opacity-50"
+                className="px-4 py-1.5 bg-gold hover:bg-gold-muted text-foreground text-sm font-semibold rounded-full transition-colors disabled:opacity-50"
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>
@@ -601,12 +601,12 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                 onChange={(e) => setReviewText(e.target.value)}
                 placeholder={JOURNAL_REVIEW_PROMPTS[item.tier] ?? 'Write your thoughts...'}
                 rows={3}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 resize-none focus:outline-none focus:border-zinc-600"
+                className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:border-border"
               />
 
               {/* Mood tags */}
               <div>
-                <p className="text-xs font-medium text-zinc-400 mb-2">How did this make you feel?</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">How did this make you feel?</p>
                 <MoodTagSelector selected={moodTags} onChange={setMoodTags} />
               </div>
 
@@ -614,7 +614,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
               <button
                 type="button"
                 onClick={() => setShowDetails(!showDetails)}
-                className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
               >
                 {showDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 {showDetails ? 'Less details' : 'Add more details'}
@@ -624,13 +624,13 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                 <div className="space-y-4">
                   {/* Vibe tags */}
                   <div>
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Vibe</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Vibe</p>
                     <VibeTagSelector selected={vibeTags} onChange={setVibeTags} />
                   </div>
 
                   {/* Favorite moments */}
                   <div>
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Favorite moments</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Favorite moments</p>
                     <div className="space-y-1.5">
                       {favoriteMoments.map((moment, i) => (
                         <div key={i} className="flex gap-1.5">
@@ -639,12 +639,12 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                             value={moment}
                             onChange={(e) => updateMoment(i, e.target.value)}
                             placeholder={`Moment ${i + 1}...`}
-                            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                            className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
                           />
                           <button
                             type="button"
                             onClick={() => removeMoment(i)}
-                            className="p-1.5 text-zinc-600 hover:text-red-400"
+                            className="p-1.5 text-muted-foreground/60 hover:text-red-400"
                           >
                             <X size={14} />
                           </button>
@@ -654,7 +654,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                         <button
                           type="button"
                           onClick={addMoment}
-                          className="text-xs text-indigo-400 hover:text-indigo-300"
+                          className="text-xs text-accent hover:text-accent"
                         >
                           + Add moment
                         </button>
@@ -664,7 +664,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
                   {/* Standout performances */}
                   <div>
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Standout performances</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Standout performances</p>
                     <CastSelector
                       tmdbId={tmdbNumericId}
                       selected={standoutPerformances}
@@ -674,33 +674,33 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
                   {/* Watch context */}
                   <div>
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Watch context</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Watch context</p>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <Calendar size={14} className="text-zinc-500 shrink-0" />
+                        <Calendar size={14} className="text-muted-foreground shrink-0" />
                         <input
                           type="date"
                           value={watchedDate}
                           onChange={(e) => setWatchedDate(e.target.value)}
-                          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                          className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border"
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <MapPin size={14} className="text-zinc-500 shrink-0" />
+                        <MapPin size={14} className="text-muted-foreground shrink-0" />
                         <input
                           type="text"
                           value={watchedLocation}
                           onChange={(e) => setWatchedLocation(e.target.value)}
                           placeholder="Where did you watch?"
-                          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                          className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <Tv size={14} className="text-zinc-500 shrink-0" />
+                        <Tv size={14} className="text-muted-foreground shrink-0" />
                         <select
                           value={watchedPlatform}
                           onChange={(e) => setWatchedPlatform(e.target.value)}
-                          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                          className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border"
                         >
                           <option value="">Select platform...</option>
                           {PLATFORM_OPTIONS.map((opt) => (
@@ -710,8 +710,8 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                       </div>
                       <div>
                         <div className="flex items-center gap-2 mb-1.5">
-                          <Users size={14} className="text-zinc-500 shrink-0" />
-                          <span className="text-xs text-zinc-500">Watched with</span>
+                          <Users size={14} className="text-muted-foreground shrink-0" />
+                          <span className="text-xs text-muted-foreground">Watched with</span>
                         </div>
                         <FriendTagInput
                           currentUserId={userId}
@@ -724,7 +724,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
                   {/* Photos */}
                   <div>
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Photos</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Photos</p>
                     <JournalPhotoGrid
                       photoPaths={photoPaths}
                       onAdd={handlePhotoAdd}
@@ -735,12 +735,12 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
                   {/* Rewatch */}
                   <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                       <input
                         type="checkbox"
                         checked={isRewatch}
                         onChange={(e) => setIsRewatch(e.target.checked)}
-                        className="rounded border-zinc-700 bg-zinc-900 text-indigo-500 focus:ring-indigo-500/20"
+                        className="rounded border-border bg-card text-gold focus:ring-accent/20"
                       />
                       Rewatch
                     </label>
@@ -751,39 +751,39 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                       value={rewatchNote}
                       onChange={(e) => setRewatchNote(e.target.value)}
                       placeholder="What was different this time?"
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                      className="w-full bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
                     />
                   )}
 
                   {/* Personal takeaway */}
                   <div>
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Personal takeaway (private)</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Personal takeaway (private)</p>
                     <textarea
                       value={personalTakeaway}
                       onChange={(e) => setPersonalTakeaway(e.target.value)}
                       placeholder={JOURNAL_TAKEAWAY_PROMPTS[item.tier] ?? 'Your personal reflection...'}
                       rows={2}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 resize-none focus:outline-none focus:border-zinc-600"
+                      className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:border-border"
                     />
                   </div>
 
                   {/* Spoiler toggle */}
                   <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                       <input
                         type="checkbox"
                         checked={containsSpoilers}
                         onChange={(e) => setContainsSpoilers(e.target.checked)}
-                        className="rounded border-zinc-700 bg-zinc-900 text-amber-500 focus:ring-amber-500/20"
+                        className="rounded border-border bg-card text-gold focus:ring-amber-500/20"
                       />
-                      <AlertTriangle size={14} className="text-amber-400" />
+                      <AlertTriangle size={14} className="text-gold" />
                       Contains spoilers
                     </label>
                   </div>
 
                   {/* Visibility */}
                   <div>
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Visibility</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Visibility</p>
                     <div className="flex gap-2">
                       {([undefined, 'public', 'friends', 'private'] as const).map((vis) => {
                         const label = vis === undefined ? 'Default' : vis === 'public' ? 'Public' : vis === 'friends' ? 'Friends' : 'Private';
@@ -796,8 +796,8 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                             onClick={() => setVisibilityOverride(vis as JournalVisibility | undefined)}
                             className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-colors ${
                               active
-                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                                : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'
+                                ? 'bg-accent/20 text-accent border-accent/30'
+                                : 'bg-transparent text-muted-foreground border-border hover:border-border'
                             }`}
                           >
                             {icon} {label}

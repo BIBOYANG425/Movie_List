@@ -10,7 +10,7 @@ interface TasteCompatibilityBadgeProps {
 
 function scoreColor(score: number): string {
     if (score >= 80) return 'text-emerald-400';
-    if (score >= 60) return 'text-yellow-400';
+    if (score >= 60) return 'text-gold';
     if (score >= 40) return 'text-orange-400';
     return 'text-red-400';
 }
@@ -41,7 +41,7 @@ export const TasteCompatibilityBadge: React.FC<TasteCompatibilityBadgeProps> = (
 
     if (compact) {
         return (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800/50 border border-zinc-700/50">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/50">
                 <div className="relative w-6 h-6">
                     <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
                         <circle cx="50" cy="50" r="40" fill="none" stroke="#27272a" strokeWidth="8" />
@@ -55,13 +55,13 @@ export const TasteCompatibilityBadge: React.FC<TasteCompatibilityBadgeProps> = (
                     </svg>
                 </div>
                 <span className={`text-sm font-bold ${scoreColor(taste.score)}`}>{taste.score}%</span>
-                <span className="text-xs text-zinc-500">match</span>
+                <span className="text-xs text-muted-foreground">match</span>
             </div>
         );
     }
 
     return (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+        <div className="bg-card border border-border rounded-xl p-5">
             <div className="flex items-center gap-5">
                 {/* Score ring */}
                 <div className="relative w-20 h-20 shrink-0">
@@ -85,14 +85,14 @@ export const TasteCompatibilityBadge: React.FC<TasteCompatibilityBadgeProps> = (
                     <h3 className={`text-sm font-bold ${scoreColor(taste.score)}`}>
                         {scoreLabel(taste.score)}
                     </h3>
-                    <p className="text-xs text-zinc-500 mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                         Based on {taste.sharedCount} shared {taste.sharedCount === 1 ? 'movie' : 'movies'}
                     </p>
                     <div className="flex items-center gap-3 mt-2 text-xs">
                         <span className="text-emerald-400">
                             {taste.agreements} agree
                         </span>
-                        <span className="text-yellow-400">
+                        <span className="text-gold">
                             {taste.nearAgreements} close
                         </span>
                         <span className="text-red-400">
@@ -104,20 +104,20 @@ export const TasteCompatibilityBadge: React.FC<TasteCompatibilityBadgeProps> = (
 
             {/* Top shared movies */}
             {taste.topShared.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-zinc-800/50">
-                    <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+                <div className="mt-4 pt-4 border-t border-border/50">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                         You Both Love
                     </h4>
                     <div className="flex flex-wrap gap-2">
                         {taste.topShared.map((movie) => (
                             <div
                                 key={movie.mediaItemId}
-                                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800/50 border border-zinc-700/50"
+                                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-secondary/30 border border-border/50"
                             >
-                                <span className={`text-[10px] font-bold px-1 rounded ${TIER_COLORS[movie.viewerTier as Tier] || 'text-zinc-400'}`}>
+                                <span className={`text-[10px] font-bold px-1 rounded ${TIER_COLORS[movie.viewerTier as Tier] || 'text-muted-foreground'}`}>
                                     {movie.viewerTier}
                                 </span>
-                                <span className="text-xs text-zinc-300 truncate max-w-[120px]">{movie.mediaTitle}</span>
+                                <span className="text-xs text-muted-foreground truncate max-w-[120px]">{movie.mediaTitle}</span>
                             </div>
                         ))}
                     </div>
@@ -126,8 +126,8 @@ export const TasteCompatibilityBadge: React.FC<TasteCompatibilityBadgeProps> = (
 
             {/* Biggest divergences */}
             {taste.biggestDivergences.length > 0 && taste.biggestDivergences.some(d => Math.abs(d.tierDifference) >= 2) && (
-                <div className="mt-3 pt-3 border-t border-zinc-800/50">
-                    <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+                <div className="mt-3 pt-3 border-t border-border/50">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                         Biggest Disagreements
                     </h4>
                     <div className="space-y-1.5">
@@ -137,13 +137,13 @@ export const TasteCompatibilityBadge: React.FC<TasteCompatibilityBadgeProps> = (
                             .map((movie) => (
                                 <div
                                     key={movie.mediaItemId}
-                                    className="flex items-center gap-2 text-xs text-zinc-400"
+                                    className="flex items-center gap-2 text-xs text-muted-foreground"
                                 >
                                     <span className="truncate flex-1">{movie.mediaTitle}</span>
                                     <span className={`font-bold ${TIER_COLORS[movie.viewerTier as Tier] || ''}`}>
                                         {movie.viewerTier}
                                     </span>
-                                    <span className="text-zinc-600">vs</span>
+                                    <span className="text-muted-foreground/60">vs</span>
                                     <span className={`font-bold ${TIER_COLORS[movie.targetTier as Tier] || ''}`}>
                                         {movie.targetTier}
                                     </span>

@@ -32,7 +32,7 @@ export const FeedMilestoneCard: React.FC<FeedMilestoneCardProps> = ({
   commentCount,
 }) => {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors">
+    <div className="bg-card border border-border rounded-xl p-4 hover:border-border transition-colors">
       {/* Single row layout */}
       <div className="flex items-start gap-3 mb-3">
         {/* Badge icon */}
@@ -40,7 +40,7 @@ export const FeedMilestoneCard: React.FC<FeedMilestoneCardProps> = ({
           {card.badgeIcon ? (
             <span>{card.badgeIcon}</span>
           ) : (
-            <Award className="w-5 h-5 text-amber-400" />
+            <Award className="w-5 h-5 text-gold" />
           )}
         </div>
 
@@ -49,16 +49,16 @@ export const FeedMilestoneCard: React.FC<FeedMilestoneCardProps> = ({
           <p className="text-sm">
             <Link
               to={`/profile/${card.userId}`}
-              className="font-medium text-white hover:underline"
+              className="font-medium text-foreground hover:underline"
             >
               {card.displayName || card.username}
             </Link>
-            <span className="text-zinc-400"> unlocked a badge</span>
+            <span className="text-muted-foreground"> unlocked a badge</span>
           </p>
           {card.milestoneDescription && (
-            <p className="text-sm text-zinc-300">{card.milestoneDescription}</p>
+            <p className="text-sm text-muted-foreground">{card.milestoneDescription}</p>
           )}
-          <span className="text-[11px] text-zinc-600">
+          <span className="text-[11px] text-muted-foreground/60">
             {relativeDate(card.createdAt)}
           </span>
         </div>
@@ -79,7 +79,7 @@ export const FeedMilestoneCard: React.FC<FeedMilestoneCardProps> = ({
         />
         <button
           onClick={() => onOpenComments(card.id)}
-          className="flex items-center gap-1 text-xs text-zinc-400 hover:text-white transition-colors ml-auto"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
         >
           <MessageCircle className="w-4 h-4" />
           {commentCount > 0 && <span>{commentCount}</span>}

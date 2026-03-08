@@ -85,7 +85,7 @@ export const CastSelector: React.FC<CastSelectorProps> = ({ tmdbId, selected, on
           {selected.map((perf) => (
             <span
               key={perf.personId}
-              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs bg-accent/20 text-accent border border-accent/30"
             >
               {perf.name}
               <button type="button" onClick={() => onChange(selected.filter((s) => s.personId !== perf.personId))}>
@@ -98,7 +98,7 @@ export const CastSelector: React.FC<CastSelectorProps> = ({ tmdbId, selected, on
 
       {/* Search */}
       <div className="relative">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
           placeholder="Search cast..."
@@ -111,13 +111,13 @@ export const CastSelector: React.FC<CastSelectorProps> = ({ tmdbId, selected, on
               setDebouncedSearch(val);
             }, 300);
           }}
-          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+          className="w-full bg-card border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
         />
       </div>
 
       {/* Cast list */}
       {loading ? (
-        <p className="text-xs text-zinc-600 py-2">Loading cast...</p>
+        <p className="text-xs text-muted-foreground/60 py-2">Loading cast...</p>
       ) : (
         <div className="max-h-48 overflow-y-auto space-y-0.5">
           {filtered.map((member) => (
@@ -126,8 +126,8 @@ export const CastSelector: React.FC<CastSelectorProps> = ({ tmdbId, selected, on
               type="button"
               className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors ${
                 selectedIds.has(member.id)
-                  ? 'bg-indigo-500/10 text-indigo-300'
-                  : 'text-zinc-300 hover:bg-zinc-800/50'
+                  ? 'bg-accent/10 text-accent'
+                  : 'text-muted-foreground hover:bg-secondary/30'
               }`}
               onClick={() => toggle(member)}
             >
@@ -138,13 +138,13 @@ export const CastSelector: React.FC<CastSelectorProps> = ({ tmdbId, selected, on
                   className="w-7 h-7 rounded-full object-cover"
                 />
               ) : (
-                <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-[10px] text-zinc-500">
+                <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-[10px] text-muted-foreground">
                   {member.name[0]}
                 </div>
               )}
               <div className="min-w-0">
                 <p className="text-xs font-medium truncate">{member.name}</p>
-                <p className="text-[10px] text-zinc-500 truncate">{member.character}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{member.character}</p>
               </div>
             </button>
           ))}

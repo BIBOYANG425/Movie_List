@@ -8,8 +8,8 @@ interface MoodTagSelectorProps {
 }
 
 const chipBase = 'rounded-full px-3 py-1.5 text-xs font-medium border transition-colors whitespace-nowrap';
-const chipActive = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
-const chipInactive = 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600';
+const chipActive = 'bg-accent/20 text-accent border-accent/30';
+const chipInactive = 'bg-transparent text-muted-foreground border-border hover:border-border';
 
 export const MoodTagSelector: React.FC<MoodTagSelectorProps> = ({ selected, onChange, max = 10 }) => {
   const toggle = (id: string) => {
@@ -26,7 +26,7 @@ export const MoodTagSelector: React.FC<MoodTagSelectorProps> = ({ selected, onCh
         const tags = MOOD_TAGS.filter((t) => t.category === cat.id);
         return (
           <div key={cat.id}>
-            <p className="text-[10px] uppercase tracking-wider text-zinc-600 mb-1.5">{cat.label}</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1.5">{cat.label}</p>
             <div className="flex gap-1.5 flex-wrap">
               {tags.map((tag) => (
                 <button

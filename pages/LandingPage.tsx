@@ -5,21 +5,21 @@ import { useTranslation } from "../contexts/LanguageContext";
 
 /* ─── palette ─── */
 const C = {
-  bg: "#08080B",
-  surface: "#111116",
-  card: "#16161D",
-  elevated: "#1C1C25",
+  bg: "#0F1419",
+  surface: "#1C2128",
+  card: "#1C2128",
+  elevated: "#252C35",
   tierS: "#A855F7",
   tierA: "#3B82F6",
   tierB: "#10B981",
   tierC: "#F59E0B",
   tierD: "#EF4444",
-  cream: "#F0EBE3",
-  text: "#C8C3BC",
-  dim: "#706D67",
-  muted: "#4A4843",
-  border: "rgba(240,235,227,0.06)",
-  glow: "rgba(168,85,247,0.08)",
+  cream: "#F5F3EF",
+  text: "#9BA3AB",
+  dim: "#9BA3AB",
+  muted: "#252C35",
+  border: "rgba(245,243,239,0.06)",
+  glow: "rgba(212,197,176,0.08)",
 };
 
 const TIER_COLORS: Record<string, string> = { S: C.tierS, A: C.tierA, B: C.tierB, C: C.tierC, D: C.tierD };

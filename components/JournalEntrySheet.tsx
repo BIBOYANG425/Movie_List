@@ -184,27 +184,27 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
 
       {/* Sheet */}
       <div
-        className={`relative w-full max-w-md bg-surface rounded-t-2xl shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
+        className={`relative w-full max-w-md bg-card rounded-t-2xl shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ maxHeight: '80vh' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 p-4 border-b border-zinc-800 shrink-0">
+        <div className="flex items-center gap-3 p-4 border-b border-border shrink-0">
           {item.posterUrl && (
             <img src={item.posterUrl} alt={item.title} className="w-10 h-14 rounded object-cover" />
           )}
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-zinc-100 truncate">{item.title}</h3>
-            <span className={`text-xs font-bold ${TIER_COLORS[item.tier]?.split(' ')[0] ?? 'text-zinc-400'}`}>
+            <h3 className="text-sm font-semibold text-foreground truncate">{item.title}</h3>
+            <span className={`text-xs font-bold ${TIER_COLORS[item.tier]?.split(' ')[0] ?? 'text-muted-foreground'}`}>
               {item.tier} Tier
             </span>
           </div>
           <button
             onClick={handleDismiss}
             disabled={saving}
-            className="px-4 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-semibold rounded-full transition-colors disabled:opacity-50"
+            className="px-4 py-1.5 bg-gold hover:bg-gold-muted text-foreground text-sm font-semibold rounded-full transition-colors disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Done'}
           </button>
@@ -218,12 +218,12 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
             onChange={(e) => setReviewText(e.target.value)}
             placeholder={JOURNAL_REVIEW_PROMPTS[item.tier] ?? 'Write your thoughts...'}
             rows={3}
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 resize-none focus:outline-none focus:border-zinc-600"
+            className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:border-border"
           />
 
           {/* Mood tags */}
           <div>
-            <p className="text-xs font-medium text-zinc-400 mb-2">How did this make you feel?</p>
+            <p className="text-xs font-medium text-muted-foreground mb-2">How did this make you feel?</p>
             <MoodTagSelector selected={moodTags} onChange={setMoodTags} />
           </div>
 
@@ -231,7 +231,7 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
           <button
             type="button"
             onClick={() => setShowDetails(!showDetails)}
-            className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
           >
             {showDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             {showDetails ? 'Less details' : 'Add more details'}
@@ -241,13 +241,13 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
             <div className="space-y-4">
               {/* Vibe tags */}
               <div>
-                <p className="text-xs font-medium text-zinc-400 mb-2">Vibe</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Vibe</p>
                 <VibeTagSelector selected={vibeTags} onChange={setVibeTags} />
               </div>
 
               {/* Favorite moments */}
               <div>
-                <p className="text-xs font-medium text-zinc-400 mb-2">Favorite moments</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Favorite moments</p>
                 <div className="space-y-1.5">
                   {favoriteMoments.map((moment, i) => (
                     <div key={i} className="flex gap-1.5">
@@ -256,12 +256,12 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
                         value={moment}
                         onChange={(e) => updateMoment(i, e.target.value)}
                         placeholder={`Moment ${i + 1}...`}
-                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                        className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
                       />
                       <button
                         type="button"
                         onClick={() => removeMoment(i)}
-                        className="p-1.5 text-zinc-600 hover:text-red-400"
+                        className="p-1.5 text-muted-foreground/60 hover:text-red-400"
                       >
                         <X size={14} />
                       </button>
@@ -271,7 +271,7 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
                     <button
                       type="button"
                       onClick={addMoment}
-                      className="text-xs text-indigo-400 hover:text-indigo-300"
+                      className="text-xs text-accent hover:text-accent"
                     >
                       + Add moment
                     </button>
@@ -281,7 +281,7 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
 
               {/* Standout performances */}
               <div>
-                <p className="text-xs font-medium text-zinc-400 mb-2">Standout performances</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Standout performances</p>
                 <CastSelector
                   tmdbId={tmdbNumericId}
                   selected={standoutPerformances}
@@ -291,38 +291,38 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
 
               {/* Watch context */}
               <div>
-                <p className="text-xs font-medium text-zinc-400 mb-2">Watch context</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Watch context</p>
                 <div className="space-y-2">
                   {/* Date */}
                   <div className="flex items-center gap-2">
-                    <Calendar size={14} className="text-zinc-500 shrink-0" />
+                    <Calendar size={14} className="text-muted-foreground shrink-0" />
                     <input
                       type="date"
                       value={watchedDate}
                       onChange={(e) => setWatchedDate(e.target.value)}
-                      className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                      className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border"
                     />
                   </div>
 
                   {/* Location */}
                   <div className="flex items-center gap-2">
-                    <MapPin size={14} className="text-zinc-500 shrink-0" />
+                    <MapPin size={14} className="text-muted-foreground shrink-0" />
                     <input
                       type="text"
                       value={watchedLocation}
                       onChange={(e) => setWatchedLocation(e.target.value)}
                       placeholder="Where did you watch?"
-                      className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                      className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
                     />
                   </div>
 
                   {/* Platform */}
                   <div className="flex items-center gap-2">
-                    <Tv size={14} className="text-zinc-500 shrink-0" />
+                    <Tv size={14} className="text-muted-foreground shrink-0" />
                     <select
                       value={watchedPlatform}
                       onChange={(e) => setWatchedPlatform(e.target.value)}
-                      className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                      className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border"
                     >
                       <option value="">Select platform...</option>
                       {PLATFORM_OPTIONS.map((opt) => (
@@ -334,8 +334,8 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
                   {/* Watched with */}
                   <div>
                     <div className="flex items-center gap-2 mb-1.5">
-                      <Users size={14} className="text-zinc-500 shrink-0" />
-                      <span className="text-xs text-zinc-500">Watched with</span>
+                      <Users size={14} className="text-muted-foreground shrink-0" />
+                      <span className="text-xs text-muted-foreground">Watched with</span>
                     </div>
                     <FriendTagInput
                       currentUserId={userId}
@@ -348,7 +348,7 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
 
               {/* Photos */}
               <div>
-                <p className="text-xs font-medium text-zinc-400 mb-2">Photos</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Photos</p>
                 <JournalPhotoGrid
                   photoPaths={photoPaths}
                   onAdd={handlePhotoAdd}
@@ -359,12 +359,12 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
 
               {/* Rewatch */}
               <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
                     checked={isRewatch}
                     onChange={(e) => setIsRewatch(e.target.checked)}
-                    className="rounded border-zinc-700 bg-zinc-900 text-indigo-500 focus:ring-indigo-500/20"
+                    className="rounded border-border bg-card text-gold focus:ring-accent/20"
                   />
                   Rewatch
                 </label>
@@ -375,39 +375,39 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
                   value={rewatchNote}
                   onChange={(e) => setRewatchNote(e.target.value)}
                   placeholder="What was different this time?"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+                  className="w-full bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
                 />
               )}
 
               {/* Personal takeaway */}
               <div>
-                <p className="text-xs font-medium text-zinc-400 mb-2">Personal takeaway (private)</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Personal takeaway (private)</p>
                 <textarea
                   value={personalTakeaway}
                   onChange={(e) => setPersonalTakeaway(e.target.value)}
                   placeholder={JOURNAL_TAKEAWAY_PROMPTS[item.tier] ?? 'Your personal reflection...'}
                   rows={2}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 resize-none focus:outline-none focus:border-zinc-600"
+                  className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:border-border"
                 />
               </div>
 
               {/* Spoiler toggle */}
               <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
                     checked={containsSpoilers}
                     onChange={(e) => setContainsSpoilers(e.target.checked)}
-                    className="rounded border-zinc-700 bg-zinc-900 text-amber-500 focus:ring-amber-500/20"
+                    className="rounded border-border bg-card text-gold focus:ring-amber-500/20"
                   />
-                  <AlertTriangle size={14} className="text-amber-400" />
+                  <AlertTriangle size={14} className="text-gold" />
                   Contains spoilers
                 </label>
               </div>
 
               {/* Visibility */}
               <div>
-                <p className="text-xs font-medium text-zinc-400 mb-2">Visibility</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Visibility</p>
                 <div className="flex gap-2">
                   {([undefined, 'public', 'friends', 'private'] as const).map((vis) => {
                     const label = vis === undefined ? 'Default' : vis === 'public' ? 'Public' : vis === 'friends' ? 'Friends' : 'Private';
@@ -420,8 +420,8 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
                         onClick={() => setVisibilityOverride(vis as JournalVisibility | undefined)}
                         className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-colors ${
                           active
-                            ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                            : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'
+                            ? 'bg-accent/20 text-accent border-accent/30'
+                            : 'bg-transparent text-muted-foreground border-border hover:border-border'
                         }`}
                       >
                         {icon} {label}

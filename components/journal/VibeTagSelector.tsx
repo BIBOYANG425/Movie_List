@@ -8,7 +8,7 @@ interface VibeTagSelectorProps {
 
 const chipBase = 'rounded-full px-3 py-1.5 text-xs font-medium border transition-colors whitespace-nowrap';
 const chipActive = 'bg-purple-500/20 text-purple-300 border-purple-500/30';
-const chipInactive = 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600';
+const chipInactive = 'bg-transparent text-muted-foreground border-border hover:border-border';
 
 export const VibeTagSelector: React.FC<VibeTagSelectorProps> = ({ selected, onChange }) => {
   const toggle = (id: string) => {

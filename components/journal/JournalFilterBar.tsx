@@ -10,8 +10,8 @@ interface JournalFilterBarProps {
 }
 
 const chipBase = 'rounded-full px-3 py-1 text-xs font-medium border transition-colors whitespace-nowrap';
-const chipActive = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
-const chipInactive = 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600';
+const chipActive = 'bg-accent/20 text-accent border-accent/30';
+const chipInactive = 'bg-transparent text-muted-foreground border-border hover:border-border';
 
 export const JournalFilterBar: React.FC<JournalFilterBarProps> = ({ filters, onFilterChange, isOwnProfile }) => {
   const setFilter = (update: Partial<JournalFilters>) => {

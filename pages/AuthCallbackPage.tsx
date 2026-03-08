@@ -61,13 +61,13 @@ const AuthCallbackPage = () => {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-center space-y-4">
+    <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center space-y-4">
         {!error ? (
           <>
-            <div className="mx-auto w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <div className="mx-auto w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
             <h1 className="text-lg font-bold">Finalizing sign-in</h1>
-            <p className="text-sm text-zinc-400">Please wait while we complete your Google login.</p>
+            <p className="text-sm text-muted-foreground">Please wait while we complete your Google login.</p>
           </>
         ) : (
           <>
@@ -77,7 +77,7 @@ const AuthCallbackPage = () => {
             </p>
             <Link
               to="/auth"
-              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition-colors"
+              className="inline-flex items-center justify-center rounded-lg bg-gold hover:bg-gold px-4 py-2 text-sm font-semibold text-foreground transition-colors"
             >
               Back to Sign In
             </Link>

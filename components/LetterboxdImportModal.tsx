@@ -186,13 +186,13 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-zinc-950 border border-zinc-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/50 flex-shrink-0">
-          <h2 className="text-lg font-bold text-white">Import from Letterboxd</h2>
+        <div className="flex items-center justify-between p-5 border-b border-border bg-card/30 flex-shrink-0">
+          <h2 className="text-lg font-bold text-foreground">Import from Letterboxd</h2>
           <button
             onClick={handleClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           >
             <X size={18} />
           </button>
@@ -203,29 +203,29 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
           {/* Step: Upload */}
           {step === 'upload' && (
             <div className="space-y-4">
-              <p className="text-sm text-zinc-400">
+              <p className="text-sm text-muted-foreground">
                 Upload your Letterboxd data export (.zip). You can export your data from{' '}
                 <a
                   href="https://letterboxd.com/settings/data/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-indigo-400 hover:text-indigo-300 underline"
+                  className="text-accent hover:text-accent underline"
                 >
                   Letterboxd Settings &rarr; Import & Export
                 </a>.
               </p>
 
-              <label className="flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-zinc-700 rounded-xl cursor-pointer hover:border-indigo-500/50 hover:bg-zinc-900/50 transition-colors">
+              <label className="flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-gold/50 hover:bg-card/30 transition-colors">
                 {parsing ? (
                   <>
-                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-                    <span className="text-sm text-zinc-300">Parsing export...</span>
+                    <Loader2 className="w-8 h-8 text-gold animate-spin" />
+                    <span className="text-sm text-muted-foreground">Parsing export...</span>
                   </>
                 ) : (
                   <>
-                    <Upload className="w-8 h-8 text-zinc-500" />
-                    <span className="text-sm text-zinc-400">Click to select your Letterboxd export (.zip)</span>
-                    <span className="text-xs text-zinc-600">Max 10MB</span>
+                    <Upload className="w-8 h-8 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Click to select your Letterboxd export (.zip)</span>
+                    <span className="text-xs text-muted-foreground/60">Max 10MB</span>
                   </>
                 )}
                 <input
@@ -249,7 +249,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
           {/* Step: Preview */}
           {step === 'preview' && preview && (
             <div className="space-y-4">
-              <p className="text-sm text-zinc-400">
+              <p className="text-sm text-muted-foreground">
                 Found the following data in your Letterboxd export:
               </p>
 
@@ -262,7 +262,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
 
               {preview.ratedCount > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Tier Distribution</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tier Distribution</p>
                   <div className="flex gap-2">
                     {(['S', 'A', 'B', 'C', 'D'] as Tier[]).map(tier => (
                       <div
@@ -279,13 +279,13 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
 
               {preview.sampleTitles.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Sample Titles</p>
-                  <p className="text-sm text-zinc-300">{preview.sampleTitles.join(', ')}</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sample Titles</p>
+                  <p className="text-sm text-muted-foreground">{preview.sampleTitles.join(', ')}</p>
                 </div>
               )}
 
               {preview.ratedCount === 0 && preview.watchlistCount === 0 && (
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-muted-foreground">
                   No rated movies or watchlist items found. Only unrated diary/watched entries will not be imported as rankings.
                 </p>
               )}
@@ -302,25 +302,25 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
           {/* Step: Resolving */}
           {step === 'resolving' && (
             <div className="space-y-4 py-4">
-              <p className="text-sm text-zinc-400 text-center">
+              <p className="text-sm text-muted-foreground text-center">
                 Matching movies against TMDB...
               </p>
 
               <div className="space-y-2">
-                <div className="h-3 rounded-full bg-zinc-800 overflow-hidden">
+                <div className="h-3 rounded-full bg-secondary overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-indigo-500 transition-all duration-300 ease-out"
+                    className="h-full rounded-full bg-gold transition-all duration-300 ease-out"
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-xs text-zinc-500">
+                <div className="flex justify-between text-xs text-muted-foreground">
                   <span>{progress} / {progressTotal}</span>
                   <span>{progressPct}%</span>
                 </div>
               </div>
 
               {currentTitle && (
-                <p className="text-xs text-zinc-500 text-center truncate">
+                <p className="text-xs text-muted-foreground text-center truncate">
                   Resolving: {currentTitle}
                 </p>
               )}
@@ -330,7 +330,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
                   abortRef.current?.abort();
                   setStep('preview');
                 }}
-                className="w-full rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                className="w-full rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors"
               >
                 Cancel
               </button>
@@ -354,11 +354,11 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
 
               {importResult.failedResolutions.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Failed to Resolve ({importResult.failedResolutions.length})
                   </p>
-                  <div className="max-h-32 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-                    <p className="text-xs text-zinc-500">
+                  <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-card/30 p-3">
+                    <p className="text-xs text-muted-foreground">
                       {importResult.failedResolutions.join(', ')}
                     </p>
                   </div>
@@ -369,18 +369,18 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-zinc-800 bg-zinc-900/50 flex-shrink-0">
+        <div className="p-5 border-t border-border bg-card/30 flex-shrink-0">
           {step === 'preview' && (
             <div className="flex gap-3">
               <button
                 onClick={handleClose}
-                className="flex-1 rounded-lg border border-zinc-700 px-4 py-2.5 text-sm text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleStartImport}
-                className="flex-1 rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 transition-colors"
+                className="flex-1 rounded-lg bg-gold px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-gold-muted transition-colors"
               >
                 Start Import
               </button>
@@ -390,7 +390,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
           {step === 'results' && (
             <button
               onClick={handleDone}
-              className="w-full rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 transition-colors"
+              className="w-full rounded-lg bg-gold px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-gold-muted transition-colors"
             >
               Done
             </button>
@@ -403,9 +403,9 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-center">
-      <div className="text-xl font-bold text-white">{value}</div>
-      <div className="text-xs text-zinc-400 mt-0.5">{label}</div>
+    <div className="rounded-lg border border-border bg-card/30 p-3 text-center">
+      <div className="text-xl font-bold text-foreground">{value}</div>
+      <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
     </div>
   );
 }

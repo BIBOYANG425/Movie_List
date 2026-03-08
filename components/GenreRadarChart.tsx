@@ -41,7 +41,7 @@ export const GenreRadarChart: React.FC<GenreRadarChartProps> = ({
 
     if (topGenres.length === 0) {
         return (
-            <div className="flex items-center justify-center h-48 text-zinc-500 text-sm">
+            <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
                 No genre data yet. Rank some movies first!
             </div>
         );
@@ -178,14 +178,14 @@ export const GenreRadarChart: React.FC<GenreRadarChartProps> = ({
                 <div className="flex items-center gap-6 text-xs">
                     <div className="flex items-center gap-1.5">
                         <span className="w-3 h-0.5 bg-amber-500 rounded-full inline-block" />
-                        <span className="text-zinc-400">{viewerLabel}</span>
+                        <span className="text-muted-foreground">{viewerLabel}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <span
                             className="w-3 h-0.5 rounded-full inline-block"
                             style={{ background: '#8b5cf6' }}
                         />
-                        <span className="text-zinc-400">{comparisonLabel}</span>
+                        <span className="text-muted-foreground">{comparisonLabel}</span>
                     </div>
                 </div>
             )}
@@ -205,10 +205,10 @@ export const GenreRadarChart: React.FC<GenreRadarChartProps> = ({
                             {g.avgTier}
                         </span>
                         <div className="flex-1 min-w-0">
-                            <span className="text-xs text-zinc-200 font-medium truncate block">
+                            <span className="text-xs text-foreground font-medium truncate block">
                                 {g.genre}
                             </span>
-                            <span className="text-[10px] text-zinc-500">
+                            <span className="text-[10px] text-muted-foreground">
                                 {g.count} movies · {g.percentage}%
                             </span>
                         </div>

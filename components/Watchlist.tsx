@@ -14,9 +14,9 @@ export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank })
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-zinc-600">
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/60">
         <Bookmark size={48} className="mb-4 opacity-30" />
-        <p className="text-lg font-semibold text-zinc-500">{t('watchlist.empty')}</p>
+        <p className="text-lg font-semibold text-muted-foreground">{t('watchlist.empty')}</p>
         <p className="text-sm mt-1 opacity-60 max-w-xs text-center">
           {t('watchlist.emptyHint')}
         </p>
@@ -37,9 +37,9 @@ export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank })
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Bookmark size={18} className="text-emerald-400" />
-          <h2 className="text-lg font-bold text-white">{t('watchlist.title')}</h2>
+          <h2 className="text-lg font-bold text-foreground">{t('watchlist.title')}</h2>
         </div>
-        <span className="text-xs font-mono text-zinc-500 bg-zinc-900 px-2 py-1 rounded border border-zinc-800">
+        <span className="text-xs font-mono text-muted-foreground bg-card px-2 py-1 rounded border border-border">
           {items.length} {t('watchlist.saved')}
         </span>
       </div>
@@ -48,10 +48,10 @@ export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank })
         {items.map((item) => (
           <div
             key={item.id}
-            className="group relative rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-all shadow-lg"
+            className="group relative rounded-xl overflow-hidden bg-card border border-border hover:border-border transition-all shadow-lg"
           >
             {/* Poster */}
-            <div className="relative aspect-[2/3] w-full bg-zinc-800">
+            <div className="relative aspect-[2/3] w-full bg-secondary">
               <img
                 src={item.posterUrl}
                 alt={item.title}
@@ -63,14 +63,14 @@ export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank })
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 backdrop-blur-[2px]">
                 <button
                   onClick={() => onRank(item)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-black text-xs font-semibold hover:bg-zinc-200 transition-colors shadow-lg"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-background text-xs font-semibold hover:bg-foreground/20 transition-colors shadow-lg"
                 >
                   <ArrowUpRight size={13} />
                   {t('watchlist.rankIt')}
                 </button>
                 <button
                   onClick={() => onRemove(item.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/80 text-red-400 text-xs font-medium hover:bg-red-500/20 border border-zinc-700 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/50 text-red-400 text-xs font-medium hover:bg-red-500/20 border border-border transition-colors"
                 >
                   <Trash2 size={12} />
                   {t('watchlist.remove')}
@@ -80,11 +80,11 @@ export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank })
 
             {/* Info */}
             <div className="absolute bottom-0 left-0 right-0 p-2.5 pt-5">
-              <p className="text-xs font-semibold text-white leading-tight truncate">{item.title}</p>
-              <div className="flex items-center gap-1.5 mt-1 text-[10px] text-zinc-500">
+              <p className="text-xs font-semibold text-foreground leading-tight truncate">{item.title}</p>
+              <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted-foreground">
                 <Film size={10} />
                 <span>{item.year}</span>
-                <span className="text-zinc-700">·</span>
+                <span className="text-muted-foreground/40">·</span>
                 <Clock size={9} />
                 <span>{formatDate(item.addedAt)}</span>
               </div>

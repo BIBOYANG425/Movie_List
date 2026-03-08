@@ -34,7 +34,7 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
   const posters = card.listPosterUrls ?? [];
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors">
+    <div className="bg-card border border-border rounded-xl p-4 hover:border-border transition-colors">
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
         <Link to={`/profile/${card.userId}`}>
@@ -45,7 +45,7 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
               className="w-8 h-8 rounded-full object-cover"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs text-zinc-300">
+            <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs text-muted-foreground">
               {card.username.charAt(0).toUpperCase()}
             </div>
           )}
@@ -53,13 +53,13 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
         <div className="text-sm">
           <Link
             to={`/profile/${card.userId}`}
-            className="font-medium text-white hover:underline"
+            className="font-medium text-foreground hover:underline"
           >
             {card.displayName || card.username}
           </Link>
-          <span className="text-zinc-400"> created a list</span>
+          <span className="text-muted-foreground"> created a list</span>
         </div>
-        <span className="ml-auto text-xs text-zinc-500">
+        <span className="ml-auto text-xs text-muted-foreground">
           {relativeDate(card.createdAt)}
         </span>
         <FeedCardMenu
@@ -71,7 +71,7 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
       {/* Content */}
       <div className="mb-3">
         {card.listTitle && (
-          <p className="font-medium text-white text-base mb-2">
+          <p className="font-medium text-foreground text-base mb-2">
             {card.listTitle}
           </p>
         )}
@@ -84,21 +84,21 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
                 key={i}
                 src={url}
                 alt=""
-                className={`w-12 h-18 rounded-md object-cover border border-zinc-800 ${
+                className={`w-12 h-18 rounded-md object-cover border border-border ${
                   i === 0 ? 'ml-0' : '-ml-2'
                 } relative`}
                 style={{ zIndex: posters.length - i }}
               />
             ))
           ) : (
-            <div className="w-12 h-18 rounded-md bg-zinc-800 flex items-center justify-center">
-              <List className="w-5 h-5 text-zinc-500" />
+            <div className="w-12 h-18 rounded-md bg-secondary flex items-center justify-center">
+              <List className="w-5 h-5 text-muted-foreground" />
             </div>
           )}
         </div>
 
         {card.listItemCount != null && (
-          <span className="text-xs text-zinc-400">
+          <span className="text-xs text-muted-foreground">
             {card.listItemCount} movies
           </span>
         )}
@@ -113,7 +113,7 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
         />
         <button
           onClick={() => onOpenComments(card.id)}
-          className="flex items-center gap-1 text-xs text-zinc-400 hover:text-white transition-colors ml-auto"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
         >
           <MessageCircle className="w-4 h-4" />
           {commentCount > 0 && <span>{commentCount}</span>}

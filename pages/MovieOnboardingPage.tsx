@@ -482,8 +482,8 @@ const MovieOnboardingPage: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
             </div>
         );
     }
@@ -491,7 +491,7 @@ const MovieOnboardingPage: React.FC = () => {
     // ── Render ──────────────────────────────────────────────────────────────────
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-zinc-100">
+        <div className="min-h-screen bg-background text-foreground">
             {/* Tier picker modal */}
             {pendingMovie && (
                 <div
@@ -499,20 +499,20 @@ const MovieOnboardingPage: React.FC = () => {
                     onClick={() => setPendingMovie(null)}
                 >
                     <div
-                        className="bg-zinc-950 border border-zinc-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
+                        className="bg-background border border-border w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
+                        <div className="flex items-center justify-between p-4 border-b border-border bg-card/30">
                             <div className="flex items-center gap-2">
                                 {modalStep === 'compare' && (
-                                    <button onClick={() => { setModalStep('tier'); setSelectedTier(null); }} className="text-zinc-400 hover:text-white transition-colors">
+                                    <button onClick={() => { setModalStep('tier'); setSelectedTier(null); }} className="text-muted-foreground hover:text-foreground transition-colors">
                                         <ArrowLeft size={18} />
                                     </button>
                                 )}
                                 <h3 className="text-lg font-bold">{modalStep === 'tier' ? 'Assign Tier' : 'Head-to-Head'}</h3>
                             </div>
-                            <button onClick={() => setPendingMovie(null)} className="text-zinc-400 hover:text-white transition-colors">
+                            <button onClick={() => setPendingMovie(null)} className="text-muted-foreground hover:text-foreground transition-colors">
                                 <X size={20} />
                             </button>
                         </div>
@@ -520,17 +520,17 @@ const MovieOnboardingPage: React.FC = () => {
                         {modalStep === 'tier' && (
                             <>
                                 {/* Movie preview */}
-                                <div className="flex items-center gap-3 p-4 bg-zinc-800/30">
+                                <div className="flex items-center gap-3 p-4 bg-secondary/30">
                                     {pendingMovie.posterUrl ? (
                                         <img src={pendingMovie.posterUrl} alt="" className="w-12 h-[72px] object-cover rounded-lg shadow-md flex-shrink-0" />
                                     ) : (
-                                        <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-                                            <Film size={18} className="text-zinc-600" />
+                                        <div className="w-12 h-[72px] bg-secondary rounded-lg flex items-center justify-center flex-shrink-0">
+                                            <Film size={18} className="text-muted-foreground/60" />
                                         </div>
                                     )}
                                     <div>
-                                        <p className="font-bold text-white leading-tight">{pendingMovie.title}</p>
-                                        <p className="text-zinc-500 text-xs mt-0.5">{pendingMovie.year}</p>
+                                        <p className="font-bold text-foreground leading-tight">{pendingMovie.title}</p>
+                                        <p className="text-muted-foreground text-xs mt-0.5">{pendingMovie.year}</p>
                                     </div>
                                 </div>
 
@@ -559,32 +559,32 @@ const MovieOnboardingPage: React.FC = () => {
                                 <div className="p-4 space-y-4 animate-fade-in">
                                     {/* Phase indicator */}
                                     <div className="flex items-center justify-center">
-                                        <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded">
+                                        <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground bg-secondary/30 px-2 py-0.5 rounded">
                                             {currentComparison.phase.replace('_', '-')}
                                         </span>
                                     </div>
 
-                                    <h4 className="text-center text-sm font-bold text-white">{currentComparison.question}</h4>
+                                    <h4 className="text-center text-sm font-bold text-foreground">{currentComparison.question}</h4>
 
                                     {/* Head-to-head */}
                                     <div className="flex items-stretch gap-2">
                                         {/* New item (movieA) */}
                                         <button
                                             onClick={() => handleCompareChoice('new')}
-                                            className="flex-1 flex flex-col items-center gap-2 p-2 rounded-xl border-2 border-zinc-700 hover:border-indigo-500 hover:bg-indigo-500/5 transition-all active:scale-[0.97]"
+                                            className="flex-1 flex flex-col items-center gap-2 p-2 rounded-xl border-2 border-border hover:border-gold hover:bg-gold/5 transition-all active:scale-[0.97]"
                                         >
                                             <img
                                                 src={currentComparison.movieA.posterUrl ?? ''}
                                                 alt={currentComparison.movieA.title}
                                                 className="w-full aspect-[2/3] object-cover rounded-lg shadow-lg"
                                             />
-                                            <p className="font-bold text-white text-xs leading-tight text-center">{currentComparison.movieA.title}</p>
-                                            <span className="text-[10px] text-indigo-400 font-semibold border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 rounded-full">NEW</span>
+                                            <p className="font-bold text-foreground text-xs leading-tight text-center">{currentComparison.movieA.title}</p>
+                                            <span className="text-[10px] text-accent font-semibold border border-accent/30 bg-accent/10 px-2 py-0.5 rounded-full">NEW</span>
                                         </button>
 
                                         {/* OR divider */}
                                         <div className="flex items-center justify-center flex-shrink-0">
-                                            <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] font-black text-zinc-400">
+                                            <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] font-black text-muted-foreground">
                                                 OR
                                             </div>
                                         </div>
@@ -592,14 +592,14 @@ const MovieOnboardingPage: React.FC = () => {
                                         {/* Existing item (movieB) */}
                                         <button
                                             onClick={() => handleCompareChoice('existing')}
-                                            className="flex-1 flex flex-col items-center gap-2 p-2 rounded-xl border-2 border-zinc-700 hover:border-zinc-400 hover:bg-zinc-400/5 transition-all active:scale-[0.97]"
+                                            className="flex-1 flex flex-col items-center gap-2 p-2 rounded-xl border-2 border-border hover:border-border hover:bg-secondary/10 transition-all active:scale-[0.97]"
                                         >
                                             <img
                                                 src={currentComparison.movieB.posterUrl ?? ''}
                                                 alt={currentComparison.movieB.title}
                                                 className="w-full aspect-[2/3] object-cover rounded-lg shadow-lg"
                                             />
-                                            <p className="font-bold text-white text-xs leading-tight text-center">{currentComparison.movieB.title}</p>
+                                            <p className="font-bold text-foreground text-xs leading-tight text-center">{currentComparison.movieB.title}</p>
                                             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier]}`}>
                                                 {selectedTier}
                                             </span>
@@ -610,14 +610,14 @@ const MovieOnboardingPage: React.FC = () => {
                                     <div className="flex items-center justify-between">
                                         <button
                                             onClick={handleCompareUndo}
-                                            className="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                            className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                         >
                                             <ArrowLeft size={13} />
                                             Undo
                                         </button>
                                         <button
                                             onClick={() => handleCompareChoice('skip')}
-                                            className="px-3 py-1.5 rounded-full border border-zinc-700 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 hover:border-zinc-500 transition-all"
+                                            className="px-3 py-1.5 rounded-full border border-border text-xs font-semibold text-muted-foreground hover:bg-secondary hover:border-border transition-all"
                                         >
                                             Too tough — place here
                                         </button>
@@ -631,10 +631,10 @@ const MovieOnboardingPage: React.FC = () => {
             <main className="max-w-2xl mx-auto px-4 py-10 space-y-6">
                 {/* Header */}
                 <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-[0.2em] text-indigo-300">{user ? 'Step 2 of 2' : 'Get Started'}</p>
-                    <h1 className="text-3xl font-bold">Build your Marquee</h1>
-                    <p className="text-zinc-400 text-sm">
-                        Pick at least <span className="text-white font-semibold">{REQUIRED_MOVIES} movies</span> you've seen
+                    <p className="text-xs uppercase tracking-[0.2em] text-accent">{user ? 'Step 2 of 2' : 'Get Started'}</p>
+                    <h1 className="text-3xl font-bold">Build your Spool</h1>
+                    <p className="text-muted-foreground text-sm">
+                        Pick at least <span className="text-foreground font-semibold">{REQUIRED_MOVIES} movies</span> you've seen
                         to seed your rankings. You can adjust and fine-tune everything later.
                     </p>
                 </div>
@@ -642,18 +642,18 @@ const MovieOnboardingPage: React.FC = () => {
                 {/* Progress bar */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-400">
-                            <span className="text-white font-bold">{rankedItems.length}</span> / {REQUIRED_MOVIES} movies
+                        <span className="text-muted-foreground">
+                            <span className="text-foreground font-bold">{rankedItems.length}</span> / {REQUIRED_MOVIES} movies
                         </span>
                         {remaining > 0 ? (
-                            <span className="text-zinc-500">{remaining} more to go</span>
+                            <span className="text-muted-foreground">{remaining} more to go</span>
                         ) : (
                             <span className="text-emerald-400 font-semibold flex items-center gap-1">
                                 <Check size={14} /> Ready!
                             </span>
                         )}
                     </div>
-                    <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="h-2 bg-secondary rounded-full overflow-hidden">
                         <div
                             className="h-full rounded-full transition-all duration-500 ease-out"
                             style={{
@@ -672,22 +672,22 @@ const MovieOnboardingPage: React.FC = () => {
                         onClick={handleContinue}
                         className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 text-black font-bold text-sm hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 animate-fade-in"
                     >
-                        {user ? 'Continue to Marquee' : 'Create your account'}
+                        {user ? 'Continue to Spool' : 'Create your account'}
                         <ChevronRight size={16} />
                     </button>
                 )}
 
                 {/* Search */}
                 <div className="relative">
-                    <Search className="absolute left-3 top-3.5 text-zinc-500" size={18} />
+                    <Search className="absolute left-3 top-3.5 text-muted-foreground" size={18} />
                     <input
                         type="text"
                         placeholder="Search by title, director, or actor..."
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                        className="w-full bg-card border border-border rounded-xl py-3 pl-10 pr-4 text-foreground placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                     />
-                    {isSearching && <Loader2 className="absolute right-3 top-3.5 text-zinc-500 animate-spin" size={18} />}
+                    {isSearching && <Loader2 className="absolute right-3 top-3.5 text-muted-foreground animate-spin" size={18} />}
                 </div>
 
                 {/* Search results */}
@@ -697,10 +697,10 @@ const MovieOnboardingPage: React.FC = () => {
                             <div className="space-y-2">
                                 {[1, 2, 3].map(i => (
                                     <div key={i} className="flex items-center gap-3 p-2 rounded-lg animate-pulse">
-                                        <div className="w-12 h-16 bg-zinc-800 rounded flex-shrink-0" />
+                                        <div className="w-12 h-16 bg-secondary rounded flex-shrink-0" />
                                         <div className="flex-1 space-y-2">
-                                            <div className="h-3 bg-zinc-800 rounded w-3/4" />
-                                            <div className="h-2 bg-zinc-800 rounded w-1/2" />
+                                            <div className="h-3 bg-secondary rounded w-3/4" />
+                                            <div className="h-2 bg-secondary rounded w-1/2" />
                                         </div>
                                     </div>
                                 ))}
@@ -710,32 +710,32 @@ const MovieOnboardingPage: React.FC = () => {
                         {/* People (directors & actors) */}
                         {!isSearching && personProfiles.length > 0 && (
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1">People</p>
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">People</p>
                                 {personProfiles.map(person => (
                                     <button
                                         key={person.id}
                                         onClick={() => handleOpenPerson(person)}
-                                        className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-zinc-800/80 transition-colors w-full text-left"
+                                        className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-secondary/50 transition-colors w-full text-left"
                                     >
                                         {person.photoUrl ? (
-                                            <img src={person.photoUrl} alt={person.name} className="w-11 h-11 object-cover rounded-full bg-zinc-800 flex-shrink-0 shadow-md" />
+                                            <img src={person.photoUrl} alt={person.name} className="w-11 h-11 object-cover rounded-full bg-secondary flex-shrink-0 shadow-md" />
                                         ) : (
-                                            <div className="w-11 h-11 bg-zinc-800 rounded-full flex items-center justify-center flex-shrink-0 text-zinc-600 text-lg font-bold">
+                                            <div className="w-11 h-11 bg-secondary rounded-full flex items-center justify-center flex-shrink-0 text-muted-foreground/60 text-lg font-bold">
                                                 {person.name.charAt(0)}
                                             </div>
                                         )}
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2">
-                                                <p className="font-semibold text-white truncate">{person.name}</p>
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${person.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                                                <p className="font-semibold text-foreground truncate">{person.name}</p>
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${person.role === 'Director' ? 'bg-amber-500/15 text-gold' : 'bg-gold/15 text-accent'}`}>
                                                     {person.role}
                                                 </span>
                                             </div>
                                             {person.knownFor.length > 0 && (
-                                                <p className="text-xs text-zinc-500 mt-0.5 truncate">Known for: {person.knownFor.join(', ')}</p>
+                                                <p className="text-xs text-muted-foreground mt-0.5 truncate">Known for: {person.knownFor.join(', ')}</p>
                                             )}
                                         </div>
-                                        <ChevronRight size={16} className="text-zinc-600 flex-shrink-0" />
+                                        <ChevronRight size={16} className="text-muted-foreground/60 flex-shrink-0" />
                                     </button>
                                 ))}
                             </div>
@@ -745,28 +745,28 @@ const MovieOnboardingPage: React.FC = () => {
                         {!isSearching && filteredSearch.length > 0 && (
                             <div className="space-y-1">
                                 {personProfiles.length > 0 && (
-                                    <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider px-1 pt-1">Movies</p>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1 pt-1">Movies</p>
                                 )}
                                 {filteredSearch.map(movie => (
                                     <button
                                         key={movie.id}
                                         onClick={() => handleSelectMovie(movie, false)}
-                                        className="flex items-center gap-3 p-2 rounded-xl hover:bg-zinc-800/80 transition-colors w-full text-left"
+                                        className="flex items-center gap-3 p-2 rounded-xl hover:bg-secondary/50 transition-colors w-full text-left"
                                     >
                                         {movie.posterUrl ? (
-                                            <img src={movie.posterUrl} alt={movie.title} className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 flex-shrink-0 shadow-md" />
+                                            <img src={movie.posterUrl} alt={movie.title} className="w-12 h-[72px] object-cover rounded-lg bg-secondary flex-shrink-0 shadow-md" />
                                         ) : (
-                                            <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                <Film size={20} className="text-zinc-600" />
+                                            <div className="w-12 h-[72px] bg-secondary rounded-lg flex items-center justify-center flex-shrink-0">
+                                                <Film size={20} className="text-muted-foreground/60" />
                                             </div>
                                         )}
                                         <div className="flex-1 min-w-0">
-                                            <p className="font-semibold text-white truncate">{movie.title}</p>
-                                            <p className="text-xs text-zinc-500 mt-0.5">{movie.year}</p>
+                                            <p className="font-semibold text-foreground truncate">{movie.title}</p>
+                                            <p className="text-xs text-muted-foreground mt-0.5">{movie.year}</p>
                                             {movie.genres.length > 0 && (
                                                 <div className="flex gap-1 mt-1 flex-wrap">
                                                     {movie.genres.map(g => (
-                                                        <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">{g}</span>
+                                                        <span key={g} className="text-[10px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded-full border border-border">{g}</span>
                                                     ))}
                                                 </div>
                                             )}
@@ -778,7 +778,7 @@ const MovieOnboardingPage: React.FC = () => {
 
                         {/* Empty state */}
                         {!isSearching && searchTerm.trim() && filteredSearch.length === 0 && personProfiles.length === 0 && (
-                            <div className="text-center py-8 text-zinc-500 text-sm">
+                            <div className="text-center py-8 text-muted-foreground text-sm">
                                 <Film size={28} className="mx-auto mb-2 opacity-30" />
                                 <p>No results for "{searchTerm}"</p>
                             </div>
@@ -791,14 +791,14 @@ const MovieOnboardingPage: React.FC = () => {
                     <div className="space-y-4 animate-fade-in">
                         <button
                             onClick={() => setSelectedPerson(null)}
-                            className="flex items-center gap-1 text-sm text-zinc-400 hover:text-white transition-colors"
+                            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
                         >
                             <ArrowLeft size={16} />
                             Back to search
                         </button>
 
                         {/* Person header */}
-                        <div className="flex items-start gap-4 p-4 bg-zinc-900/80 rounded-2xl border border-zinc-800">
+                        <div className="flex items-start gap-4 p-4 bg-card/50 rounded-2xl border border-border">
                             {selectedPerson.photoUrl ? (
                                 <img
                                     src={selectedPerson.photoUrl}
@@ -806,22 +806,22 @@ const MovieOnboardingPage: React.FC = () => {
                                     className="w-20 h-20 object-cover rounded-xl shadow-lg flex-shrink-0"
                                 />
                             ) : (
-                                <div className="w-20 h-20 bg-zinc-800 rounded-xl flex items-center justify-center flex-shrink-0 text-3xl font-bold text-zinc-600">
+                                <div className="w-20 h-20 bg-secondary rounded-xl flex items-center justify-center flex-shrink-0 text-3xl font-bold text-muted-foreground/60">
                                     {selectedPerson.name.charAt(0)}
                                 </div>
                             )}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                    <h2 className="text-xl font-bold text-white">{selectedPerson.name}</h2>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${selectedPerson.role === 'Director' ? 'bg-amber-500/15 text-amber-400' : 'bg-indigo-500/15 text-indigo-400'}`}>
+                                    <h2 className="text-xl font-bold text-foreground">{selectedPerson.name}</h2>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${selectedPerson.role === 'Director' ? 'bg-amber-500/15 text-gold' : 'bg-gold/15 text-accent'}`}>
                                         {selectedPerson.role}
                                     </span>
                                 </div>
-                                <p className="text-xs text-zinc-500 mt-0.5">
+                                <p className="text-xs text-muted-foreground mt-0.5">
                                     {selectedPerson.placeOfBirth && <span>{selectedPerson.placeOfBirth}</span>}
                                     {selectedPerson.birthday && <span> · Born {selectedPerson.birthday}</span>}
                                 </p>
-                                <p className="text-sm text-indigo-400 font-semibold mt-1">
+                                <p className="text-sm text-accent font-semibold mt-1">
                                     {selectedPerson.movies.length} {selectedPerson.movies.length === 1 ? 'film' : 'films'} {selectedPerson.role === 'Director' ? 'directed' : 'starred in'}
                                 </p>
                             </div>
@@ -829,35 +829,35 @@ const MovieOnboardingPage: React.FC = () => {
 
                         {/* Bio */}
                         {selectedPerson.biography && (
-                            <p className="text-xs text-zinc-400 leading-relaxed line-clamp-4">
+                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
                                 {selectedPerson.biography}
                             </p>
                         )}
 
                         {/* Filmography grid */}
                         <div>
-                            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Filmography</p>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Filmography</p>
                             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                                 {selectedPerson.movies.filter(m => !isOwned(m)).map(movie => (
                                     <button
                                         key={movie.id}
                                         onClick={() => handleSelectMovie(movie, false)}
-                                        className="group flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-1.5 transition-colors"
+                                        className="group flex flex-col items-center text-center rounded-xl hover:bg-secondary/60 p-1.5 transition-colors"
                                     >
                                         <img
                                             src={movie.posterUrl!}
                                             alt={movie.title}
-                                            className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg group-hover:scale-[1.03] transition-all"
+                                            className="w-full aspect-[2/3] object-cover rounded-lg bg-secondary shadow-md group-hover:shadow-lg group-hover:scale-[1.03] transition-all"
                                         />
-                                        <p className="text-[11px] font-medium text-zinc-300 mt-1.5 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                                        <p className="text-[11px] font-medium text-muted-foreground mt-1.5 leading-tight line-clamp-2 group-hover:text-foreground transition-colors">
                                             {movie.title}
                                         </p>
-                                        <p className="text-[10px] text-zinc-600">{movie.year}</p>
+                                        <p className="text-[10px] text-muted-foreground/60">{movie.year}</p>
                                     </button>
                                 ))}
                             </div>
                             {selectedPerson.movies.filter(m => !isOwned(m)).length === 0 && (
-                                <p className="text-center py-6 text-zinc-500 text-sm">All movies already ranked!</p>
+                                <p className="text-center py-6 text-muted-foreground text-sm">All movies already ranked!</p>
                             )}
                         </div>
                     </div>
@@ -866,7 +866,7 @@ const MovieOnboardingPage: React.FC = () => {
                 {/* Person loading */}
                 {personLoading && (
                     <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                        <Loader2 className="w-6 h-6 text-gold animate-spin" />
                     </div>
                 )}
 
@@ -874,10 +874,10 @@ const MovieOnboardingPage: React.FC = () => {
                 {!searchTerm.trim() && (
                     <section className="space-y-3">
                         <div className="flex items-center justify-between px-1">
-                            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Suggested movies</p>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Suggested movies</p>
                             <button
                                 onClick={handleRefresh}
-                                className="flex items-center gap-1 text-[10px] font-semibold text-zinc-600 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800"
+                                className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground/60 hover:text-muted-foreground transition-colors px-2 py-1 rounded-lg hover:bg-secondary"
                             >
                                 <RefreshCw size={11} />
                                 Refresh
@@ -888,8 +888,8 @@ const MovieOnboardingPage: React.FC = () => {
                             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                                 {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
                                     <div key={i} className="animate-pulse">
-                                        <div className="w-full aspect-[2/3] bg-zinc-800 rounded-lg" />
-                                        <div className="h-3 bg-zinc-800 rounded mt-2 w-3/4 mx-auto" />
+                                        <div className="w-full aspect-[2/3] bg-secondary rounded-lg" />
+                                        <div className="h-3 bg-secondary rounded mt-2 w-3/4 mx-auto" />
                                     </div>
                                 ))}
                             </div>
@@ -899,17 +899,17 @@ const MovieOnboardingPage: React.FC = () => {
                                     <button
                                         key={movie.id}
                                         onClick={() => handleSelectMovie(movie, true)}
-                                        className="group flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors"
+                                        className="group flex flex-col items-center text-center rounded-xl hover:bg-secondary/60 p-2 transition-colors"
                                     >
                                         <img
                                             src={movie.posterUrl!}
                                             alt={movie.title}
-                                            className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg transition-shadow"
+                                            className="w-full aspect-[2/3] object-cover rounded-lg bg-secondary shadow-md group-hover:shadow-lg transition-shadow"
                                         />
-                                        <p className="text-xs font-medium text-zinc-300 mt-2 leading-tight line-clamp-2 group-hover:text-white transition-colors">
+                                        <p className="text-xs font-medium text-muted-foreground mt-2 leading-tight line-clamp-2 group-hover:text-foreground transition-colors">
                                             {movie.title}
                                         </p>
-                                        <p className="text-[10px] text-zinc-600 mt-0.5">{movie.year}</p>
+                                        <p className="text-[10px] text-muted-foreground/60 mt-0.5">{movie.year}</p>
                                     </button>
                                 ))}
                             </div>
@@ -919,8 +919,8 @@ const MovieOnboardingPage: React.FC = () => {
 
                 {/* Selected movies summary */}
                 {rankedItems.length > 0 && (
-                    <section className="space-y-3 pt-4 border-t border-zinc-800">
-                        <h3 className="text-sm font-semibold text-zinc-400">Your picks so far</h3>
+                    <section className="space-y-3 pt-4 border-t border-border">
+                        <h3 className="text-sm font-semibold text-muted-foreground">Your picks so far</h3>
                         <div className="flex flex-wrap gap-2">
                             {rankedItems.map(item => (
                                 <div
@@ -928,7 +928,7 @@ const MovieOnboardingPage: React.FC = () => {
                                     className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${TIER_COLORS[item.tier]}`}
                                 >
                                     <span>{item.tier}</span>
-                                    <span className="text-white opacity-80 truncate max-w-[120px]">{item.title}</span>
+                                    <span className="text-foreground opacity-80 truncate max-w-[120px]">{item.title}</span>
                                 </div>
                             ))}
                         </div>

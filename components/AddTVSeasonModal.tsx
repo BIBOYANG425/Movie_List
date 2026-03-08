@@ -508,18 +508,18 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-zinc-950 border border-zinc-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/50 flex-shrink-0">
+        <div className="flex items-center justify-between p-5 border-b border-border bg-card/30 flex-shrink-0">
           <div className="flex items-center gap-3">
             {step !== 'search' && (
-              <button onClick={handleBack} className="text-zinc-400 hover:text-white transition-colors">
+              <button onClick={handleBack} className="text-muted-foreground hover:text-foreground transition-colors">
                 <ArrowLeft size={20} />
               </button>
             )}
-            <h2 className="text-xl font-bold text-white truncate">{getStepTitle()}</h2>
+            <h2 className="text-xl font-bold text-foreground truncate">{getStepTitle()}</h2>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X size={24} />
           </button>
         </div>
@@ -535,7 +535,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                   type="text"
                   autoFocus
                   placeholder="Search TV shows..."
-                  className="w-full bg-card border border-border rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:border-purple-500 transition-colors"
+                  className="w-full bg-card border border-border rounded-xl py-3 pl-10 pr-4 text-foreground placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -554,10 +554,10 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                 <div className="space-y-2">
                   {[1, 2, 3].map(i => (
                     <div key={i} className="flex items-center gap-3 p-2 rounded-lg animate-pulse">
-                      <div className="w-12 h-16 bg-zinc-800 rounded flex-shrink-0" />
+                      <div className="w-12 h-16 bg-secondary rounded flex-shrink-0" />
                       <div className="flex-1 space-y-2">
-                        <div className="h-3 bg-zinc-800 rounded w-3/4" />
-                        <div className="h-2 bg-zinc-800 rounded w-1/2" />
+                        <div className="h-3 bg-secondary rounded w-3/4" />
+                        <div className="h-2 bg-secondary rounded w-1/2" />
                       </div>
                     </div>
                   ))}
@@ -570,34 +570,34 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                     <button
                       key={show.id}
                       onClick={() => handleSelectShow(show)}
-                      className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-elevated transition-colors w-full text-left group"
+                      className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-secondary transition-colors w-full text-left group"
                     >
                       {show.posterUrl ? (
-                        <img src={show.posterUrl} alt={show.name} className="w-12 h-[72px] object-cover rounded-lg bg-zinc-800 shadow-md flex-shrink-0" />
+                        <img src={show.posterUrl} alt={show.name} className="w-12 h-[72px] object-cover rounded-lg bg-secondary shadow-md flex-shrink-0" />
                       ) : (
-                        <div className="w-12 h-[72px] bg-zinc-800 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Tv size={20} className="text-zinc-600" />
+                        <div className="w-12 h-[72px] bg-secondary rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Tv size={20} className="text-muted-foreground/60" />
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-white group-hover:text-purple-400 transition-colors truncate">{show.name}</p>
-                        <p className="text-xs text-zinc-500 mt-0.5">{show.year}</p>
+                        <p className="font-semibold text-foreground group-hover:text-purple-400 transition-colors truncate">{show.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{show.year}</p>
                         {show.genres.length > 0 && (
                           <div className="flex gap-1 mt-1.5 flex-wrap">
                             {show.genres.map(g => (
-                              <span key={g} className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded-full border border-zinc-700">{g}</span>
+                              <span key={g} className="text-[10px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded-full border border-border">{g}</span>
                             ))}
                           </div>
                         )}
                       </div>
-                      <ChevronRight size={14} className="text-zinc-600 flex-shrink-0" />
+                      <ChevronRight size={14} className="text-muted-foreground/60 flex-shrink-0" />
                     </button>
                   ))}
                 </div>
               )}
 
               {!isSearching && searchTerm.trim() && searchResults.length === 0 && (
-                <div className="text-center py-12 text-zinc-500 text-sm">
+                <div className="text-center py-12 text-muted-foreground text-sm">
                   <Tv size={32} className="mx-auto mb-3 opacity-30" />
                   <p>No results for "{searchTerm}"</p>
                   <p className="text-xs mt-1 opacity-60">Try a different show title</p>
@@ -614,12 +614,12 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                   {!suggestionsLoading && filteredSuggestions.length > 0 ? (
                     <div>
                       <div className="flex items-center justify-between mb-3 px-1">
-                        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                           {hasBackfillMixed ? 'Based on your taste' : 'Popular right now'}
                         </p>
                         <button
                           onClick={handleRefreshSuggestions}
-                          className="flex items-center gap-1 text-[10px] font-semibold text-zinc-600 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800"
+                          className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground/60 hover:text-muted-foreground transition-colors px-2 py-1 rounded-lg hover:bg-secondary"
                           title="Show different suggestions"
                         >
                           <RefreshCw size={11} />
@@ -631,23 +631,23 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                           <div key={show.id} className="relative group">
                             <button
                               onClick={() => handleSelectSuggestion(show)}
-                              className="flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors w-full"
+                              className="flex flex-col items-center text-center rounded-xl hover:bg-secondary/60 p-2 transition-colors w-full"
                             >
                               <img
                                 src={show.posterUrl!}
                                 alt={show.name}
-                                className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg hover:scale-105 transition-all mb-1.5"
+                                className="w-full aspect-[2/3] object-cover rounded-lg bg-secondary shadow-md group-hover:shadow-lg hover:scale-105 transition-all mb-1.5"
                               />
-                              <p className="text-xs font-medium text-zinc-300 leading-tight line-clamp-2 hover:text-purple-400 transition-colors w-full text-left">
+                              <p className="text-xs font-medium text-muted-foreground leading-tight line-clamp-2 hover:text-purple-400 transition-colors w-full text-left">
                                 {show.name}
                               </p>
-                              <p className="text-[10px] text-zinc-600 w-full text-left">{show.year}</p>
+                              <p className="text-[10px] text-muted-foreground/60 w-full text-left">{show.year}</p>
                             </button>
                             {onSaveForLater && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleBookmarkSuggestion(show); }}
                                 title="Save for later"
-                                className="absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md bg-black/60 text-zinc-500 border border-zinc-700 opacity-0 group-hover:opacity-100 hover:text-purple-400 hover:bg-purple-500/20"
+                                className="absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md bg-black/60 text-muted-foreground border border-border opacity-0 group-hover:opacity-100 hover:text-purple-400 hover:bg-purple-500/20"
                               >
                                 <Bookmark size={12} />
                               </button>
@@ -657,7 +657,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                       </div>
                     </div>
                   ) : !suggestionsLoading ? (
-                    <div className="text-center py-12 text-zinc-600 text-sm">
+                    <div className="text-center py-12 text-muted-foreground/60 text-sm">
                       <Search size={32} className="mx-auto mb-3 opacity-30" />
                       <p>Type a TV show title to search</p>
                     </div>
@@ -671,7 +671,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
           {step === 'show_detail' && selectedShow && (
             <div className="space-y-4 animate-fade-in">
               {/* Show info */}
-              <div className="flex items-start gap-4 bg-elevated p-4 rounded-xl border border-border">
+              <div className="flex items-start gap-4 bg-secondary p-4 rounded-xl border border-border">
                 {selectedShow.posterUrl ? (
                   <img src={selectedShow.posterUrl} alt="" className="w-20 h-[120px] object-cover rounded-lg shadow-lg flex-shrink-0" />
                 ) : (
@@ -680,8 +680,8 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-serif text-lg leading-tight text-white">{selectedShow.name}</h3>
-                  <p className="text-dim text-sm mt-0.5">{selectedShow.year} · {selectedShow.status}</p>
+                  <h3 className="font-serif text-lg leading-tight text-foreground">{selectedShow.name}</h3>
+                  <p className="text-muted-foreground text-sm mt-0.5">{selectedShow.year} · {selectedShow.status}</p>
                   {selectedShow.creators.length > 0 && (
                     <p className="text-muted text-xs mt-1">Created by {selectedShow.creators.join(', ')}</p>
                   )}
@@ -696,12 +696,12 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
               </div>
 
               {selectedShow.overview && (
-                <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-3">{selectedShow.overview}</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">{selectedShow.overview}</p>
               )}
 
               {/* Season grid */}
               <div>
-                <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                   Select a Season ({selectedShow.seasons?.length ?? 0})
                 </p>
                 <div className="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto pr-1">
@@ -724,29 +724,29 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                           <img
                             src={season.posterUrl}
                             alt={season.name}
-                            className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md mb-1.5"
+                            className="w-full aspect-[2/3] object-cover rounded-lg bg-secondary shadow-md mb-1.5"
                           />
                         ) : selectedShow.posterUrl ? (
                           <img
                             src={selectedShow.posterUrl}
                             alt={season.name}
-                            className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md mb-1.5 opacity-60"
+                            className="w-full aspect-[2/3] object-cover rounded-lg bg-secondary shadow-md mb-1.5 opacity-60"
                           />
                         ) : (
-                          <div className="w-full aspect-[2/3] bg-zinc-800 rounded-lg flex items-center justify-center mb-1.5">
-                            <Tv size={20} className="text-zinc-600" />
+                          <div className="w-full aspect-[2/3] bg-secondary rounded-lg flex items-center justify-center mb-1.5">
+                            <Tv size={20} className="text-muted-foreground/60" />
                           </div>
                         )}
 
                         {isRanked && (
                           <div className="absolute top-3 right-3 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-                            <Check size={12} className="text-white" />
+                            <Check size={12} className="text-foreground" />
                           </div>
                         )}
 
                         {!isRanked && onSaveForLater && (
                           <div
-                            className="absolute top-2 left-2 p-1 rounded-full bg-black/50 text-zinc-400 hover:text-amber-400 hover:bg-black/70 transition-colors z-10"
+                            className="absolute top-2 left-2 p-1 rounded-full bg-black/50 text-muted-foreground hover:text-gold hover:bg-black/70 transition-colors z-10"
                             onClick={(e) => { e.stopPropagation(); handleSaveSeasonForLater(season); }}
                             title="Save for later"
                           >
@@ -754,8 +754,8 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                           </div>
                         )}
 
-                        <p className="text-[11px] font-medium text-zinc-300 leading-tight line-clamp-1">{season.name}</p>
-                        <p className="text-[10px] text-zinc-600 mt-0.5">
+                        <p className="text-[11px] font-medium text-muted-foreground leading-tight line-clamp-1">{season.name}</p>
+                        <p className="text-[10px] text-muted-foreground/60 mt-0.5">
                           {season.episodeCount} ep{season.episodeCount !== 1 ? 's' : ''}
                           {season.airDate ? ` · ${season.airDate.slice(0, 4)}` : ''}
                         </p>

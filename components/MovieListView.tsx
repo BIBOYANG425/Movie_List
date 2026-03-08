@@ -99,12 +99,12 @@ export const MovieListView: React.FC<MovieListViewProps> = ({ userId }) => {
             <div className="space-y-4">
                 <button
                     onClick={() => { setSelectedList(null); setItems([]); }}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1"
+                    className="text-xs text-muted-foreground hover:text-muted-foreground flex items-center gap-1"
                 >
                     ← Back to lists
                 </button>
 
-                <div className="bg-zinc-900/60 rounded-2xl border border-zinc-800/30 p-5 space-y-4">
+                <div className="bg-card/60 rounded-2xl border border-border/30 p-5 space-y-4">
                     <div className="flex items-start justify-between">
                         <div>
                             <h3 className="text-lg font-bold flex items-center gap-2">
@@ -112,11 +112,11 @@ export const MovieListView: React.FC<MovieListViewProps> = ({ userId }) => {
                                 {selectedList.isPublic ? (
                                     <Globe size={14} className="text-emerald-400" />
                                 ) : (
-                                    <Lock size={14} className="text-zinc-500" />
+                                    <Lock size={14} className="text-muted-foreground" />
                                 )}
                             </h3>
                             {selectedList.description && (
-                                <p className="text-xs text-zinc-500 mt-1">{selectedList.description}</p>
+                                <p className="text-xs text-muted-foreground mt-1">{selectedList.description}</p>
                             )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -124,7 +124,7 @@ export const MovieListView: React.FC<MovieListViewProps> = ({ userId }) => {
                                 onClick={() => handleLike(selectedList.id)}
                                 className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors ${selectedList.isLikedByViewer
                                         ? 'bg-pink-500/15 text-pink-400'
-                                        : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                                        : 'bg-secondary text-muted-foreground hover:text-muted-foreground'
                                     }`}
                             >
                                 <Heart size={12} fill={selectedList.isLikedByViewer ? 'currentColor' : 'none'} />
@@ -134,7 +134,7 @@ export const MovieListView: React.FC<MovieListViewProps> = ({ userId }) => {
                     </div>
 
                     {items.length === 0 ? (
-                        <div className="text-center py-8 text-zinc-500">
+                        <div className="text-center py-8 text-muted-foreground">
                             <BookOpen size={24} className="mx-auto mb-2 opacity-40" />
                             <p className="text-xs">No movies in this list yet.</p>
                         </div>
@@ -143,25 +143,25 @@ export const MovieListView: React.FC<MovieListViewProps> = ({ userId }) => {
                             {items.map((item, idx) => (
                                 <div
                                     key={item.id}
-                                    className="flex items-center gap-3 p-2 rounded-lg bg-zinc-800/30 hover:bg-zinc-800/50 transition-colors"
+                                    className="flex items-center gap-3 p-2 rounded-lg bg-secondary/30 hover:bg-secondary/30 transition-colors"
                                 >
-                                    <span className="text-sm font-bold text-zinc-700 w-6 text-center">{idx + 1}</span>
+                                    <span className="text-sm font-bold text-muted-foreground/40 w-6 text-center">{idx + 1}</span>
                                     {item.posterUrl ? (
                                         <img src={item.posterUrl} alt="" className="w-8 h-12 rounded object-cover flex-shrink-0" />
                                     ) : (
-                                        <div className="w-8 h-12 rounded bg-zinc-700 flex-shrink-0" />
+                                        <div className="w-8 h-12 rounded bg-secondary flex-shrink-0" />
                                     )}
                                     <div className="flex-1 min-w-0">
-                                        <h4 className="text-xs font-semibold text-zinc-200 truncate">{item.title}</h4>
-                                        <p className="text-[10px] text-zinc-500">{item.year}</p>
+                                        <h4 className="text-xs font-semibold text-foreground truncate">{item.title}</h4>
+                                        <p className="text-[10px] text-muted-foreground">{item.year}</p>
                                         {item.note && (
-                                            <p className="text-[10px] text-zinc-400 italic mt-0.5 truncate">"{item.note}"</p>
+                                            <p className="text-[10px] text-muted-foreground italic mt-0.5 truncate">"{item.note}"</p>
                                         )}
                                     </div>
                                     {selectedList.createdBy === userId && (
                                         <button
                                             onClick={() => handleRemoveItem(item.id)}
-                                            className="text-zinc-600 hover:text-red-400 transition-colors p-1"
+                                            className="text-muted-foreground/60 hover:text-red-400 transition-colors p-1"
                                         >
                                             <Trash2 size={12} />
                                         </button>
@@ -191,38 +191,38 @@ export const MovieListView: React.FC<MovieListViewProps> = ({ userId }) => {
             </div>
 
             {showCreate && (
-                <div className="bg-zinc-900/60 rounded-xl border border-zinc-800/30 p-4 space-y-3">
+                <div className="bg-card/60 rounded-xl border border-border/30 p-4 space-y-3">
                     <input
                         type="text"
                         placeholder="List title (e.g. Best Horror of the 2010s)..."
                         value={newTitle}
                         onChange={(e) => setNewTitle(e.target.value)}
-                        className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 border border-zinc-700 focus:border-teal-500 focus:outline-none"
+                        className="w-full bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground border border-border focus:border-teal-500 focus:outline-none"
                     />
                     <input
                         type="text"
                         placeholder="Description (optional)"
                         value={newDesc}
                         onChange={(e) => setNewDesc(e.target.value)}
-                        className="w-full bg-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 border border-zinc-700 focus:border-teal-500 focus:outline-none"
+                        className="w-full bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground border border-border focus:border-teal-500 focus:outline-none"
                     />
-                    <label className="flex items-center gap-2 text-xs text-zinc-400">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
                         <input
                             type="checkbox"
                             checked={newPublic}
                             onChange={(e) => setNewPublic(e.target.checked)}
-                            className="rounded border-zinc-600 bg-zinc-800 text-teal-500 focus:ring-teal-500"
+                            className="rounded border-border bg-secondary text-teal-500 focus:ring-teal-500"
                         />
                         Make this list public
                     </label>
                     <div className="flex gap-2 justify-end">
-                        <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300">
+                        <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-muted-foreground">
                             Cancel
                         </button>
                         <button
                             onClick={handleCreate}
                             disabled={!newTitle.trim()}
-                            className="px-4 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-semibold hover:bg-teal-500 disabled:opacity-40 transition-colors"
+                            className="px-4 py-1.5 rounded-lg bg-teal-600 text-foreground text-xs font-semibold hover:bg-teal-500 disabled:opacity-40 transition-colors"
                         >
                             Create List
                         </button>
@@ -231,7 +231,7 @@ export const MovieListView: React.FC<MovieListViewProps> = ({ userId }) => {
             )}
 
             {lists.length === 0 ? (
-                <div className="text-center py-16 text-zinc-500">
+                <div className="text-center py-16 text-muted-foreground">
                     <BookOpen size={40} className="mx-auto mb-3 opacity-40" />
                     <p className="text-sm">No movie lists yet. Create your first curated collection!</p>
                 </div>
@@ -241,22 +241,22 @@ export const MovieListView: React.FC<MovieListViewProps> = ({ userId }) => {
                         <button
                             key={list.id}
                             onClick={() => handleSelectList(list)}
-                            className="text-left p-4 rounded-xl bg-zinc-900/60 border border-zinc-800/30 hover:border-zinc-700 transition-all group"
+                            className="text-left p-4 rounded-xl bg-card/60 border border-border/30 hover:border-border transition-all group"
                         >
                             <div className="flex items-start justify-between">
-                                <h3 className="text-sm font-semibold text-zinc-100 group-hover:text-white transition-colors">
+                                <h3 className="text-sm font-semibold text-foreground group-hover:text-foreground transition-colors">
                                     {list.title}
                                 </h3>
                                 {list.isPublic ? (
                                     <Globe size={12} className="text-emerald-400 mt-0.5" />
                                 ) : (
-                                    <Lock size={12} className="text-zinc-500 mt-0.5" />
+                                    <Lock size={12} className="text-muted-foreground mt-0.5" />
                                 )}
                             </div>
                             {list.description && (
-                                <p className="text-[11px] text-zinc-500 mt-1 line-clamp-2">{list.description}</p>
+                                <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{list.description}</p>
                             )}
-                            <div className="flex items-center gap-3 mt-2 text-[10px] text-zinc-500">
+                            <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
                                 <span>{list.itemCount ?? 0} movies</span>
                                 <span className="flex items-center gap-0.5">
                                     <Heart size={9} /> {list.likeCount}

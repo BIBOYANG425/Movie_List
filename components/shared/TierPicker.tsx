@@ -18,7 +18,7 @@ export const TierPicker: React.FC<TierPickerProps> = ({
 }) => (
   <div className="space-y-5 animate-fade-in">
     {/* Selected item preview */}
-    <div className="flex items-center gap-4 bg-elevated p-4 rounded-xl border border-border">
+    <div className="flex items-center gap-4 bg-secondary p-4 rounded-xl border border-border">
       {selectedItem?.posterUrl ? (
         <img src={selectedItem.posterUrl} alt="" className="w-14 h-20 object-cover rounded-lg shadow-lg flex-shrink-0" />
       ) : (
@@ -27,8 +27,8 @@ export const TierPicker: React.FC<TierPickerProps> = ({
         </div>
       )}
       <div>
-        <h3 className="font-serif text-lg leading-tight text-white">{selectedItem?.title}</h3>
-        <p className="text-dim text-sm mt-0.5">{selectedItem?.year}</p>
+        <h3 className="font-serif text-lg leading-tight text-foreground">{selectedItem?.title}</h3>
+        <p className="text-muted-foreground text-sm mt-0.5">{selectedItem?.year}</p>
         {selectedItem?.seasonTitle && (
           <p className="text-muted text-xs mt-0.5">{selectedItem.seasonTitle}</p>
         )}
@@ -38,7 +38,7 @@ export const TierPicker: React.FC<TierPickerProps> = ({
 
     {/* Bracket selector */}
     <div className="space-y-1.5">
-      <p className="text-xs text-zinc-500 font-medium">Category</p>
+      <p className="text-xs text-muted-foreground font-medium">Category</p>
       <div className="flex gap-1.5">
         {Object.values(Bracket).map((b) => (
           <button
@@ -47,8 +47,8 @@ export const TierPicker: React.FC<TierPickerProps> = ({
             onClick={() => onBracketChange(b)}
             className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${
               selectedItem?.bracket === b
-                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                : 'bg-transparent text-zinc-500 border-zinc-800 hover:border-zinc-600'
+                ? 'bg-accent/20 text-accent border-accent/30'
+                : 'bg-transparent text-muted-foreground border-border hover:border-border'
             }`}
           >
             {BRACKET_LABELS[b]}
