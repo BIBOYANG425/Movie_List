@@ -851,6 +851,7 @@ const RankingAppPage = () => {
   };
 
   const watchlistIds = useMemo(() => new Set(watchlist.map((w) => w.id)), [watchlist]);
+  const tvWatchlistIds = useMemo(() => new Set(tvWatchlist.map((w) => w.id)), [tvWatchlist]);
 
   // Active items based on media mode
   const activeItems = mediaMode === 'movies' ? items : tvItems;
@@ -1187,6 +1188,7 @@ const RankingAppPage = () => {
         onAdd={handleAddTVItem}
         onSaveForLater={addToTVWatchlist}
         currentItems={tvItems}
+        watchlistIds={tvWatchlistIds}
         onCompare={handleCompareLog}
         preselectedItem={preselectedTVItem}
       />

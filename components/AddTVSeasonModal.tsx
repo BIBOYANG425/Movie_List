@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Search, ArrowLeft, Loader2, Tv, Check, ChevronRight, Bookmark } from 'lucide-react';
+import { X, Search, ArrowLeft, Loader2, Tv, Check, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry, ComparisonRequest } from '../types';
 import { TIER_SCORE_RANGES } from '../constants';
 import {
   searchTVShows, getTVShowDetails, normalizeTVGenres, getTVShowGlobalScore,
+  buildTVTasteProfile, getSmartTVSuggestions, getSmartTVBackfill, hasTmdbKey,
   TMDBTVShow, TMDBTVSeasonSummary,
 } from '../services/tmdbService';
 import { classifyBracket, computeSeedIndex, computeTierScore } from '../services/rankingAlgorithm';
 import { SpoolRankingEngine } from '../services/spoolRankingEngine';
 import { computePredictionSignals } from '../services/spoolPrediction';
+import { useAuth } from '../contexts/AuthContext';
 import { TierPicker } from './shared/TierPicker';
 import { NotesStep } from './shared/NotesStep';
 import { ComparisonStep } from './shared/ComparisonStep';
+import { SkeletonList } from './SkeletonCard';
 
 interface AddTVSeasonModalProps {
   isOpen: boolean;
@@ -32,9 +35,11 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   onAdd,
   onSaveForLater,
   currentItems,
+  watchlistIds,
   onCompare,
   preselectedItem,
 }) => {
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -46,6 +51,14 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   const [notes, setNotes] = useState('');
   const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+
+  // Suggestion state
+  const [suggestions, setSuggestions] = useState<TMDBTVShow[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [hasBackfillMixed, setHasBackfillMixed] = useState(false);
+  const suggestionPageRef = useRef(1);
+  const backfillPoolRef = useRef<TMDBTVShow[]>([]);
+  const backfillPageRef = useRef(1);
 
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const engineRef = useRef<SpoolRankingEngine | null>(null);
@@ -63,6 +76,118 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   // Already ranked TV season IDs
   const rankedIds = new Set(currentItems.filter(i => i.type === 'tv_season').map(i => i.id));
 
+  // Show-level IDs extracted from ranked seasons for suggestion filtering
+  const rankedShowIds = new Set(
+    currentItems
+      .filter(i => i.type === 'tv_season')
+      .map(i => { const m = i.id.match(/^tv_(\d+)_s\d+$/); return m ? `tv_${m[1]}` : null; })
+      .filter(Boolean) as string[]
+  );
+
+  // Extract show-level IDs from season-level watchlist entries
+  // e.g. tv_1399_s1 → tv_1399, so suggestions for that show are filtered out
+  const watchlistShowIds = new Set<string>(
+    [...(watchlistIds ?? [])].flatMap(id => {
+      const m = id.match(/^tv_(\d+)_s\d+$/);
+      return m ? [`tv_${m[1]}`, id] : [id];
+    })
+  );
+
+  const getExcludeIds = () => new Set<string>([
+    ...rankedIds,
+    ...rankedShowIds,
+    ...watchlistShowIds,
+  ]);
+
+  const getExcludeTitles = () => new Set<string>(
+    currentItems.filter(i => i.type === 'tv_season').map(i => i.title.toLowerCase()),
+  );
+
+  const isAlreadyOwned = (s: TMDBTVShow) =>
+    rankedShowIds.has(s.id) || watchlistShowIds.has(s.id);
+
+  const prefetchBackfillPool = (excludeIds: Set<string>, excludeTitles: Set<string>, page?: number) => {
+    const profile = buildTVTasteProfile(currentItems.filter(i => i.type === 'tv_season'));
+    getSmartTVBackfill(profile, excludeIds, page ?? backfillPageRef.current, excludeTitles).then((results) => {
+      backfillPoolRef.current = results;
+    });
+  };
+
+  const consumeSuggestion = (showId: string) => {
+    setSuggestions(prev => {
+      const without = prev.filter(s => s.id !== showId);
+      if (backfillPoolRef.current.length > 0) {
+        const existingIds = new Set(without.map(s => s.id));
+        let fill: TMDBTVShow | undefined;
+        while (backfillPoolRef.current.length > 0) {
+          const candidate = backfillPoolRef.current.shift()!;
+          if (!existingIds.has(candidate.id)) {
+            fill = candidate;
+            break;
+          }
+        }
+        if (fill) {
+          setHasBackfillMixed(true);
+          without.push(fill);
+        }
+        if (backfillPoolRef.current.length < 3) {
+          backfillPageRef.current += 1;
+          prefetchBackfillPool(getExcludeIds(), getExcludeTitles(), backfillPageRef.current);
+        }
+      }
+      return without;
+    });
+  };
+
+  const loadInitialTVSuggestions = (page: number) => {
+    if (!hasTmdbKey()) return;
+    setSuggestionsLoading(true);
+    setHasBackfillMixed(false);
+
+    const excludeIds = getExcludeIds();
+    const excludeTitles = getExcludeTitles();
+    const profile = buildTVTasteProfile(currentItems.filter(i => i.type === 'tv_season'));
+
+    getSmartTVSuggestions(profile, excludeIds, page, excludeTitles, user?.id ?? undefined).then((results) => {
+      setSuggestions(results);
+      setSuggestionsLoading(false);
+    });
+
+    backfillPageRef.current = 1;
+    backfillPoolRef.current = [];
+    getSmartTVBackfill(profile, excludeIds, 1, excludeTitles).then((results) => {
+      backfillPoolRef.current = results;
+    });
+  };
+
+  const handleRefreshSuggestions = () => {
+    suggestionPageRef.current += 1;
+    loadInitialTVSuggestions(suggestionPageRef.current);
+  };
+
+  const handleSelectSuggestion = (show: TMDBTVShow) => {
+    consumeSuggestion(show.id);
+    handleSelectShow(show);
+  };
+
+  const handleBookmarkSuggestion = (show: TMDBTVShow) => {
+    if (!onSaveForLater) return;
+    consumeSuggestion(show.id);
+    const watchItem: WatchlistItem = {
+      id: show.id,
+      title: show.name,
+      year: show.year,
+      posterUrl: show.posterUrl ?? '',
+      type: 'tv_season',
+      genres: normalizeTVGenres(show.genres),
+      showTmdbId: show.tmdbId,
+      addedAt: new Date().toISOString(),
+    };
+    onSaveForLater(watchItem);
+  };
+
+  const filteredSuggestions = suggestions.filter(s => !isAlreadyOwned(s));
+
   // ─── Reset on open ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
@@ -79,8 +204,19 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
     engineRef.current = null;
     smallTierRef.current = null;
 
-    if (preselectedItem) {
-      // Skip search/show_detail — go directly to tier selection.
+    if (preselectedItem && preselectedItem.showTmdbId && !preselectedItem.seasonNumber) {
+      // Show-level bookmark — send user through season selection first.
+      setSelectedItem(null);
+      setShowLoading(true);
+      setStep('search');
+      void getTVShowDetails(preselectedItem.showTmdbId).then((details) => {
+        if (cancelled || !details) { setShowLoading(false); return; }
+        setSelectedShow(details);
+        setShowLoading(false);
+        setStep('show_detail');
+      });
+    } else if (preselectedItem) {
+      // Full season bookmark — go directly to tier selection.
       setSelectedItem(preselectedItem);
       setStep('tier');
 
@@ -96,6 +232,10 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
       setSelectedItem(null);
       setStep('search');
     }
+
+    // Load suggestions
+    suggestionPageRef.current = 1;
+    loadInitialTVSuggestions(1);
 
     return () => {
       cancelled = true;
@@ -465,10 +605,64 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
               )}
 
               {!isSearching && !searchTerm.trim() && (
-                <div className="text-center py-12 text-zinc-600 text-sm">
-                  <Search size={32} className="mx-auto mb-3 opacity-30" />
-                  <p>Type a TV show title to search</p>
-                </div>
+                <>
+                  {suggestionsLoading && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <SkeletonList count={6} variant="suggestion" />
+                    </div>
+                  )}
+                  {!suggestionsLoading && filteredSuggestions.length > 0 ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-3 px-1">
+                        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                          {hasBackfillMixed ? 'Based on your taste' : 'Popular right now'}
+                        </p>
+                        <button
+                          onClick={handleRefreshSuggestions}
+                          className="flex items-center gap-1 text-[10px] font-semibold text-zinc-600 hover:text-zinc-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800"
+                          title="Show different suggestions"
+                        >
+                          <RefreshCw size={11} />
+                          Refresh
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {filteredSuggestions.map((show) => (
+                          <div key={show.id} className="relative group">
+                            <button
+                              onClick={() => handleSelectSuggestion(show)}
+                              className="flex flex-col items-center text-center rounded-xl hover:bg-zinc-800/60 p-2 transition-colors w-full"
+                            >
+                              <img
+                                src={show.posterUrl!}
+                                alt={show.name}
+                                className="w-full aspect-[2/3] object-cover rounded-lg bg-zinc-800 shadow-md group-hover:shadow-lg hover:scale-105 transition-all mb-1.5"
+                              />
+                              <p className="text-xs font-medium text-zinc-300 leading-tight line-clamp-2 hover:text-purple-400 transition-colors w-full text-left">
+                                {show.name}
+                              </p>
+                              <p className="text-[10px] text-zinc-600 w-full text-left">{show.year}</p>
+                            </button>
+                            {onSaveForLater && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleBookmarkSuggestion(show); }}
+                                title="Save for later"
+                                className="absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md bg-black/60 text-zinc-500 border border-zinc-700 opacity-0 group-hover:opacity-100 hover:text-purple-400 hover:bg-purple-500/20"
+                              >
+                                <Bookmark size={12} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : !suggestionsLoading ? (
+                    <div className="text-center py-12 text-zinc-600 text-sm">
+                      <Search size={32} className="mx-auto mb-3 opacity-30" />
+                      <p>Type a TV show title to search</p>
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           )}
