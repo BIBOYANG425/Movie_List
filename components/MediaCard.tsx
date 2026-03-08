@@ -33,69 +33,69 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
         onDragOver={(e) => onDragOver?.(e, item.id)}
         onDrop={(e) => onDrop?.(e, item.id)}
         onClick={handleClick}
-        className="group relative flex-shrink-0 w-32 md:w-40 bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 hover:border-zinc-600 transition-all cursor-pointer active:cursor-grabbing shadow-lg select-none"
+        className="group relative flex-shrink-0 w-32 md:w-40 cursor-pointer active:cursor-grabbing active:scale-95 transition-transform duration-200 select-none"
       >
         {/* Rank Badge */}
-        <div className="absolute top-2 left-2 z-10 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded text-xs font-bold text-white border border-white/10">
+        <div className="absolute top-2 left-2 z-10 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded text-xs font-bold text-foreground border border-border/30">
           #{rank + 1}
         </div>
 
         {/* Season Badge (TV) */}
         {item.type === 'tv_season' && item.seasonNumber && (
-          <div className="absolute top-2 left-14 z-10 bg-purple-500/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] font-bold text-white border border-white/10 shadow-lg">
+          <div className="absolute top-2 left-14 z-10 bg-accent backdrop-blur-sm px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-background border border-border/30 shadow-lg">
             S{item.seasonNumber}
           </div>
         )}
 
         {/* Score Badge */}
         {showScore && (
-          <div className="absolute top-2 right-2 z-10 bg-indigo-500/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-xs font-bold text-white border border-white/10 flex items-center gap-1 shadow-lg">
+          <div className="absolute top-2 right-2 z-10 bg-gold/90 backdrop-blur-sm px-1.5 py-0.5 rounded text-xs font-bold text-background border border-border/30 flex items-center gap-1 shadow-lg">
             <Star size={10} className="fill-current" />
             <span>{score.toFixed(1)}</span>
           </div>
         )}
 
         {/* Poster Image */}
-        <div className="relative aspect-[2/3] w-full bg-zinc-800">
+        <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden bg-secondary/40 border border-border/30 shadow-md">
           <img
             src={item.posterUrl}
             alt={item.title}
             className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
             draggable={false}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-80" />
-        </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
 
-        {/* Content Overlay (Bottom) */}
-        <div className="absolute bottom-0 left-0 right-0 p-3 pt-6">
-          <h3 className="text-sm font-semibold text-white leading-tight truncate">{item.title}</h3>
-          <div className="flex items-center gap-1.5 mt-1 text-xs text-zinc-400">
-            {item.type === 'tv_season' ? <Tv size={12} /> : <Film size={12} />}
-            <span>{item.year}</span>
-            {item.notes && (
-              <StickyNote size={10} className="text-amber-400 ml-auto" />
-            )}
+          {/* Delete button — hover only */}
+          <button
+            data-no-detail
+            draggable={false}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onDelete(item.id);
+            }}
+            className="absolute bottom-2 left-2 z-20 p-1.5 rounded-full bg-red-500/0 text-transparent group-hover:bg-red-500/20 group-hover:text-red-400 border border-transparent group-hover:border-red-500/30 hover:!bg-red-500/40 transition-all pointer-events-auto"
+            title="Remove from list"
+          >
+            <Trash2 size={12} />
+          </button>
+
+          {/* Hover Drag Handle */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-foreground/80 bg-black/60 p-2 rounded-full backdrop-blur-sm pointer-events-none">
+            <GripVertical size={24} />
           </div>
         </div>
 
-        {/* Delete button — hover only */}
-        <button
-          data-no-detail
-          draggable={false}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onDelete(item.id);
-          }}
-          className="absolute bottom-2 left-2 z-20 p-1.5 rounded-full bg-red-500/0 text-transparent group-hover:bg-red-500/20 group-hover:text-red-400 border border-transparent group-hover:border-red-500/30 hover:!bg-red-500/40 transition-all pointer-events-auto"
-          title="Remove from list"
-        >
-          <Trash2 size={12} />
-        </button>
-
-        {/* Hover Drag Handle */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-white/80 bg-black/60 p-2 rounded-full backdrop-blur-sm pointer-events-none">
-          <GripVertical size={24} />
+        {/* Title & Year (below poster) */}
+        <div className="mt-1.5 px-1">
+          <h3 className="text-xs text-foreground line-clamp-2 font-semibold leading-tight">{item.title}</h3>
+          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
+            {item.type === 'tv_season' ? <Tv size={11} /> : <Film size={11} />}
+            <span>{item.year}</span>
+            {item.notes && (
+              <StickyNote size={10} className="text-gold ml-auto" />
+            )}
+          </div>
         </div>
       </div>
 
