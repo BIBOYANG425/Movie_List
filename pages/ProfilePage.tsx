@@ -12,11 +12,11 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { FriendProfile, JournalEntry, RankedItem, UserProfileSummary, UserSearchResult } from '../types';
-import { ErrorBoundary } from '../components/ErrorBoundary';
-import { JournalHomeView } from '../components/JournalHomeView';
-import { JournalConversation } from '../components/JournalConversation';
-import { Toast } from '../components/Toast';
-import { LetterboxdImportModal } from '../components/LetterboxdImportModal';
+import { ErrorBoundary } from '../components/shared/ErrorBoundary';
+import { JournalHomeView } from '../components/journal/JournalHomeView';
+import { JournalConversation } from '../components/journal/JournalConversation';
+import { Toast } from '../components/shared/Toast';
+import { LetterboxdImportModal } from '../components/media/LetterboxdImportModal';
 import {
   AVATAR_ACCEPTED_MIME_TYPES,
   AVATAR_MAX_FILE_BYTES,

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useTranslation } from "../contexts/LanguageContext";
-import SpoolLogo from "../components/SpoolLogo";
+import SpoolLogo from "../components/layout/SpoolLogo";
 
 /* ─── palette ─── */
 const C = {

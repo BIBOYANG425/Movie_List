@@ -9,7 +9,7 @@ import {
   uploadAvatarPhoto,
 } from '../services/friendsService';
 import { MIN_MOVIES_FOR_SCORES } from '../constants';
-import SpoolLogo from '../components/SpoolLogo';
+import SpoolLogo from '../components/layout/SpoolLogo';
 
 const MAX_BIO_LENGTH = 280;
 

@@ -1,0 +1,327 @@
+import React, { useEffect, useState } from 'react';
+import { Compass, Flame, Sparkles, TrendingUp, BookmarkPlus } from 'lucide-react';
+import { useTranslation } from '../../contexts/LanguageContext';
+import { FriendRecommendation, TrendingMovie } from '../../types';
+import { TMDBMovie } from '../../services/tmdbService';
+import {
+    getFriendRecommendations,
+    getTrendingAmongFriends,
+} from '../../services/friendsService';
+
+const TIER_COLORS: Record<string, string> = {
+    S: '#f59e0b',
+    A: '#22c55e',
+    B: '#3b82f6',
+    C: '#8b5cf6',
+    D: '#ef4444',
+};
+
+const TIER_LABELS: Record<string, string> = {
+    S: 'S-Tier',
+    A: 'A-Tier',
+    B: 'B-Tier',
+    C: 'C-Tier',
+    D: 'D-Tier',
+};
+
+interface DiscoverViewProps {
+    userId: string;
+    onMovieClick?: (tmdbId: string) => void;
+    onSaveForLater?: (movie: TMDBMovie) => void;
+}
+
+function normalizeTmdbId(tmdbId: string): string {
+    return tmdbId.startsWith('tmdb_') ? tmdbId : `tmdb_${tmdbId}`;
+}
+
+function parseNumericTmdbId(tmdbId: string): number {
+    const raw = tmdbId.startsWith('tmdb_') ? tmdbId.slice(5) : tmdbId;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function toWatchlistMovie(movie: { tmdbId: string; title: string; year?: string; posterUrl?: string; genres: string[] }): TMDBMovie {
+    const normalizedId = normalizeTmdbId(movie.tmdbId);
+    return {
+        id: normalizedId,
+        tmdbId: parseNumericTmdbId(movie.tmdbId),
+        title: movie.title,
+        year: movie.year ?? '—',
+        posterUrl: movie.posterUrl ?? null,
+        type: 'movie',
+        genres: movie.genres,
+        overview: '',
+    };
+}
+
+export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick, onSaveForLater }) => {
+    const { t } = useTranslation();
+    const [recommendations, setRecommendations] = useState<FriendRecommendation[]>([]);
+    const [trending, setTrending] = useState<TrendingMovie[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [activeSection, setActiveSection] = useState<'recs' | 'trending'>('recs');
+
+    useEffect(() => {
+        if (!userId) return;
+
+        const load = async () => {
+            setLoading(true);
+            try {
+                const [recs, trend] = await Promise.all([
+                    getFriendRecommendations(userId),
+                    getTrendingAmongFriends(userId),
+                ]);
+                setRecommendations(recs);
+                setTrending(trend);
+            } catch (err) {
+                console.error('Discovery load failed:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        load();
+    }, [userId]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center py-20">
+                <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Section tabs */}
+            <div className="flex gap-2 bg-card/60 rounded-xl p-1 border border-border/50">
+                {[
+                    { key: 'recs' as const, label: t('discover.forYou'), icon: Sparkles, count: recommendations.length },
+                    { key: 'trending' as const, label: t('discover.trending'), icon: TrendingUp, count: trending.length },
+                ].map(({ key, label, icon: Icon, count }) => (
+                    <button
+                        key={key}
+                        onClick={() => setActiveSection(key)}
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeSection === key
+                            ? 'bg-secondary text-foreground shadow-lg'
+                            : 'text-muted-foreground hover:text-muted-foreground'
+                            }`}
+                    >
+                        <Icon size={16} />
+                        {label}
+                        {count > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">
+                                {count}
+                            </span>
+                        )}
+                    </button>
+                ))}
+            </div>
+
+            {/* For You — Friend Recommendations */}
+            {activeSection === 'recs' && (
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-1">
+                        <Sparkles size={18} className="text-gold" />
+                        <h2 className="text-lg font-bold">{t('discover.fromCircle')}</h2>
+                        <span className="text-xs text-muted-foreground">
+                            {t('discover.circleHint')}
+                        </span>
+                    </div>
+
+                    {recommendations.length === 0 ? (
+                        <div className="text-center py-16 text-muted-foreground">
+                            <Compass size={40} className="mx-auto mb-3 opacity-40" />
+                            <p className="text-sm">{t('discover.followMore')}</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            {recommendations.map((rec) => (
+                                <div
+                                    key={rec.tmdbId}
+                                    className="group relative rounded-xl overflow-hidden bg-card border border-border/50 hover:border-border transition-all hover:scale-[1.02]"
+                                >
+                                    {/* Poster */}
+                                    <div
+                                        className="aspect-[2/3] bg-secondary relative cursor-pointer"
+                                        onClick={() => onMovieClick?.(normalizeTmdbId(rec.tmdbId))}
+                                    >
+                                        {rec.posterUrl ? (
+                                            <img
+                                                src={rec.posterUrl}
+                                                alt={rec.title}
+                                                className="w-full h-full object-cover"
+                                                loading="lazy"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-muted-foreground/60">
+                                                <Compass size={32} />
+                                            </div>
+                                        )}
+
+                                        {/* Tier badge overlay */}
+                                        <div className="absolute top-2 left-2">
+                                            <span
+                                                className="px-2 py-0.5 rounded-md text-[10px] font-bold text-black"
+                                                style={{ backgroundColor: TIER_COLORS[rec.topTier] || '#71717a' }}
+                                            >
+                                                {TIER_LABELS[rec.topTier] || rec.topTier}
+                                            </span>
+                                        </div>
+
+                                        {/* Friend count badge */}
+                                        <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm rounded-full px-2 py-0.5 flex items-center gap-1">
+                                            <Flame size={10} className="text-gold" />
+                                            <span className="text-[10px] font-bold text-foreground">
+                                                {rec.friendCount} {rec.friendCount === 1 ? 'friend' : 'friends'}
+                                            </span>
+                                        </div>
+
+                                        {/* Hover overlay with action */}
+                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (onSaveForLater) {
+                                                        onSaveForLater(toWatchlistMovie(rec));
+                                                    } else {
+                                                        onMovieClick?.(normalizeTmdbId(rec.tmdbId));
+                                                    }
+                                                }}
+                                                className="flex items-center gap-1.5 bg-gold text-background px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-foreground/20 transition-colors"
+                                            >
+                                                <BookmarkPlus size={14} />
+                                                {t('discover.saveToWatchlist')}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Info */}
+                                    <div className="p-3">
+                                        <h3 className="text-sm font-semibold text-foreground truncate">{rec.title}</h3>
+                                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                                            {rec.year} · {rec.genres.slice(0, 2).join(', ')}
+                                        </p>
+
+                                        {/* Friend avatars */}
+                                        {rec.friendUsernames.length > 0 && (
+                                            <div className="flex items-center gap-1 mt-2">
+                                                <div className="flex -space-x-1.5">
+                                                    {rec.friendAvatars.slice(0, 3).map((avatar, i) => (
+                                                        <div
+                                                            key={i}
+                                                            className="w-5 h-5 rounded-full border border-background bg-secondary overflow-hidden"
+                                                        >
+                                                            {avatar ? (
+                                                                <img src={avatar} alt="" className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="w-full h-full bg-gold flex items-center justify-center text-[8px] text-foreground font-bold">
+                                                                    {rec.friendUsernames[i]?.[0]?.toUpperCase() || '?'}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <span className="text-[10px] text-muted-foreground truncate ml-1">
+                                                    {rec.friendUsernames.slice(0, 2).join(', ')}
+                                                    {rec.friendUsernames.length > 2 &&
+                                                        ` +${rec.friendUsernames.length - 2}`}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Trending Among Friends */}
+            {activeSection === 'trending' && (
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-1">
+                        <TrendingUp size={18} className="text-emerald-500" />
+                        <h2 className="text-lg font-bold">{t('discover.trendingTitle')}</h2>
+                        <span className="text-xs text-muted-foreground">{t('discover.trendingHint')}</span>
+                    </div>
+
+                    {trending.length === 0 ? (
+                        <div className="text-center py-16 text-muted-foreground">
+                            <TrendingUp size={40} className="mx-auto mb-3 opacity-40" />
+                            <p className="text-sm">{t('discover.trendingEmpty')}</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {trending.map((movie, idx) => (
+                                <div
+                                    key={movie.tmdbId}
+                                    className="flex items-center gap-4 p-3 rounded-xl bg-card/60 border border-border/30 hover:border-border transition-all"
+                                >
+                                    {/* Rank number */}
+                                    <div className="text-2xl font-black text-muted-foreground/40 w-8 text-center">
+                                        {idx + 1}
+                                    </div>
+
+                                    {/* Poster thumbnail */}
+                                    <div
+                                        className="w-12 h-[72px] rounded-lg overflow-hidden bg-secondary flex-shrink-0 cursor-pointer"
+                                        onClick={() => onMovieClick?.(normalizeTmdbId(movie.tmdbId))}
+                                    >
+                                        {movie.posterUrl ? (
+                                            <img
+                                                src={movie.posterUrl}
+                                                alt={movie.title}
+                                                className="w-full h-full object-cover hover:scale-110 transition-transform"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-muted-foreground/60">
+                                                <Compass size={16} />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Info */}
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="text-sm font-semibold text-foreground truncate">{movie.title}</h3>
+                                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                                            {movie.year} · {movie.genres.slice(0, 2).join(', ')}
+                                        </p>
+                                        <div className="flex items-center gap-3 mt-1.5">
+                                            <span className="text-[10px] text-muted-foreground">
+                                                {movie.recentRankers.slice(0, 3).join(', ')}
+                                                {movie.recentRankers.length > 3 &&
+                                                    ` +${movie.recentRankers.length - 3} more`}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Stats */}
+                                    <div className="flex items-center gap-3 flex-shrink-0">
+                                        <div className="text-center">
+                                            <div className="flex items-center gap-1">
+                                                <Flame size={12} className="text-orange-500" />
+                                                <span className="text-sm font-bold text-foreground">{movie.rankerCount}</span>
+                                            </div>
+                                            <span className="text-[9px] text-muted-foreground block">{t('discover.rankers')}</span>
+                                        </div>
+                                        <span
+                                            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-black"
+                                            style={{ backgroundColor: TIER_COLORS[movie.avgTier] || '#71717a' }}
+                                        >
+                                            {movie.avgTier}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+
+        </div>
+    );
+};
+
+export default DiscoverView;
