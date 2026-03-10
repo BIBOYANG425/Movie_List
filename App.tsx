@@ -8,7 +8,7 @@ import ProfilePage from './pages/ProfilePage';
 import ProfileOnboardingPage from './pages/ProfileOnboardingPage';
 import MovieOnboardingPage from './pages/MovieOnboardingPage';
 import { useAuth } from './contexts/AuthContext';
-import { Grain } from './components/Grain';
+import { Grain } from './components/shared/Grain';
 
 const App = () => {
   const { user, profile, loading } = useAuth();
