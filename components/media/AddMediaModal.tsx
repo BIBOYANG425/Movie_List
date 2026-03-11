@@ -54,6 +54,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   // Notes state
   const [notes, setNotes] = useState('');
+  const [watchedWithUserIds, setWatchedWithUserIds] = useState<string[]>([]);
 
   // Spool ranking engine state
   const engineRef = useRef<SpoolRankingEngine | null>(null);
@@ -149,6 +150,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       setIsSearching(false);
       setSelectedTier(null);
       setNotes('');
+      setWatchedWithUserIds([]);
       setCorrectedQuery(null);
       engineRef.current = null;
       setCurrentComparison(null);
@@ -156,6 +158,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
       // If a watchlist item was pre-selected, skip to tier step
       if (preselectedItem && !preselectedTier) {
+        const existingNotes = 'notes' in preselectedItem ? (preselectedItem as RankedItem).notes : undefined;
+        const existingWatchedWith = 'watchedWithUserIds' in preselectedItem ? (preselectedItem as RankedItem).watchedWithUserIds : undefined;
         const asRankedItem: RankedItem = {
           id: preselectedItem.id,
           title: preselectedItem.title,
@@ -167,13 +171,19 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
           bracket: classifyBracket(preselectedItem.genres),
           tier: Tier.B,
           rank: 0,
+          notes: existingNotes,
+          watchedWithUserIds: existingWatchedWith,
         };
         setSelectedItem(asRankedItem);
+        if (existingNotes) setNotes(existingNotes);
+        if (existingWatchedWith?.length) setWatchedWithUserIds(existingWatchedWith);
         setStep('tier');
       } else if (preselectedItem && preselectedTier) {
         // Tier migration
         const asRankedItem = preselectedItem as RankedItem;
         setSelectedItem(asRankedItem);
+        if (asRankedItem.notes) setNotes(asRankedItem.notes);
+        if (asRankedItem.watchedWithUserIds?.length) setWatchedWithUserIds(asRankedItem.watchedWithUserIds);
         setSelectedTier(preselectedTier);
 
         const engine = new SpoolRankingEngine();
@@ -336,13 +346,15 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setStep('notes');
   };
 
-  const proceedFromNotes = () => {
+  const proceedFromNotes = (overrideSkip?: boolean) => {
     const tierItems = getTierItems(selectedTier!);
     const item = selectedItem!;
+    const finalNotes = overrideSkip ? undefined : (notes.trim() || undefined);
+    const finalWatchedWith = overrideSkip ? undefined : (watchedWithUserIds.length > 0 ? watchedWithUserIds : undefined);
 
     if (tierItems.length === 0) {
       // Empty tier — insert at 0
-      onAdd({ ...item, tier: selectedTier!, rank: 0, notes: notes.trim() || undefined });
+      onAdd({ ...item, tier: selectedTier!, rank: 0, notes: finalNotes, watchedWithUserIds: finalWatchedWith });
       onClose();
     } else if (tierItems.length <= 5) {
       // 1-5 items — compare against every item (top to bottom)
@@ -388,6 +400,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         tier: selectedTier,
         rank: rankIndex,
         notes: notes.trim() || undefined,
+        watchedWithUserIds: watchedWithUserIds.length > 0 ? watchedWithUserIds : undefined,
       };
 
       onAdd(finalItem);
@@ -818,7 +831,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       notes={notes}
       onNotesChange={setNotes}
       onContinue={proceedFromNotes}
-      onSkip={() => { setNotes(''); proceedFromNotes(); }}
+      onSkip={() => { setNotes(''); setWatchedWithUserIds([]); proceedFromNotes(true); }}
+      currentUserId={user?.id}
+      watchedWithUserIds={watchedWithUserIds}
+      onWatchedWithChange={setWatchedWithUserIds}
     />
   );
 

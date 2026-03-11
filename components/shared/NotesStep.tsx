@@ -1,7 +1,8 @@
 import React from 'react';
 import { RankedItem, Tier } from '../../types';
 import { TIER_COLORS, TIER_LABELS } from '../../constants';
-import { Film, StickyNote, ChevronRight } from 'lucide-react';
+import { Film, StickyNote, ChevronRight, Users } from 'lucide-react';
+import { FriendTagInput } from '../journal/FriendTagInput';
 
 const MAX_NOTES = 280;
 
@@ -12,6 +13,10 @@ interface NotesStepProps {
   onNotesChange: (notes: string) => void;
   onContinue: () => void;
   onSkip: () => void;
+  // Watched-with tagging (optional)
+  currentUserId?: string;
+  watchedWithUserIds?: string[];
+  onWatchedWithChange?: (userIds: string[]) => void;
 }
 
 export const NotesStep: React.FC<NotesStepProps> = ({
@@ -21,6 +26,9 @@ export const NotesStep: React.FC<NotesStepProps> = ({
   onNotesChange,
   onContinue,
   onSkip,
+  currentUserId,
+  watchedWithUserIds,
+  onWatchedWithChange,
 }) => (
   <div className="flex flex-col gap-5 animate-fade-in">
     {/* Item preview */}
@@ -72,6 +80,23 @@ export const NotesStep: React.FC<NotesStepProps> = ({
         </span>
       </div>
     </div>
+
+    {/* Watched with */}
+    {currentUserId && onWatchedWithChange && (
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+          <Users size={15} className="text-accent" />
+          Watched with
+          <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+        </label>
+        <FriendTagInput
+          currentUserId={currentUserId}
+          friendsOnly
+          selectedUserIds={watchedWithUserIds ?? []}
+          onChange={onWatchedWithChange}
+        />
+      </div>
+    )}
 
     {/* Action buttons */}
     <div className="flex flex-col gap-2 pt-1">

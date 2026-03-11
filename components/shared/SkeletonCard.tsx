@@ -1,6 +1,6 @@
 import React from "react";
 
-type SkeletonVariant = "feed" | "journal" | "suggestion";
+type SkeletonVariant = "feed" | "journal" | "suggestion" | "profile" | "discover";
 
 interface SkeletonCardProps {
   variant: SkeletonVariant;
@@ -55,10 +55,39 @@ function SuggestionSkeleton() {
   );
 }
 
+function ProfileSkeleton() {
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-card p-3">
+      <Shimmer className="h-10 w-10 shrink-0 rounded-full" />
+      <div className="flex flex-1 flex-col gap-1.5">
+        <Shimmer className="h-3.5 w-28 rounded" />
+        <Shimmer className="h-3 w-20 rounded" />
+      </div>
+      <Shimmer className="h-7 w-16 rounded-lg" />
+    </div>
+  );
+}
+
+function DiscoverSkeleton() {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl bg-card p-3">
+      <Shimmer className="aspect-[2/3] w-full rounded-lg" />
+      <Shimmer className="h-4 w-3/4 rounded" />
+      <div className="flex gap-1">
+        <Shimmer className="h-5 w-5 rounded-full" />
+        <Shimmer className="h-5 w-5 rounded-full" />
+        <Shimmer className="h-5 w-5 rounded-full" />
+      </div>
+    </div>
+  );
+}
+
 const variantMap: Record<SkeletonVariant, React.FC> = {
   feed: FeedSkeleton,
   journal: JournalSkeleton,
   suggestion: SuggestionSkeleton,
+  profile: ProfileSkeleton,
+  discover: DiscoverSkeleton,
 };
 
 export function SkeletonCard({ variant }: SkeletonCardProps) {

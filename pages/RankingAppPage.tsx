@@ -105,6 +105,7 @@ function computeStickyTiers(
 }
 
 function rowToRankedItem(row: any): RankedItem {
+  const wwIds = row.watched_with_user_ids;
   return {
     id: row.tmdb_id,
     title: row.title,
@@ -117,6 +118,7 @@ function rowToRankedItem(row: any): RankedItem {
     rank: row.rank_position,
     bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
     notes: row.notes,
+    watchedWithUserIds: Array.isArray(wwIds) && wwIds.length > 0 ? wwIds : undefined,
   };
 }
 
@@ -134,6 +136,7 @@ function rowToWatchlistItem(row: any): WatchlistItem {
 }
 
 function rowToTVRankedItem(row: any): RankedItem {
+  const wwIds = row.watched_with_user_ids;
   return {
     id: row.tmdb_id,
     title: row.title,
@@ -150,6 +153,7 @@ function rowToTVRankedItem(row: any): RankedItem {
     rank: row.rank_position,
     bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
     notes: row.notes,
+    watchedWithUserIds: Array.isArray(wwIds) && wwIds.length > 0 ? wwIds : undefined,
   };
 }
 
@@ -188,11 +192,12 @@ const RankingAppPage = () => {
   const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
   const [migrationState, setMigrationState] = useState<{ item: RankedItem, targetTier: Tier } | null>(null);
-  const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | TMDBMovie | null>(null);
+  const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | TMDBMovie | RankedItem | null>(null);
   const [preselectedTVItem, setPreselectedTVItem] = useState<RankedItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [journalSheetItem, setJournalSheetItem] = useState<RankedItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const linkedMovieId = searchParams.get('movieId');
 
@@ -441,6 +446,7 @@ const RankingAppPage = () => {
         bracket: item.bracket ?? classifyBracket(item.genres),
         primary_genre: item.genres[0] ?? null,
         notes: item.notes ?? null,
+        watched_with_user_ids: item.watchedWithUserIds ?? [],
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
@@ -456,6 +462,7 @@ const RankingAppPage = () => {
         posterUrl: newItem.posterUrl,
         notes: newItem.notes,
         year: newItem.year,
+        watchedWithUserIds: newItem.watchedWithUserIds,
       },
       'ranking_add',
     );
@@ -653,6 +660,7 @@ const RankingAppPage = () => {
       bracket: item.bracket ?? classifyBracket(item.genres),
       primary_genre: item.genres[0] ?? null,
       notes: item.notes ?? null,
+      watched_with_user_ids: item.watchedWithUserIds ?? [],
       episode_count: item.episodeCount ?? null,
       updated_at: new Date().toISOString(),
     }));
@@ -689,6 +697,7 @@ const RankingAppPage = () => {
         posterUrl: newItem.posterUrl,
         notes: newItem.notes,
         year: newItem.year,
+        watchedWithUserIds: newItem.watchedWithUserIds,
       },
       'ranking_add',
     );
@@ -985,7 +994,7 @@ const RankingAppPage = () => {
           <Plus size={16} />
           <span className="hidden sm:inline">{t('nav.addItem')}</span>
         </button>
-        {user && <NotificationBell userId={user.id} />}
+        {user && <NotificationBell userId={user.id} onUnreadCountChange={setUnreadNotifCount} />}
         <LanguageToggle />
         <button
           onClick={handleReset}
@@ -1006,7 +1015,7 @@ const RankingAppPage = () => {
   );
 
   return (
-    <AppLayout activeView={activeTab} onViewChange={handleViewChange} topBar={topBar}>
+    <AppLayout activeView={activeTab} onViewChange={handleViewChange} topBar={topBar} unreadNotificationCount={unreadNotifCount}>
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
 
         {activeTab === 'ranking' && (
@@ -1103,7 +1112,14 @@ const RankingAppPage = () => {
         {activeTab === 'stats' && user && <StatsView items={localizedItems} userId={user.id} mediaMode={mediaMode} />}
 
         {activeTab === 'feed' && user && (
-          <SocialFeedView userId={user.id} />
+          <SocialFeedView
+            userId={user.id}
+            onMovieClick={(tmdbId) => {
+              const newParams = new URLSearchParams(searchParams);
+              newParams.set('movieId', tmdbId);
+              setSearchParams(newParams);
+            }}
+          />
         )}
 
         {activeTab === 'discover' && user && (

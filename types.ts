@@ -36,6 +36,7 @@ export interface RankedItem extends MediaItem {
   tier: Tier;
   rank: number; // 0-based index within the tier
   notes?: string;
+  watchedWithUserIds?: string[];
 }
 
 export interface WatchlistItem extends MediaItem {
@@ -613,7 +614,10 @@ export interface FeedCard {
   mediaTitle?: string;
   mediaPosterUrl?: string;
   mediaTier?: Tier;
+  mediaScore?: number;
   bracket?: string;
+  // Watched-with fields
+  watchedWithUsernames?: string[];
   // Review fields
   reviewBody?: string;
   containsSpoilers?: boolean;

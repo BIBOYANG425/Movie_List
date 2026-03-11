@@ -1,10 +1,28 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, Users } from 'lucide-react';
 import { FeedCard, ReactionType } from '../../types';
-import { TIER_COLORS } from '../../constants';
+import { TIER_COLORS, TIER_LABELS } from '../../constants';
 import { ReactionPicker } from './ReactionPicker';
 import { FeedCardMenu } from './FeedCardMenu';
+
+/** Tier → left-border accent color class */
+const TIER_BORDER_ACCENT: Record<string, string> = {
+  S: 'border-l-tier-s',
+  A: 'border-l-tier-a',
+  B: 'border-l-tier-b',
+  C: 'border-l-tier-c',
+  D: 'border-l-tier-d',
+};
+
+/** Tier → bg color for score badge */
+const TIER_SCORE_BG: Record<string, string> = {
+  S: 'bg-tier-s/20 text-tier-s',
+  A: 'bg-tier-a/20 text-tier-a',
+  B: 'bg-tier-b/20 text-tier-b',
+  C: 'bg-tier-c/20 text-tier-c',
+  D: 'bg-tier-d/20 text-tier-d',
+};
 
 function relativeDate(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -23,6 +41,7 @@ interface FeedRankingCardProps {
   onMuteUser: (userId: string) => void;
   onMuteMovie?: (tmdbId: string) => void;
   onOpenComments: (eventId: string) => void;
+  onMovieClick?: (tmdbId: string) => void;
   commentCount: number;
 }
 
@@ -32,13 +51,33 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
   onMuteUser,
   onMuteMovie,
   onOpenComments,
+  onMovieClick,
   commentCount,
 }) => {
+  const tierAccent = card.mediaTier ? TIER_BORDER_ACCENT[card.mediaTier] : '';
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't trigger if clicking an interactive element
+    const target = e.target as HTMLElement;
+    if (target.closest('a, button, [role="button"]')) return;
+    onOpenComments(card.id);
+  };
+
+  const handleMovieClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (card.mediaTmdbId && onMovieClick) {
+      onMovieClick(card.mediaTmdbId);
+    }
+  };
+
   return (
-    <div className="bg-card border border-border rounded-xl p-4 hover:border-border transition-colors">
+    <div
+      className={`bg-card border border-border rounded-xl p-4 hover:border-muted-foreground/30 transition-colors cursor-pointer ${tierAccent ? `border-l-[3px] ${tierAccent}` : ''}`}
+      onClick={handleCardClick}
+    >
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
-        <Link to={`/profile/${card.userId}`}>
+        <Link to={`/profile/${card.userId}`} onClick={(e) => e.stopPropagation()}>
           {card.avatarUrl ? (
             <img
               src={card.avatarUrl}
@@ -54,6 +93,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
         <Link
           to={`/profile/${card.userId}`}
           className="text-sm font-medium text-foreground hover:underline"
+          onClick={(e) => e.stopPropagation()}
         >
           {card.displayName || card.username}
         </Link>
@@ -72,16 +112,27 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
 
       {/* Content */}
       <div className="flex gap-3 mb-3">
+        {/* Score badge */}
+        {card.mediaTier && card.mediaScore != null && (
+          <div className={`flex flex-col items-center justify-center w-10 flex-shrink-0 rounded-lg ${TIER_SCORE_BG[card.mediaTier]}`}>
+            <span className="text-lg font-bold leading-none">{card.mediaScore.toFixed(1)}</span>
+            <span className="text-[9px] font-semibold opacity-70">/10</span>
+          </div>
+        )}
         {card.mediaPosterUrl && (
           <img
             src={card.mediaPosterUrl}
             alt={card.mediaTitle ?? ''}
-            className="w-16 h-24 rounded-lg object-cover flex-shrink-0"
+            className={`w-16 h-24 rounded-lg object-cover flex-shrink-0 ${card.mediaTmdbId && onMovieClick ? 'cursor-pointer hover:ring-2 hover:ring-gold/50 transition-all' : ''}`}
+            onClick={handleMovieClick}
           />
         )}
         <div className="flex flex-col gap-1 min-w-0">
           {card.mediaTitle && (
-            <span className="font-medium text-foreground truncate">
+            <span
+              className={`font-medium text-foreground truncate ${card.mediaTmdbId && onMovieClick ? 'cursor-pointer hover:text-gold transition-colors' : ''}`}
+              onClick={handleMovieClick}
+            >
               {card.mediaTitle}
             </span>
           )}
@@ -91,7 +142,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
                 TIER_COLORS[card.mediaTier]
               }`}
             >
-              {card.mediaTier}
+              {card.mediaTier} — {TIER_LABELS[card.mediaTier]}
             </span>
           )}
           {card.bracket && (
@@ -99,6 +150,14 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
           )}
         </div>
       </div>
+
+      {/* Watched with */}
+      {card.watchedWithUsernames && card.watchedWithUsernames.length > 0 && (
+        <div className="flex items-center gap-1.5 mb-3 text-xs text-muted-foreground">
+          <Users className="w-3.5 h-3.5 text-accent" />
+          <span>Watched with {card.watchedWithUsernames.map(u => `@${u}`).join(', ')}</span>
+        </div>
+      )}
 
       {/* Footer */}
       <div className="flex items-center gap-2">
