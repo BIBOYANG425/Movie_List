@@ -409,7 +409,10 @@ const RankingAppPage = () => {
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
-      if (error) console.error('Failed to save ranking:', error);
+      if (error) {
+        console.error('Failed to save ranking:', error);
+        setToastMessage('Failed to save — please try again');
+      }
     }
   };
 
@@ -450,7 +453,11 @@ const RankingAppPage = () => {
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
-      if (error) console.error('Failed to save ranking:', error);
+      if (error) {
+        console.error('Failed to save ranking:', error);
+        setToastMessage('Failed to save ranking — please try again');
+        return;
+      }
     }
 
     await logRankingActivityEvent(
@@ -519,7 +526,10 @@ const RankingAppPage = () => {
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
-      if (error) console.error('Failed to reindex ranks after removal:', error);
+      if (error) {
+        console.error('Failed to reindex ranks after removal:', error);
+        setToastMessage('Failed to update rankings — please refresh');
+      }
     }
 
     if (removedItem) {
@@ -551,7 +561,7 @@ const RankingAppPage = () => {
 
     setWatchlist((prev) => [watchItem, ...prev]);
 
-    await supabase.from('watchlist_items').upsert({
+    const { error } = await supabase.from('watchlist_items').upsert({
       user_id: user.id,
       tmdb_id: watchItem.id,
       title: watchItem.title,
@@ -561,6 +571,13 @@ const RankingAppPage = () => {
       genres: watchItem.genres,
       director: watchItem.director ?? null,
     }, { onConflict: 'user_id,tmdb_id' });
+
+    if (error) {
+      console.error('Failed to save to watchlist:', error);
+      setToastMessage('Failed to save — please try again');
+      setWatchlist((prev) => prev.filter((w) => w.id !== watchItem.id));
+      return;
+    }
 
     setToastMessage(t('toast.movieSaved'));
   };
@@ -583,7 +600,7 @@ const RankingAppPage = () => {
 
     setTvWatchlist((prev) => [item, ...prev]);
 
-    await supabase.from('tv_watchlist_items').upsert({
+    const { error } = await supabase.from('tv_watchlist_items').upsert({
       user_id: user.id,
       tmdb_id: item.id,
       show_tmdb_id: item.showTmdbId ?? 0,
@@ -596,6 +613,13 @@ const RankingAppPage = () => {
       genres: item.genres,
       creator: item.creator ?? null,
     }, { onConflict: 'user_id,tmdb_id' });
+
+    if (error) {
+      console.error('Failed to save to TV watchlist:', error);
+      setToastMessage('Failed to save — please try again');
+      setTvWatchlist((prev) => prev.filter((w) => w.id !== item.id));
+      return;
+    }
 
     setToastMessage(t('toast.movieSaved'));
   };
@@ -665,7 +689,10 @@ const RankingAppPage = () => {
       updated_at: new Date().toISOString(),
     }));
     const { error } = await supabase.from('tv_rankings').upsert(rows, { onConflict: 'user_id,tmdb_id' });
-    if (error) console.error('Failed to save TV ranking:', error);
+    if (error) {
+      console.error('Failed to save TV ranking:', error);
+      setToastMessage('Failed to save TV ranking — please try again');
+    }
   };
 
   const addTVItem = async (newItem: RankedItem) => {
