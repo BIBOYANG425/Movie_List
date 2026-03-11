@@ -715,6 +715,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                         </div>
                         <FriendTagInput
                           currentUserId={userId}
+                          friendsOnly
                           selectedUserIds={watchedWithUserIds}
                           onChange={setWatchedWithUserIds}
                         />
