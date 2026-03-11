@@ -1,15 +1,17 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 import { UserSearchResult } from '../../types';
-import { searchUsers } from '../../services/friendsService';
+import { searchUsers, getProfilesByIds } from '../../services/friendsService';
 
 interface FriendTagInputProps {
   currentUserId: string;
   selectedUserIds: string[];
   onChange: (userIds: string[]) => void;
+  /** When true, only show users the current user follows. */
+  friendsOnly?: boolean;
 }
 
-export const FriendTagInput: React.FC<FriendTagInputProps> = ({ currentUserId, selectedUserIds, onChange }) => {
+export const FriendTagInput: React.FC<FriendTagInputProps> = ({ currentUserId, selectedUserIds, onChange, friendsOnly }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -23,6 +25,28 @@ export const FriendTagInput: React.FC<FriendTagInputProps> = ({ currentUserId, s
     };
   }, []);
 
+  // Hydrate usernames for pre-existing selectedUserIds
+  useEffect(() => {
+    const unknownIds = selectedUserIds.filter((id) => !selectedUsers.has(id));
+    if (unknownIds.length === 0) return;
+
+    getProfilesByIds(unknownIds).then((profileMap) => {
+      setSelectedUsers((prev) => {
+        const next = new Map(prev);
+        for (const [id, profile] of profileMap) {
+          next.set(id, {
+            id,
+            username: profile.username,
+            displayName: profile.displayName,
+            avatarUrl: profile.avatarUrl,
+            isFollowing: true,
+          });
+        }
+        return next;
+      });
+    });
+  }, [selectedUserIds.join(',')]);
+
   const handleSearch = useCallback((q: string) => {
     setQuery(q);
     if (q.trim().length < 2) {
@@ -35,7 +59,7 @@ export const FriendTagInput: React.FC<FriendTagInputProps> = ({ currentUserId, s
       setSearching(true);
       try {
         const res = await searchUsers(currentUserId, q.trim());
-        setResults(res.filter((u) => !selectedUserIds.includes(u.id)));
+        setResults(res.filter((u) => !selectedUserIds.includes(u.id) && (!friendsOnly || u.isFollowing)));
       } catch {
         setResults([]);
       } finally {

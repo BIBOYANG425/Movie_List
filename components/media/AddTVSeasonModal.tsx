@@ -52,6 +52,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   const [selectedItem, setSelectedItem] = useState<RankedItem | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
   const [notes, setNotes] = useState('');
+  const [watchedWithUserIds, setWatchedWithUserIds] = useState<string[]>([]);
   const [correctedQuery, setCorrectedQuery] = useState<string | null>(null);
   const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
@@ -205,6 +206,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
     setSelectedShow(null);
     setSelectedTier(null);
     setNotes('');
+    setWatchedWithUserIds([]);
     setCorrectedQuery(null);
     setIsSearching(false);
     setCurrentComparison(null);
@@ -226,6 +228,8 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
     } else if (preselectedItem) {
       // Full season bookmark — go directly to tier selection.
       setSelectedItem(preselectedItem);
+      if (preselectedItem.notes) setNotes(preselectedItem.notes);
+      if (preselectedItem.watchedWithUserIds?.length) setWatchedWithUserIds(preselectedItem.watchedWithUserIds);
       setStep('tier');
 
       if (preselectedItem.showTmdbId) {
@@ -390,12 +394,14 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
     currentItems.filter(i => i.tier === tier && i.type === 'tv_season').sort((a, b) => a.rank - b.rank);
 
   // ─── Proceed from notes → compare or done ─────────────────────────────────
-  const proceedFromNotes = () => {
+  const proceedFromNotes = (overrideSkip?: boolean) => {
     const tierItems = getTierItems(selectedTier!);
     const item = selectedItem!;
+    const finalNotes = overrideSkip ? undefined : (notes.trim() || undefined);
+    const finalWatchedWith = overrideSkip ? undefined : (watchedWithUserIds.length > 0 ? watchedWithUserIds : undefined);
 
     if (tierItems.length === 0) {
-      onAdd({ ...item, tier: selectedTier!, rank: 0, notes: notes.trim() || undefined });
+      onAdd({ ...item, tier: selectedTier!, rank: 0, notes: finalNotes, watchedWithUserIds: finalWatchedWith });
       onClose();
     } else if (tierItems.length <= 5) {
       smallTierRef.current = { mode: 'compare_all', tierItems, low: 0, high: tierItems.length, mid: 0, round: 1, seedIdx: 0 };
@@ -438,6 +444,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
         tier: selectedTier,
         rank: rankIndex,
         notes: notes.trim() || undefined,
+        watchedWithUserIds: watchedWithUserIds.length > 0 ? watchedWithUserIds : undefined,
       });
       onClose();
     }
@@ -846,7 +853,10 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
               notes={notes}
               onNotesChange={setNotes}
               onContinue={proceedFromNotes}
-              onSkip={() => { setNotes(''); proceedFromNotes(); }}
+              onSkip={() => { setNotes(''); setWatchedWithUserIds([]); proceedFromNotes(true); }}
+              currentUserId={user?.id}
+              watchedWithUserIds={watchedWithUserIds}
+              onWatchedWithChange={setWatchedWithUserIds}
             />
           )}
 

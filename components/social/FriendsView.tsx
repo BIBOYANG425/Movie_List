@@ -10,6 +10,7 @@ import {
   searchUsers,
   unfollowUser,
 } from '../../services/friendsService';
+import { SkeletonList } from '../shared/SkeletonCard';
 
 interface FriendsViewProps {
   userId: string;
@@ -129,8 +130,25 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+      <div className="space-y-6">
+        <div className="grid sm:grid-cols-3 gap-3">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card/50 p-4 animate-pulse">
+              <div className="h-3 w-16 bg-secondary rounded" />
+              <div className="h-8 w-12 bg-secondary rounded mt-2" />
+            </div>
+          ))}
+        </div>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-border bg-card/50 p-4 space-y-2">
+            <div className="h-4 w-20 bg-secondary rounded mb-3" />
+            <SkeletonList count={3} variant="profile" />
+          </div>
+          <div className="rounded-xl border border-border bg-card/50 p-4 space-y-2">
+            <div className="h-4 w-20 bg-secondary rounded mb-3" />
+            <SkeletonList count={3} variant="profile" />
+          </div>
+        </div>
       </div>
     );
   }

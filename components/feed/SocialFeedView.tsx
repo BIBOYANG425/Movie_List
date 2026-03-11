@@ -23,11 +23,12 @@ import { useTranslation } from '../../contexts/LanguageContext';
 
 interface SocialFeedViewProps {
   userId: string;
+  onMovieClick?: (tmdbId: string) => void;
 }
 
 const PAGE_SIZE = 20;
 
-export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
+export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId, onMovieClick }) => {
   const { t } = useTranslation();
   const [cards, setCards] = useState<FeedCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -208,6 +209,7 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
           <FeedRankingCard
             {...commonProps}
             onMuteMovie={card.mediaTmdbId ? () => handleMuteMovie(card.mediaTmdbId!) : undefined}
+            onMovieClick={onMovieClick}
           />
         );
         break;
@@ -216,6 +218,7 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId }) => {
           <FeedReviewCard
             {...commonProps}
             onMuteMovie={card.mediaTmdbId ? () => handleMuteMovie(card.mediaTmdbId!) : undefined}
+            onMovieClick={onMovieClick}
           />
         );
         break;

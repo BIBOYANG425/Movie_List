@@ -7,6 +7,7 @@ import {
     getFriendRecommendations,
     getTrendingAmongFriends,
 } from '../../services/friendsService';
+import { SkeletonList } from '../shared/SkeletonCard';
 
 const TIER_COLORS: Record<string, string> = {
     S: '#f59e0b',
@@ -85,8 +86,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center py-20">
-                <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <div className="space-y-6">
+                <div className="flex gap-2 bg-card/60 rounded-xl p-1 border border-border/50 animate-pulse">
+                    <div className="flex-1 h-10 bg-secondary rounded-lg" />
+                    <div className="flex-1 h-10 bg-secondary rounded-lg" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    <SkeletonList count={8} variant="discover" />
+                </div>
             </div>
         );
     }

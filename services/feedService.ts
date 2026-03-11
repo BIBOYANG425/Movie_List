@@ -8,6 +8,8 @@ import {
   ReactionType,
   Tier,
 } from '../types';
+import { TIER_SCORE_RANGES } from '../constants';
+import { computeTierScore } from './rankingAlgorithm';
 
 const REACTION_TYPES: ReactionType[] = ['fire', 'agree', 'disagree', 'want_to_watch', 'love'];
 
@@ -73,6 +75,64 @@ async function getProfilesByIds(
       },
     ]),
   );
+}
+
+/**
+ * Batch-fetch live scores for ranking cards by looking up user_rankings.
+ * Returns a map keyed by `${userId}:${tmdbId}` → computed score.
+ */
+async function getRankingScores(
+  pairs: { userId: string; tmdbId: string }[],
+): Promise<Map<string, number>> {
+  const scoreMap = new Map<string, number>();
+  if (pairs.length === 0) return scoreMap;
+
+  // Group by userId for efficient queries
+  const byUser = new Map<string, string[]>();
+  for (const { userId, tmdbId } of pairs) {
+    const list = byUser.get(userId) ?? [];
+    list.push(tmdbId);
+    byUser.set(userId, list);
+  }
+
+  for (const [uid, tmdbIds] of byUser) {
+    // Fetch from both user_rankings and tv_rankings
+    const [movieRes, tvRes] = await Promise.all([
+      supabase.from('user_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
+      supabase.from('tv_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
+    ]);
+
+    // Process each table separately (tier counts are per-table)
+    for (const { data, table } of [
+      { data: movieRes.data, table: 'user_rankings' as const },
+      { data: tvRes.data, table: 'tv_rankings' as const },
+    ]) {
+      if (!data || data.length === 0) continue;
+
+      const tiers = new Set(data.map((r: any) => r.tier as string));
+      const tierCounts = new Map<string, number>();
+
+      for (const tier of tiers) {
+        const { count } = await supabase
+          .from(table)
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', uid)
+          .eq('tier', tier);
+        tierCounts.set(tier, count ?? 1);
+      }
+
+      for (const row of data as { tmdb_id: string; tier: string; rank_position: number }[]) {
+        const t = row.tier as Tier;
+        const range = TIER_SCORE_RANGES[t];
+        if (!range) continue;
+        const total = tierCounts.get(row.tier) ?? 1;
+        const score = computeTierScore(row.rank_position, total, range.min, range.max);
+        scoreMap.set(`${uid}:${row.tmdb_id}`, Number(score.toFixed(1)));
+      }
+    }
+  }
+
+  return scoreMap;
 }
 
 function toFeedCardType(eventType: string): FeedCardType | null {
@@ -191,11 +251,26 @@ export async function getFeedCards(
 
   // Batch load profiles and engagement
   const actorIdSet = new Set(rows.map(r => r.actor_id));
+  // Also collect watched-with user IDs for resolution
+  for (const row of rows) {
+    const ww = (row.metadata as Record<string, unknown> | null)?.watched_with_user_ids;
+    if (Array.isArray(ww)) ww.forEach((id: unknown) => { if (typeof id === 'string') actorIdSet.add(id); });
+  }
   const eventIds = rows.map(r => r.id);
 
-  const [profileMap, engagementMap] = await Promise.all([
+  // Collect ranking card pairs for live score lookup
+  const rankingPairs: { userId: string; tmdbId: string }[] = [];
+  for (const row of rows) {
+    const ct = toFeedCardType(row.event_type);
+    if ((ct === 'ranking' || ct === 'review') && row.media_tmdb_id) {
+      rankingPairs.push({ userId: row.actor_id, tmdbId: row.media_tmdb_id });
+    }
+  }
+
+  const [profileMap, engagementMap, scoreMap] = await Promise.all([
     getProfilesByIds(Array.from(actorIdSet)),
     getReactionsForEvents(userId, eventIds),
+    getRankingScores(rankingPairs),
   ]);
 
   // Map rows to FeedCards
@@ -217,11 +292,20 @@ export async function getFeedCards(
       mediaTitle: row.media_title ?? undefined,
       mediaPosterUrl: row.media_poster_url ?? undefined,
       mediaTier: toTier(row.media_tier),
+      mediaScore: row.media_tmdb_id ? scoreMap.get(`${row.actor_id}:${row.media_tmdb_id}`) : undefined,
       bracket: metadata.bracket as string | undefined,
       reactionCounts: engagement?.counts ?? emptyReactionCounts(),
       commentCount: engagement?.commentCount ?? 0,
       myReactions: engagement?.myReactions ?? [],
     };
+
+    // Watched-with usernames (ranking cards)
+    const wwIds = metadata.watched_with_user_ids;
+    if (Array.isArray(wwIds) && wwIds.length > 0) {
+      card.watchedWithUsernames = wwIds
+        .map((id: unknown) => typeof id === 'string' ? profileMap.get(id)?.username : undefined)
+        .filter((u): u is string => Boolean(u));
+    }
 
     // Card-type specific fields from metadata
     if (cardType === 'review') {

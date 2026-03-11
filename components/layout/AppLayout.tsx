@@ -30,9 +30,10 @@ interface AppLayoutProps {
   onViewChange: (view: string) => void;
   children: React.ReactNode;
   topBar?: React.ReactNode;
+  unreadNotificationCount?: number;
 }
 
-export default function AppLayout({ activeView, onViewChange, children, topBar }: AppLayoutProps) {
+export default function AppLayout({ activeView, onViewChange, children, topBar, unreadNotificationCount = 0 }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const mobileTabs = NAV_ITEMS.filter(n => n.mobileTab);
 
@@ -86,6 +87,11 @@ export default function AppLayout({ activeView, onViewChange, children, topBar }
           >
             <User className="w-5 h-5" />
             {!collapsed && <span className="text-sm">Profile</span>}
+            {unreadNotificationCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-red-500 text-[9px] font-bold text-white flex items-center justify-center">
+                {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+              </span>
+            )}
           </button>
         </div>
       </aside>
@@ -110,7 +116,12 @@ export default function AppLayout({ activeView, onViewChange, children, topBar }
                     active ? 'text-gold' : 'text-muted-foreground'
                   }`}
                 >
-                  <item.icon className="w-6 h-6" strokeWidth={active ? 2.2 : 1.8} />
+                  <div className="relative">
+                    <item.icon className="w-6 h-6" strokeWidth={active ? 2.2 : 1.8} />
+                    {item.path === 'profile' && unreadNotificationCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-500" />
+                    )}
+                  </div>
                   <span className="text-[10px]">{item.label}</span>
                 </button>
               );

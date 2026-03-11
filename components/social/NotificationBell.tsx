@@ -31,9 +31,10 @@ function timeAgo(dateStr: string): string {
 
 interface NotificationBellProps {
     userId: string;
+    onUnreadCountChange?: (count: number) => void;
 }
 
-export const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) => {
+export const NotificationBell: React.FC<NotificationBellProps> = ({ userId, onUnreadCountChange }) => {
     const { t } = useTranslation();
     const [open, setOpen] = useState(false);
     const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -41,14 +42,18 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) =>
     const [loading, setLoading] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    // Load unread count on mount
+    // Load unread count on mount and poll every 15s
     useEffect(() => {
         if (!userId) return;
-        getUnreadCount(userId).then(setUnreadCount);
-        // Poll every 30s
-        const interval = setInterval(() => {
-            getUnreadCount(userId).then(setUnreadCount);
-        }, 30_000);
+
+        const pollCount = async () => {
+            const count = await getUnreadCount(userId);
+            setUnreadCount(count);
+            onUnreadCountChange?.(count);
+        };
+
+        pollCount();
+        const interval = setInterval(pollCount, 15_000);
         return () => clearInterval(interval);
     }, [userId]);
 
@@ -76,6 +81,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) =>
             if (unreadIds.length > 0) {
                 await markNotificationsRead(unreadIds);
                 setUnreadCount(0);
+                onUnreadCountChange?.(0);
             }
         }
     };
