@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { RankedItem } from '../../types';
 import { GripVertical, Film, Tv, BookOpen, Star, StickyNote, Trash2 } from 'lucide-react';
 import { TIER_COLORS, TIER_LABELS } from '../../constants';
@@ -104,8 +105,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
         </div>
       </div>
 
-      {/* ── Detail Modal ─────────────────────────────────────────────────── */}
-      {isOpen && (
+      {/* ── Detail Modal (portaled to body to escape TierRow overflow) ── */}
+      {isOpen && createPortal(
         <MediaDetailModal
           initialItem={item}
           tmdbId={item.id}
@@ -113,7 +114,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
           onClose={() => setIsOpen(false)}
           onOpenJournal={onOpenJournal}
           onRerank={onRerank}
-        />
+        />,
+        document.body,
       )}
     </>
   );
