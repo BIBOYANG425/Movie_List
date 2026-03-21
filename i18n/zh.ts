@@ -194,6 +194,28 @@ const zh: Record<string, string> = {
   'landing.contact': '联系',
   'landing.copyright': '\u00A9 2026 Spool',
 
+  // ── Books ──────────────────────────────────────────────────────────────
+  'nav.books': '书籍',
+  'book.searchBooks': '搜索书籍...',
+  'book.author': '作者',
+  'book.pages': '页',
+  'book.addBook': '添加书籍',
+  'book.assignTier': '分配等级',
+  'book.addNote': '添加备注',
+  'book.headToHead': '对决比较',
+  'stats.books': '书籍',
+  'toast.bookSaved': '书籍已保存到阅读列表',
+
+  // ── Universal Search ──────────────────────────────────────────────────
+  'search.placeholder': '搜索电影、剧集、书籍...',
+  'search.all': '全部',
+  'search.movies': '电影',
+  'search.tv': '剧集',
+  'search.books': '书籍',
+  'search.noResults': '未找到结果',
+  'search.rank': '排名',
+  'search.save': '保存',
+
   // ── TV Shows ────────────────────────────────────────────────────────────
   'tv.searchShows': '搜索电视剧...',
   'tv.selectSeason': '选择一季',

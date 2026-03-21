@@ -13,7 +13,7 @@ export enum Bracket {
   Animation = 'Animation',
 }
 
-export type MediaType = 'movie' | 'tv_season';
+export type MediaType = 'movie' | 'tv_season' | 'book';
 
 export interface MediaItem {
   id: string;
@@ -30,6 +30,12 @@ export interface MediaItem {
   seasonNumber?: number;     // 1-based season number
   seasonTitle?: string;      // "Season 1" or custom name
   episodeCount?: number;     // episodes in the season
+  // Book fields
+  author?: string;
+  pageCount?: number;
+  isbn?: string;
+  olWorkKey?: string;
+  olRatingsAverage?: number;
 }
 
 export interface RankedItem extends MediaItem {

@@ -194,6 +194,28 @@ const en = {
   'landing.contact': 'Contact',
   'landing.copyright': '\u00A9 2026 Spool',
 
+  // ── Books ──────────────────────────────────────────────────────────────
+  'nav.books': 'Books',
+  'book.searchBooks': 'Search books...',
+  'book.author': 'Author',
+  'book.pages': 'pages',
+  'book.addBook': 'Add Book',
+  'book.assignTier': 'Assign Tier',
+  'book.addNote': 'Add a Note',
+  'book.headToHead': 'Head-to-Head',
+  'stats.books': 'Books',
+  'toast.bookSaved': 'Book saved to reading list',
+
+  // ── Universal Search ──────────────────────────────────────────────────
+  'search.placeholder': 'Search movies, TV, books...',
+  'search.all': 'All',
+  'search.movies': 'Movies',
+  'search.tv': 'TV',
+  'search.books': 'Books',
+  'search.noResults': 'No results found',
+  'search.rank': 'Rank',
+  'search.save': 'Save',
+
   // ── TV Shows ────────────────────────────────────────────────────────────
   'tv.searchShows': 'Search TV shows...',
   'tv.selectSeason': 'Select a season',

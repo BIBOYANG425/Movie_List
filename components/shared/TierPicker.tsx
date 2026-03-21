@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tier, Bracket, RankedItem } from '../../types';
 import { TIER_COLORS, TIER_LABELS, BRACKET_LABELS } from '../../constants';
-import { Film } from 'lucide-react';
+import { Film, BookOpen } from 'lucide-react';
 
 interface TierPickerProps {
   selectedItem: RankedItem | null;
@@ -23,7 +23,7 @@ export const TierPicker: React.FC<TierPickerProps> = ({
         <img src={selectedItem.posterUrl} alt="" className="w-14 h-20 object-cover rounded-lg shadow-lg flex-shrink-0" />
       ) : (
         <div className="w-14 h-20 bg-card rounded-lg flex items-center justify-center flex-shrink-0">
-          <Film size={20} className="text-muted" />
+          {selectedItem?.type === 'book' ? <BookOpen size={20} className="text-muted" /> : <Film size={20} className="text-muted" />}
         </div>
       )}
       <div>
@@ -31,6 +31,9 @@ export const TierPicker: React.FC<TierPickerProps> = ({
         <p className="text-muted-foreground text-sm mt-0.5">{selectedItem?.year}</p>
         {selectedItem?.seasonTitle && (
           <p className="text-muted text-xs mt-0.5">{selectedItem.seasonTitle}</p>
+        )}
+        {selectedItem?.type === 'book' && selectedItem?.author && (
+          <p className="text-muted text-xs mt-0.5">{selectedItem.author}</p>
         )}
         <p className="text-muted text-sm mt-1">How does this tier feel?</p>
       </div>

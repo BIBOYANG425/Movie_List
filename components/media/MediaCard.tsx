@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { RankedItem } from '../../types';
-import { GripVertical, Film, Tv, Star, StickyNote, Trash2 } from 'lucide-react';
+import { GripVertical, Film, Tv, BookOpen, Star, StickyNote, Trash2 } from 'lucide-react';
 import { TIER_COLORS, TIER_LABELS } from '../../constants';
 import { MediaDetailModal } from './MediaDetailModal';
 
@@ -91,8 +91,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
         {/* Title & Year (below poster) */}
         <div className="mt-1.5 px-1">
           <h3 className="text-xs text-foreground line-clamp-2 font-semibold leading-tight">{item.title}</h3>
+          {item.type === 'book' && item.author && (
+            <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">{item.author}</p>
+          )}
           <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
-            {item.type === 'tv_season' ? <Tv size={11} /> : <Film size={11} />}
+            {item.type === 'book' ? <BookOpen size={11} /> : item.type === 'tv_season' ? <Tv size={11} /> : <Film size={11} />}
             <span>{item.year}</span>
             {item.notes && (
               <StickyNote size={10} className="text-gold ml-auto" />

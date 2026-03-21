@@ -258,6 +258,13 @@ export const ALL_TV_GENRES = [
   'Sci-Fi & Fantasy', 'Soap', 'War & Politics', 'Western',
 ];
 
+export const ALL_BOOK_GENRES = [
+  'Fiction', 'Non-fiction', 'Fantasy', 'Sci-Fi', 'Mystery', 'Thriller',
+  'Romance', 'Horror', 'Biography', 'History', 'Philosophy', 'Poetry',
+  'Self-help', 'Science', 'Travel', 'Young Adult', 'Children',
+  'Graphic Novel', 'Humor', 'Literary Fiction',
+];
+
 /** Default slot distribution for the 5-pool suggestion system */
 export const DEFAULT_POOL_SLOTS: Record<SuggestionPoolType, number> = {
   similar: 3,
