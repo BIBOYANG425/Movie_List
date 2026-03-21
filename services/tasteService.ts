@@ -400,9 +400,9 @@ export async function getTrendingAmongFriends(
  */
 export async function getGenreProfile(
   userId: string,
-  mediaType: 'movie' | 'tv_season' = 'movie',
+  mediaType: 'movie' | 'tv_season' | 'book' = 'movie',
 ): Promise<GenreProfileItem[]> {
-  const rankingTable = mediaType === 'tv_season' ? 'tv_rankings' : 'user_rankings';
+  const rankingTable = mediaType === 'book' ? 'book_rankings' : mediaType === 'tv_season' ? 'tv_rankings' : 'user_rankings';
   const { data: rankings } = await supabase
     .from(rankingTable)
     .select('genres, tier')
@@ -448,7 +448,7 @@ export async function getGenreProfile(
 async function getMediaSocialStats(
   currentUserId: string,
   tmdbId: string,
-  rankingTable: 'user_rankings' | 'tv_rankings',
+  rankingTable: 'user_rankings' | 'tv_rankings' | 'book_rankings',
 ): Promise<MovieSocialStats | null> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
 
@@ -575,4 +575,8 @@ export async function getMovieSocialStats(currentUserId: string, tmdbId: string)
 
 export async function getTVSocialStats(currentUserId: string, tmdbId: string): Promise<MovieSocialStats | null> {
   return getMediaSocialStats(currentUserId, tmdbId, 'tv_rankings');
+}
+
+export async function getBookSocialStats(currentUserId: string, tmdbId: string): Promise<MovieSocialStats | null> {
+  return getMediaSocialStats(currentUserId, tmdbId, 'book_rankings');
 }

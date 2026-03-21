@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Heart, Edit3, Camera, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Heart, Edit3, Camera, Sparkles, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { JournalEntryCard as JournalEntryCardType } from '../../types';
 import { TIER_COLORS, MOOD_TAGS } from '../../constants';
 import { toggleJournalLike } from '../../services/journalService';
+import { getProfilesByIds } from '../../services/friendsService';
 
 interface JournalEntryCardProps {
   entry: JournalEntryCardType;
@@ -34,6 +35,25 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
   const [liked, setLiked] = useState(initialIsLiked);
   const [likeCount, setLikeCount] = useState(entry.likeCount);
   const [expanded, setExpanded] = useState(false);
+  const [watchedWithNames, setWatchedWithNames] = useState<string[]>([]);
+
+  // Resolve watched-with UUIDs to usernames
+  useEffect(() => {
+    if (!entry.watchedWithUserIds?.length) {
+      setWatchedWithNames([]);
+      return;
+    }
+    let cancelled = false;
+    getProfilesByIds(entry.watchedWithUserIds).then((profileMap) => {
+      if (cancelled) return;
+      setWatchedWithNames(
+        entry.watchedWithUserIds
+          .map((id) => profileMap.get(id)?.username)
+          .filter((u): u is string => Boolean(u)),
+      );
+    });
+    return () => { cancelled = true; };
+  }, [entry.watchedWithUserIds?.join(',')]);
 
   const handleLike = async () => {
     const newLiked = !liked;
@@ -116,6 +136,14 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
                   {tag!.emoji} {tag!.label}
                 </span>
               ))}
+            </div>
+          )}
+
+          {/* Watched with */}
+          {watchedWithNames.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-2 text-[10px] text-muted-foreground">
+              <Users size={11} className="text-accent" />
+              <span>Watched with {watchedWithNames.map(u => `@${u}`).join(', ')}</span>
             </div>
           )}
 

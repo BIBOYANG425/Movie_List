@@ -96,16 +96,18 @@ async function getRankingScores(
   }
 
   for (const [uid, tmdbIds] of byUser) {
-    // Fetch from both user_rankings and tv_rankings
-    const [movieRes, tvRes] = await Promise.all([
+    // Fetch from user_rankings, tv_rankings, and book_rankings
+    const [movieRes, tvRes, bookRes] = await Promise.all([
       supabase.from('user_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
       supabase.from('tv_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
+      supabase.from('book_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
     ]);
 
     // Process each table separately (tier counts are per-table)
     for (const { data, table } of [
       { data: movieRes.data, table: 'user_rankings' as const },
       { data: tvRes.data, table: 'tv_rankings' as const },
+      { data: bookRes.data, table: 'book_rankings' as const },
     ]) {
       if (!data || data.length === 0) continue;
 

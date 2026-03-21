@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, RotateCcw, Tv, Film } from 'lucide-react';
+import { RotateCcw, Tv, Film, BookOpen } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType, Bracket, ComparisonLogEntry } from '../types';
 import { TIERS, TIER_SCORE_RANGES, MIN_MOVIES_FOR_SCORES, MAX_TIER_TOLERANCE, BRACKETS, BRACKET_LABELS } from '../constants';
 import { computeTierScore, classifyBracket } from '../services/rankingAlgorithm';
 import { TierRow } from '../components/ranking/TierRow';
 import { AddMediaModal } from '../components/media/AddMediaModal';
 import { AddTVSeasonModal } from '../components/media/AddTVSeasonModal';
+import { RankingFlowModal } from '../components/media/RankingFlowModal';
 import { StatsView } from '../components/ranking/StatsView';
 import { Watchlist } from '../components/media/Watchlist';
+import { UniversalSearch } from '../components/shared/UniversalSearch';
 import { SocialFeedView } from '../components/feed/SocialFeedView';
 import { DiscoverView } from '../components/social/DiscoverView';
 import { WatchPartyView } from '../components/social/WatchPartyView';
@@ -27,7 +29,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
-import { TMDBMovie } from '../services/tmdbService';
+import { TMDBMovie, TMDBTVShow } from '../services/tmdbService';
+import { OpenLibraryBook } from '../services/openLibraryService';
 import { useLocalizedItems, useLocalizedWatchlist } from '../hooks/useLocalizedItems';
 
 const SCORE_MAX = 10.0;
@@ -174,6 +177,46 @@ function rowToTVWatchlistItem(row: any): WatchlistItem {
   };
 }
 
+function rowToBookRankedItem(row: any): RankedItem {
+  const wwIds = row.watched_with_user_ids;
+  return {
+    id: row.tmdb_id,
+    title: row.title,
+    year: row.year ?? '',
+    posterUrl: row.poster_url ?? '',
+    type: 'book',
+    genres: row.genres ?? [],
+    author: row.author,
+    pageCount: row.page_count ?? undefined,
+    isbn: row.isbn ?? undefined,
+    olWorkKey: row.ol_work_key ?? undefined,
+    olRatingsAverage: row.ol_ratings_average ?? undefined,
+    globalScore: row.ol_ratings_average != null ? row.ol_ratings_average * 2 : undefined,
+    tier: row.tier as Tier,
+    rank: row.rank_position,
+    bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
+    notes: row.notes,
+    watchedWithUserIds: Array.isArray(wwIds) && wwIds.length > 0 ? wwIds : undefined,
+  };
+}
+
+function rowToBookWatchlistItem(row: any): WatchlistItem {
+  return {
+    id: row.tmdb_id,
+    title: row.title,
+    year: row.year ?? '',
+    posterUrl: row.poster_url ?? '',
+    type: 'book',
+    genres: row.genres ?? [],
+    author: row.author,
+    pageCount: row.page_count ?? undefined,
+    isbn: row.isbn ?? undefined,
+    olWorkKey: row.ol_work_key ?? undefined,
+    olRatingsAverage: row.ol_ratings_average ?? undefined,
+    addedAt: row.added_at,
+  };
+}
+
 const RankingAppPage = () => {
   const { user, profile, signOut } = useAuth();
   const { t } = useTranslation();
@@ -182,12 +225,16 @@ const RankingAppPage = () => {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [tvItems, setTvItems] = useState<RankedItem[]>([]);
   const [tvWatchlist, setTvWatchlist] = useState<WatchlistItem[]>([]);
+  const [bookItems, setBookItems] = useState<RankedItem[]>([]);
+  const [bookWatchlist, setBookWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTVModalOpen, setIsTVModalOpen] = useState(false);
+  const [isBookModalOpen, setIsBookModalOpen] = useState(false);
+  const [bookItemToRank, setBookItemToRank] = useState<RankedItem | null>(null);
   const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'feed' | 'discover' | 'groups' | 'journal' | 'achievements'>('ranking');
   const [groupSubTab, setGroupSubTab] = useState<'parties' | 'rankings' | 'polls' | 'lists' | 'badges'>('parties');
-  const [mediaMode, setMediaMode] = useState<'movies' | 'tv'>('movies');
+  const [mediaMode, setMediaMode] = useState<'movies' | 'tv' | 'books'>('movies');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
@@ -236,7 +283,7 @@ const RankingAppPage = () => {
         localStorage.removeItem(ONBOARDING_KEY);
       }
 
-      const [rankingsRes, watchlistRes, tvRankingsRes, tvWatchlistRes] = await Promise.all([
+      const [rankingsRes, watchlistRes, tvRankingsRes, tvWatchlistRes, bookRankingsRes, bookWatchlistRes] = await Promise.all([
         supabase
           .from('user_rankings')
           .select('*')
@@ -259,12 +306,25 @@ const RankingAppPage = () => {
           .select('*')
           .eq('user_id', user.id)
           .order('added_at', { ascending: false }),
+        supabase
+          .from('book_rankings')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('tier')
+          .order('rank_position'),
+        supabase
+          .from('book_watchlist_items')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('added_at', { ascending: false }),
       ]);
 
       if (rankingsRes.data) setItems(rankingsRes.data.map(rowToRankedItem));
       if (watchlistRes.data) setWatchlist(watchlistRes.data.map(rowToWatchlistItem));
       if (tvRankingsRes.data) setTvItems(tvRankingsRes.data.map(rowToTVRankedItem));
       if (tvWatchlistRes.data) setTvWatchlist(tvWatchlistRes.data.map(rowToTVWatchlistItem));
+      if (bookRankingsRes.data) setBookItems(bookRankingsRes.data.map(rowToBookRankedItem));
+      if (bookWatchlistRes.data) setBookWatchlist(bookWatchlistRes.data.map(rowToBookWatchlistItem));
 
       setLoading(false);
     };
@@ -277,10 +337,13 @@ const RankingAppPage = () => {
 
   const handleReset = async () => {
     if (!user) return;
-    const label = mediaMode === 'tv' ? 'TV' : 'movie';
+    const label = mediaMode === 'books' ? 'book' : mediaMode === 'tv' ? 'TV' : 'movie';
     if (!window.confirm(`Reset your ${label} list? This cannot be undone.`)) return;
 
-    if (mediaMode === 'tv') {
+    if (mediaMode === 'books') {
+      await supabase.from('book_rankings').delete().eq('user_id', user.id);
+      setBookItems([]);
+    } else if (mediaMode === 'tv') {
       await supabase.from('tv_rankings').delete().eq('user_id', user.id);
       setTvItems([]);
     } else {
@@ -371,6 +434,7 @@ const RankingAppPage = () => {
 
     // Move within the SAME tier
     let updatedTierList: RankedItem[] = [];
+    const prevItems = [...items];
     setItems((prev) => {
       const tierItems = prev.filter(i => i.tier === targetItem.tier).sort((a, b) => a.rank - b.rank);
       const otherItems = prev.filter(i => i.tier !== targetItem.tier);
@@ -409,7 +473,11 @@ const RankingAppPage = () => {
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
-      if (error) console.error('Failed to save ranking:', error);
+      if (error) {
+        console.error('Failed to save ranking:', error);
+        setToastMessage('Failed to save — please try again');
+        setItems(prevItems);
+      }
     }
   };
 
@@ -450,7 +518,11 @@ const RankingAppPage = () => {
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
-      if (error) console.error('Failed to save ranking:', error);
+      if (error) {
+        console.error('Failed to save ranking:', error);
+        setToastMessage('Failed to save ranking — please try again');
+        return;
+      }
     }
 
     await logRankingActivityEvent(
@@ -519,7 +591,10 @@ const RankingAppPage = () => {
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
-      if (error) console.error('Failed to reindex ranks after removal:', error);
+      if (error) {
+        console.error('Failed to reindex ranks after removal:', error);
+        setToastMessage('Failed to update rankings — please refresh');
+      }
     }
 
     if (removedItem) {
@@ -551,7 +626,7 @@ const RankingAppPage = () => {
 
     setWatchlist((prev) => [watchItem, ...prev]);
 
-    await supabase.from('watchlist_items').upsert({
+    const { error } = await supabase.from('watchlist_items').upsert({
       user_id: user.id,
       tmdb_id: watchItem.id,
       title: watchItem.title,
@@ -561,6 +636,13 @@ const RankingAppPage = () => {
       genres: watchItem.genres,
       director: watchItem.director ?? null,
     }, { onConflict: 'user_id,tmdb_id' });
+
+    if (error) {
+      console.error('Failed to save to watchlist:', error);
+      setToastMessage('Failed to save — please try again');
+      setWatchlist((prev) => prev.filter((w) => w.id !== watchItem.id));
+      return;
+    }
 
     setToastMessage(t('toast.movieSaved'));
   };
@@ -583,7 +665,7 @@ const RankingAppPage = () => {
 
     setTvWatchlist((prev) => [item, ...prev]);
 
-    await supabase.from('tv_watchlist_items').upsert({
+    const { error } = await supabase.from('tv_watchlist_items').upsert({
       user_id: user.id,
       tmdb_id: item.id,
       show_tmdb_id: item.showTmdbId ?? 0,
@@ -596,6 +678,13 @@ const RankingAppPage = () => {
       genres: item.genres,
       creator: item.creator ?? null,
     }, { onConflict: 'user_id,tmdb_id' });
+
+    if (error) {
+      console.error('Failed to save to TV watchlist:', error);
+      setToastMessage('Failed to save — please try again');
+      setTvWatchlist((prev) => prev.filter((w) => w.id !== item.id));
+      return;
+    }
 
     setToastMessage(t('toast.movieSaved'));
   };
@@ -613,8 +702,27 @@ const RankingAppPage = () => {
   };
 
   const rankFromWatchlist = (item: WatchlistItem) => {
-    if (item.type === 'tv_season') {
-      // Convert watchlist item to RankedItem for preselection
+    if (item.type === 'book') {
+      const bookItem: RankedItem = {
+        id: item.id,
+        title: item.title,
+        year: item.year,
+        posterUrl: item.posterUrl,
+        type: 'book',
+        genres: item.genres,
+        author: item.author,
+        pageCount: item.pageCount,
+        isbn: item.isbn,
+        olWorkKey: item.olWorkKey,
+        olRatingsAverage: item.olRatingsAverage,
+        globalScore: item.olRatingsAverage != null ? item.olRatingsAverage * 2 : undefined,
+        bracket: classifyBracket(item.genres),
+        tier: Tier.B,
+        rank: 0,
+      };
+      setBookItemToRank(bookItem);
+      setIsBookModalOpen(true);
+    } else if (item.type === 'tv_season') {
       const tvItem: RankedItem = {
         id: item.id,
         title: item.title,
@@ -665,7 +773,10 @@ const RankingAppPage = () => {
       updated_at: new Date().toISOString(),
     }));
     const { error } = await supabase.from('tv_rankings').upsert(rows, { onConflict: 'user_id,tmdb_id' });
-    if (error) console.error('Failed to save TV ranking:', error);
+    if (error) {
+      console.error('Failed to save TV ranking:', error);
+      setToastMessage('Failed to save TV ranking — please try again');
+    }
   };
 
   const addTVItem = async (newItem: RankedItem) => {
@@ -865,6 +976,205 @@ const RankingAppPage = () => {
     }
   };
 
+  // ─── Book CRUD ────────────────────────────────────────────────────────────
+
+  const persistBookRankings = async (updatedItems: RankedItem[]) => {
+    if (!user || updatedItems.length === 0) return;
+    const rows = updatedItems.map(item => ({
+      user_id: user.id,
+      tmdb_id: item.id,
+      title: item.title,
+      year: item.year,
+      poster_url: item.posterUrl,
+      type: 'book',
+      genres: item.genres,
+      author: item.author ?? null,
+      tier: item.tier,
+      rank_position: item.rank,
+      bracket: item.bracket ?? classifyBracket(item.genres),
+      primary_genre: item.genres[0] ?? null,
+      notes: item.notes ?? null,
+      watched_with_user_ids: item.watchedWithUserIds ?? [],
+      page_count: item.pageCount ?? null,
+      isbn: item.isbn ?? null,
+      ol_work_key: item.olWorkKey ?? null,
+      ol_ratings_average: item.olRatingsAverage ?? null,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase.from('book_rankings').upsert(rows, { onConflict: 'user_id,tmdb_id' });
+    if (error) {
+      console.error('Failed to save book ranking:', error);
+      setToastMessage('Failed to save book ranking — please try again');
+    }
+  };
+
+  const addBookItem = async (newItem: RankedItem) => {
+    if (!user) return;
+    let updatedTierList: RankedItem[] = [];
+
+    setBookItems((prev) => {
+      const tierItems = prev
+        .filter((i) => i.tier === newItem.tier && i.id !== newItem.id)
+        .sort((a, b) => a.rank - b.rank);
+      const otherItems = prev.filter((i) => i.tier !== newItem.tier && i.id !== newItem.id);
+      const newTierList = [...tierItems];
+      newTierList.splice(newItem.rank, 0, newItem);
+      updatedTierList = newTierList.map((item, index) => ({ ...item, rank: index }));
+      return [...otherItems, ...updatedTierList];
+    });
+
+    await persistBookRankings(updatedTierList);
+
+    await logRankingActivityEvent(
+      user.id,
+      {
+        id: newItem.id,
+        title: newItem.title,
+        tier: newItem.tier,
+        posterUrl: newItem.posterUrl,
+        notes: newItem.notes,
+        year: newItem.year,
+        watchedWithUserIds: newItem.watchedWithUserIds,
+      },
+      'ranking_add',
+    );
+  };
+
+  const removeBookItem = async (id: string) => {
+    if (!user) return;
+    const removedItem = bookItems.find((item) => item.id === id);
+    let affectedTierItems: RankedItem[] = [];
+
+    setBookItems((prev) => {
+      const without = prev.filter((i) => i.id !== id);
+      const tiers = new Set(without.map((i) => i.tier));
+      let result: RankedItem[] = [];
+      tiers.forEach((tier) => {
+        const tierItems = without
+          .filter((i) => i.tier === tier)
+          .sort((a, b) => a.rank - b.rank)
+          .map((item, idx) => ({ ...item, rank: idx }));
+        result = [...result, ...tierItems];
+        if (removedItem && tier === removedItem.tier) {
+          affectedTierItems = tierItems;
+        }
+      });
+      return result;
+    });
+
+    await supabase.from('book_rankings').delete().eq('user_id', user.id).eq('tmdb_id', id);
+
+    if (affectedTierItems.length > 0) {
+      await persistBookRankings(affectedTierItems);
+    }
+
+    if (removedItem) {
+      await logRankingActivityEvent(user.id, {
+        id: removedItem.id, title: removedItem.title, tier: removedItem.tier,
+        posterUrl: removedItem.posterUrl, notes: removedItem.notes, year: removedItem.year,
+      }, 'ranking_remove');
+    }
+  };
+
+  const addToBookWatchlist = async (item: WatchlistItem) => {
+    if (!user) return;
+    if (bookWatchlist.some((w) => w.id === item.id)) return;
+
+    setBookWatchlist((prev) => [item, ...prev]);
+
+    const { error } = await supabase.from('book_watchlist_items').upsert({
+      user_id: user.id,
+      tmdb_id: item.id,
+      title: item.title,
+      year: item.year,
+      poster_url: item.posterUrl,
+      type: 'book',
+      genres: item.genres,
+      author: item.author ?? null,
+      page_count: item.pageCount ?? null,
+      isbn: item.isbn ?? null,
+      ol_work_key: item.olWorkKey ?? null,
+      ol_ratings_average: item.olRatingsAverage ?? null,
+    }, { onConflict: 'user_id,tmdb_id' });
+
+    if (error) {
+      console.error('Failed to save to book watchlist:', error);
+      setToastMessage('Failed to save — please try again');
+      setBookWatchlist((prev) => prev.filter((w) => w.id !== item.id));
+      return;
+    }
+    setToastMessage(t('toast.bookSaved'));
+  };
+
+  const removeBookFromWatchlist = async (id: string) => {
+    if (!user) return;
+    setBookWatchlist((prev) => prev.filter((w) => w.id !== id));
+    await supabase.from('book_watchlist_items').delete().eq('user_id', user.id).eq('tmdb_id', id);
+  };
+
+  const handleBookDrop = async (e: React.DragEvent, targetTier: Tier) => {
+    e.preventDefault();
+    if (!draggedItemId || !user) return;
+    const droppedId = draggedItemId;
+    const movedItem = bookItems.find((i) => i.id === droppedId);
+    setDraggedItemId(null);
+    if (!movedItem) return;
+    const sourceTier = movedItem.tier;
+    let affectedItems: RankedItem[] = [];
+
+    setBookItems((prev) => {
+      const item = prev.find((i) => i.id === droppedId);
+      if (!item) return prev;
+      const rest = prev.filter((i) => i.id !== droppedId);
+      const sourceTierItems = rest.filter((i) => i.tier === sourceTier).sort((a, b) => a.rank - b.rank).map((it, idx) => ({ ...it, rank: idx }));
+      const targetTierItems = rest.filter((i) => i.tier === targetTier).sort((a, b) => a.rank - b.rank);
+      const newRank = targetTierItems.length;
+      const movedWithNewTier = { ...item, tier: targetTier, rank: newRank };
+      const updatedTargetItems = [...targetTierItems, movedWithNewTier].map((it, idx) => ({ ...it, rank: idx }));
+      const otherItems = rest.filter((i) => i.tier !== sourceTier && i.tier !== targetTier);
+      affectedItems = sourceTier === targetTier ? updatedTargetItems : [...sourceTierItems, ...updatedTargetItems];
+      return [...otherItems, ...sourceTierItems, ...updatedTargetItems].filter((item, idx, arr) => arr.findIndex(a => a.id === item.id) === idx);
+    });
+
+    if (affectedItems.length > 0) await persistBookRankings(affectedItems);
+    if (movedItem) {
+      await logRankingActivityEvent(user.id, { id: movedItem.id, title: movedItem.title, tier: targetTier, posterUrl: movedItem.posterUrl, notes: movedItem.notes, year: movedItem.year }, 'ranking_move');
+    }
+  };
+
+  const handleBookDropOnItem = async (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedItemId || !user || draggedItemId === targetId) return;
+    const droppedId = draggedItemId;
+    const movedItem = bookItems.find((i) => i.id === droppedId);
+    const targetItem = bookItems.find((i) => i.id === targetId);
+    if (!movedItem || !targetItem) { setDraggedItemId(null); return; }
+    if (movedItem.tier !== targetItem.tier) { await handleBookDrop(e, targetItem.tier); return; }
+    setDraggedItemId(null);
+    let updatedTierList: RankedItem[] = [];
+    setBookItems((prev) => {
+      const tierItems = prev.filter(i => i.tier === targetItem.tier).sort((a, b) => a.rank - b.rank);
+      const otherItems = prev.filter(i => i.tier !== targetItem.tier);
+      const oldIndex = tierItems.findIndex(i => i.id === droppedId);
+      const newIndex = tierItems.findIndex(i => i.id === targetId);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      const [removed] = tierItems.splice(oldIndex, 1);
+      tierItems.splice(newIndex, 0, removed);
+      updatedTierList = tierItems.map((item, idx) => ({ ...item, rank: idx }));
+      return [...otherItems, ...updatedTierList];
+    });
+    if (updatedTierList.length > 0) await persistBookRankings(updatedTierList);
+  };
+
+  const handleAddBookItem = async (newItem: RankedItem) => {
+    await addBookItem(newItem);
+    if (bookItemToRank) {
+      await removeBookFromWatchlist(bookItemToRank.id);
+      setBookItemToRank(null);
+    }
+  };
+
   const handleAddTVItem = async (newItem: RankedItem) => {
     await addTVItem(newItem);
     if (preselectedTVItem) {
@@ -905,10 +1215,13 @@ const RankingAppPage = () => {
 
   const watchlistIds = useMemo(() => new Set(watchlist.map((w) => w.id)), [watchlist]);
   const tvWatchlistIds = useMemo(() => new Set(tvWatchlist.map((w) => w.id)), [tvWatchlist]);
+  const bookWatchlistIds = useMemo(() => new Set(bookWatchlist.map((w) => w.id)), [bookWatchlist]);
+  const allRankedIds = useMemo(() => new Set([...items.map(i => i.id), ...tvItems.map(i => i.id), ...bookItems.map(i => i.id)]), [items, tvItems, bookItems]);
+  const allWatchlistIds = useMemo(() => new Set([...watchlistIds, ...tvWatchlistIds, ...bookWatchlistIds]), [watchlistIds, tvWatchlistIds, bookWatchlistIds]);
 
   // Active items based on media mode
-  const activeItems = mediaMode === 'movies' ? items : tvItems;
-  const activeWatchlist = mediaMode === 'movies' ? watchlist : tvWatchlist;
+  const activeItems = mediaMode === 'movies' ? items : mediaMode === 'tv' ? tvItems : bookItems;
+  const activeWatchlist = mediaMode === 'movies' ? watchlist : mediaMode === 'tv' ? tvWatchlist : bookWatchlist;
 
   const bracketCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -932,7 +1245,7 @@ const RankingAppPage = () => {
   const filteredItems = useMemo(() => {
     let filtered = mediaMode === 'movies'
       ? (filterType === 'all' ? items : items.filter((i) => i.type === filterType))
-      : tvItems;
+      : mediaMode === 'tv' ? tvItems : bookItems;
     if (activeBracket !== 'all') {
       filtered = filtered.filter(i => i.bracket === activeBracket);
     }
@@ -940,7 +1253,7 @@ const RankingAppPage = () => {
       filtered = filtered.filter(i => i.genres.includes(activeGenre));
     }
     return filtered;
-  }, [items, tvItems, mediaMode, filterType, activeBracket, activeGenre]);
+  }, [items, tvItems, bookItems, mediaMode, filterType, activeBracket, activeGenre]);
 
   const localizedItems = useLocalizedItems(filteredItems);
   const localizedWatchlist = useLocalizedWatchlist(activeWatchlist);
@@ -964,6 +1277,76 @@ const RankingAppPage = () => {
     setActiveTab(view as typeof activeTab);
   };
 
+  // Universal search handlers
+  const handleSearchRankMovie = (movie: TMDBMovie) => {
+    setPreselectedForRank(movie);
+    setIsModalOpen(true);
+  };
+  const handleSearchRankTV = (show: TMDBTVShow) => {
+    setPreselectedTVItem({
+      id: show.id,
+      title: show.name,
+      year: show.year,
+      posterUrl: show.posterUrl ?? '',
+      type: 'tv_season',
+      genres: show.genres ?? [],
+      tier: Tier.B,
+      rank: 0,
+    } as RankedItem);
+    setIsTVModalOpen(true);
+  };
+  const handleSearchRankBook = (book: OpenLibraryBook) => {
+    const asRankedItem: RankedItem = {
+      id: book.id,
+      title: book.title,
+      year: book.year,
+      posterUrl: book.posterUrl,
+      type: 'book',
+      genres: book.genres,
+      author: book.author,
+      pageCount: book.pageCount,
+      isbn: book.isbn,
+      olWorkKey: book.olWorkKey,
+      olRatingsAverage: book.olRatingsAverage,
+      globalScore: book.globalScore,
+      bracket: classifyBracket(book.genres),
+      tier: Tier.B,
+      rank: 0,
+    };
+    setBookItemToRank(asRankedItem);
+    setIsBookModalOpen(true);
+  };
+  const handleSearchSaveMovie = (movie: TMDBMovie) => { addToWatchlist(movie); };
+  const handleSearchSaveTV = (show: TMDBTVShow) => {
+    const item: WatchlistItem = {
+      id: show.id,
+      title: show.name,
+      year: show.year,
+      posterUrl: show.posterUrl ?? '',
+      type: 'tv_season',
+      genres: show.genres ?? [],
+      addedAt: new Date().toISOString(),
+    };
+    addToTVWatchlist(item);
+  };
+  const handleSearchSaveBook = (book: OpenLibraryBook) => {
+    const item: WatchlistItem = {
+      id: book.id,
+      title: book.title,
+      year: book.year,
+      posterUrl: book.posterUrl,
+      type: 'book',
+      genres: book.genres,
+      author: book.author,
+      pageCount: book.pageCount,
+      isbn: book.isbn,
+      olWorkKey: book.olWorkKey,
+      olRatingsAverage: book.olRatingsAverage,
+      addedAt: new Date().toISOString(),
+    };
+    addToBookWatchlist(item);
+  };
+
   const topBar = (
     <div className="sticky top-0 z-40 h-14 px-4 lg:px-8 flex items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/20">
       <div className="flex items-center gap-4">
@@ -983,17 +1366,17 @@ const RankingAppPage = () => {
             <Tv size={13} />
             {t('nav.tv')}
           </button>
+          <button
+            onClick={() => { setMediaMode('books'); setActiveBracket('all'); setActiveGenre(null); }}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'books' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <BookOpen size={13} />
+            {t('nav.books')}
+          </button>
         </div>
       </div>
 
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => mediaMode === 'tv' ? setIsTVModalOpen(true) : setIsModalOpen(true)}
-          className="bg-gold text-background px-4 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 hover:bg-gold-muted transition-colors active:scale-95"
-        >
-          <Plus size={16} />
-          <span className="hidden sm:inline">{t('nav.addItem')}</span>
-        </button>
         {user && <NotificationBell userId={user.id} onUnreadCountChange={setUnreadNotifCount} />}
         <LanguageToggle />
         <button
@@ -1020,6 +1403,18 @@ const RankingAppPage = () => {
 
         {activeTab === 'ranking' && (
           <div className="space-y-4">
+            <UniversalSearch
+              rankedIds={allRankedIds}
+              watchlistIds={allWatchlistIds}
+              onRankMovie={handleSearchRankMovie}
+              onRankTV={handleSearchRankTV}
+              onRankBook={handleSearchRankBook}
+              onSaveMovie={handleSearchSaveMovie}
+              onSaveTV={handleSearchSaveTV}
+              onSaveBook={handleSearchSaveBook}
+            />
+
+            {mediaMode !== 'books' && (
             <div className="flex bg-card/50 rounded-lg p-1 overflow-x-auto border border-border/30 scrollbar-hide">
               <button
                 onClick={() => { setActiveBracket('all'); setActiveGenre(null); }}
@@ -1042,6 +1437,7 @@ const RankingAppPage = () => {
                 );
               })}
             </div>
+            )}
 
             {availableGenres.length > 0 && (
               <div className="flex gap-2 overflow-x-auto pb-2">
@@ -1076,16 +1472,20 @@ const RankingAppPage = () => {
                 items={localizedItems.filter((i) => i.tier === tier).sort((a, b) => a.rank - b.rank)}
                 scoreMap={scoreMap}
                 showScores={showScores}
-                onDrop={mediaMode === 'tv' ? (e, tier) => handleTVDrop(e, tier) : (e, tier) => handleDrop(e, tier)}
-                onDropOnItem={mediaMode === 'tv' ? handleTVDropOnItem : handleDropOnItem}
+                onDrop={mediaMode === 'books' ? (e, tier) => handleBookDrop(e, tier) : mediaMode === 'tv' ? (e, tier) => handleTVDrop(e, tier) : (e, tier) => handleDrop(e, tier)}
+                onDropOnItem={mediaMode === 'books' ? handleBookDropOnItem : mediaMode === 'tv' ? handleTVDropOnItem : handleDropOnItem}
                 onDragStart={handleDragStart}
-                onDelete={mediaMode === 'tv' ? removeTVItem : removeItem}
+                onDelete={mediaMode === 'books' ? removeBookItem : mediaMode === 'tv' ? removeTVItem : removeItem}
                 onOpenJournal={(movieId) => {
-                  const ranked = items.find(i => i.id === movieId) ?? tvItems.find(i => i.id === movieId);
+                  const ranked = items.find(i => i.id === movieId) ?? tvItems.find(i => i.id === movieId) ?? bookItems.find(i => i.id === movieId);
                   if (ranked) setJournalSheetItem(ranked);
                 }}
                 onRerank={(item) => {
-                  if (mediaMode === 'tv') {
+                  if (mediaMode === 'books') {
+                    removeBookItem(item.id);
+                    setBookItemToRank(item);
+                    setIsBookModalOpen(true);
+                  } else if (mediaMode === 'tv') {
                     removeTVItem(item.id);
                     setPreselectedTVItem(item);
                     setIsTVModalOpen(true);
@@ -1104,7 +1504,7 @@ const RankingAppPage = () => {
         {activeTab === 'watchlist' && (
           <Watchlist
             items={localizedWatchlist}
-            onRemove={mediaMode === 'tv' ? removeTVFromWatchlist : removeFromWatchlist}
+            onRemove={mediaMode === 'books' ? removeBookFromWatchlist : mediaMode === 'tv' ? removeTVFromWatchlist : removeFromWatchlist}
             onRank={rankFromWatchlist}
           />
         )}
@@ -1206,6 +1606,20 @@ const RankingAppPage = () => {
         preselectedItem={preselectedTVItem}
       />
       </ErrorBoundary>
+
+      {/* Book Ranking Flow Modal */}
+      {bookItemToRank && (
+        <ErrorBoundary>
+        <RankingFlowModal
+          isOpen={isBookModalOpen}
+          onClose={() => { setIsBookModalOpen(false); setBookItemToRank(null); }}
+          onAdd={handleAddBookItem}
+          selectedItem={bookItemToRank}
+          currentItems={bookItems}
+          onCompare={handleCompareLog}
+        />
+        </ErrorBoundary>
+      )}
 
       {/* Deep linked Movie Modal */}
       {linkedMovieId && (() => {

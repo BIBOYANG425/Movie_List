@@ -1,6 +1,6 @@
 import React from 'react';
 import { WatchlistItem } from '../../types';
-import { Bookmark, Trash2, ArrowUpRight, Film, Clock } from 'lucide-react';
+import { Bookmark, Trash2, ArrowUpRight, Film, Tv, BookOpen, Clock } from 'lucide-react';
 import { useTranslation } from '../../contexts/LanguageContext';
 
 interface WatchlistProps {
@@ -81,8 +81,11 @@ export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank })
             {/* Info */}
             <div className="absolute bottom-0 left-0 right-0 p-2.5 pt-5">
               <p className="text-xs font-semibold text-foreground leading-tight truncate">{item.title}</p>
+              {item.type === 'book' && item.author && (
+                <p className="text-[10px] text-muted-foreground/70 truncate">{item.author}</p>
+              )}
               <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted-foreground">
-                <Film size={10} />
+                {item.type === 'book' ? <BookOpen size={10} /> : item.type === 'tv_season' ? <Tv size={10} /> : <Film size={10} />}
                 <span>{item.year}</span>
                 <span className="text-muted-foreground/40">·</span>
                 <Clock size={9} />

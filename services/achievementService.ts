@@ -19,7 +19,7 @@ export async function checkAndGrantBadges(userId: string): Promise<string[]> {
   const has = new Set(existing.map((a) => a.badgeKey));
 
   // Get counts
-  const [rankRes, reviewRes, followingRes, followerRes, partyRes, pollRes, listRes] = await Promise.all([
+  const [rankRes, reviewRes, followingRes, followerRes, partyRes, pollRes, listRes, bookRankRes, tvRankRes] = await Promise.all([
     supabase.from('user_rankings').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('movie_reviews').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('friend_follows').select('id', { count: 'exact', head: true }).eq('follower_id', userId),
@@ -27,9 +27,11 @@ export async function checkAndGrantBadges(userId: string): Promise<string[]> {
     supabase.from('watch_parties').select('id', { count: 'exact', head: true }).eq('host_id', userId),
     supabase.from('movie_polls').select('id', { count: 'exact', head: true }).eq('created_by', userId),
     supabase.from('movie_lists').select('id', { count: 'exact', head: true }).eq('created_by', userId),
+    supabase.from('book_rankings').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+    supabase.from('tv_rankings').select('id', { count: 'exact', head: true }).eq('user_id', userId),
   ]);
 
-  const rankCount = rankRes.count ?? 0;
+  const rankCount = (rankRes.count ?? 0) + (tvRankRes.count ?? 0) + (bookRankRes.count ?? 0);
   const reviewCount = reviewRes.count ?? 0;
   const followingCount = followingRes.count ?? 0;
   const followerCount = followerRes.count ?? 0;
