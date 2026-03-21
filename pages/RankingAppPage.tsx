@@ -434,6 +434,7 @@ const RankingAppPage = () => {
 
     // Move within the SAME tier
     let updatedTierList: RankedItem[] = [];
+    const prevItems = [...items];
     setItems((prev) => {
       const tierItems = prev.filter(i => i.tier === targetItem.tier).sort((a, b) => a.rank - b.rank);
       const otherItems = prev.filter(i => i.tier !== targetItem.tier);
@@ -475,6 +476,7 @@ const RankingAppPage = () => {
       if (error) {
         console.error('Failed to save ranking:', error);
         setToastMessage('Failed to save — please try again');
+        setItems(prevItems);
       }
     }
   };
@@ -1277,10 +1279,20 @@ const RankingAppPage = () => {
 
   // Universal search handlers
   const handleSearchRankMovie = (movie: TMDBMovie) => {
-    setPreselectedForRank(movie as any);
+    setPreselectedForRank(movie);
     setIsModalOpen(true);
   };
   const handleSearchRankTV = (show: TMDBTVShow) => {
+    setPreselectedTVItem({
+      id: show.id,
+      title: show.name,
+      year: show.year,
+      posterUrl: show.posterUrl ?? '',
+      type: 'tv_season',
+      genres: show.genres ?? [],
+      tier: Tier.B,
+      rank: 0,
+    } as RankedItem);
     setIsTVModalOpen(true);
   };
   const handleSearchRankBook = (book: OpenLibraryBook) => {

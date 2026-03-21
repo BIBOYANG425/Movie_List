@@ -111,11 +111,12 @@ export function normalizeBookGenres(subjects: string[]): string[] {
     }
   }
 
-  // If no genres found, check for partial matches
+  // If no genres found, check for partial matches (longer keywords first to avoid misclassification)
   if (genres.size === 0) {
+    const sortedEntries = Object.entries(SUBJECT_TO_GENRE).sort((a, b) => b[0].length - a[0].length);
     for (const subject of subjects) {
       const lower = subject.toLowerCase().trim();
-      for (const [keyword, genre] of Object.entries(SUBJECT_TO_GENRE)) {
+      for (const [keyword, genre] of sortedEntries) {
         if (lower.includes(keyword) && VALID_GENRES.has(genre)) {
           genres.add(genre);
           break;
@@ -155,7 +156,6 @@ export async function searchBooks(
   try {
     const res = await fetch(url.toString(), {
       signal: controller.signal,
-      headers: { 'User-Agent': 'Spool/1.0' },
     });
 
     if (!res.ok) {

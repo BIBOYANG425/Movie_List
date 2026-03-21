@@ -6,6 +6,7 @@ import { classifyBracket, computeSeedIndex, computeTierScore } from '../../servi
 import { SpoolRankingEngine } from '../../services/spoolRankingEngine';
 import { computePredictionSignals } from '../../services/spoolPrediction';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTranslation } from '../../contexts/LanguageContext';
 import { TierPicker } from '../shared/TierPicker';
 import { NotesStep } from '../shared/NotesStep';
 import { ComparisonStep } from '../shared/ComparisonStep';
@@ -26,6 +27,7 @@ export const RankingFlowModal: React.FC<RankingFlowModalProps> = ({
   isOpen, onClose, onAdd, selectedItem: initialItem, currentItems, preselectedTier, onCompare,
 }) => {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>('tier');
   const [selectedItem, setSelectedItem] = useState<RankedItem>(initialItem);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(preselectedTier ?? null);
@@ -80,7 +82,7 @@ export const RankingFlowModal: React.FC<RankingFlowModalProps> = ({
         setStep('tier');
       }
     }
-  }, [isOpen, initialItem, preselectedTier]);
+  }, [isOpen, initialItem, preselectedTier, currentItems, onAdd, onClose]);
 
   if (!isOpen) return null;
 
@@ -246,9 +248,9 @@ export const RankingFlowModal: React.FC<RankingFlowModalProps> = ({
 
   const getStepTitle = () => {
     switch (step) {
-      case 'tier': return 'Assign Tier';
-      case 'notes': return 'Add a Note';
-      case 'compare': return 'Head-to-Head';
+      case 'tier': return t('book.assignTier');
+      case 'notes': return t('book.addNote');
+      case 'compare': return t('book.headToHead');
     }
   };
 

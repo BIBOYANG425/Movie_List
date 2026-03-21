@@ -30,6 +30,7 @@ CREATE TABLE book_rankings (
 
 -- Indexes
 CREATE INDEX idx_book_rankings_user_tier ON book_rankings(user_id, tier);
+CREATE INDEX idx_book_rankings_tmdb_id ON book_rankings(tmdb_id);
 CREATE INDEX idx_book_rankings_watched_with ON book_rankings USING gin(watched_with_user_ids);
 
 -- RLS
@@ -83,6 +84,7 @@ CREATE TABLE book_watchlist_items (
 
 -- Indexes
 CREATE INDEX idx_book_watchlist_user ON book_watchlist_items(user_id);
+CREATE INDEX idx_book_watchlist_tmdb_id ON book_watchlist_items(tmdb_id);
 
 -- RLS
 ALTER TABLE book_watchlist_items ENABLE ROW LEVEL SECURITY;

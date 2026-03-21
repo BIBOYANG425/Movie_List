@@ -39,14 +39,20 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
 
   // Resolve watched-with UUIDs to usernames
   useEffect(() => {
-    if (!entry.watchedWithUserIds?.length) return;
+    if (!entry.watchedWithUserIds?.length) {
+      setWatchedWithNames([]);
+      return;
+    }
+    let cancelled = false;
     getProfilesByIds(entry.watchedWithUserIds).then((profileMap) => {
+      if (cancelled) return;
       setWatchedWithNames(
         entry.watchedWithUserIds
           .map((id) => profileMap.get(id)?.username)
           .filter((u): u is string => Boolean(u)),
       );
     });
+    return () => { cancelled = true; };
   }, [entry.watchedWithUserIds?.join(',')]);
 
   const handleLike = async () => {

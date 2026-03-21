@@ -215,6 +215,11 @@ const zh: Record<string, string> = {
   'search.noResults': '未找到结果',
   'search.rank': '排名',
   'search.save': '保存',
+  'search.added': '已添加',
+  'search.seasons': '季',
+  'search.mediaMovie': '电影',
+  'search.mediaTV': '剧集',
+  'search.mediaBook': '书籍',
 
   // ── TV Shows ────────────────────────────────────────────────────────────
   'tv.searchShows': '搜索电视剧...',

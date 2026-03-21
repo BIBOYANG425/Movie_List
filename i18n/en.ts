@@ -215,6 +215,11 @@ const en = {
   'search.noResults': 'No results found',
   'search.rank': 'Rank',
   'search.save': 'Save',
+  'search.added': 'Added',
+  'search.seasons': 'seasons',
+  'search.mediaMovie': 'Movie',
+  'search.mediaTV': 'TV',
+  'search.mediaBook': 'Book',
 
   // ── TV Shows ────────────────────────────────────────────────────────────
   'tv.searchShows': 'Search TV shows...',

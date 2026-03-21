@@ -112,7 +112,7 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
         ...tvShows.slice(0, 8).map((s): UniversalSearchResult => ({
           id: s.id,
           title: s.name,
-          subtitle: s.seasonCount ? `${s.seasonCount} seasons` : '',
+          subtitle: s.seasonCount ? `${s.seasonCount} ${t('search.seasons')}` : '',
           year: s.year,
           posterUrl: s.posterUrl ?? '',
           type: 'tv',
@@ -173,9 +173,9 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
   };
 
   const typeLabel = (type: string) => {
-    if (type === 'movie') return 'Movie';
-    if (type === 'tv') return 'TV';
-    return 'Book';
+    if (type === 'movie') return t('search.mediaMovie');
+    if (type === 'tv') return t('search.mediaTV');
+    return t('search.mediaBook');
   };
 
   const tabs: { key: SearchTab; label: string }[] = [
@@ -305,7 +305,7 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
                     </>
                   )}
                   {isOwned(result.id) && (
-                    <span className="text-[10px] text-muted-foreground/50 px-2">Added</span>
+                    <span className="text-[10px] text-muted-foreground/50 px-2">{t('search.added')}</span>
                   )}
                 </div>
               </div>
