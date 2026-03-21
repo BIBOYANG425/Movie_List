@@ -560,12 +560,23 @@ export interface MoodTag {
   count: number;
 }
 
+export interface FriendRanking {
+  userId: string;
+  username: string;
+  avatarUrl?: string;
+  tier: Tier;
+  rankPosition: number;
+  score: number; // approximate numerical score from tier range
+}
+
 export interface MovieSocialStats {
   movieId: string; // The TMDB ID string format e.g. "tmdb_123"
   timesRanked: number;
   friendsWatched: number;
   friendAvatars: string[];
   avgFriendRankPosition?: number;
+  avgFriendScore?: number; // numerical average score
+  friendRankings: FriendRanking[];
   globalAvgRankPosition?: number;
   topFriendReview?: {
     userId: string;

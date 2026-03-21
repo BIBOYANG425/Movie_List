@@ -1623,10 +1623,13 @@ const RankingAppPage = () => {
 
       {/* Deep linked Movie Modal */}
       {linkedMovieId && (() => {
-        const foundItem = items.find(i => i.id === linkedMovieId);
+        const foundItem = items.find(i => i.id === linkedMovieId) ?? tvItems.find(i => i.id === linkedMovieId) ?? bookItems.find(i => i.id === linkedMovieId);
+        const linkedScore = foundItem ? scoreMap.get(foundItem.id) : undefined;
         return (
           <MediaDetailModal
             tmdbId={linkedMovieId}
+            initialItem={foundItem ?? undefined}
+            userScore={linkedScore}
             onClose={() => {
               const newParams = new URLSearchParams(searchParams);
               newParams.delete('movieId');

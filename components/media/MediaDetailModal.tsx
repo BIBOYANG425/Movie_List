@@ -12,6 +12,7 @@ import { ErrorBoundary } from '../shared/ErrorBoundary';
 interface MediaDetailModalProps {
     initialItem?: RankedItem;
     tmdbId: string;
+    userScore?: number;
     onClose: () => void;
     onSaveForLater?: (movie: TMDBMovie) => void;
     onStartRanking?: (movie: TMDBMovie) => void;
@@ -41,7 +42,7 @@ function parseTVSeasonId(id: string): { showTmdbId: number; seasonNumber: number
     };
 }
 
-export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem, tmdbId, onClose, onSaveForLater, onStartRanking, onOpenJournal, onRerank }) => {
+export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem, tmdbId, userScore, onClose, onSaveForLater, onStartRanking, onOpenJournal, onRerank }) => {
     const tvTarget = initialItem?.type === 'tv_season'
         ? {
             showTmdbId: initialItem.showTmdbId ?? parseTVSeasonId(tmdbId)?.showTmdbId ?? 0,
@@ -241,7 +242,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
             {/* Modal Container */}
             <div
-                className="relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:rounded-3xl sm:max-w-md bg-card sm:shadow-2xl flex flex-col overflow-hidden"
+                className="relative w-full h-full sm:h-[90vh] sm:rounded-3xl sm:max-w-2xl bg-card sm:shadow-2xl flex flex-col overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Close Button */}
@@ -347,24 +348,27 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                 {rankedItem ? (
                                     <>
                                         <span className={`w-2 h-2 rounded-full ${TIER_COLORS[rankedItem.tier].replace('border-', 'bg-').replace('text-', 'bg-')}`} />
-                                        <span className="text-xl font-black text-foreground">{rankedItem.tier}</span>
+                                        <span className="text-xl font-black text-foreground">{userScore?.toFixed(1) ?? rankedItem.tier}</span>
                                     </>
                                 ) : (
                                     <span className="text-xl font-bold text-muted-foreground/60">--</span>
                                 )}
                             </div>
-                            {rankedItem && <span className="text-[9px] text-muted-foreground mt-1">Tier</span>}
+                            {rankedItem && <span className="text-[9px] text-muted-foreground mt-1">{rankedItem.tier} Tier</span>}
                         </div>
 
                         <div className="flex-1 bg-white/5 rounded-2xl p-4 flex flex-col items-center justify-center text-center border border-border/30">
                             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Friend Avg</span>
                             <div className="flex items-center gap-1">
-                                {socialStats?.avgFriendRankPosition !== undefined ? (
-                                    <span className="text-xl font-black text-foreground">#{socialStats.avgFriendRankPosition + 1}</span>
+                                {socialStats?.avgFriendScore !== undefined ? (
+                                    <span className="text-xl font-black text-foreground">{socialStats.avgFriendScore}</span>
                                 ) : (
                                     <span className="text-xl font-bold text-muted-foreground/60">--</span>
                                 )}
                             </div>
+                            {socialStats?.avgFriendScore !== undefined && (
+                                <span className="text-[9px] text-muted-foreground mt-1">out of 10</span>
+                            )}
                         </div>
                     </div>
 
@@ -432,7 +436,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                     </div>
 
                     {/* 👥 Friends' Corner */}
-                    <div className="px-6 py-8">
+                    <div className="px-6 py-8 pb-16">
                         <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">What Your Friends Think</h3>
 
                         {socialLoading ? (
@@ -453,10 +457,34 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                     </div>
                                 </div>
 
-                                {socialStats.avgFriendRankPosition !== undefined && (
+                                {/* Individual friend scores */}
+                                {socialStats.friendRankings.length > 0 && (
+                                    <div className="space-y-2">
+                                        {socialStats.friendRankings.map((fr) => (
+                                            <div key={fr.userId} className="flex items-center gap-3 bg-white/5 border border-border/30 rounded-xl px-3 py-2">
+                                                <div className="w-7 h-7 rounded-full border border-border bg-secondary overflow-hidden flex-shrink-0">
+                                                    {fr.avatarUrl ? (
+                                                        <img src={fr.avatarUrl} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground font-bold bg-card">
+                                                            {fr.username.charAt(0).toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span className="text-sm font-semibold text-foreground flex-1">{fr.username}</span>
+                                                <div className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${TIER_COLORS[fr.tier]}`}>
+                                                    {fr.tier}
+                                                </div>
+                                                <span className="text-sm font-black text-foreground w-10 text-right">{fr.score}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {socialStats.avgFriendScore !== undefined && (
                                     <div className="inline-flex items-center gap-2 bg-accent/10 border border-gold/20 px-3 py-1.5 rounded-lg text-accent text-sm font-semibold">
                                         <div className="w-1.5 h-1.5 rounded-full bg-accent" />
-                                        Avg rank: #{socialStats.avgFriendRankPosition + 1}
+                                        Avg score: {socialStats.avgFriendScore}
                                     </div>
                                 )}
 
