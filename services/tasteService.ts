@@ -1,6 +1,8 @@
 import { supabase } from '../lib/supabase';
+import { TIER_SCORE_RANGES } from '../constants';
 import {
   FriendActivityItem,
+  FriendRanking,
   FriendRecommendation,
   GenreProfileItem,
   MoodTag,
@@ -467,6 +469,7 @@ async function getMediaSocialStats(
         timesRanked: 0,
         friendsWatched: 0,
         friendAvatars: [],
+        friendRankings: [],
         moodConsensus: [],
       };
     }
@@ -485,10 +488,29 @@ async function getMediaSocialStats(
       .filter(Boolean)
       .slice(0, 5);
 
+    // Build per-friend ranking data with approximate scores
+    const friendRankingsList: FriendRanking[] = (friendRankings || []).map((r) => {
+      const tier = r.tier as Tier;
+      const range = TIER_SCORE_RANGES[tier] ?? { min: 5.0, max: 6.9 };
+      // Approximate score: tier midpoint (exact score requires knowing total items in tier)
+      const score = Number(((range.min + range.max) / 2).toFixed(1));
+      return {
+        userId: r.user_id,
+        username: (r.profiles as any)?.username ?? 'Unknown',
+        avatarUrl: (r.profiles as any)?.avatar_url,
+        tier,
+        rankPosition: r.rank_position,
+        score,
+      };
+    });
+
     let avgFriendRankPosition: number | undefined;
+    let avgFriendScore: number | undefined;
     if (friendsWatched > 0) {
       const sum = friendRankings!.reduce((acc, r) => acc + r.rank_position, 0);
       avgFriendRankPosition = Math.round(sum / friendsWatched);
+      const scoreSum = friendRankingsList.reduce((acc, f) => acc + f.score, 0);
+      avgFriendScore = Number((scoreSum / friendsWatched).toFixed(1));
     }
 
     const { data: friendReviews } = await supabase
@@ -557,6 +579,8 @@ async function getMediaSocialStats(
       friendsWatched,
       friendAvatars,
       avgFriendRankPosition,
+      avgFriendScore,
+      friendRankings: friendRankingsList,
       topFriendReview,
       moodConsensus,
       divisiveMatchup: undefined,

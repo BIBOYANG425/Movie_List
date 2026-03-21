@@ -109,6 +109,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
         <MediaDetailModal
           initialItem={item}
           tmdbId={item.id}
+          userScore={showScore ? score : undefined}
           onClose={() => setIsOpen(false)}
           onOpenJournal={onOpenJournal}
           onRerank={onRerank}
