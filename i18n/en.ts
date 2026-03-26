@@ -16,12 +16,13 @@ const en = {
   'tab.groups': 'Groups',
   'tab.resetRankings': 'Reset rankings',
 
-  // ── Group sub-tabs ───────────────────────────────────────────────────────
-  'groups.parties': 'Parties',
-  'groups.rankings': 'Rankings',
-  'groups.polls': 'Polls',
-  'groups.lists': 'Lists',
-  'groups.badges': 'Badges',
+  // ── Ticket Stubs ────────────────────────────────────────────────────────
+  'stubs.title': 'Ticket Stubs',
+  'stubs.noStubsMonth': 'No stubs this month',
+  'stubs.watchedOn': 'Watched on',
+  'stubs.changeDate': 'Change date',
+  'stubs.backfill': 'Generate past stubs',
+  'stubs.backfilling': 'Generating...',
 
   // ── Ranking Page ─────────────────────────────────────────────────────────
   'ranking.myCanon': 'My Canon',

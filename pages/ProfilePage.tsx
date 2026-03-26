@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { FriendProfile, JournalEntry, RankedItem, UserProfileSummary, UserSearchResult } from '../types';
 import { ErrorBoundary } from '../components/shared/ErrorBoundary';
+import { CalendarView } from '../components/stubs/CalendarView';
 import { JournalHomeView } from '../components/journal/JournalHomeView';
 import { JournalConversation } from '../components/journal/JournalConversation';
 import { Toast } from '../components/shared/Toast';
@@ -502,6 +503,13 @@ const ProfilePage = () => {
                 {t('profile.noUsersFound')}
               </p>
             )}
+          </section>
+        )}
+
+        {/* Ticket Stubs Calendar — always visible (public) */}
+        {profile && (
+          <section className="rounded-xl border border-border/30 bg-card/50 p-4">
+            <CalendarView userId={profile.id} isOwnProfile={profile.isSelf} />
           </section>
         )}
 

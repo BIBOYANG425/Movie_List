@@ -276,104 +276,28 @@ export interface GenreComparison {
   sharedTopGenres: string[];
 }
 
-// ── Phase 3: Group Experiences ──────────────────────────────────────────────
+// ── Ticket Stubs (票根) ──────────────────────────────────────────────────────
 
-export type RsvpStatus = 'pending' | 'going' | 'maybe' | 'not_going';
-export type PartyStatus = 'upcoming' | 'active' | 'completed' | 'cancelled';
+export type StubMediaType = 'movie' | 'tv_season';
 
-export interface WatchParty {
+export interface MovieStub {
   id: string;
-  hostId: string;
-  hostUsername?: string;
-  hostAvatar?: string;
-  title: string;
-  movieTmdbId?: string;
-  movieTitle?: string;
-  moviePosterUrl?: string;
-  scheduledAt: string;
-  location?: string;
-  notes?: string;
-  status: PartyStatus;
-  createdAt: string;
-  memberCount?: number;
-  goingCount?: number;
-}
-
-export interface WatchPartyMember {
-  partyId: string;
   userId: string;
-  username: string;
-  displayName?: string;
-  avatarUrl?: string;
-  rsvp: RsvpStatus;
-  respondedAt?: string;
-}
-
-export interface GroupRanking {
-  id: string;
-  name: string;
-  createdBy: string;
-  creatorUsername?: string;
-  description?: string;
-  createdAt: string;
-  memberCount?: number;
-  entryCount?: number;
-}
-
-export interface GroupRankingEntry {
-  id: string;
-  groupId: string;
-  userId: string;
-  username?: string;
+  mediaType: StubMediaType;
   tmdbId: string;
   title: string;
-  posterUrl?: string;
-  year?: string;
-  genres: string[];
+  posterPath?: string;
   tier: Tier;
+  watchedDate: string;
+  moodTags: string[];
+  stubLine?: string;
+  isAiEnriched: boolean;
+  palette: string[];
+  templateId: string;
+  sharedExternally: boolean;
+  journalEntryId?: string;
   createdAt: string;
-}
-
-export interface GroupRankingConsensus {
-  tmdbId: string;
-  title: string;
-  posterUrl?: string;
-  year?: string;
-  tiers: { userId: string; username: string; tier: Tier }[];
-  consensusTier: Tier;
-  avgTierNumeric: number;
-  divergenceScore: number; // 0 = agreement, higher = more spread
-}
-
-export interface MoviePoll {
-  id: string;
-  createdBy: string;
-  creatorUsername?: string;
-  question: string;
-  expiresAt?: string;
-  isClosed: boolean;
-  createdAt: string;
-  options?: MoviePollOption[];
-  totalVotes?: number;
-  viewerVoteOptionId?: string;
-}
-
-export interface MoviePollOption {
-  id: string;
-  pollId: string;
-  tmdbId: string;
-  title: string;
-  posterUrl?: string;
-  position: number;
-  voteCount?: number;
-  isWinner?: boolean;
-}
-
-export interface MoviePollVote {
-  pollId: string;
-  userId: string;
-  optionId: string;
-  createdAt: string;
+  updatedAt: string;
 }
 
 // ── Phase 4: Content & Engagement ───────────────────────────────────────────
@@ -381,13 +305,8 @@ export interface MoviePollVote {
 export type NotificationType =
   | 'new_follower'
   | 'review_like'
-  | 'party_invite'
-  | 'party_rsvp'
-  | 'poll_vote'
-  | 'poll_closed'
   | 'list_like'
   | 'badge_unlock'
-  | 'group_invite'
   | 'ranking_comment'
   | 'journal_tag';
 

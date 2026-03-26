@@ -19,13 +19,11 @@ export async function checkAndGrantBadges(userId: string): Promise<string[]> {
   const has = new Set(existing.map((a) => a.badgeKey));
 
   // Get counts
-  const [rankRes, reviewRes, followingRes, followerRes, partyRes, pollRes, listRes, bookRankRes, tvRankRes] = await Promise.all([
+  const [rankRes, reviewRes, followingRes, followerRes, listRes, bookRankRes, tvRankRes] = await Promise.all([
     supabase.from('user_rankings').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('movie_reviews').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('friend_follows').select('id', { count: 'exact', head: true }).eq('follower_id', userId),
     supabase.from('friend_follows').select('id', { count: 'exact', head: true }).eq('following_id', userId),
-    supabase.from('watch_parties').select('id', { count: 'exact', head: true }).eq('host_id', userId),
-    supabase.from('movie_polls').select('id', { count: 'exact', head: true }).eq('created_by', userId),
     supabase.from('movie_lists').select('id', { count: 'exact', head: true }).eq('created_by', userId),
     supabase.from('book_rankings').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('tv_rankings').select('id', { count: 'exact', head: true }).eq('user_id', userId),
@@ -35,8 +33,6 @@ export async function checkAndGrantBadges(userId: string): Promise<string[]> {
   const reviewCount = reviewRes.count ?? 0;
   const followingCount = followingRes.count ?? 0;
   const followerCount = followerRes.count ?? 0;
-  const partyCount = partyRes.count ?? 0;
-  const pollCount = pollRes.count ?? 0;
   const listCount = listRes.count ?? 0;
 
   // Check milestone badges
@@ -54,8 +50,6 @@ export async function checkAndGrantBadges(userId: string): Promise<string[]> {
     ['first_follow', followingCount, 1],
     ['followers_10', followerCount, 10],
     ['followers_50', followerCount, 50],
-    ['first_party', partyCount, 1],
-    ['first_poll', pollCount, 1],
     ['first_list', listCount, 1],
   ];
 
@@ -108,8 +102,6 @@ export async function checkAndGrantBadges(userId: string): Promise<string[]> {
         first_follow: { icon: '🤝', description: 'Followed their first friend' },
         followers_10: { icon: '⭐', description: 'Reached 10 followers' },
         followers_50: { icon: '🌟', description: 'Reached 50 followers' },
-        first_party: { icon: '🎉', description: 'Hosted their first watch party' },
-        first_poll: { icon: '🗳️', description: 'Created their first poll' },
         first_list: { icon: '📋', description: 'Created their first list' },
         genre_5: { icon: '🎭', description: 'Explored 5 genres' },
         genre_10: { icon: '🌈', description: 'Explored 10 genres' },

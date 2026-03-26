@@ -13,14 +13,13 @@ import { Watchlist } from '../components/media/Watchlist';
 import { UniversalSearch } from '../components/shared/UniversalSearch';
 import { SocialFeedView } from '../components/feed/SocialFeedView';
 import { DiscoverView } from '../components/social/DiscoverView';
-import { WatchPartyView } from '../components/social/WatchPartyView';
-import { GroupRankingView } from '../components/social/GroupRankingView';
-import { MoviePollView } from '../components/social/MoviePollView';
 import { NotificationBell } from '../components/social/NotificationBell';
 import { MovieListView } from '../components/social/MovieListView';
 import { AchievementsView } from '../components/social/AchievementsView';
 import { MediaDetailModal } from '../components/media/MediaDetailModal';
 import { JournalConversation } from '../components/journal/JournalConversation';
+import { CalendarView } from '../components/stubs/CalendarView';
+import { StubCollectionView } from '../components/stubs/StubCollectionView';
 import { ErrorBoundary } from '../components/shared/ErrorBoundary';
 import { Toast } from '../components/shared/Toast';
 import { LanguageToggle } from '../components/shared/LanguageToggle';
@@ -29,6 +28,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
+import { createStub } from '../services/stubService';
 import { TMDBMovie, TMDBTVShow } from '../services/tmdbService';
 import { OpenLibraryBook } from '../services/openLibraryService';
 import { useLocalizedItems, useLocalizedWatchlist } from '../hooks/useLocalizedItems';
@@ -232,8 +232,7 @@ const RankingAppPage = () => {
   const [isTVModalOpen, setIsTVModalOpen] = useState(false);
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const [bookItemToRank, setBookItemToRank] = useState<RankedItem | null>(null);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'feed' | 'discover' | 'groups' | 'journal' | 'achievements'>('ranking');
-  const [groupSubTab, setGroupSubTab] = useState<'parties' | 'rankings' | 'polls' | 'lists' | 'badges'>('parties');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'feed' | 'discover' | 'lists' | 'journal' | 'stubs' | 'achievements'>('ranking');
   const [mediaMode, setMediaMode] = useState<'movies' | 'tv' | 'books'>('movies');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
@@ -538,6 +537,15 @@ const RankingAppPage = () => {
       },
       'ranking_add',
     );
+
+    // Generate ticket stub (fire-and-forget)
+    createStub(user.id, {
+      mediaType: 'movie',
+      tmdbId: newItem.id,
+      title: newItem.title,
+      posterPath: newItem.posterUrl,
+      tier: newItem.tier,
+    }).catch(() => {});
   };
 
   const removeItem = async (id: string) => {
@@ -812,6 +820,15 @@ const RankingAppPage = () => {
       },
       'ranking_add',
     );
+
+    // Generate ticket stub (fire-and-forget)
+    createStub(user.id, {
+      mediaType: 'tv_season',
+      tmdbId: newItem.id,
+      title: newItem.title,
+      posterPath: newItem.posterUrl,
+      tier: newItem.tier,
+    }).catch(() => {});
   };
 
   const removeTVItem = async (id: string) => {
@@ -1532,42 +1549,15 @@ const RankingAppPage = () => {
           />
         )}
 
-        {activeTab === 'groups' && user && (
-          <div className="space-y-4">
-            {/* Group sub-tabs */}
-            <div className="flex gap-2 bg-card/50 rounded-xl p-1 border border-border/30 overflow-x-auto">
-              {[
-                { key: 'parties' as const, label: t('groups.parties') },
-                { key: 'rankings' as const, label: t('groups.rankings') },
-                { key: 'polls' as const, label: t('groups.polls') },
-                { key: 'lists' as const, label: t('groups.lists') },
-                { key: 'badges' as const, label: t('groups.badges') },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setGroupSubTab(key)}
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${groupSubTab === key
-                    ? 'bg-secondary text-foreground shadow-lg'
-                    : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {groupSubTab === 'parties' && <WatchPartyView userId={user.id} />}
-            {groupSubTab === 'rankings' && <GroupRankingView userId={user.id} />}
-            {groupSubTab === 'polls' && <MoviePollView userId={user.id} />}
-            {groupSubTab === 'lists' && <MovieListView userId={user.id} />}
-            {groupSubTab === 'badges' && <AchievementsView userId={user.id} />}
-          </div>
+        {activeTab === 'lists' && user && (
+          <MovieListView userId={user.id} />
         )}
 
-        {activeTab === 'journal' && user && (
-          <div className="text-center py-16 text-muted-foreground">
-            <p className="font-serif text-xl text-foreground mb-2">Journal</p>
-            <p className="text-sm">Select a ranked movie to write a journal entry.</p>
-          </div>
+
+        {activeTab === 'stubs' && user && (
+          <section className="rounded-xl border border-border/30 bg-card/50 p-4">
+            <StubCollectionView userId={user.id} />
+          </section>
         )}
 
         {activeTab === 'achievements' && user && (
@@ -1624,7 +1614,11 @@ const RankingAppPage = () => {
       {/* Deep linked Movie Modal */}
       {linkedMovieId && (() => {
         const foundItem = items.find(i => i.id === linkedMovieId) ?? tvItems.find(i => i.id === linkedMovieId) ?? bookItems.find(i => i.id === linkedMovieId);
-        const linkedScore = foundItem ? scoreMap.get(foundItem.id) : undefined;
+        // Compute score from the correct collection since scoreMap only covers current mediaMode
+        const linkedScoreMap = foundItem
+          ? computeScores(items.includes(foundItem) ? items : tvItems.includes(foundItem) ? tvItems : bookItems)
+          : undefined;
+        const linkedScore = foundItem && linkedScoreMap ? linkedScoreMap.get(foundItem.id) : undefined;
         return (
           <MediaDetailModal
             tmdbId={linkedMovieId}
@@ -1667,7 +1661,6 @@ const RankingAppPage = () => {
               setPreselectedForRank(item);
               setIsModalOpen(true);
             }}
-            {...(foundItem ? { initialItem: foundItem } : {})}
           />
         );
       })()}
