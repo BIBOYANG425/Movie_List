@@ -19,6 +19,8 @@ const en = {
   // ── Ticket Stubs ────────────────────────────────────────────────────────
   'stubs.title': 'Ticket Stubs',
   'stubs.noStubsMonth': 'No stubs this month',
+  'stubs.noStubsYet': 'No stubs yet',
+  'stubs.noStubsHint': 'Rank a movie or TV show to collect your first ticket stub.',
   'stubs.watchedOn': 'Watched on',
   'stubs.changeDate': 'Change date',
   'stubs.backfill': 'Generate past stubs',

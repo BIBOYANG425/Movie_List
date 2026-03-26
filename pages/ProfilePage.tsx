@@ -506,8 +506,8 @@ const ProfilePage = () => {
           </section>
         )}
 
-        {/* Ticket Stubs Calendar — always visible (public) */}
-        {profile && (
+        {/* Ticket Stubs Calendar — visible to self and mutual follows */}
+        {profile && canSeeFullProfile && (
           <section className="rounded-xl border border-border/30 bg-card/50 p-4">
             <CalendarView userId={profile.id} isOwnProfile={profile.isSelf} />
           </section>

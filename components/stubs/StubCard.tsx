@@ -61,6 +61,12 @@ export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick
   return (
     <div
       onClick={onClick}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          onClick();
+        }
+      } : undefined}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       className={`relative flex rounded-lg overflow-hidden shadow-xl ${onClick ? 'cursor-pointer hover:shadow-2xl transition-shadow' : ''}`}

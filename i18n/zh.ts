@@ -19,6 +19,8 @@ const zh: Record<string, string> = {
   // ── 票根 ───────────────────────────────────────────────────────────────
   'stubs.title': '票根',
   'stubs.noStubsMonth': '本月没有票根',
+  'stubs.noStubsYet': '还没有票根',
+  'stubs.noStubsHint': '为电影或电视节目排名，收集你的第一张票根。',
   'stubs.watchedOn': '观看于',
   'stubs.changeDate': '更改日期',
   'stubs.backfill': '生成历史票根',

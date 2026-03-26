@@ -30,6 +30,11 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
+function getLocalDateString(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // ── Palette Extraction ─────────────────────────────────────────────
 
 export async function extractPalette(posterUrl: string): Promise<string[]> {
@@ -79,23 +84,29 @@ export async function createStub(
   const palette = input.posterPath ? await extractPalette(input.posterPath) : [];
   const templateId = input.tier === 'S' ? 's_tier_gold' : 'default';
 
+  // Only include watched_date when explicitly provided to avoid overwriting
+  // existing dates on conflict upserts
+  const payload: Record<string, unknown> = {
+    user_id: userId,
+    media_type: input.mediaType,
+    tmdb_id: input.tmdbId,
+    title: input.title,
+    poster_path: input.posterPath ?? null,
+    tier: input.tier,
+    palette,
+    template_id: templateId,
+    updated_at: new Date().toISOString(),
+  };
+  if (input.watchedDate) {
+    payload.watched_date = input.watchedDate;
+  } else {
+    // For new inserts, use local date; on conflict this field won't overwrite
+    payload.watched_date = getLocalDateString();
+  }
+
   const { data, error } = await supabase
     .from('movie_stubs')
-    .upsert(
-      {
-        user_id: userId,
-        media_type: input.mediaType,
-        tmdb_id: input.tmdbId,
-        title: input.title,
-        poster_path: input.posterPath ?? null,
-        tier: input.tier,
-        watched_date: input.watchedDate ?? new Date().toISOString().split('T')[0],
-        palette,
-        template_id: templateId,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,media_type,tmdb_id', ignoreDuplicates: false },
-    )
+    .upsert(payload, { onConflict: 'user_id,media_type,tmdb_id', ignoreDuplicates: false })
     .select()
     .single();
 
@@ -115,7 +126,7 @@ export async function getStubsForMonth(
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('movie_stubs')
     .select('*')
     .eq('user_id', userId)
@@ -123,16 +134,22 @@ export async function getStubsForMonth(
     .lte('watched_date', endDate)
     .order('watched_date', { ascending: true });
 
+  if (error) {
+    throw new Error(`getStubsForMonth failed for user ${userId} (${year}-${month}): ${error.message}`);
+  }
   return (data ?? []).map(mapRow);
 }
 
 export async function getAllStubs(userId: string): Promise<MovieStub[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('movie_stubs')
     .select('*')
     .eq('user_id', userId)
     .order('watched_date', { ascending: false });
 
+  if (error) {
+    throw new Error(`getAllStubs failed for user ${userId}: ${error.message}`);
+  }
   return (data ?? []).map(mapRow);
 }
 
@@ -168,22 +185,34 @@ export async function backfillStubs(
   onProgress?: (done: number, total: number) => void,
 ): Promise<number> {
   // Fetch all movie rankings
-  const { data: movieRankings } = await supabase
+  const { data: movieRankings, error: movieErr } = await supabase
     .from('user_rankings')
     .select('tmdb_id, title, poster_url, tier, created_at')
     .eq('user_id', userId);
 
+  if (movieErr) {
+    throw new Error(`backfillStubs: failed to fetch movie rankings for ${userId}: ${movieErr.message}`);
+  }
+
   // Fetch all TV rankings
-  const { data: tvRankings } = await supabase
+  const { data: tvRankings, error: tvErr } = await supabase
     .from('tv_rankings')
     .select('tmdb_id, title, poster_url, tier, created_at')
     .eq('user_id', userId);
 
+  if (tvErr) {
+    throw new Error(`backfillStubs: failed to fetch TV rankings for ${userId}: ${tvErr.message}`);
+  }
+
   // Fetch existing stubs to avoid duplicates
-  const { data: existingStubs } = await supabase
+  const { data: existingStubs, error: stubErr } = await supabase
     .from('movie_stubs')
     .select('media_type, tmdb_id')
     .eq('user_id', userId);
+
+  if (stubErr) {
+    throw new Error(`backfillStubs: failed to fetch existing stubs for ${userId}: ${stubErr.message}`);
+  }
 
   const existingSet = new Set(
     (existingStubs ?? []).map((s: { media_type: string; tmdb_id: string }) => `${s.media_type}:${s.tmdb_id}`),
@@ -200,7 +229,7 @@ export async function backfillStubs(
         title: r.title,
         posterPath: r.poster_url ?? undefined,
         tier: r.tier as Tier,
-        watchedDate: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : undefined,
+        watchedDate: r.created_at ? r.created_at.split('T')[0] : undefined,
       });
     }
   }
@@ -214,7 +243,7 @@ export async function backfillStubs(
         title: r.title,
         posterPath: r.poster_url ?? undefined,
         tier: r.tier as Tier,
-        watchedDate: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : undefined,
+        watchedDate: r.created_at ? r.created_at.split('T')[0] : undefined,
       });
     }
   }

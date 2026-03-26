@@ -118,18 +118,20 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
       <div className="flex items-center justify-between">
         <button
           onClick={prevMonth}
+          aria-label="Previous month"
           className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors"
         >
-          <ChevronLeft size={18} />
+          <ChevronLeft size={18} aria-hidden="true" />
         </button>
         <span className="font-serif text-base text-foreground">
           {MONTH_NAMES[month - 1]} {year}
         </span>
         <button
           onClick={nextMonth}
+          aria-label="Next month"
           className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors"
         >
-          <ChevronRight size={18} />
+          <ChevronRight size={18} aria-hidden="true" />
         </button>
       </div>
 
