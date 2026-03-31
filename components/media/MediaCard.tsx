@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RankedItem } from '../../types';
 import { GripVertical, Film, Tv, BookOpen, Star, StickyNote, Trash2 } from 'lucide-react';
@@ -20,9 +20,12 @@ interface MediaCardProps {
 
 export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showScore = true, onDragStart, onDragOver, onDrop, onDelete, onOpenJournal, onRerank }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const didDragRef = useRef(false);
 
   const handleClick = (e: React.MouseEvent) => {
-    // Don't open detail if the user is trying to drag
+    // Don't open detail if the user just finished dragging
+    if (didDragRef.current) { didDragRef.current = false; return; }
+    // Don't open detail if clicking a control element
     if ((e.target as HTMLElement).closest('[data-no-detail]')) return;
     setIsOpen(true);
   };
@@ -32,7 +35,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
       {/* ── Card ─────────────────────────────────────────────────────────── */}
       <div
         draggable
-        onDragStart={(e) => onDragStart(e, item.id)}
+        onDragStart={(e) => { didDragRef.current = true; onDragStart(e, item.id); }}
+        onDragEnd={() => { setTimeout(() => { didDragRef.current = false; }, 0); }}
         onDragOver={(e) => onDragOver?.(e, item.id)}
         onDrop={(e) => onDrop?.(e, item.id)}
         onClick={handleClick}

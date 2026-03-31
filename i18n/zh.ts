@@ -16,12 +16,15 @@ const zh: Record<string, string> = {
   'tab.groups': '群组',
   'tab.resetRankings': '重置排名',
 
-  // ── Group sub-tabs ───────────────────────────────────────────────────────
-  'groups.parties': '观影派对',
-  'groups.rankings': '排名',
-  'groups.polls': '投票',
-  'groups.lists': '片单',
-  'groups.badges': '徽章',
+  // ── 票根 ───────────────────────────────────────────────────────────────
+  'stubs.title': '票根',
+  'stubs.noStubsMonth': '本月没有票根',
+  'stubs.noStubsYet': '还没有票根',
+  'stubs.noStubsHint': '为电影或电视节目排名，收集你的第一张票根。',
+  'stubs.watchedOn': '观看于',
+  'stubs.changeDate': '更改日期',
+  'stubs.backfill': '生成历史票根',
+  'stubs.backfilling': '正在生成...',
 
   // ── Ranking Page ─────────────────────────────────────────────────────────
   'ranking.myCanon': '我的片单',

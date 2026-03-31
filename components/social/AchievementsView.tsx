@@ -19,8 +19,6 @@ const BADGE_CATALOG: BadgeDefinition[] = [
     { key: 'first_follow', name: 'Social Butterfly', description: 'Followed your first person', icon: '🦋', category: 'social', requirement: '1 follow' },
     { key: 'followers_10', name: 'Rising Star', description: 'Gained 10 followers', icon: '⭐', category: 'social', requirement: '10 followers' },
     { key: 'followers_50', name: 'Influencer', description: 'Gained 50 followers', icon: '🌟', category: 'social', requirement: '50 followers' },
-    { key: 'first_party', name: 'Party Host', description: 'Hosted a watch party', icon: '🎉', category: 'social', requirement: '1 watch party' },
-    { key: 'first_poll', name: 'Decision Maker', description: 'Created a movie poll', icon: '🗳️', category: 'social', requirement: '1 poll' },
     { key: 'first_list', name: 'Curator', description: 'Created a movie list', icon: '📋', category: 'social', requirement: '1 list' },
 
     // Taste

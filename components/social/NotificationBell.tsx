@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bell, Check, UserPlus, Heart, Tv, Vote, Award, List, MessageCircle, Film } from 'lucide-react';
+import { Bell, UserPlus, Heart, Award, List, MessageCircle, Film } from 'lucide-react';
 import { AppNotification, NotificationType } from '../../types';
 import { getNotifications, markNotificationsRead, getUnreadCount } from '../../services/friendsService';
 import { useTranslation } from '../../contexts/LanguageContext';
@@ -7,13 +7,8 @@ import { useTranslation } from '../../contexts/LanguageContext';
 const NOTIF_ICONS: Record<NotificationType, { icon: React.ReactNode; color: string }> = {
     new_follower: { icon: <UserPlus size={14} />, color: 'text-blue-400' },
     review_like: { icon: <Heart size={14} />, color: 'text-pink-400' },
-    party_invite: { icon: <Tv size={14} />, color: 'text-violet-400' },
-    party_rsvp: { icon: <Check size={14} />, color: 'text-emerald-400' },
-    poll_vote: { icon: <Vote size={14} />, color: 'text-pink-400' },
-    poll_closed: { icon: <Vote size={14} />, color: 'text-gold' },
     list_like: { icon: <List size={14} />, color: 'text-accent' },
     badge_unlock: { icon: <Award size={14} />, color: 'text-gold' },
-    group_invite: { icon: <UserPlus size={14} />, color: 'text-accent' },
     ranking_comment: { icon: <MessageCircle size={14} />, color: 'text-emerald-400' },
     journal_tag: { icon: <Film size={14} />, color: 'text-purple-400' },
 };

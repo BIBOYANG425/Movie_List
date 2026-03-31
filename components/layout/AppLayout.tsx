@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import SpoolLogo from './SpoolLogo';
 import {
   Film, MessageSquare, Bookmark, BarChart3, User,
-  Users, BookOpen, Award, Compass, ChevronLeft,
+  List, Award, Compass, Ticket, ChevronLeft,
   ChevronRight
 } from 'lucide-react';
 
@@ -20,8 +20,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: 'watchlist', label: 'Watchlist', icon: Bookmark, mobileTab: true },
   { path: 'discover', label: 'Discover', icon: Compass },
   { path: 'stats', label: 'Insights', icon: BarChart3, mobileTab: true },
-  { path: 'groups', label: 'Groups', icon: Users },
-  { path: 'journal', label: 'Journal', icon: BookOpen },
+  { path: 'lists', label: 'Lists', icon: List },
+  { path: 'stubs', label: 'Stubs', icon: Ticket },
   { path: 'achievements', label: 'Achievements', icon: Award },
 ];
 
