@@ -401,7 +401,7 @@ function HowSection({ onAuth, t }: { onAuth: (mode: string) => void; t: (key: an
                 background: `${s.color}10`, borderRadius: 10,
               }}>{s.icon}</div>
               <div style={{ fontFamily: "var(--sans)", fontSize: 11, fontWeight: 700, color: s.color, letterSpacing: "0.06em", marginBottom: 6 }}>{t('landing.step')} {s.num}</div>
-              <h3 style={{ fontFamily: "var(--sans)", fontSize: 16, color: C.cream, margin: "0 0 6px", fontWeight: 600 }}>{t(s.labelKey as any)}</h3>
+              <div style={{ fontFamily: "var(--serif)", fontSize: 20, color: C.cream, margin: "0 0 6px", fontWeight: 500 }}>{t(s.labelKey as any)}</div>
               <p style={{ fontFamily: "var(--sans)", fontSize: 13, color: C.text, lineHeight: 1.55, margin: 0 }}>{t(s.descKey as any)}</p>
             </div>
           </Reveal>
