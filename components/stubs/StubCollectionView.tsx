@@ -20,9 +20,14 @@ export const StubCollectionView: React.FC<StubCollectionViewProps> = ({ userId }
 
   const loadStubs = useCallback(async () => {
     setLoading(true);
-    const data = await getAllStubs(userId);
-    setStubs(data);
-    setLoading(false);
+    try {
+      const data = await getAllStubs(userId);
+      setStubs(data);
+    } catch (err) {
+      console.error('Failed to load stubs:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [userId]);
 
   useEffect(() => {
@@ -31,10 +36,15 @@ export const StubCollectionView: React.FC<StubCollectionViewProps> = ({ userId }
 
   const handleBackfill = async () => {
     setBackfilling(true);
-    const count = await backfillStubs(userId);
-    setBackfilling(false);
-    setBackfillDone(true);
-    if (count > 0) loadStubs();
+    try {
+      const count = await backfillStubs(userId);
+      setBackfillDone(true);
+      if (count > 0) loadStubs();
+    } catch (err) {
+      console.error('Backfill failed:', err);
+    } finally {
+      setBackfilling(false);
+    }
   };
 
   const handleDateChanged = () => {

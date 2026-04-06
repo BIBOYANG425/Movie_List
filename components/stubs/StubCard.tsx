@@ -1,6 +1,7 @@
 import React from 'react';
 import { MovieStub } from '../../types';
 import { TIER_LABELS } from '../../constants';
+import { useTranslation } from '../../contexts/LanguageContext';
 
 interface StubCardProps {
   stub: MovieStub;
@@ -17,6 +18,7 @@ const TIER_HEX: Record<string, string> = {
 };
 
 export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick }) => {
+  const { locale } = useTranslation();
   const tierColor = TIER_HEX[stub.tier] ?? '#71717a';
   const [c1, c2, c3] = stub.palette.length >= 2
     ? stub.palette
@@ -86,7 +88,7 @@ export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick
             {stub.title}
           </h3>
           <p className="text-[10px] text-white/60 font-sans">
-            {formatWatchedDate(stub.watchedDate)}
+            {formatWatchedDate(stub.watchedDate, locale)}
           </p>
         </div>
 
@@ -160,10 +162,10 @@ export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick
   );
 };
 
-function formatWatchedDate(dateStr: string): string {
+function formatWatchedDate(dateStr: string, locale?: string): string {
   try {
     const d = new Date(dateStr + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString(locale ?? undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   } catch {
     return dateStr;
   }

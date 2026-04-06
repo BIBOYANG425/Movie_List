@@ -25,6 +25,15 @@ const en = {
   'stubs.changeDate': 'Change date',
   'stubs.backfill': 'Generate past stubs',
   'stubs.backfilling': 'Generating...',
+  'stubs.mostFelt': 'Most felt:',
+  'stubs.sTier': 'S-tier:',
+  'stubs.moments': 'moments',
+  'stubs.moment': 'moment',
+  'stubs.yourReview': 'Your Review',
+  'stubs.favoriteMoments': 'Favorite Moments',
+  'stubs.rewatch': 'Rewatch',
+  'stubs.noReview': 'No review yet for this title.',
+  'stubs.asCharacter': 'as',
 
   // ── Ranking Page ─────────────────────────────────────────────────────────
   'ranking.myCanon': 'My Canon',

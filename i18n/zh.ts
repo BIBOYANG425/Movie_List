@@ -25,6 +25,15 @@ const zh: Record<string, string> = {
   'stubs.changeDate': '更改日期',
   'stubs.backfill': '生成历史票根',
   'stubs.backfilling': '正在生成...',
+  'stubs.mostFelt': '最多感受：',
+  'stubs.sTier': 'S级：',
+  'stubs.moments': '个时刻',
+  'stubs.moment': '个时刻',
+  'stubs.yourReview': '你的影评',
+  'stubs.favoriteMoments': '最爱时刻',
+  'stubs.rewatch': '重看',
+  'stubs.noReview': '该影片暂无影评。',
+  'stubs.asCharacter': '饰',
 
   // ── Ranking Page ─────────────────────────────────────────────────────────
   'ranking.myCanon': '我的片单',

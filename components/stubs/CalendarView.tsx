@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Ticket } from 'lucide-react';
 import { MovieStub } from '../../types';
 import { getStubsForMonth, backfillStubs } from '../../services/stubService';
+import { useTranslation } from '../../contexts/LanguageContext';
 import { StubCard } from './StubCard';
 import { StubDetailModal } from './StubDetailModal';
 
@@ -10,14 +11,8 @@ interface CalendarViewProps {
   isOwnProfile: boolean;
 }
 
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
 export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile }) => {
+  const { locale, t } = useTranslation();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1); // 1-indexed
@@ -27,11 +22,24 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
   const [backfilling, setBackfilling] = useState(false);
   const [backfillDone, setBackfillDone] = useState(false);
 
+  const dayLabels = Array.from({ length: 7 }, (_, i) => {
+    // Monday-start: Jan 5 2026 is a Monday
+    const d = new Date(2026, 0, 5 + i);
+    return d.toLocaleDateString(locale, { weekday: 'short' });
+  });
+
+  const monthName = new Date(year, month - 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+
   const loadStubs = useCallback(async () => {
     setLoading(true);
-    const data = await getStubsForMonth(userId, year, month);
-    setStubs(data);
-    setLoading(false);
+    try {
+      const data = await getStubsForMonth(userId, year, month);
+      setStubs(data);
+    } catch (err) {
+      console.error('Failed to load stubs:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [userId, year, month]);
 
   useEffect(() => {
@@ -50,10 +58,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
 
   const handleBackfill = async () => {
     setBackfilling(true);
-    await backfillStubs(userId);
-    setBackfilling(false);
-    setBackfillDone(true);
-    loadStubs();
+    try {
+      await backfillStubs(userId);
+      setBackfillDone(true);
+    } catch (err) {
+      console.error('Backfill failed:', err);
+    } finally {
+      setBackfilling(false);
+      loadStubs();
+    }
   };
 
   const handleDateChanged = (_stubId: string, _newDate: string) => {
@@ -101,7 +114,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Ticket size={16} className="text-gold" />
-          <h3 className="font-serif text-lg text-foreground">Ticket Stubs</h3>
+          <h3 className="font-serif text-lg text-foreground">{t('stubs.title')}</h3>
         </div>
         {isOwnProfile && !backfillDone && (
           <button
@@ -109,7 +122,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
             disabled={backfilling}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
           >
-            {backfilling ? 'Generating...' : 'Generate past stubs'}
+            {backfilling ? t('stubs.backfilling') : t('stubs.backfill')}
           </button>
         )}
       </div>
@@ -124,7 +137,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
           <ChevronLeft size={18} aria-hidden="true" />
         </button>
         <span className="font-serif text-base text-foreground">
-          {MONTH_NAMES[month - 1]} {year}
+          {monthName}
         </span>
         <button
           onClick={nextMonth}
@@ -137,7 +150,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
 
       {/* Day labels */}
       <div className="grid grid-cols-7 gap-px">
-        {DAY_LABELS.map((d) => (
+        {dayLabels.map((d) => (
           <div key={d} className="text-center text-[10px] text-muted-foreground font-sans py-1">
             {d}
           </div>
@@ -214,16 +227,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
       {/* Monthly summary */}
       {totalStubs > 0 && !loading && (
         <p className="text-[11px] text-muted-foreground text-center font-sans">
-          {MONTH_NAMES[month - 1]} {year}: {totalStubs} moment{totalStubs !== 1 ? 's' : ''}
-          {topMood ? ` · Most felt: ${topMood[0]} (${topMood[1]})` : ''}
-          {sTierCount > 0 ? ` · S-tier: ${sTierCount}` : ''}
+          {monthName}: {totalStubs} {totalStubs !== 1 ? t('stubs.moments') : t('stubs.moment')}
+          {topMood ? ` · ${t('stubs.mostFelt')} ${topMood[0]} (${topMood[1]})` : ''}
+          {sTierCount > 0 ? ` · ${t('stubs.sTier')} ${sTierCount}` : ''}
         </p>
       )}
 
       {/* Empty state */}
       {totalStubs === 0 && !loading && (
         <p className="text-xs text-muted-foreground text-center py-4">
-          No stubs this month
+          {t('stubs.noStubsMonth')}
         </p>
       )}
 
