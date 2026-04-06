@@ -65,12 +65,15 @@ export interface ActivityCommentRow {
   created_at: string;
 }
 
+export type ProfileVisibility = 'public' | 'friends' | 'private';
+
 export interface UpdateMyProfileInput {
   displayName?: string | null;
   bio?: string | null;
   avatarUrl?: string | null;
   avatarPath?: string | null;
   onboardingCompleted?: boolean;
+  profileVisibility?: ProfileVisibility;
 }
 
 export type RankingActivityEventType = 'ranking_add' | 'ranking_move' | 'ranking_remove';
@@ -618,6 +621,7 @@ export async function updateMyProfile(userId: string, updates: UpdateMyProfileIn
   if ('avatarUrl' in updates) payload.avatar_url = optionalText(updates.avatarUrl);
   if ('avatarPath' in updates) payload.avatar_path = optionalText(updates.avatarPath);
   if ('onboardingCompleted' in updates) payload.onboarding_completed = updates.onboardingCompleted;
+  if ('profileVisibility' in updates) payload.profile_visibility = updates.profileVisibility;
 
   const { data, error } = await supabase
     .from('profiles')
@@ -696,4 +700,72 @@ export async function updateMyProfile(userId: string, updates: UpdateMyProfileIn
 
 export async function updateProfileAvatar(userId: string, avatarUrl: string): Promise<boolean> {
   return updateMyProfile(userId, { avatarUrl });
+}
+
+// ── Public Profile ──────────────────────────────────────────────────
+
+export interface PublicProfile {
+  id: string;
+  username: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl: string;
+  profileVisibility: ProfileVisibility;
+  followersCount: number;
+  followingCount: number;
+}
+
+export async function getProfileByUsername(username: string): Promise<PublicProfile | null> {
+  let usingLegacySchema = false;
+
+  const initial = await supabase
+    .from('profiles')
+    .select('id, username, display_name, bio, avatar_url, avatar_path, profile_visibility')
+    .eq('username', username)
+    .maybeSingle();
+
+  let data = initial.data as (ProfileRow & { profile_visibility?: ProfileVisibility }) | null;
+  let error = initial.error;
+
+  if (error && isMissingProfileColumnError(error)) {
+    usingLegacySchema = true;
+    const legacy = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url')
+      .eq('username', username)
+      .maybeSingle();
+    data = legacy.data as ProfileRow | null;
+    error = legacy.error;
+  }
+
+  if (error) {
+    console.error('Failed to load profile by username:', error);
+    return null;
+  }
+
+  if (!data) return null;
+
+  const row = data;
+
+  const [{ count: followersCount }, { count: followingCount }] = await Promise.all([
+    supabase
+      .from('friend_follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('following_id', row.id),
+    supabase
+      .from('friend_follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('follower_id', row.id),
+  ]);
+
+  return {
+    id: row.id,
+    username: row.username,
+    displayName: usingLegacySchema ? undefined : (row.display_name ?? undefined),
+    bio: usingLegacySchema ? undefined : (row.bio ?? undefined),
+    avatarUrl: profileAvatarUrl(row),
+    profileVisibility: usingLegacySchema ? 'public' : (row.profile_visibility ?? 'public'),
+    followersCount: followersCount ?? 0,
+    followingCount: followingCount ?? 0,
+  };
 }

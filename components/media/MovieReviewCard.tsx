@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Heart, MessageCircle, AlertTriangle, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { MovieReview, Tier } from '../../types';
 import { TIER_COLORS } from '../../constants';
+import { useTranslation } from '../../contexts/LanguageContext';
+import { relativeDate } from '../../utils/relativeDate';
 
 interface MovieReviewCardProps {
     review: MovieReview;
@@ -11,24 +13,13 @@ interface MovieReviewCardProps {
     onDelete?: (reviewId: string) => void;
 }
 
-function relativeDate(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    if (days < 7) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 export const MovieReviewCard: React.FC<MovieReviewCardProps> = ({
     review,
     currentUserId,
     onLike,
     onDelete,
 }) => {
+    const { locale, t } = useTranslation();
     const [showSpoiler, setShowSpoiler] = useState(false);
     const isOwn = currentUserId === review.userId;
     const tierColor = review.ratingTier ? TIER_COLORS[review.ratingTier as Tier] : '';
@@ -60,7 +51,7 @@ export const MovieReviewCard: React.FC<MovieReviewCardProps> = ({
                             )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs text-muted-foreground">{relativeDate(review.createdAt)}</span>
+                            <span className="text-xs text-muted-foreground">{relativeDate(review.createdAt, t, locale)}</span>
                             <span className="text-muted-foreground/40">·</span>
                             <span className="text-xs text-muted-foreground truncate">{review.mediaTitle}</span>
                         </div>

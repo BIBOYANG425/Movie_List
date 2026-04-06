@@ -1,17 +1,20 @@
 import React from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import RankingAppPage from './pages/RankingAppPage';
 import AuthPage from './pages/AuthPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import ProfilePage from './pages/ProfilePage';
 import ProfileOnboardingPage from './pages/ProfileOnboardingPage';
+import PublicProfilePage from './pages/PublicProfilePage';
 import MovieOnboardingPage from './pages/MovieOnboardingPage';
 import { useAuth } from './contexts/AuthContext';
 import { Grain } from './components/shared/Grain';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 const App = () => {
   const { user, profile, loading } = useAuth();
+  const location = useLocation();
   const needsOnboarding = Boolean(user) && Boolean(profile) && !profile.onboardingCompleted;
 
   if (loading) {
@@ -23,7 +26,7 @@ const App = () => {
   }
 
   return (
-    <>
+    <ErrorBoundary key={location.key || location.pathname}>
       <Grain />
       <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -45,9 +48,10 @@ const App = () => {
           path="/profile/:profileId"
           element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <ProfilePage />) : <Navigate to="/auth" replace />}
         />
+        <Route path="/u/:username" element={<PublicProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </>
+    </ErrorBoundary>
   );
 };
 

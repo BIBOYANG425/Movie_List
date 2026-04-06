@@ -3,13 +3,17 @@ import { Link, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Camera,
+  Check,
+  Globe,
   Search,
+  Share2,
   Upload,
   UserMinus,
   UserPlus,
   Users,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import { useTranslation } from '../contexts/LanguageContext';
 import { FriendProfile, JournalEntry, RankedItem, UserProfileSummary, UserSearchResult } from '../types';
 import { ErrorBoundary } from '../components/shared/ErrorBoundary';
@@ -30,21 +34,11 @@ import {
   updateMyProfile,
   uploadAvatarPhoto,
 } from '../services/friendsService';
+import type { ProfileVisibility } from '../services/profileService';
+import { getJournalStats } from '../services/journalService';
+import { StreakBadge } from '../components/shared/StreakBadge';
 
-function relativeDate(iso: string): string {
-  try {
-    const delta = Date.now() - new Date(iso).getTime();
-    const minutes = Math.floor(delta / 60000);
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
-  } catch {
-    return '';
-  }
-}
+import { relativeDate } from '../utils/relativeDate';
 
 const MAX_BIO_LENGTH = 280;
 
@@ -61,6 +55,7 @@ const ProfilePage = () => {
   const [displayNameInput, setDisplayNameInput] = useState('');
   const [bioInput, setBioInput] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [visibilityInput, setVisibilityInput] = useState<ProfileVisibility>('friends');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Friend search state (own profile only)
@@ -77,6 +72,27 @@ const ProfilePage = () => {
   const [journalExistingEntry, setJournalExistingEntry] = useState<JournalEntry | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [streakStats, setStreakStats] = useState<{ currentStreak: number; longestStreak: number }>({ currentStreak: 0, longestStreak: 0 });
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const handleShareProfile = async () => {
+    if (!profile) return;
+    const url = `${window.location.origin}/u/${profile.username}`;
+    const title = `${profile.displayName || profile.username} on Spool`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, url });
+        return;
+      }
+    } catch { /* user cancelled */ }
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+    }
+  };
 
   const canSeeFullProfile = useMemo(() => {
     if (!profile) return false;
@@ -117,6 +133,24 @@ const ProfilePage = () => {
     setDisplayNameInput(summary.displayName ?? summary.username);
     setBioInput(summary.bio ?? '');
     setAvatarFile(null);
+
+    // Load visibility setting + journal stats for own profile
+    if (summary.isSelf) {
+      const [visResult, journalStats] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('profile_visibility')
+          .eq('id', profileId)
+          .single(),
+        getJournalStats(profileId).catch(() => null),
+      ]);
+      if (visResult.data?.profile_visibility) {
+        setVisibilityInput(visResult.data.profile_visibility as ProfileVisibility);
+      }
+      if (journalStats) {
+        setStreakStats({ currentStreak: journalStats.currentStreak, longestStreak: journalStats.longestStreak });
+      }
+    }
 
     if (summary.isSelf || summary.isMutual) {
       const [nextFollowers, nextFollowing] = await Promise.all([
@@ -182,12 +216,14 @@ const ProfilePage = () => {
       displayName: string;
       bio: string;
       onboardingCompleted: boolean;
+      profileVisibility: ProfileVisibility;
       avatarUrl?: string | null;
       avatarPath?: string | null;
     } = {
       displayName: displayNameInput,
       bio: bioInput,
       onboardingCompleted: true,
+      profileVisibility: visibilityInput,
     };
 
     if (avatarFile) {
@@ -347,6 +383,9 @@ const ProfilePage = () => {
                   <span className="text-muted-foreground">
                     <strong>{profile.followingCount}</strong> {t('profile.following')}
                   </span>
+                  {profile.isSelf && (
+                    <StreakBadge currentStreak={streakStats.currentStreak} longestStreak={streakStats.longestStreak} size="sm" />
+                  )}
                 </div>
               </div>
             </div>
@@ -373,6 +412,16 @@ const ProfilePage = () => {
               )
             )}
           </div>
+
+          {profile.isSelf && visibilityInput !== 'private' && (
+            <button
+              onClick={handleShareProfile}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {linkCopied ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
+              {linkCopied ? t('profile.linkCopied') : t('profile.shareProfile')}
+            </button>
+          )}
 
           {(profile.bio && canSeeFullProfile) && (
             <p className="text-sm text-muted-foreground rounded-lg border border-border/30 bg-background px-3 py-2">{profile.bio}</p>
@@ -411,6 +460,22 @@ const ProfilePage = () => {
                   placeholder={t('profile.bioHint')}
                 />
                 <p className="text-[11px] text-muted-foreground text-right">{bioInput.length}/{MAX_BIO_LENGTH}</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <Globe size={12} />
+                  {t('public.profileVisibility')}
+                </label>
+                <select
+                  value={visibilityInput}
+                  onChange={(e) => setVisibilityInput(e.target.value as ProfileVisibility)}
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                >
+                  <option value="public">{t('public.visibilityPublic')}</option>
+                  <option value="friends">{t('public.visibilityFriends')}</option>
+                  <option value="private">{t('public.visibilityPrivate')}</option>
+                </select>
               </div>
 
               <div className="flex gap-3">
@@ -509,7 +574,14 @@ const ProfilePage = () => {
         {/* Ticket Stubs Calendar — visible to self and mutual follows */}
         {profile && canSeeFullProfile && (
           <section className="rounded-xl border border-border/30 bg-card/50 p-4">
-            <CalendarView userId={profile.id} isOwnProfile={profile.isSelf} />
+            <CalendarView
+              userId={profile.id}
+              isOwnProfile={profile.isSelf}
+              currentStreak={streakStats.currentStreak}
+              longestStreak={streakStats.longestStreak}
+              username={profile.username}
+              displayName={profile.displayName}
+            />
           </section>
         )}
 
@@ -549,7 +621,7 @@ const ProfilePage = () => {
                           <p className="text-sm font-medium truncate">{row.displayName ?? row.username}</p>
                           <p className="text-xs text-muted-foreground truncate">@{row.username}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '')}</p>
+                        <p className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '', t)}</p>
                       </Link>
                     ))}
                   </div>
@@ -577,7 +649,7 @@ const ProfilePage = () => {
                           <p className="text-sm font-medium truncate">{row.displayName ?? row.username}</p>
                           <p className="text-xs text-muted-foreground truncate">@{row.username}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '')}</p>
+                        <p className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '', t)}</p>
                       </Link>
                     ))}
                   </div>

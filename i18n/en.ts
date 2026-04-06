@@ -25,11 +25,28 @@ const en = {
   'stubs.changeDate': 'Change date',
   'stubs.backfill': 'Generate past stubs',
   'stubs.backfilling': 'Generating...',
+  'stubs.mostFelt': 'Most felt:',
+  'stubs.sTier': 'S-tier:',
+  'stubs.moments': 'moments',
+  'stubs.moment': 'moment',
+  'stubs.yourReview': 'Your Review',
+  'stubs.favoriteMoments': 'Favorite Moments',
+  'stubs.rewatch': 'Rewatch',
+  'stubs.noReview': 'No review yet for this title.',
+  'stubs.asCharacter': 'as',
 
   // ── Ranking Page ─────────────────────────────────────────────────────────
   'ranking.myCanon': 'My Canon',
   'ranking.subtitle': 'Add a movie and rank it head-to-head against your list. Order implies superiority.',
   'ranking.allGenres': 'All Genres',
+
+  // ── Ranking Page Toasts ───────────────────────────────────────────────────
+  'ranking.resetConfirm': 'Reset your {label} list? This cannot be undone.',
+  'ranking.failedSave': 'Failed to save — please try again',
+  'ranking.failedSaveRanking': 'Failed to save ranking — please try again',
+  'ranking.failedUpdate': 'Failed to update rankings — please refresh',
+  'ranking.failedSaveTV': 'Failed to save TV ranking — please try again',
+  'ranking.failedSaveBook': 'Failed to save book ranking — please try again',
 
   // ── Tier Row ─────────────────────────────────────────────────────────────
   'tier.pts': 'pts',
@@ -57,6 +74,19 @@ const en = {
   'feed.explore': 'Explore',
   'feed.emptyFriends': 'No activity from friends yet. Follow people to see their ranking activity here.',
   'feed.emptyExplore': 'No activity to explore yet. Check back soon!',
+
+  // ── Feed Cards ───────────────────────────────────────────────────────────
+  'feed.justNow': 'just now',
+  'feed.minsAgo': '{n}m ago',
+  'feed.hrsAgo': '{n}h ago',
+  'feed.daysAgo': '{n}d ago',
+  'feed.watchedWith': 'Watched with',
+  'feed.reviewed': 'reviewed',
+  'feed.containsSpoilers': 'Contains spoilers',
+  'feed.tapToReveal': 'Tap to reveal',
+  'feed.showMore': 'Show more',
+  'feed.showLess': 'Show less',
+  'feed.hideSpoilers': 'Hide spoilers',
 
   // ── Feed Filters ─────────────────────────────────────────────────────────
   'filter.all': 'All',
@@ -223,6 +253,7 @@ const en = {
   'search.mediaMovie': 'Movie',
   'search.mediaTV': 'TV',
   'search.mediaBook': 'Book',
+  'search.friendsRanked': '{n} friends',
 
   // ── TV Shows ────────────────────────────────────────────────────────────
   'tv.searchShows': 'Search TV shows...',
@@ -236,6 +267,89 @@ const en = {
   'tv.assignTier': 'Assign Tier',
   'tv.addNote': 'Add a Note',
   'tv.headToHead': 'Head-to-Head',
+
+  // ── Public Profile ───────────────────────────────────────────────────────
+  'public.notFound': 'Profile not found',
+  'public.notFoundHint': 'This username does not exist.',
+  'public.privateProfile': 'This profile is private',
+  'public.privateHint': 'This user has chosen to keep their profile private.',
+  'public.friendsOnlyProfile': 'Friends-only profile',
+  'public.friendsOnlyHint': 'Follow each other on Spool to see their rankings.',
+  'public.rankings': 'rankings',
+  'public.movies': 'Movies',
+  'public.tv': 'TV',
+  'public.books': 'Books',
+  'public.joinSpool': 'Join Spool',
+  'public.signInToFollow': 'Sign in to follow and see more',
+  'public.topPicks': 'Top Picks',
+  'public.allRankings': 'All Rankings',
+  'public.noRankingsYet': 'No rankings yet',
+  'public.profileVisibility': 'Profile visibility',
+  'public.visibilityPublic': 'Public',
+  'public.visibilityFriends': 'Friends only',
+  'public.visibilityPrivate': 'Private',
+
+  // ── Share Cards ────────────────────────────────────────────────────────────
+  'share.title': 'Share Card',
+  'share.createCard': 'Share card',
+  'share.top5': 'My Top 5',
+  'share.tasteDna': 'Taste DNA',
+  'share.myTopPicks': 'My Top Picks',
+  'share.ranked': 'ranked',
+  'share.exporting': 'Exporting...',
+  'share.shareImage': 'Share image',
+  'share.downloadImage': 'Download image',
+
+  // ── Streaks ────────────────────────────────────────────────────────────────
+  'streak.current': 'day streak',
+  'streak.longest': 'Best: {n} days',
+
+  // ── Monthly Recap ──────────────────────────────────────────────────────────
+  'recap.shareMonth': 'Share this month',
+  'recap.title': 'Monthly Recap',
+  'recap.watched': 'Watched',
+  'recap.topMood': 'Top mood',
+
+  // ── Profile Share ──────────────────────────────────────────────────────────
+  'profile.shareProfile': 'Share profile',
+  'profile.linkCopied': 'Link copied!',
+
+  // ── Media Detail Modal ────────────────────────────────────────────────────
+  'detail.episodes': 'episodes',
+  'detail.streamNow': 'Stream Now',
+  'detail.globalScore': 'Global Score',
+  'detail.yourScore': 'Your Score',
+  'detail.tierSuffix': 'Tier',
+  'detail.friendAvg': 'Friend Avg',
+  'detail.outOf10': 'out of 10',
+  'detail.yourRank': 'Your Rank: #{rank}',
+  'detail.rankedAbove': 'Ranked above',
+  'detail.rankedBelow': 'Ranked below',
+  'detail.watched': 'Watched',
+  'detail.reRank': 'Re-rank',
+  'detail.notYetRanked': 'Not yet ranked',
+  'detail.addMovieHint': 'Add this movie to your lists to compare it to your favorites.',
+  'detail.addSeasonHint': 'Add this season to your lists to compare it to your favorites.',
+  'detail.iveWatchedThis': "I've Watched This",
+  'detail.wantToWatch': 'Want-to-Watch',
+  'detail.friendsThink': 'What Your Friends Think',
+  'detail.friendsWatched': '{count} friends watched',
+  'detail.friendWatched': '1 friend watched',
+  'detail.avgScore': 'Avg score: {score}',
+  'detail.rankedIt': 'ranked it',
+  'detail.recentActivity': 'Recent Activity',
+  'detail.rankedThis': 'ranked this',
+  'detail.leftReview': 'left a review.',
+  'detail.addedWatchlist': 'added this to their watchlist.',
+  'detail.seeAllFriendRankings': 'See all {count} friend rankings',
+  'detail.noFriendsRanked': 'None of your friends have ranked this yet. Share it with them!',
+  'detail.leaveReview': 'Leave a Review',
+  'detail.linkCopied': 'Link copied!',
+  'detail.shareLink': 'Share link',
+  'detail.close': 'Close',
+  'detail.watched_btn': 'Watched',
+  'detail.shareTitle': 'Check this out on Spool',
+  'detail.inTheirList': 'in their list',
 
   // ── Language toggle ──────────────────────────────────────────────────────
   'lang.toggle': 'EN',

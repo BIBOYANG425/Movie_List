@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import FocusTrap from 'focus-trap-react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry, ComparisonRequest } from '../../types';
 import { TIER_SCORE_RANGES } from '../../constants';
@@ -84,7 +85,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     const profile = buildTasteProfile(currentItems);
     getSmartBackfill(profile, excludeIds, page ?? backfillPageRef.current, excludeTitles).then((results) => {
       backfillPoolRef.current = results;
-    });
+    }).catch(() => {});
   };
 
   const consumeSuggestion = (movieId: string) => {
@@ -125,13 +126,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     getSmartSuggestions(profile, excludeIds, page, excludeTitles, user?.id ?? undefined).then((results) => {
       setSuggestions(results);
       setSuggestionsLoading(false);
-    });
+    }).catch(() => { setSuggestionsLoading(false); });
 
     backfillPageRef.current = 1;
     backfillPoolRef.current = [];
     getSmartBackfill(profile, excludeIds, 1, excludeTitles).then((results) => {
       backfillPoolRef.current = results;
-    });
+    }).catch(() => {});
   };
 
   const handleRefreshSuggestions = () => {
@@ -284,9 +285,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const handleOpenDirector = async (person: PersonProfile) => {
     setDirectorLoading(true);
-    const detail = await getPersonFilmography(person.id, person.role);
-    setSelectedDirector(detail);
-    setDirectorLoading(false);
+    try {
+      const detail = await getPersonFilmography(person.id, person.role);
+      setSelectedDirector(detail);
+    } catch (err) {
+      console.error('Failed to load filmography:', err);
+    } finally {
+      setDirectorLoading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -867,6 +873,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   };
 
   return (
+    <FocusTrap focusTrapOptions={{ allowOutsideClick: true }}>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
@@ -893,5 +900,6 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         </div>
       </div>
     </div>
+    </FocusTrap>
   );
 };

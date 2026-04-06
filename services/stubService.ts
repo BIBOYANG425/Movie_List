@@ -30,11 +30,6 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
-function getLocalDateString(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 // ── Palette Extraction ─────────────────────────────────────────────
 
 export async function extractPalette(posterUrl: string): Promise<string[]> {
@@ -97,11 +92,9 @@ export async function createStub(
     template_id: templateId,
     updated_at: new Date().toISOString(),
   };
+  // Only include watched_date when explicitly provided; new inserts use DB DEFAULT CURRENT_DATE
   if (input.watchedDate) {
     payload.watched_date = input.watchedDate;
-  } else {
-    // For new inserts, use local date; on conflict this field won't overwrite
-    payload.watched_date = getLocalDateString();
   }
 
   const { data, error } = await supabase
@@ -157,11 +150,17 @@ export async function updateStubWatchedDate(
   stubId: string,
   watchedDate: string,
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('movie_stubs')
     .update({ watched_date: watchedDate, updated_at: new Date().toISOString() })
-    .eq('id', stubId);
-  return !error;
+    .eq('id', stubId)
+    .select('id')
+    .single();
+  if (error || !data) {
+    console.error('updateStubWatchedDate failed:', error?.message ?? 'no row updated (RLS denied?)');
+    return false;
+  }
+  return true;
 }
 
 export async function deleteStubByRanking(

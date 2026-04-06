@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import FocusTrap from 'focus-trap-react';
 import { X, BookOpen, MapPin, Monitor, Star, Quote, RotateCcw } from 'lucide-react';
 import { MovieStub, JournalEntry } from '../../types';
 import { updateStubWatchedDate } from '../../services/stubService';
 import { getJournalEntry } from '../../services/journalService';
+import { useTranslation } from '../../contexts/LanguageContext';
 import { StubCard } from './StubCard';
 import { TIER_LABELS } from '../../constants';
 
@@ -20,6 +22,7 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
   onClose,
   onDateChanged,
 }) => {
+  const { t } = useTranslation();
   const [watchedDate, setWatchedDate] = useState(stub.watchedDate);
   const [saving, setSaving] = useState(false);
   const [journal, setJournal] = useState<JournalEntry | null>(null);
@@ -33,18 +36,27 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
     return () => document.removeEventListener('keydown', handleEsc);
   }, [onClose]);
 
-  // Fetch journal entry for this stub's media
+  // Fetch journal entry for this stub's media (only for own profile to respect privacy)
   useEffect(() => {
+    if (!isOwnProfile) {
+      setLoadingJournal(false);
+      return;
+    }
     let cancelled = false;
     setLoadingJournal(true);
-    getJournalEntry(stub.userId, stub.tmdbId).then((entry) => {
-      if (!cancelled) {
-        setJournal(entry);
-        setLoadingJournal(false);
-      }
-    });
+    getJournalEntry(stub.userId, stub.tmdbId)
+      .then((entry) => {
+        if (!cancelled) {
+          setJournal(entry);
+          setLoadingJournal(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load journal entry:', err);
+        if (!cancelled) setLoadingJournal(false);
+      });
     return () => { cancelled = true; };
-  }, [stub.userId, stub.tmdbId]);
+  }, [stub.userId, stub.tmdbId, isOwnProfile]);
 
   const handleDateChange = async (newDate: string) => {
     if (newDate === watchedDate || !newDate) return;
@@ -58,6 +70,7 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
   };
 
   return createPortal(
+    <FocusTrap focusTrapOptions={{ allowOutsideClick: true }}>
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={onClose}
@@ -69,9 +82,10 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
         {/* Close button */}
         <button
           onClick={onClose}
+          aria-label="Close"
           className="absolute -top-2 -right-2 z-10 w-8 h-8 rounded-full bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
         >
-          <X size={16} />
+          <X size={16} aria-hidden="true" />
         </button>
 
         {/* Full stub card */}
@@ -91,7 +105,7 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
             {/* Review header */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <BookOpen size={14} className="text-gold" />
-              <span className="font-semibold text-foreground">Your Review</span>
+              <span className="font-semibold text-foreground">{t('stubs.yourReview')}</span>
               {journal.ratingTier && (
                 <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-gold/10 text-gold font-medium">
                   {TIER_LABELS[journal.ratingTier]}
@@ -134,7 +148,7 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
             {journal.favoriteMoments.length > 0 && (
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                  <Star size={12} className="text-gold" /> Favorite Moments
+                  <Star size={12} className="text-gold" /> {t('stubs.favoriteMoments')}
                 </p>
                 <ul className="text-sm text-foreground/80 space-y-0.5 pl-4">
                   {journal.favoriteMoments.map((m, i) => (
@@ -149,7 +163,7 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
               <div className="flex flex-wrap gap-2">
                 {journal.standoutPerformances.map((p) => (
                   <span key={p.personId} className="text-xs px-2 py-0.5 rounded-full bg-secondary/40 text-foreground">
-                    {p.name}{p.character ? ` as ${p.character}` : ''}
+                    {p.name}{p.character ? ` ${t('stubs.asCharacter')} ${p.character}` : ''}
                   </span>
                 ))}
               </div>
@@ -169,7 +183,7 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
               )}
               {journal.isRewatch && (
                 <span className="flex items-center gap-1">
-                  <RotateCcw size={11} /> Rewatch
+                  <RotateCcw size={11} /> {t('stubs.rewatch')}
                   {journal.rewatchNote && ` — ${journal.rewatchNote}`}
                 </span>
               )}
@@ -177,7 +191,7 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
           </div>
         ) : (
           <div className="rounded-xl bg-card/60 border border-border/30 p-4 text-center text-sm text-muted-foreground">
-            No review yet for this title.
+            {t('stubs.noReview')}
           </div>
         )}
 
@@ -198,7 +212,7 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
         {/* Date picker (own profile only) */}
         {isOwnProfile && (
           <div className="flex items-center justify-center gap-2 text-sm">
-            <label className="text-muted-foreground">Watched on:</label>
+            <label className="text-muted-foreground">{t('stubs.watchedOn')}:</label>
             <input
               type="date"
               value={watchedDate}
@@ -209,7 +223,8 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
           </div>
         )}
       </div>
-    </div>,
+    </div>
+    </FocusTrap>,
     document.body,
   );
 };
