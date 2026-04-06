@@ -22,7 +22,7 @@ export const FeedMilestoneCard: React.FC<FeedMilestoneCardProps> = ({
   onOpenComments,
   commentCount,
 }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   return (
     <div className="bg-card border border-border rounded-xl p-4 hover:border-border transition-colors">
       {/* Single row layout */}
@@ -51,7 +51,7 @@ export const FeedMilestoneCard: React.FC<FeedMilestoneCardProps> = ({
             <p className="text-sm text-muted-foreground">{card.milestoneDescription}</p>
           )}
           <span className="text-[11px] text-muted-foreground/60">
-            {relativeDate(card.createdAt, t)}
+            {relativeDate(card.createdAt, t, locale)}
           </span>
         </div>
 

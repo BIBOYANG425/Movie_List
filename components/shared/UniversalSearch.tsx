@@ -53,6 +53,7 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
     } else {
       setQuery('');
       setResults([]);
+      setFriendCounts(new Map());
       setTab('all');
     }
   }, [isOpen]);

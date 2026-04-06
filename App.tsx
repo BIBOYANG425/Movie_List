@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import RankingAppPage from './pages/RankingAppPage';
 import AuthPage from './pages/AuthPage';
@@ -14,6 +14,7 @@ import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 const App = () => {
   const { user, profile, loading } = useAuth();
+  const location = useLocation();
   const needsOnboarding = Boolean(user) && Boolean(profile) && !profile.onboardingCompleted;
 
   if (loading) {
@@ -25,7 +26,7 @@ const App = () => {
   }
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary key={location.key || location.pathname}>
       <Grain />
       <Routes>
         <Route path="/" element={<LandingPage />} />

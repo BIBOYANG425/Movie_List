@@ -26,7 +26,7 @@ export const StreakBadge: React.FC<StreakBadgeProps> = ({
         <Flame size={iconSize} className="text-orange-400" />
         <span>
           <strong className="text-foreground">{currentStreak}</strong>{' '}
-          {t('streak.current').replace('{n}', '')}
+          {t('streak.current')}
         </span>
       </div>
     );

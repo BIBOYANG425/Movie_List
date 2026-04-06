@@ -23,7 +23,7 @@ export async function getPublicRankings(userId: string): Promise<{
   tv: RankedItem[];
   books: RankedItem[];
 }> {
-  const [movieRes, tvRes, bookRes] = await Promise.all([
+  const [movieResult, tvResult, bookResult] = await Promise.allSettled([
     supabase
       .from('user_rankings')
       .select('*')
@@ -44,9 +44,39 @@ export async function getPublicRankings(userId: string): Promise<{
       .order('rank_position'),
   ]);
 
-  return {
-    movies: (movieRes.data ?? []).map((r) => rowToRankedItem(r, 'movie')),
-    tv: (tvRes.data ?? []).map((r) => rowToRankedItem(r, 'tv_season')),
-    books: (bookRes.data ?? []).map((r) => rowToRankedItem(r, 'book')),
-  };
+  let movies: RankedItem[] = [];
+  let tv: RankedItem[] = [];
+  let books: RankedItem[] = [];
+
+  if (movieResult.status === 'fulfilled') {
+    if (movieResult.value.error) {
+      console.error('Failed to fetch movie rankings:', movieResult.value.error);
+    } else {
+      movies = (movieResult.value.data ?? []).map((r) => rowToRankedItem(r, 'movie'));
+    }
+  } else {
+    console.error('Movie rankings query rejected:', movieResult.reason);
+  }
+
+  if (tvResult.status === 'fulfilled') {
+    if (tvResult.value.error) {
+      console.error('Failed to fetch TV rankings:', tvResult.value.error);
+    } else {
+      tv = (tvResult.value.data ?? []).map((r) => rowToRankedItem(r, 'tv_season'));
+    }
+  } else {
+    console.error('TV rankings query rejected:', tvResult.reason);
+  }
+
+  if (bookResult.status === 'fulfilled') {
+    if (bookResult.value.error) {
+      console.error('Failed to fetch book rankings:', bookResult.value.error);
+    } else {
+      books = (bookResult.value.data ?? []).map((r) => rowToRankedItem(r, 'book'));
+    }
+  } else {
+    console.error('Book rankings query rejected:', bookResult.reason);
+  }
+
+  return { movies, tv, books };
 }

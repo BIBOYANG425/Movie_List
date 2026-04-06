@@ -33,7 +33,7 @@ export const FeedCommentThread: React.FC<FeedCommentThreadProps> = ({
   isOpen,
   loading,
 }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [draft, setDraft] = useState('');
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
@@ -84,7 +84,7 @@ export const FeedCommentThread: React.FC<FeedCommentThreadProps> = ({
             {comment.displayName || comment.username}
           </Link>
           <span className="text-[11px] text-muted-foreground/60">
-            {relativeDate(comment.createdAt, t)}
+            {relativeDate(comment.createdAt, t, locale)}
           </span>
         </div>
 

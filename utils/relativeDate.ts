@@ -20,6 +20,6 @@ export function relativeDate(
     if (days < 7) return t('feed.daysAgo').replace('{n}', String(days));
     return new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' });
   } catch {
-    return '';
+    return iso || t('feed.justNow');
   }
 }

@@ -716,15 +716,36 @@ export interface PublicProfile {
 }
 
 export async function getProfileByUsername(username: string): Promise<PublicProfile | null> {
-  const { data, error } = await supabase
+  let usingLegacySchema = false;
+
+  const initial = await supabase
     .from('profiles')
     .select('id, username, display_name, bio, avatar_url, avatar_path, profile_visibility')
     .eq('username', username)
     .maybeSingle();
 
-  if (error || !data) return null;
+  let data = initial.data as (ProfileRow & { profile_visibility?: ProfileVisibility }) | null;
+  let error = initial.error;
 
-  const row = data as ProfileRow & { profile_visibility: ProfileVisibility };
+  if (error && isMissingProfileColumnError(error)) {
+    usingLegacySchema = true;
+    const legacy = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url')
+      .eq('username', username)
+      .maybeSingle();
+    data = legacy.data as ProfileRow | null;
+    error = legacy.error;
+  }
+
+  if (error) {
+    console.error('Failed to load profile by username:', error);
+    return null;
+  }
+
+  if (!data) return null;
+
+  const row = data;
 
   const [{ count: followersCount }, { count: followingCount }] = await Promise.all([
     supabase
@@ -740,10 +761,10 @@ export async function getProfileByUsername(username: string): Promise<PublicProf
   return {
     id: row.id,
     username: row.username,
-    displayName: row.display_name ?? undefined,
-    bio: row.bio ?? undefined,
+    displayName: usingLegacySchema ? undefined : (row.display_name ?? undefined),
+    bio: usingLegacySchema ? undefined : (row.bio ?? undefined),
     avatarUrl: profileAvatarUrl(row),
-    profileVisibility: row.profile_visibility,
+    profileVisibility: usingLegacySchema ? 'public' : (row.profile_visibility ?? 'public'),
     followersCount: followersCount ?? 0,
     followingCount: followingCount ?? 0,
   };

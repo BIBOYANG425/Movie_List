@@ -263,7 +263,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
   const handleDismiss = useCallback(() => {
     if (sessionId) {
-      endSession(sessionId, 'abandoned').catch(() => {});
+      endSession(sessionId, 'abandoned').catch((err) => console.error('Failed to end session:', err));
     }
     initRef.current = false;
     setSessionId(null);
@@ -394,7 +394,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
       if (result) {
         setLoadedEntryId(result.id);
         if (sessionId) {
-          endSession(sessionId, 'completed').catch(() => {});
+          endSession(sessionId, 'completed').catch((err) => console.error('Failed to end session:', err));
         }
         onSaved?.(result);
         setVisible(false);

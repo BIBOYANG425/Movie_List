@@ -249,13 +249,13 @@ const RankingAppPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const linkedMovieId = searchParams.get('movieId');
 
-  // Lazy-load streak stats when stats tab becomes active
+  // Load streak stats when stats tab becomes active
   useEffect(() => {
-    if (activeTab !== 'stats' || !user || streakStats) return;
+    if (activeTab !== 'stats' || !user) return;
     getJournalStats(user.id)
       .then((s) => setStreakStats({ currentStreak: s.currentStreak, longestStreak: s.longestStreak }))
       .catch(() => {});
-  }, [activeTab, user, streakStats]);
+  }, [activeTab, user]);
 
   useEffect(() => {
     if (!user) return;

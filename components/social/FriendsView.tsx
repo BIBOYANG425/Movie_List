@@ -289,7 +289,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
                     />
                     <span className="text-sm truncate">{row.displayName ?? row.username}</span>
                   </Link>
-                  <span className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '', t)}</span>
+                  {row.followedAt && <span className="text-xs text-muted-foreground">{relativeDate(row.followedAt, t)}</span>}
                 </div>
               ))}
             </div>

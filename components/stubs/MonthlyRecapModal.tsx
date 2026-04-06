@@ -50,7 +50,7 @@ export const MonthlyRecapModal: React.FC<MonthlyRecapModalProps> = ({
       });
 
       canvas.toBlob(async (blob) => {
-        if (!blob) return;
+        if (!blob) { setExporting(false); return; }
         const file = new File([blob], `spool-recap-${monthLabel.replace(/\s/g, '-')}.png`, {
           type: 'image/png',
         });
@@ -89,7 +89,7 @@ export const MonthlyRecapModal: React.FC<MonthlyRecapModalProps> = ({
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
             <h2 className="text-sm font-semibold text-foreground">{t('recap.title')}</h2>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground">
               <X size={18} />
             </button>
           </div>

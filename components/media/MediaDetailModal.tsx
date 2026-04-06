@@ -224,7 +224,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
         return () => {
             didCancel = true;
         };
-    }, [tmdbId, initialItem, isTVSeason, rankingTable, tvTarget?.showTmdbId, tvTarget?.seasonNumber]);
+    }, [tmdbId, initialItem, isTVSeason, rankingTable, tvTarget?.showTmdbId, tvTarget?.seasonNumber, locale]);
 
     const detailTitle = isTVSeason ? (tvDetails?.title ?? initialItem?.title ?? '') : (movie?.title ?? '');
     const detailYear = isTVSeason ? (tvDetails?.year ?? initialItem?.year ?? '') : (movie?.year ?? '');

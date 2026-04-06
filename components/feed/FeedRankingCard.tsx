@@ -45,7 +45,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
   onMovieClick,
   commentCount,
 }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const tierAccent = card.mediaTier ? TIER_BORDER_ACCENT[card.mediaTier] : '';
 
   const handleCardClick = (e: React.MouseEvent) => {
@@ -90,7 +90,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
           {card.displayName || card.username}
         </Link>
         <span className="ml-auto text-xs text-muted-foreground">
-          {relativeDate(card.createdAt, t)}
+          {relativeDate(card.createdAt, t, locale)}
         </span>
         <FeedCardMenu
           onMuteUser={() => onMuteUser(card.userId)}

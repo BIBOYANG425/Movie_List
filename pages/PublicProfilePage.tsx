@@ -69,23 +69,28 @@ const PublicProfilePage: React.FC = () => {
     const name = profile.displayName || profile.username;
     document.title = `${name} on Spool`;
 
+    const createdMetas: HTMLMetaElement[] = [];
     const setMeta = (property: string, content: string) => {
-      let el = document.querySelector(`meta[property="${property}"]`);
+      let el = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement | null;
       if (!el) {
         el = document.createElement('meta');
         el.setAttribute('property', property);
         document.head.appendChild(el);
+        createdMetas.push(el);
       }
       el.setAttribute('content', content);
     };
 
     setMeta('og:title', `${name} on Spool`);
     setMeta('og:description', profile.bio || `Check out ${name}'s movie rankings on Spool`);
-    setMeta('og:image', profile.avatarUrl);
+    if (profile.avatarUrl) setMeta('og:image', profile.avatarUrl);
     setMeta('og:url', window.location.href);
     setMeta('og:type', 'profile');
 
-    return () => { document.title = 'Spool'; };
+    return () => {
+      document.title = 'Spool';
+      createdMetas.forEach((el) => el.remove());
+    };
   }, [profile]);
 
   if (loading) {

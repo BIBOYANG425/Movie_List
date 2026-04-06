@@ -22,7 +22,7 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
   onOpenComments,
   commentCount,
 }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const posters = card.listPosterUrls ?? [];
 
   return (
@@ -52,7 +52,7 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
           <span className="text-muted-foreground"> created a list</span>
         </div>
         <span className="ml-auto text-xs text-muted-foreground">
-          {relativeDate(card.createdAt, t)}
+          {relativeDate(card.createdAt, t, locale)}
         </span>
         <FeedCardMenu
           onMuteUser={() => onMuteUser(card.userId)}

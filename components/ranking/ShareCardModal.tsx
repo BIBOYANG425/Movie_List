@@ -58,7 +58,7 @@ export const ShareCardModal: React.FC<ShareCardModalProps> = ({
 
       // Try native share first, fall back to download
       canvas.toBlob(async (blob) => {
-        if (!blob) return;
+        if (!blob) { setExporting(false); return; }
         const file = new File([blob], `spool-${activeCard}.png`, { type: 'image/png' });
 
         if (navigator.share && navigator.canShare?.({ files: [file] })) {

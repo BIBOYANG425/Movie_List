@@ -85,9 +85,13 @@ const ProfilePage = () => {
         return;
       }
     } catch { /* user cancelled */ }
-    await navigator.clipboard.writeText(url);
-    setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+    }
   };
 
   const canSeeFullProfile = useMemo(() => {
