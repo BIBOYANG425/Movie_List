@@ -106,24 +106,24 @@ function Nav({ onAuth, t, locale, toggleLocale }: { onAuth: (mode: string) => vo
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <button onClick={toggleLocale} style={{
-          background: "transparent", border: `1px solid ${C.border}`, color: C.text, padding: "5px 12px",
+          background: "transparent", border: `1px solid ${C.border}`, color: C.text, padding: "10px 14px",
           fontFamily: "var(--sans)", fontSize: 12, fontWeight: 600, cursor: "pointer",
-          borderRadius: 8, transition: "color 0.2s, border-color 0.2s", display: "flex", alignItems: "center", gap: 4,
+          borderRadius: 8, transition: "color 0.2s, border-color 0.2s", display: "flex", alignItems: "center", gap: 4, minHeight: 44,
         }}
           onMouseOver={e => { e.currentTarget.style.color = C.cream; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
           onMouseOut={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.border; }}
         >{locale === 'en' ? '中文' : 'EN'}</button>
         <button onClick={() => onAuth("login")} style={{
-          background: "transparent", border: "none", color: C.text, padding: "7px 18px",
+          background: "transparent", border: "none", color: C.text, padding: "12px 18px",
           fontFamily: "var(--sans)", fontSize: 13, fontWeight: 500, cursor: "pointer",
-          borderRadius: 8, transition: "color 0.2s",
+          borderRadius: 8, transition: "color 0.2s", minHeight: 44,
         }}
           onMouseOver={e => e.currentTarget.style.color = C.cream} onMouseOut={e => e.currentTarget.style.color = C.text}
         >{t('landing.logIn')}</button>
         <button onClick={() => onAuth("signup")} style={{
           background: C.cream, color: C.bg, border: "none", borderRadius: 8,
-          padding: "7px 18px", fontFamily: "var(--sans)", fontSize: 13, fontWeight: 600,
-          cursor: "pointer", transition: "transform 0.15s, opacity 0.15s",
+          padding: "12px 18px", fontFamily: "var(--sans)", fontSize: 13, fontWeight: 600,
+          cursor: "pointer", transition: "transform 0.15s, opacity 0.15s", minHeight: 44,
         }}
           onMouseOver={e => e.currentTarget.style.opacity = "0.88"} onMouseOut={e => e.currentTarget.style.opacity = "1"}
         >{t('landing.startRanking')}</button>
@@ -443,7 +443,7 @@ function Footer({ t }: { t: (key: any) => string }) {
       </div>
       <div style={{ display: "flex", gap: 24 }}>
         {links.map(link => (
-          <a key={link.key} href={link.href} style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.muted, textDecoration: "none", transition: "color 0.15s" }}
+          <a key={link.key} href={link.href} style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.muted, textDecoration: "none", transition: "color 0.15s", padding: "12px 4px", display: "inline-block" }}
             onMouseOver={e => e.currentTarget.style.color = C.text} onMouseOut={e => e.currentTarget.style.color = C.muted}
           >{t(link.key as any)}</a>
         ))}
