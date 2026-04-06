@@ -474,8 +474,8 @@ export default function LandingPage() {
   return (
     <div style={{
       background: C.bg, minHeight: "100vh", overflowX: "hidden",
-      "--serif": "'Instrument Serif', Georgia, serif",
-      "--sans": "'DM Sans', -apple-system, sans-serif",
+      "--serif": "'Cormorant Garamond', serif",
+      "--sans": "'Source Sans 3', sans-serif",
     } as React.CSSProperties}>
       <Nav onAuth={handleAuth} t={t} locale={locale} toggleLocale={toggleLocale} />
       <Hero onAuth={handleAuth} t={t} />
