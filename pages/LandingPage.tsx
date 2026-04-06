@@ -295,13 +295,13 @@ function FeedItem({ item, index }: { item: any; index: number }) {
               }}>{item.tier}</span>
               <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.text }}>{item.score}</span>
               <span style={{
-                fontFamily: "var(--sans)", fontSize: 10, color: C.muted,
+                fontFamily: "var(--sans)", fontSize: 10, color: C.dim,
                 padding: "1px 8px", borderRadius: 8, background: "rgba(255,255,255,0.03)",
               }}>{item.mood}</span>
             </div>
           </div>
         </div>
-        <span style={{ fontFamily: "var(--sans)", fontSize: 10, color: C.muted, flexShrink: 0, marginTop: 2 }}>{item.time}</span>
+        <span style={{ fontFamily: "var(--sans)", fontSize: 10, color: C.dim, flexShrink: 0, marginTop: 2 }}>{item.time}</span>
       </div>
       {item.review && (
         <p style={{
@@ -342,7 +342,7 @@ function TrendingSection({ t }: { t: (key: any) => string }) {
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                     <span style={{ fontFamily: "var(--sans)", fontSize: 15, fontWeight: 600, color: C.cream }}>{m.title}</span>
-                    <span style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.muted }}>{m.year}</span>
+                    <span style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.dim }}>{m.year}</span>
                   </div>
                   <span style={{
                     fontFamily: "var(--sans)", fontSize: 10.5, color: C.dim,
@@ -439,16 +439,16 @@ function Footer({ t }: { t: (key: any) => string }) {
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         <SpoolLogo size="sm" showWordmark={false} />
-        <span style={{ fontFamily: "var(--serif)", fontSize: 14, color: C.muted }}>Spool</span>
+        <span style={{ fontFamily: "var(--serif)", fontSize: 14, color: C.dim }}>Spool</span>
       </div>
       <div style={{ display: "flex", gap: 24 }}>
         {links.map(link => (
-          <a key={link.key} href={link.href} style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.muted, textDecoration: "none", transition: "color 0.15s", padding: "12px 4px", display: "inline-block" }}
+          <a key={link.key} href={link.href} style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.dim, textDecoration: "none", transition: "color 0.15s", padding: "12px 4px", display: "inline-block" }}
             onMouseOver={e => e.currentTarget.style.color = C.text} onMouseOut={e => e.currentTarget.style.color = C.muted}
           >{t(link.key as any)}</a>
         ))}
       </div>
-      <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.muted }}>{t('landing.copyright')}</span>
+      <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.dim }}>{t('landing.copyright')}</span>
     </footer>
   );
 }
