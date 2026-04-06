@@ -10,6 +10,42 @@ export const TIER_COLORS = {
   [Tier.D]: 'text-tier-d border-tier-d/20 bg-tier-d/5',
 };
 
+/** Hex colors for tier badges in share/export cards (html2canvas-safe) */
+export const TIER_HEX: Record<string, string> = {
+  S: '#FCD34D',
+  A: '#4ADE80',
+  B: '#60A5FA',
+  C: '#A78BFA',
+  D: '#F87171',
+};
+
+/** Hex colors for radar charts and tier distribution bars */
+export const TIER_RADAR_HEX: Record<string, string> = {
+  S: '#f59e0b',
+  A: '#22c55e',
+  B: '#3b82f6',
+  C: '#8b5cf6',
+  D: '#ef4444',
+};
+
+/** Tier → left-border accent color class for feed cards */
+export const TIER_BORDER_ACCENT: Record<string, string> = {
+  S: 'border-l-tier-s',
+  A: 'border-l-tier-a',
+  B: 'border-l-tier-b',
+  C: 'border-l-tier-c',
+  D: 'border-l-tier-d',
+};
+
+/** Tier → bg color class for score badges in feed cards */
+export const TIER_SCORE_BG: Record<string, string> = {
+  S: 'bg-tier-s/20 text-tier-s',
+  A: 'bg-tier-a/20 text-tier-a',
+  B: 'bg-tier-b/20 text-tier-b',
+  C: 'bg-tier-c/20 text-tier-c',
+  D: 'bg-tier-d/20 text-tier-d',
+};
+
 export const TIER_LABELS = {
   [Tier.S]: 'Transcendent',
   [Tier.A]: 'Exceptional',

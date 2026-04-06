@@ -75,12 +75,8 @@ export async function createStub(
   userId: string,
   input: CreateStubInput,
 ): Promise<MovieStub | null> {
-  // Extract palette from poster (non-blocking, falls back to empty)
-  const palette = input.posterPath ? await extractPalette(input.posterPath) : [];
   const templateId = input.tier === 'S' ? 's_tier_gold' : 'default';
 
-  // Only include watched_date when explicitly provided to avoid overwriting
-  // existing dates on conflict upserts
   const payload: Record<string, unknown> = {
     user_id: userId,
     media_type: input.mediaType,
@@ -88,7 +84,7 @@ export async function createStub(
     title: input.title,
     poster_path: input.posterPath ?? null,
     tier: input.tier,
-    palette,
+    palette: [],
     template_id: templateId,
     updated_at: new Date().toISOString(),
   };
@@ -107,6 +103,22 @@ export async function createStub(
     console.error('Failed to create stub:', error);
     return null;
   }
+
+  // Extract palette in background — don't block the caller
+  if (input.posterPath) {
+    extractPalette(input.posterPath).then((palette) => {
+      if (palette.length > 0) {
+        supabase
+          .from('movie_stubs')
+          .update({ palette })
+          .eq('id', data.id)
+          .then(({ error: updateErr }) => {
+            if (updateErr) console.error('Failed to update stub palette:', updateErr);
+          });
+      }
+    });
+  }
+
   return mapRow(data);
 }
 
@@ -183,35 +195,28 @@ export async function backfillStubs(
   userId: string,
   onProgress?: (done: number, total: number) => void,
 ): Promise<number> {
-  // Fetch all movie rankings
-  const { data: movieRankings, error: movieErr } = await supabase
-    .from('user_rankings')
-    .select('tmdb_id, title, poster_url, tier, created_at')
-    .eq('user_id', userId);
+  const [movieRes, tvRes, stubRes] = await Promise.all([
+    supabase
+      .from('user_rankings')
+      .select('tmdb_id, title, poster_url, tier, created_at')
+      .eq('user_id', userId),
+    supabase
+      .from('tv_rankings')
+      .select('tmdb_id, title, poster_url, tier, created_at')
+      .eq('user_id', userId),
+    supabase
+      .from('movie_stubs')
+      .select('media_type, tmdb_id')
+      .eq('user_id', userId),
+  ]);
 
-  if (movieErr) {
-    throw new Error(`backfillStubs: failed to fetch movie rankings for ${userId}: ${movieErr.message}`);
-  }
+  if (movieRes.error) throw new Error(`backfillStubs: failed to fetch movie rankings for ${userId}: ${movieRes.error.message}`);
+  if (tvRes.error) throw new Error(`backfillStubs: failed to fetch TV rankings for ${userId}: ${tvRes.error.message}`);
+  if (stubRes.error) throw new Error(`backfillStubs: failed to fetch existing stubs for ${userId}: ${stubRes.error.message}`);
 
-  // Fetch all TV rankings
-  const { data: tvRankings, error: tvErr } = await supabase
-    .from('tv_rankings')
-    .select('tmdb_id, title, poster_url, tier, created_at')
-    .eq('user_id', userId);
-
-  if (tvErr) {
-    throw new Error(`backfillStubs: failed to fetch TV rankings for ${userId}: ${tvErr.message}`);
-  }
-
-  // Fetch existing stubs to avoid duplicates
-  const { data: existingStubs, error: stubErr } = await supabase
-    .from('movie_stubs')
-    .select('media_type, tmdb_id')
-    .eq('user_id', userId);
-
-  if (stubErr) {
-    throw new Error(`backfillStubs: failed to fetch existing stubs for ${userId}: ${stubErr.message}`);
-  }
+  const movieRankings = movieRes.data;
+  const tvRankings = tvRes.data;
+  const existingStubs = stubRes.data;
 
   const existingSet = new Set(
     (existingStubs ?? []).map((s: { media_type: string; tmdb_id: string }) => `${s.media_type}:${s.tmdb_id}`),

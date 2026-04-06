@@ -1,6 +1,7 @@
 import React from 'react';
 import { MovieStub } from '../../types';
-import { MOOD_TAGS } from '../../constants';
+import { MOOD_TAGS, TIER_HEX } from '../../constants';
+import { ShareCardFooter } from '../shared/ShareCardFooter';
 
 interface MonthlyRecapCardProps {
   stubs: MovieStub[];
@@ -12,14 +13,6 @@ interface MonthlyRecapCardProps {
   displayName?: string;
   currentStreak?: number;
 }
-
-const TIER_HEX: Record<string, string> = {
-  S: '#FCD34D',
-  A: '#4ADE80',
-  B: '#60A5FA',
-  C: '#A78BFA',
-  D: '#F87171',
-};
 
 export const MonthlyRecapCard = React.forwardRef<HTMLDivElement, MonthlyRecapCardProps>(
   ({ stubs, monthLabel, totalStubs, sTierCount, topMood, username, displayName, currentStreak }, ref) => {
@@ -164,36 +157,7 @@ export const MonthlyRecapCard = React.forwardRef<HTMLDivElement, MonthlyRecapCar
           )}
         </div>
 
-        {/* Footer */}
-        <div
-          style={{
-            marginTop: 16,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div
-              style={{
-                width: 18,
-                height: 18,
-                borderRadius: '50%',
-                background: '#D4C5B0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 9,
-                fontWeight: 800,
-                color: '#0F1419',
-              }}
-            >
-              S
-            </div>
-            <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>spool</span>
-          </div>
-          <div style={{ fontSize: 10, color: '#4B5563' }}>spool.app/u/{username}</div>
-        </div>
+        <ShareCardFooter username={username} />
       </div>
     );
   },

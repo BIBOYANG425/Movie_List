@@ -8,6 +8,7 @@ import { TIER_COLORS, TIER_LABELS } from '../../constants';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/LanguageContext';
+import { shareOrCopyLink } from '../../utils/shareLink';
 import { JournalConversation } from '../journal/JournalConversation';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 
@@ -88,16 +89,8 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
     const handleShare = async () => {
         const url = `${window.location.origin}/app?movieId=${encodeURIComponent(tmdbId)}`;
-        try {
-            if (navigator.share) {
-                await navigator.share({ title: detailTitle ?? t('detail.shareTitle'), url });
-            } else {
-                await navigator.clipboard.writeText(url);
-                setLinkCopied(true);
-                setTimeout(() => setLinkCopied(false), 2000);
-            }
-        } catch {
-            await navigator.clipboard.writeText(url);
+        const copied = await shareOrCopyLink(detailTitle ?? t('detail.shareTitle'), url);
+        if (copied) {
             setLinkCopied(true);
             setTimeout(() => setLinkCopied(false), 2000);
         }

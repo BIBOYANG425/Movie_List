@@ -37,7 +37,7 @@ import {
 import type { ProfileVisibility } from '../services/profileService';
 import { getJournalStats } from '../services/journalService';
 import { StreakBadge } from '../components/shared/StreakBadge';
-
+import { shareOrCopyLink } from '../utils/shareLink';
 import { relativeDate } from '../utils/relativeDate';
 
 const MAX_BIO_LENGTH = 280;
@@ -79,18 +79,10 @@ const ProfilePage = () => {
     if (!profile) return;
     const url = `${window.location.origin}/u/${profile.username}`;
     const title = `${profile.displayName || profile.username} on Spool`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title, url });
-        return;
-      }
-    } catch { /* user cancelled */ }
-    try {
-      await navigator.clipboard.writeText(url);
+    const copied = await shareOrCopyLink(title, url);
+    if (copied) {
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy link:', err);
     }
   };
 

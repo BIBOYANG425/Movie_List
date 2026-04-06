@@ -278,8 +278,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         />
       )}
 
-      {/* Monthly recap share modal */}
-      {username && (
+      {/* Monthly recap share modal — only mount when open to avoid bundling html2canvas eagerly */}
+      {recapOpen && username && (
         <MonthlyRecapModal
           open={recapOpen}
           onClose={() => setRecapOpen(false)}

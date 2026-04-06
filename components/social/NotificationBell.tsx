@@ -38,14 +38,18 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ userId, onUn
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Load unread count on mount and poll every 15s
+    const lastCountRef = useRef(-1);
     useEffect(() => {
         if (!userId) return;
 
         const pollCount = async () => {
             try {
                 const count = await getUnreadCount(userId);
-                setUnreadCount(count);
-                onUnreadCountChange?.(count);
+                if (count !== lastCountRef.current) {
+                    lastCountRef.current = count;
+                    setUnreadCount(count);
+                    onUnreadCountChange?.(count);
+                }
             } catch (err) {
                 console.error('Unread count poll failed:', err);
             }

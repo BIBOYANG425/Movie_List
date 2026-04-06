@@ -2,29 +2,11 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { FeedCard, ReactionType } from '../../types';
-import { TIER_COLORS } from '../../constants';
+import { TIER_COLORS, TIER_BORDER_ACCENT, TIER_SCORE_BG } from '../../constants';
 import { ReactionPicker } from './ReactionPicker';
 import { FeedCardMenu } from './FeedCardMenu';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { relativeDate } from '../../utils/relativeDate';
-
-/** Tier → left-border accent color class */
-const TIER_BORDER_ACCENT: Record<string, string> = {
-    S: 'border-l-tier-s',
-    A: 'border-l-tier-a',
-    B: 'border-l-tier-b',
-    C: 'border-l-tier-c',
-    D: 'border-l-tier-d',
-};
-
-/** Tier → bg color for score badge */
-const TIER_SCORE_BG: Record<string, string> = {
-    S: 'bg-tier-s/20 text-tier-s',
-    A: 'bg-tier-a/20 text-tier-a',
-    B: 'bg-tier-b/20 text-tier-b',
-    C: 'bg-tier-c/20 text-tier-c',
-    D: 'bg-tier-d/20 text-tier-d',
-};
 
 interface FeedReviewCardProps {
     card: FeedCard;

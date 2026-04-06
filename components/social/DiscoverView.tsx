@@ -8,14 +8,7 @@ import {
     getTrendingAmongFriends,
 } from '../../services/friendsService';
 import { SkeletonList } from '../shared/SkeletonCard';
-
-const TIER_COLORS: Record<string, string> = {
-    S: '#f59e0b',
-    A: '#22c55e',
-    B: '#3b82f6',
-    C: '#8b5cf6',
-    D: '#ef4444',
-};
+import { TIER_RADAR_HEX } from '../../constants';
 
 const TIER_LABELS: Record<string, string> = {
     S: 'S-Tier',
@@ -170,7 +163,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                         <div className="absolute top-2 left-2">
                                             <span
                                                 className="px-2 py-0.5 rounded-md text-[10px] font-bold text-black"
-                                                style={{ backgroundColor: TIER_COLORS[rec.topTier] || '#71717a' }}
+                                                style={{ backgroundColor: TIER_RADAR_HEX[rec.topTier] || '#71717a' }}
                                             >
                                                 {TIER_LABELS[rec.topTier] || rec.topTier}
                                             </span>
@@ -314,7 +307,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                         </div>
                                         <span
                                             className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-black"
-                                            style={{ backgroundColor: TIER_COLORS[movie.avgTier] || '#71717a' }}
+                                            style={{ backgroundColor: TIER_RADAR_HEX[movie.avgTier] || '#71717a' }}
                                         >
                                             {movie.avgTier}
                                         </span>
