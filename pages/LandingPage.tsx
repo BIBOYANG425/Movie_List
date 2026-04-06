@@ -92,7 +92,7 @@ function Nav({ onAuth, t, locale, toggleLocale }: { onAuth: (mode: string) => vo
     window.addEventListener("scroll", h); return () => window.removeEventListener("scroll", h);
   }, []);
   return (
-    <nav style={{
+    <nav aria-label="Main navigation" style={{
       position: "fixed", top: 0, left: 0, right: 0, zIndex: 200,
       height: 56, padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between",
       background: scrolled ? "rgba(8,8,11,0.88)" : "transparent",
@@ -478,9 +478,11 @@ export default function LandingPage() {
       "--sans": "'Source Sans 3', sans-serif",
     } as React.CSSProperties}>
       <Nav onAuth={handleAuth} t={t} locale={locale} toggleLocale={toggleLocale} />
-      <Hero onAuth={handleAuth} t={t} />
-      <TrendingSection t={t} />
-      <HowSection onAuth={handleAuth} t={t} />
+      <main>
+        <Hero onAuth={handleAuth} t={t} />
+        <TrendingSection t={t} />
+        <HowSection onAuth={handleAuth} t={t} />
+      </main>
       <Footer t={t} />
     </div>
   );
