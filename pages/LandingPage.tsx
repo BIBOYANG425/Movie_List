@@ -180,7 +180,7 @@ function Hero({ onAuth, t }: { onAuth: (mode: string) => void; t: (key: any) => 
               padding: "13px 32px", fontFamily: "var(--sans)", fontSize: 15, fontWeight: 600,
               cursor: "pointer", transition: "transform 0.15s, box-shadow 0.25s",
             }}
-              onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(168,85,247,0.12)"; }}
+              onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(212,197,176,0.18)"; }}
               onMouseOut={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
             >{t('landing.startRanking')}</button>
             <button onClick={() => onAuth("login")} style={{
@@ -414,7 +414,7 @@ function HowSection({ onAuth, t }: { onAuth: (mode: string) => void; t: (key: an
             padding: "13px 36px", fontFamily: "var(--sans)", fontSize: 15, fontWeight: 600,
             cursor: "pointer", transition: "transform 0.15s, box-shadow 0.25s",
           }}
-            onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(168,85,247,0.12)"; }}
+            onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(212,197,176,0.18)"; }}
             onMouseOut={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
           >{t('landing.startRanking')}</button>
         </div>
