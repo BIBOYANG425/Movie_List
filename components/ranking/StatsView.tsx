@@ -3,19 +3,25 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis
 import { RankedItem, Tier, GenreProfileItem } from '../../types';
 import { TIER_COLORS } from '../../constants';
 import { GenreRadarChart } from './GenreRadarChart';
+import { ShareCardModal } from './ShareCardModal';
 import { getGenreProfile } from '../../services/friendsService';
-import { Star } from 'lucide-react';
+import { Share2, Star } from 'lucide-react';
 import { useTranslation } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { StreakBadge } from '../shared/StreakBadge';
 
 interface StatsViewProps {
   items: RankedItem[];
   userId: string;
   mediaMode?: 'movies' | 'tv' | 'books';
+  streakStats?: { currentStreak: number; longestStreak: number };
 }
 
-export const StatsView: React.FC<StatsViewProps> = ({ items, userId, mediaMode = 'movies' }) => {
+export const StatsView: React.FC<StatsViewProps> = ({ items, userId, mediaMode = 'movies', streakStats }) => {
   const { t } = useTranslation();
+  const { profile } = useAuth();
   const [genreProfile, setGenreProfile] = useState<GenreProfileItem[]>([]);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -38,6 +44,31 @@ export const StatsView: React.FC<StatsViewProps> = ({ items, userId, mediaMode =
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+      {/* Streak + Share row */}
+      <div className="md:col-span-2 flex items-center justify-between">
+        {streakStats ? (
+          <StreakBadge currentStreak={streakStats.currentStreak} longestStreak={streakStats.longestStreak} />
+        ) : <div />}
+        <button
+          onClick={() => setShareOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border/30 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+        >
+          <Share2 size={14} />
+          {t('share.createCard')}
+        </button>
+      </div>
+
+      {profile && (
+        <ShareCardModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          items={items}
+          genreProfile={genreProfile}
+          username={profile.username}
+          displayName={profile.displayName}
+        />
+      )}
+
       <div className="bg-card border border-border p-6 rounded-xl">
         <h3 className="text-lg font-bold text-foreground mb-4">{t('stats.tierDistribution')}</h3>
         <div className="h-64">

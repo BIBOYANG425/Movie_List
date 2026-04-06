@@ -28,6 +28,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
+import { getJournalStats } from '../services/journalService';
 import { createStub } from '../services/stubService';
 import { TMDBMovie, TMDBTVShow } from '../services/tmdbService';
 import { OpenLibraryBook } from '../services/openLibraryService';
@@ -244,8 +245,17 @@ const RankingAppPage = () => {
   const [journalSheetItem, setJournalSheetItem] = useState<RankedItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [streakStats, setStreakStats] = useState<{ currentStreak: number; longestStreak: number } | undefined>();
   const [searchParams, setSearchParams] = useSearchParams();
   const linkedMovieId = searchParams.get('movieId');
+
+  // Lazy-load streak stats when stats tab becomes active
+  useEffect(() => {
+    if (activeTab !== 'stats' || !user || streakStats) return;
+    getJournalStats(user.id)
+      .then((s) => setStreakStats({ currentStreak: s.currentStreak, longestStreak: s.longestStreak }))
+      .catch(() => {});
+  }, [activeTab, user, streakStats]);
 
   useEffect(() => {
     if (!user) return;
@@ -337,7 +347,7 @@ const RankingAppPage = () => {
   const handleReset = async () => {
     if (!user) return;
     const label = mediaMode === 'books' ? 'book' : mediaMode === 'tv' ? 'TV' : 'movie';
-    if (!window.confirm(`Reset your ${label} list? This cannot be undone.`)) return;
+    if (!window.confirm(t('ranking.resetConfirm').replace('{label}', label))) return;
 
     if (mediaMode === 'books') {
       await supabase.from('book_rankings').delete().eq('user_id', user.id);
@@ -474,7 +484,7 @@ const RankingAppPage = () => {
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
       if (error) {
         console.error('Failed to save ranking:', error);
-        setToastMessage('Failed to save — please try again');
+        setToastMessage(t('ranking.failedSave'));
         setItems(prevItems);
       }
     }
@@ -519,7 +529,7 @@ const RankingAppPage = () => {
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
       if (error) {
         console.error('Failed to save ranking:', error);
-        setToastMessage('Failed to save ranking — please try again');
+        setToastMessage(t('ranking.failedSaveRanking'));
         return;
       }
     }
@@ -601,7 +611,7 @@ const RankingAppPage = () => {
       const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
       if (error) {
         console.error('Failed to reindex ranks after removal:', error);
-        setToastMessage('Failed to update rankings — please refresh');
+        setToastMessage(t('ranking.failedUpdate'));
       }
     }
 
@@ -647,7 +657,7 @@ const RankingAppPage = () => {
 
     if (error) {
       console.error('Failed to save to watchlist:', error);
-      setToastMessage('Failed to save — please try again');
+      setToastMessage(t('ranking.failedSave'));
       setWatchlist((prev) => prev.filter((w) => w.id !== watchItem.id));
       return;
     }
@@ -689,7 +699,7 @@ const RankingAppPage = () => {
 
     if (error) {
       console.error('Failed to save to TV watchlist:', error);
-      setToastMessage('Failed to save — please try again');
+      setToastMessage(t('ranking.failedSave'));
       setTvWatchlist((prev) => prev.filter((w) => w.id !== item.id));
       return;
     }
@@ -783,7 +793,7 @@ const RankingAppPage = () => {
     const { error } = await supabase.from('tv_rankings').upsert(rows, { onConflict: 'user_id,tmdb_id' });
     if (error) {
       console.error('Failed to save TV ranking:', error);
-      setToastMessage('Failed to save TV ranking — please try again');
+      setToastMessage(t('ranking.failedSaveTV'));
     }
   };
 
@@ -1021,7 +1031,7 @@ const RankingAppPage = () => {
     const { error } = await supabase.from('book_rankings').upsert(rows, { onConflict: 'user_id,tmdb_id' });
     if (error) {
       console.error('Failed to save book ranking:', error);
-      setToastMessage('Failed to save book ranking — please try again');
+      setToastMessage(t('ranking.failedSaveBook'));
     }
   };
 
@@ -1116,7 +1126,7 @@ const RankingAppPage = () => {
 
     if (error) {
       console.error('Failed to save to book watchlist:', error);
-      setToastMessage('Failed to save — please try again');
+      setToastMessage(t('ranking.failedSave'));
       setBookWatchlist((prev) => prev.filter((w) => w.id !== item.id));
       return;
     }
@@ -1526,7 +1536,7 @@ const RankingAppPage = () => {
           />
         )}
 
-        {activeTab === 'stats' && user && <StatsView items={localizedItems} userId={user.id} mediaMode={mediaMode} />}
+        {activeTab === 'stats' && user && <StatsView items={localizedItems} userId={user.id} mediaMode={mediaMode} streakStats={streakStats} />}
 
         {activeTab === 'feed' && user && (
           <SocialFeedView

@@ -11,25 +11,12 @@ import {
   unfollowUser,
 } from '../../services/friendsService';
 import { SkeletonList } from '../shared/SkeletonCard';
+import { useTranslation } from '../../contexts/LanguageContext';
+import { relativeDate } from '../../utils/relativeDate';
 
 interface FriendsViewProps {
   userId: string;
   selfUsername?: string;
-}
-
-function relativeDate(iso: string): string {
-  try {
-    const delta = Date.now() - new Date(iso).getTime();
-    const minutes = Math.floor(delta / 60000);
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
-  } catch {
-    return '';
-  }
 }
 
 function feedActionText(eventType?: FriendFeedItem['eventType']): string {
@@ -39,6 +26,7 @@ function feedActionText(eventType?: FriendFeedItem['eventType']): string {
 }
 
 export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }) => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -301,7 +289,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
                     />
                     <span className="text-sm truncate">{row.displayName ?? row.username}</span>
                   </Link>
-                  <span className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '')}</span>
+                  <span className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '', t)}</span>
                 </div>
               ))}
             </div>
@@ -344,7 +332,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
                     <span className="font-medium text-foreground">{item.title}</span>
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Tier {item.tier} • {relativeDate(item.rankedAt)}
+                    Tier {item.tier} • {relativeDate(item.rankedAt, t)}
                   </p>
                 </div>
                 <span className="text-xs font-bold rounded-md px-2 py-1 bg-secondary text-foreground">

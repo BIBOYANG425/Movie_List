@@ -42,9 +42,13 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ userId, onUn
         if (!userId) return;
 
         const pollCount = async () => {
-            const count = await getUnreadCount(userId);
-            setUnreadCount(count);
-            onUnreadCountChange?.(count);
+            try {
+                const count = await getUnreadCount(userId);
+                setUnreadCount(count);
+                onUnreadCountChange?.(count);
+            } catch {
+                // Silently skip failed polls, retry on next interval
+            }
         };
 
         pollCount();

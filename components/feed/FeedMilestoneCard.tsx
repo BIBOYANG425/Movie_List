@@ -4,17 +4,8 @@ import { MessageCircle, Award } from 'lucide-react';
 import { FeedCard, ReactionType } from '../../types';
 import { ReactionPicker } from './ReactionPicker';
 import { FeedCardMenu } from './FeedCardMenu';
-
-function relativeDate(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
+import { useTranslation } from '../../contexts/LanguageContext';
+import { relativeDate } from '../../utils/relativeDate';
 
 interface FeedMilestoneCardProps {
   card: FeedCard;
@@ -31,6 +22,7 @@ export const FeedMilestoneCard: React.FC<FeedMilestoneCardProps> = ({
   onOpenComments,
   commentCount,
 }) => {
+  const { t } = useTranslation();
   return (
     <div className="bg-card border border-border rounded-xl p-4 hover:border-border transition-colors">
       {/* Single row layout */}
@@ -59,7 +51,7 @@ export const FeedMilestoneCard: React.FC<FeedMilestoneCardProps> = ({
             <p className="text-sm text-muted-foreground">{card.milestoneDescription}</p>
           )}
           <span className="text-[11px] text-muted-foreground/60">
-            {relativeDate(card.createdAt)}
+            {relativeDate(card.createdAt, t)}
           </span>
         </div>
 

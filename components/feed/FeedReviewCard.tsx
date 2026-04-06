@@ -5,6 +5,8 @@ import { FeedCard, ReactionType } from '../../types';
 import { TIER_COLORS } from '../../constants';
 import { ReactionPicker } from './ReactionPicker';
 import { FeedCardMenu } from './FeedCardMenu';
+import { useTranslation } from '../../contexts/LanguageContext';
+import { relativeDate } from '../../utils/relativeDate';
 
 /** Tier → left-border accent color class */
 const TIER_BORDER_ACCENT: Record<string, string> = {
@@ -34,18 +36,6 @@ interface FeedReviewCardProps {
     commentCount: number;
 }
 
-function relativeDate(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    if (days < 7) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
     card,
     onToggleReaction,
@@ -55,6 +45,7 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
     onMovieClick,
     commentCount,
 }) => {
+    const { locale, t } = useTranslation();
     const [showSpoiler, setShowSpoiler] = useState(false);
     const [expanded, setExpanded] = useState(false);
 
@@ -99,13 +90,13 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
                         >
                             {card.displayName || card.username}
                         </Link>
-                        <span className="text-xs text-muted-foreground">reviewed</span>
+                        <span className="text-xs text-muted-foreground">{t('feed.reviewed')}</span>
                         {card.mediaTier && (
                             <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${tierColor}`}>
                                 {card.mediaTier}
                             </span>
                         )}
-                        <span className="text-xs text-muted-foreground">{relativeDate(card.createdAt)}</span>
+                        <span className="text-xs text-muted-foreground">{relativeDate(card.createdAt, t, locale)}</span>
                     </div>
                 </div>
 
@@ -154,9 +145,9 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
                                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-gold text-sm hover:bg-amber-500/15 transition-colors w-full"
                             >
                                 <AlertTriangle size={14} />
-                                <span className="font-medium">Contains spoilers</span>
+                                <span className="font-medium">{t('feed.containsSpoilers')}</span>
                                 <Eye size={14} className="ml-auto" />
-                                <span>Tap to reveal</span>
+                                <span>{t('feed.tapToReveal')}</span>
                             </button>
                         ) : (
                             <div className="relative">
@@ -168,7 +159,7 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
                                         onClick={() => setExpanded(!expanded)}
                                         className="text-xs text-accent hover:text-accent mt-1 transition-colors"
                                     >
-                                        {expanded ? 'Show less' : 'Show more'}
+                                        {expanded ? t('feed.showLess') : t('feed.showMore')}
                                     </button>
                                 )}
                                 {card.containsSpoilers && showSpoiler && (
@@ -177,7 +168,7 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
                                         className="flex items-center gap-1 mt-2 text-xs text-gold hover:text-gold transition-colors"
                                     >
                                         <EyeOff size={12} />
-                                        <span>Hide spoilers</span>
+                                        <span>{t('feed.hideSpoilers')}</span>
                                     </button>
                                 )}
                             </div>

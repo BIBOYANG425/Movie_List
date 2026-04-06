@@ -604,3 +604,47 @@ export async function getTVSocialStats(currentUserId: string, tmdbId: string): P
 export async function getBookSocialStats(currentUserId: string, tmdbId: string): Promise<MovieSocialStats | null> {
   return getMediaSocialStats(currentUserId, tmdbId, 'book_rankings');
 }
+
+/**
+ * Batch query: for a list of TMDB IDs, return how many friends have ranked each one.
+ * Returns a Map<tmdbId, friendCount>.
+ */
+export async function getFriendRankingCounts(
+  userId: string,
+  tmdbIds: string[],
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (!tmdbIds.length) return result;
+
+  const { data: follows } = await supabase
+    .from('friend_follows')
+    .select('following_id')
+    .eq('follower_id', userId);
+  const friendIds = follows?.map((f: { following_id: string }) => f.following_id) ?? [];
+  if (!friendIds.length) return result;
+
+  // Query all three ranking tables in parallel
+  const [movies, tv, books] = await Promise.all([
+    supabase
+      .from('user_rankings')
+      .select('tmdb_id')
+      .in('user_id', friendIds)
+      .in('tmdb_id', tmdbIds),
+    supabase
+      .from('tv_rankings')
+      .select('tmdb_id')
+      .in('user_id', friendIds)
+      .in('tmdb_id', tmdbIds),
+    supabase
+      .from('book_rankings')
+      .select('tmdb_id')
+      .in('user_id', friendIds)
+      .in('tmdb_id', tmdbIds),
+  ]);
+
+  for (const row of [...(movies.data ?? []), ...(tv.data ?? []), ...(books.data ?? [])]) {
+    result.set(row.tmdb_id, (result.get(row.tmdb_id) ?? 0) + 1);
+  }
+
+  return result;
+}

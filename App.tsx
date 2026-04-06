@@ -6,9 +6,11 @@ import AuthPage from './pages/AuthPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import ProfilePage from './pages/ProfilePage';
 import ProfileOnboardingPage from './pages/ProfileOnboardingPage';
+import PublicProfilePage from './pages/PublicProfilePage';
 import MovieOnboardingPage from './pages/MovieOnboardingPage';
 import { useAuth } from './contexts/AuthContext';
 import { Grain } from './components/shared/Grain';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 const App = () => {
   const { user, profile, loading } = useAuth();
@@ -23,7 +25,7 @@ const App = () => {
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <Grain />
       <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -45,9 +47,10 @@ const App = () => {
           path="/profile/:profileId"
           element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <ProfilePage />) : <Navigate to="/auth" replace />}
         />
+        <Route path="/u/:username" element={<PublicProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </>
+    </ErrorBoundary>
   );
 };
 

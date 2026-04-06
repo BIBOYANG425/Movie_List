@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, X, Film, Tv, BookOpen, Plus, Bookmark, Loader2 } from 'lucide-react';
+import { Search, X, Film, Tv, BookOpen, Plus, Bookmark, Loader2, Users } from 'lucide-react';
 import { searchMovies, searchTVShows, TMDBMovie, TMDBTVShow } from '../../services/tmdbService';
 import { searchBooks, OpenLibraryBook } from '../../services/openLibraryService';
+import { getFriendRankingCounts } from '../../services/tasteService';
+import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/LanguageContext';
 
 type SearchTab = 'all' | 'movies' | 'tv' | 'books';
@@ -32,10 +34,12 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
   rankedIds, watchlistIds, onRankMovie, onRankTV, onRankBook, onSaveMovie, onSaveTV, onSaveBook,
 }) => {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<SearchTab>('all');
   const [results, setResults] = useState<UniversalSearchResult[]>([]);
+  const [friendCounts, setFriendCounts] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -133,6 +137,14 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
 
       setResults(mapped);
       setLoading(false);
+
+      // Fetch friend ranking counts in background
+      if (user) {
+        const ids = mapped.map((r) => r.id);
+        getFriendRankingCounts(user.id, ids)
+          .then((counts) => { if (rid === requestIdRef.current) setFriendCounts(counts); })
+          .catch(() => {});
+      }
     }, 350);
 
     return () => {
@@ -281,6 +293,12 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
                     </span>
                     {result.year && <span className="text-[11px] text-muted-foreground">{result.year}</span>}
                     {result.subtitle && <span className="text-[11px] text-muted-foreground truncate">· {result.subtitle}</span>}
+                    {(friendCounts.get(result.id) ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gold/10 text-gold">
+                        <Users size={9} />
+                        {t('search.friendsRanked').replace('{n}', String(friendCounts.get(result.id)))}
+                      </span>
+                    )}
                   </div>
                 </div>
 

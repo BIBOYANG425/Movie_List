@@ -40,6 +40,14 @@ const zh: Record<string, string> = {
   'ranking.subtitle': '添加电影并与你的列表进行对比排名。顺序代表优劣。',
   'ranking.allGenres': '所有类型',
 
+  // ── 排名页提示 ──────────────────────────────────────────────────────────
+  'ranking.resetConfirm': '重置你的{label}列表？此操作无法撤销。',
+  'ranking.failedSave': '保存失败，请重试',
+  'ranking.failedSaveRanking': '排名保存失败，请重试',
+  'ranking.failedUpdate': '排名更新失败，请刷新页面',
+  'ranking.failedSaveTV': '剧集排名保存失败，请重试',
+  'ranking.failedSaveBook': '书籍排名保存失败，请重试',
+
   // ── Tier Row ─────────────────────────────────────────────────────────────
   'tier.pts': '分',
   'tier.items': '部',
@@ -66,6 +74,19 @@ const zh: Record<string, string> = {
   'feed.explore': '探索',
   'feed.emptyFriends': '好友还没有动态。关注更多人来查看他们的排名活动。',
   'feed.emptyExplore': '暂无探索内容，稍后再来看看！',
+
+  // ── 动态卡片 ──────────────────────────────────────────────────────────────
+  'feed.justNow': '刚刚',
+  'feed.minsAgo': '{n}分钟前',
+  'feed.hrsAgo': '{n}小时前',
+  'feed.daysAgo': '{n}天前',
+  'feed.watchedWith': '与以下人一起观看',
+  'feed.reviewed': '评价了',
+  'feed.containsSpoilers': '包含剧透',
+  'feed.tapToReveal': '点击查看',
+  'feed.showMore': '展开',
+  'feed.showLess': '收起',
+  'feed.hideSpoilers': '隐藏剧透',
 
   // ── Feed Filters ─────────────────────────────────────────────────────────
   'filter.all': '全部',
@@ -232,6 +253,7 @@ const zh: Record<string, string> = {
   'search.mediaMovie': '电影',
   'search.mediaTV': '剧集',
   'search.mediaBook': '书籍',
+  'search.friendsRanked': '{n} 位好友',
 
   // ── TV Shows ────────────────────────────────────────────────────────────
   'tv.searchShows': '搜索电视剧...',
@@ -245,6 +267,89 @@ const zh: Record<string, string> = {
   'tv.assignTier': '分配等级',
   'tv.addNote': '添加备注',
   'tv.headToHead': '对决比较',
+
+  // ── 公开主页 ─────────────────────────────────────────────────────────────
+  'public.notFound': '未找到该用户',
+  'public.notFoundHint': '该用户名不存在。',
+  'public.privateProfile': '该用户主页为私密',
+  'public.privateHint': '该用户选择隐藏自己的主页。',
+  'public.friendsOnlyProfile': '仅好友可见',
+  'public.friendsOnlyHint': '互相关注后即可查看排名。',
+  'public.rankings': '个排名',
+  'public.movies': '电影',
+  'public.tv': '剧集',
+  'public.books': '书籍',
+  'public.joinSpool': '加入 Spool',
+  'public.signInToFollow': '登录以关注并查看更多',
+  'public.topPicks': '精选推荐',
+  'public.allRankings': '全部排名',
+  'public.noRankingsYet': '暂无排名',
+  'public.profileVisibility': '主页可见性',
+  'public.visibilityPublic': '公开',
+  'public.visibilityFriends': '仅好友',
+  'public.visibilityPrivate': '私密',
+
+  // ── 分享卡片 ──────────────────────────────────────────────────────────────
+  'share.title': '分享卡片',
+  'share.createCard': '分享卡片',
+  'share.top5': '我的 Top 5',
+  'share.tasteDna': '品味 DNA',
+  'share.myTopPicks': '我的最佳精选',
+  'share.ranked': '已排名',
+  'share.exporting': '导出中...',
+  'share.shareImage': '分享图片',
+  'share.downloadImage': '下载图片',
+
+  // ── 连续记录 ──────────────────────────────────────────────────────────────
+  'streak.current': '天连续',
+  'streak.longest': '最佳：{n}天',
+
+  // ── 月度回顾 ──────────────────────────────────────────────────────────────
+  'recap.shareMonth': '分享本月',
+  'recap.title': '月度回顾',
+  'recap.watched': '观看',
+  'recap.topMood': '最多心情',
+
+  // ── 分享主页 ──────────────────────────────────────────────────────────────
+  'profile.shareProfile': '分享主页',
+  'profile.linkCopied': '链接已复制！',
+
+  // ── 详情弹窗 ─────────────────────────────────────────────────────────────
+  'detail.episodes': '集',
+  'detail.streamNow': '在线观看',
+  'detail.globalScore': '全球评分',
+  'detail.yourScore': '你的评分',
+  'detail.tierSuffix': '级',
+  'detail.friendAvg': '好友均分',
+  'detail.outOf10': '满分10',
+  'detail.yourRank': '你的排名：#{rank}',
+  'detail.rankedAbove': '排在此之上',
+  'detail.rankedBelow': '排在此之下',
+  'detail.watched': '观看于',
+  'detail.reRank': '重新排名',
+  'detail.notYetRanked': '尚未排名',
+  'detail.addMovieHint': '将这部电影添加到你的列表中，与你的最爱进行对比。',
+  'detail.addSeasonHint': '将这一季添加到你的列表中，与你的最爱进行对比。',
+  'detail.iveWatchedThis': '我看过了',
+  'detail.wantToWatch': '想看',
+  'detail.friendsThink': '你的朋友怎么看',
+  'detail.friendsWatched': '{count} 位朋友看过',
+  'detail.friendWatched': '1 位朋友看过',
+  'detail.avgScore': '平均分：{score}',
+  'detail.rankedIt': '将其排名为',
+  'detail.recentActivity': '最近动态',
+  'detail.rankedThis': '为此排名了',
+  'detail.leftReview': '留下了影评。',
+  'detail.addedWatchlist': '加入了观影清单。',
+  'detail.seeAllFriendRankings': '查看全部 {count} 位好友的排名',
+  'detail.noFriendsRanked': '还没有好友为此排名，分享给他们吧！',
+  'detail.leaveReview': '写影评',
+  'detail.linkCopied': '链接已复制！',
+  'detail.shareLink': '分享链接',
+  'detail.close': '关闭',
+  'detail.watched_btn': '看过',
+  'detail.shareTitle': '在 Spool 上看看这个',
+  'detail.inTheirList': '在列表中',
 
   // ── Language toggle ──────────────────────────────────────────────────────
   'lang.toggle': '中文',

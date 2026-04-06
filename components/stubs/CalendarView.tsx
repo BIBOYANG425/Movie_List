@@ -1,17 +1,30 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Ticket } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Share2, Ticket } from 'lucide-react';
 import { MovieStub } from '../../types';
 import { getStubsForMonth, backfillStubs } from '../../services/stubService';
 import { useTranslation } from '../../contexts/LanguageContext';
+import { StreakBadge } from '../shared/StreakBadge';
 import { StubCard } from './StubCard';
 import { StubDetailModal } from './StubDetailModal';
+import { MonthlyRecapModal } from './MonthlyRecapModal';
 
 interface CalendarViewProps {
   userId: string;
   isOwnProfile: boolean;
+  currentStreak?: number;
+  longestStreak?: number;
+  username?: string;
+  displayName?: string;
 }
 
-export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile }) => {
+export const CalendarView: React.FC<CalendarViewProps> = ({
+  userId,
+  isOwnProfile,
+  currentStreak = 0,
+  longestStreak = 0,
+  username,
+  displayName,
+}) => {
   const { locale, t } = useTranslation();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -21,6 +34,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
   const [selectedStub, setSelectedStub] = useState<MovieStub | null>(null);
   const [backfilling, setBackfilling] = useState(false);
   const [backfillDone, setBackfillDone] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
 
   const dayLabels = Array.from({ length: 7 }, (_, i) => {
     // Monday-start: Jan 5 2026 is a Monday
@@ -226,11 +240,25 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
 
       {/* Monthly summary */}
       {totalStubs > 0 && !loading && (
-        <p className="text-[11px] text-muted-foreground text-center font-sans">
-          {monthName}: {totalStubs} {totalStubs !== 1 ? t('stubs.moments') : t('stubs.moment')}
-          {topMood ? ` · ${t('stubs.mostFelt')} ${topMood[0]} (${topMood[1]})` : ''}
-          {sTierCount > 0 ? ` · ${t('stubs.sTier')} ${sTierCount}` : ''}
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] text-muted-foreground font-sans">
+            {totalStubs} {totalStubs !== 1 ? t('stubs.moments') : t('stubs.moment')}
+            {topMood ? ` · ${t('stubs.mostFelt')} ${topMood[0]} (${topMood[1]})` : ''}
+            {sTierCount > 0 ? ` · ${t('stubs.sTier')} ${sTierCount}` : ''}
+          </p>
+          <div className="flex items-center gap-3">
+            <StreakBadge currentStreak={currentStreak} longestStreak={longestStreak} size="sm" />
+            {username && (
+              <button
+                onClick={() => setRecapOpen(true)}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Share2 size={11} />
+                {t('recap.shareMonth')}
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Empty state */}
@@ -247,6 +275,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ userId, isOwnProfile
           isOwnProfile={isOwnProfile}
           onClose={() => setSelectedStub(null)}
           onDateChanged={handleDateChanged}
+        />
+      )}
+
+      {/* Monthly recap share modal */}
+      {username && (
+        <MonthlyRecapModal
+          open={recapOpen}
+          onClose={() => setRecapOpen(false)}
+          stubs={stubs}
+          monthLabel={monthName}
+          totalStubs={totalStubs}
+          sTierCount={sTierCount}
+          topMood={topMood}
+          username={username}
+          displayName={displayName}
+          currentStreak={currentStreak}
         />
       )}
     </div>

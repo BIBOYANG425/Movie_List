@@ -150,11 +150,17 @@ export async function updateStubWatchedDate(
   stubId: string,
   watchedDate: string,
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('movie_stubs')
     .update({ watched_date: watchedDate, updated_at: new Date().toISOString() })
-    .eq('id', stubId);
-  return !error;
+    .eq('id', stubId)
+    .select('id')
+    .single();
+  if (error || !data) {
+    console.error('updateStubWatchedDate failed:', error?.message ?? 'no row updated (RLS denied?)');
+    return false;
+  }
+  return true;
 }
 
 export async function deleteStubByRanking(

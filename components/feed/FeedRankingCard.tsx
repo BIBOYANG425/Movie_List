@@ -5,6 +5,8 @@ import { FeedCard, ReactionType } from '../../types';
 import { TIER_COLORS, TIER_LABELS } from '../../constants';
 import { ReactionPicker } from './ReactionPicker';
 import { FeedCardMenu } from './FeedCardMenu';
+import { useTranslation } from '../../contexts/LanguageContext';
+import { relativeDate } from '../../utils/relativeDate';
 
 /** Tier → left-border accent color class */
 const TIER_BORDER_ACCENT: Record<string, string> = {
@@ -23,17 +25,6 @@ const TIER_SCORE_BG: Record<string, string> = {
   C: 'bg-tier-c/20 text-tier-c',
   D: 'bg-tier-d/20 text-tier-d',
 };
-
-function relativeDate(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
 
 interface FeedRankingCardProps {
   card: FeedCard;
@@ -54,6 +45,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
   onMovieClick,
   commentCount,
 }) => {
+  const { t } = useTranslation();
   const tierAccent = card.mediaTier ? TIER_BORDER_ACCENT[card.mediaTier] : '';
 
   const handleCardClick = (e: React.MouseEvent) => {
@@ -98,7 +90,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
           {card.displayName || card.username}
         </Link>
         <span className="ml-auto text-xs text-muted-foreground">
-          {relativeDate(card.createdAt)}
+          {relativeDate(card.createdAt, t)}
         </span>
         <FeedCardMenu
           onMuteUser={() => onMuteUser(card.userId)}
@@ -155,7 +147,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
       {card.watchedWithUsernames && card.watchedWithUsernames.length > 0 && (
         <div className="flex items-center gap-1.5 mb-3 text-xs text-muted-foreground">
           <Users className="w-3.5 h-3.5 text-accent" />
-          <span>Watched with {card.watchedWithUsernames.map(u => `@${u}`).join(', ')}</span>
+          <span>{t('feed.watchedWith')} {card.watchedWithUsernames.map(u => `@${u}`).join(', ')}</span>
         </div>
       )}
 

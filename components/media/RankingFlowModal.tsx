@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import FocusTrap from 'focus-trap-react';
 import { X, ArrowLeft } from 'lucide-react';
 import { RankedItem, Tier, Bracket, ComparisonLogEntry, ComparisonRequest } from '../../types';
 import { TIER_SCORE_RANGES } from '../../constants';
@@ -260,6 +261,7 @@ export const RankingFlowModal: React.FC<RankingFlowModalProps> = ({
   };
 
   return (
+    <FocusTrap focusTrapOptions={{ allowOutsideClick: true }}>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-5 border-b border-border bg-card/30 flex-shrink-0">
@@ -309,5 +311,6 @@ export const RankingFlowModal: React.FC<RankingFlowModalProps> = ({
         </div>
       </div>
     </div>
+    </FocusTrap>
   );
 };

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import FocusTrap from 'focus-trap-react';
 import { X, Upload, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
 import { TIER_COLORS } from '../../constants';
 import { Tier } from '../../types';
@@ -185,6 +186,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
   const progressPct = progressTotal > 0 ? Math.round((progress / progressTotal) * 100) : 0;
 
   return (
+    <FocusTrap focusTrapOptions={{ allowOutsideClick: true }}>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
       <div className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
@@ -398,6 +400,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
         </div>
       </div>
     </div>
+    </FocusTrap>
   );
 };
 

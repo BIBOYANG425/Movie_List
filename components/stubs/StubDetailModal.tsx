@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import FocusTrap from 'focus-trap-react';
 import { X, BookOpen, MapPin, Monitor, Star, Quote, RotateCcw } from 'lucide-react';
 import { MovieStub, JournalEntry } from '../../types';
 import { updateStubWatchedDate } from '../../services/stubService';
@@ -69,6 +70,7 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
   };
 
   return createPortal(
+    <FocusTrap focusTrapOptions={{ allowOutsideClick: true }}>
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={onClose}
@@ -221,7 +223,8 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
           </div>
         )}
       </div>
-    </div>,
+    </div>
+    </FocusTrap>,
     document.body,
   );
 };

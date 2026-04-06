@@ -4,17 +4,8 @@ import { MessageCircle, List } from 'lucide-react';
 import { FeedCard, ReactionType } from '../../types';
 import { ReactionPicker } from './ReactionPicker';
 import { FeedCardMenu } from './FeedCardMenu';
-
-function relativeDate(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
+import { useTranslation } from '../../contexts/LanguageContext';
+import { relativeDate } from '../../utils/relativeDate';
 
 interface FeedListCardProps {
   card: FeedCard;
@@ -31,6 +22,7 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
   onOpenComments,
   commentCount,
 }) => {
+  const { t } = useTranslation();
   const posters = card.listPosterUrls ?? [];
 
   return (
@@ -60,7 +52,7 @@ export const FeedListCard: React.FC<FeedListCardProps> = ({
           <span className="text-muted-foreground"> created a list</span>
         </div>
         <span className="ml-auto text-xs text-muted-foreground">
-          {relativeDate(card.createdAt)}
+          {relativeDate(card.createdAt, t)}
         </span>
         <FeedCardMenu
           onMuteUser={() => onMuteUser(card.userId)}

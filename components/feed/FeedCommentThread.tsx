@@ -2,17 +2,8 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageCircle, Reply, Trash2, ChevronDown, ChevronUp, Send } from 'lucide-react';
 import { FeedComment } from '../../types';
-
-function relativeDate(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
+import { useTranslation } from '../../contexts/LanguageContext';
+import { relativeDate } from '../../utils/relativeDate';
 
 function renderBody(body: string): React.ReactNode {
   const parts = body.split(/(@\w+)/g);
@@ -42,6 +33,7 @@ export const FeedCommentThread: React.FC<FeedCommentThreadProps> = ({
   isOpen,
   loading,
 }) => {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState('');
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [replyToUsername, setReplyToUsername] = useState<string | null>(null);
@@ -92,7 +84,7 @@ export const FeedCommentThread: React.FC<FeedCommentThreadProps> = ({
             {comment.displayName || comment.username}
           </Link>
           <span className="text-[11px] text-muted-foreground/60">
-            {relativeDate(comment.createdAt)}
+            {relativeDate(comment.createdAt, t)}
           </span>
         </div>
 
