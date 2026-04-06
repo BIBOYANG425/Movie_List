@@ -8,9 +8,10 @@ import { StubDetailModal } from './StubDetailModal';
 
 interface StubCollectionViewProps {
   userId: string;
+  isOwnProfile?: boolean;
 }
 
-export const StubCollectionView: React.FC<StubCollectionViewProps> = ({ userId }) => {
+export const StubCollectionView: React.FC<StubCollectionViewProps> = ({ userId, isOwnProfile = true }) => {
   const { t } = useTranslation();
   const [stubs, setStubs] = useState<MovieStub[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +76,7 @@ export const StubCollectionView: React.FC<StubCollectionViewProps> = ({ userId }
           <Ticket size={18} className="text-gold" />
           <h2 className="font-serif text-xl text-foreground">{t('stubs.title')}</h2>
         </div>
-        {!backfillDone && (
+        {isOwnProfile && !backfillDone && (
           <button
             onClick={handleBackfill}
             disabled={backfilling}
@@ -127,7 +128,7 @@ export const StubCollectionView: React.FC<StubCollectionViewProps> = ({ userId }
       {selectedStub && (
         <StubDetailModal
           stub={selectedStub}
-          isOwnProfile={true}
+          isOwnProfile={isOwnProfile}
           onClose={() => setSelectedStub(null)}
           onDateChanged={handleDateChanged}
         />

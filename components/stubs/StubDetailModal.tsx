@@ -35,18 +35,27 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
     return () => document.removeEventListener('keydown', handleEsc);
   }, [onClose]);
 
-  // Fetch journal entry for this stub's media
+  // Fetch journal entry for this stub's media (only for own profile to respect privacy)
   useEffect(() => {
+    if (!isOwnProfile) {
+      setLoadingJournal(false);
+      return;
+    }
     let cancelled = false;
     setLoadingJournal(true);
-    getJournalEntry(stub.userId, stub.tmdbId).then((entry) => {
-      if (!cancelled) {
-        setJournal(entry);
-        setLoadingJournal(false);
-      }
-    });
+    getJournalEntry(stub.userId, stub.tmdbId)
+      .then((entry) => {
+        if (!cancelled) {
+          setJournal(entry);
+          setLoadingJournal(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load journal entry:', err);
+        if (!cancelled) setLoadingJournal(false);
+      });
     return () => { cancelled = true; };
-  }, [stub.userId, stub.tmdbId]);
+  }, [stub.userId, stub.tmdbId, isOwnProfile]);
 
   const handleDateChange = async (newDate: string) => {
     if (newDate === watchedDate || !newDate) return;
