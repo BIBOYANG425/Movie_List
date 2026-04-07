@@ -50,10 +50,11 @@ export const FeedFilterBar: React.FC<FeedFilterBarProps> = ({ filters, onFilterC
   return (
     <div className="space-y-2">
       {/* Card Type */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" role="group" aria-label="Card type filter">
         {cardTypeOptions.map((opt) => (
           <button
             key={opt.value}
+            aria-pressed={currentCardType === opt.value}
             className={`${chipBase} ${currentCardType === opt.value ? chipActive : chipInactive}`}
             onClick={() =>
               onFilterChange({
@@ -68,10 +69,11 @@ export const FeedFilterBar: React.FC<FeedFilterBarProps> = ({ filters, onFilterC
       </div>
 
       {/* Tier */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" role="group" aria-label="Tier filter">
         {TIER_OPTIONS.map((opt) => (
           <button
             key={opt.value}
+            aria-pressed={currentTier === opt.value}
             className={`${chipBase} ${currentTier === opt.value ? chipActive : chipInactive}`}
             onClick={() =>
               onFilterChange({
@@ -86,10 +88,11 @@ export const FeedFilterBar: React.FC<FeedFilterBarProps> = ({ filters, onFilterC
       </div>
 
       {/* Time Range */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" role="group" aria-label="Time range filter">
         {timeRangeOptions.map((opt) => (
           <button
             key={opt.value}
+            aria-pressed={currentTimeRange === opt.value}
             className={`${chipBase} ${currentTimeRange === opt.value ? chipActive : chipInactive}`}
             onClick={() =>
               onFilterChange({

@@ -647,7 +647,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">{selectedDirector.biography}</p>
             )}
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {selectedDirector.movies.filter(m => !isAlreadyOwned(m)).map(movie => (
                 <div key={movie.id} className="relative group flex flex-col items-center text-center rounded-xl hover:bg-secondary/60 p-1.5 transition-colors">
                   <button
@@ -750,7 +750,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               </div>
             )}
             {suggestionsLoading && (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <SkeletonList count={6} variant="suggestion" />
               </div>
             )}
@@ -875,16 +875,16 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   return (
     <FocusTrap focusTrapOptions={{ allowOutsideClick: true }}>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div role="dialog" aria-modal="true" aria-label="Add media" className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-border bg-card/30 flex-shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between p-3 sm:p-5 border-b border-border bg-card/30 flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3">
             {step !== 'search' && (
               <button onClick={handleBack} className="text-muted-foreground hover:text-foreground transition-colors">
                 <ArrowLeft size={20} />
               </button>
             )}
-            <h2 className="text-xl font-bold text-foreground">{getStepTitle()}</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-foreground">{getStepTitle()}</h2>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X size={24} />
@@ -892,7 +892,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         </div>
 
         {/* Content */}
-        <div className="p-5 overflow-y-auto flex-1">
+        <div className="p-3 sm:p-5 overflow-y-auto flex-1">
           {step === 'search' && renderSearchStep()}
           {step === 'tier' && renderTierStep()}
           {step === 'notes' && renderNotesStep()}

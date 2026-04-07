@@ -179,7 +179,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
         </form>
 
         {results.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-2" role="list" aria-label="Search results">
             {results.map((row) => {
               const isFollowing = row.isFollowing || followingSet.has(row.id);
               const isWorking = actionUserId === row.id;
@@ -243,7 +243,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
           {following.length === 0 ? (
             <p className="text-sm text-muted-foreground">You are not following anyone yet.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2" role="list" aria-label="Following">
               {following.map((row) => (
                 <div
                   key={row.id}
@@ -275,7 +275,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
           {followers.length === 0 ? (
             <p className="text-sm text-muted-foreground">No followers yet.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2" role="list" aria-label="Followers">
               {followers.map((row) => (
                 <div
                   key={row.id}
