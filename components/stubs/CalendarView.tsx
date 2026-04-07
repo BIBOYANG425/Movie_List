@@ -128,7 +128,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Ticket size={16} className="text-gold" />
-          <h3 className="font-serif text-lg text-foreground">{t('stubs.title')}</h3>
+          <h3 className="font-serif text-base sm:text-lg text-foreground">{t('stubs.title')}</h3>
         </div>
         {isOwnProfile && !backfillDone && (
           <button
@@ -150,7 +150,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         >
           <ChevronLeft size={18} aria-hidden="true" />
         </button>
-        <span className="font-serif text-base text-foreground">
+        <span className="font-serif text-sm sm:text-base text-foreground">
           {monthName}
         </span>
         <button
@@ -165,7 +165,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       {/* Day labels */}
       <div className="grid grid-cols-7 gap-px">
         {dayLabels.map((d) => (
-          <div key={d} className="text-center text-[10px] text-muted-foreground font-sans py-1">
+          <div key={d} className="text-center text-[8px] sm:text-[10px] text-muted-foreground font-sans py-0.5 sm:py-1">
             {d}
           </div>
         ))}
@@ -193,7 +193,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               >
                 {/* Day number */}
                 <span
-                  className={`text-[10px] leading-none font-sans ${
+                  className={`text-[8px] sm:text-[10px] leading-none font-sans ${
                     isToday(day)
                       ? 'text-gold font-semibold'
                       : dayStubs.length > 0
@@ -240,18 +240,18 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
       {/* Monthly summary */}
       {totalStubs > 0 && !loading && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground font-sans">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 sm:gap-0">
+          <p className="text-[10px] sm:text-xs text-muted-foreground font-sans">
             {totalStubs} {totalStubs !== 1 ? t('stubs.moments') : t('stubs.moment')}
             {topMood ? ` · ${t('stubs.mostFelt')} ${topMood[0]} (${topMood[1]})` : ''}
             {sTierCount > 0 ? ` · ${t('stubs.sTier')} ${sTierCount}` : ''}
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <StreakBadge currentStreak={currentStreak} longestStreak={longestStreak} size="sm" />
             {username && (
               <button
                 onClick={() => setRecapOpen(true)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Share2 size={11} />
                 {t('recap.shareMonth')}

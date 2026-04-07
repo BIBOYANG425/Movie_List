@@ -81,24 +81,24 @@ export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick
       }}
     >
       {/* Content area (left 70%) */}
-      <div className="flex-1 flex flex-col justify-between p-3 min-w-0" style={{ flex: '0 0 68%' }}>
+      <div className="flex-1 flex flex-col justify-between p-2 sm:p-3 min-w-0" style={{ flex: '0 0 68%' }}>
         {/* Title + Date */}
         <div className="space-y-0.5">
-          <h3 className="text-sm font-serif font-semibold text-white truncate leading-tight drop-shadow-sm">
+          <h3 className="text-xs sm:text-sm font-serif font-semibold text-white truncate leading-tight drop-shadow-sm">
             {stub.title}
           </h3>
-          <p className="text-[10px] text-white/60 font-sans">
+          <p className="text-[9px] sm:text-[10px] text-white/60 font-sans">
             {formatWatchedDate(stub.watchedDate, locale)}
           </p>
         </div>
 
         {/* Mood tags */}
         {stub.moodTags.length > 0 && (
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex gap-0.5 sm:gap-1 flex-wrap">
             {stub.moodTags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
-                className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/15 text-white/80 font-sans"
+                className="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded-full bg-white/15 text-white/80 font-sans"
               >
                 {tag}
               </span>
@@ -108,21 +108,21 @@ export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick
 
         {/* Stub line (AI-enriched) */}
         {stub.stubLine && (
-          <p className="text-xs italic text-white/75 font-serif leading-snug line-clamp-2 drop-shadow-sm">
+          <p className="text-[10px] sm:text-xs italic text-white/75 font-serif leading-snug line-clamp-2 drop-shadow-sm">
             {stub.isAiEnriched && <span className="not-italic mr-0.5">&#10024;</span>}
             &ldquo;{stub.stubLine}&rdquo;
           </p>
         )}
 
         {/* Tier badge */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 sm:gap-1.5">
           <span
-            className="text-[10px] font-bold px-1.5 py-0.5 rounded-sm"
+            className="text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded-sm"
             style={{ backgroundColor: tierColor, color: '#fff' }}
           >
             {stub.tier}
           </span>
-          <span className="text-[10px] text-white/50 font-sans">
+          <span className="text-[9px] sm:text-[10px] text-white/50 font-sans">
             {TIER_LABELS[stub.tier as keyof typeof TIER_LABELS]}
           </span>
         </div>
