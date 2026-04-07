@@ -4,22 +4,23 @@ import { useAuth } from "../contexts/AuthContext";
 import { useTranslation } from "../contexts/LanguageContext";
 import SpoolLogo from "../components/layout/SpoolLogo";
 
-/* ─── palette ─── */
+/* ─── palette (references theme.css variables so theme changes propagate) ─── */
 const C = {
-  bg: "#0F1419",
-  surface: "#1C2128",
-  card: "#1C2128",
-  elevated: "#252C35",
+  bg: "var(--background)",
+  surface: "var(--card)",
+  card: "var(--card)",
+  elevated: "var(--secondary)",
+  /* tier colors kept as hex — used in alpha composition (e.g. `${tierS}20`) */
   tierS: "#A855F7",
   tierA: "#3B82F6",
   tierB: "#10B981",
   tierC: "#F59E0B",
   tierD: "#EF4444",
-  cream: "#F5F3EF",
-  text: "#9BA3AB",
-  dim: "#9BA3AB",
-  muted: "#252C35",
-  border: "rgba(245,243,239,0.06)",
+  cream: "var(--foreground)",
+  text: "var(--muted-foreground)",
+  dim: "var(--muted-foreground)",
+  muted: "var(--secondary)",
+  border: "var(--border)",
   glow: "rgba(212,197,176,0.08)",
 };
 
@@ -487,8 +488,8 @@ export default function LandingPage() {
   return (
     <div style={{
       background: C.bg, minHeight: "100vh", overflowX: "hidden",
-      "--serif": "'Cormorant Garamond', serif",
-      "--sans": "'Source Sans 3', sans-serif",
+      "--serif": "var(--font-serif)",
+      "--sans": "var(--font-sans)",
     } as React.CSSProperties}>
       <Nav onAuth={handleAuth} t={t} locale={locale} toggleLocale={toggleLocale} />
       <main>
