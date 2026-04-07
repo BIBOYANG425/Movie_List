@@ -389,41 +389,39 @@ function TrendingSection({ t }: { t: (key: any) => string }) {
 /* ─── how it works ─── */
 function HowSection({ onAuth, t }: { onAuth: (mode: string) => void; t: (key: any) => string }) {
   const steps = [
-    { num: "1", labelKey: 'landing.step1Title', descKey: 'landing.step1Desc', color: C.tierS, icon: "◆" },
-    { num: "2", labelKey: 'landing.step2Title', descKey: 'landing.step2Desc', color: C.tierA, icon: "⟷" },
-    { num: "3", labelKey: 'landing.step3Title', descKey: 'landing.step3Desc', color: C.tierB, icon: "✎" },
-    { num: "4", labelKey: 'landing.step4Title', descKey: 'landing.step4Desc', color: C.tierC, icon: "◎" },
+    { num: "1", labelKey: 'landing.step1Title', descKey: 'landing.step1Desc', color: C.tierS },
+    { num: "2", labelKey: 'landing.step2Title', descKey: 'landing.step2Desc', color: C.tierA },
+    { num: "3", labelKey: 'landing.step3Title', descKey: 'landing.step3Desc', color: C.tierB },
+    { num: "4", labelKey: 'landing.step4Title', descKey: 'landing.step4Desc', color: C.tierC },
   ];
   return (
-    <section style={{ padding: "60px 32px 80px", maxWidth: 1120, margin: "0 auto" }}>
+    <section style={{ padding: "60px 32px 80px", maxWidth: 720, margin: "0 auto" }}>
       <Reveal>
-        <h2 style={{ fontFamily: "var(--serif)", fontSize: 32, color: C.cream, margin: "0 0 40px", letterSpacing: "-0.02em", fontWeight: 400 }}>{t('landing.howItWorks')}</h2>
+        <h2 style={{ fontFamily: "var(--serif)", fontSize: 32, color: C.cream, margin: "0 0 48px", letterSpacing: "-0.02em", fontWeight: 400 }}>{t('landing.howItWorks')}</h2>
       </Reveal>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
         {steps.map((s, i) => (
           <Reveal key={i} delay={i * 0.08}>
             <div style={{
-              background: C.card, border: `1px solid ${C.border}`, borderRadius: 14,
-              padding: "28px 22px", position: "relative", overflow: "hidden", height: "100%",
+              display: "flex", gap: 24, alignItems: "flex-start",
+              padding: "24px 0",
+              borderTop: i === 0 ? `1px solid ${C.border}` : "none",
+              borderBottom: `1px solid ${C.border}`,
             }}>
-              <div style={{
-                position: "absolute", top: -20, right: -20, width: 80, height: 80, borderRadius: "50%",
-                background: `radial-gradient(circle, ${s.color}0C 0%, transparent 70%)`, pointerEvents: "none",
-              }} />
-              <div style={{
-                fontFamily: "var(--sans)", fontSize: 22, color: s.color, marginBottom: 16,
-                width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center",
-                background: `${s.color}10`, borderRadius: 10,
-              }}>{s.icon}</div>
-              <div style={{ fontFamily: "var(--sans)", fontSize: 11, fontWeight: 700, color: s.color, letterSpacing: "0.06em", marginBottom: 6 }}>{t('landing.step')} {s.num}</div>
-              <div style={{ fontFamily: "var(--serif)", fontSize: 20, color: C.cream, margin: "0 0 6px", fontWeight: 500 }}>{t(s.labelKey as any)}</div>
-              <p style={{ fontFamily: "var(--sans)", fontSize: 13, color: C.text, lineHeight: 1.55, margin: 0 }}>{t(s.descKey as any)}</p>
+              <span style={{
+                fontFamily: "var(--serif)", fontSize: 36, fontWeight: 400,
+                color: s.color, lineHeight: 1, minWidth: 32, opacity: 0.7,
+              }}>{s.num}</span>
+              <div>
+                <div style={{ fontFamily: "var(--serif)", fontSize: 20, color: C.cream, fontWeight: 500, marginBottom: 4 }}>{t(s.labelKey as any)}</div>
+                <p style={{ fontFamily: "var(--sans)", fontSize: 14, color: C.text, lineHeight: 1.6, margin: 0 }}>{t(s.descKey as any)}</p>
+              </div>
             </div>
           </Reveal>
         ))}
       </div>
       <Reveal delay={0.35}>
-        <div style={{ textAlign: "center", marginTop: 40 }}>
+        <div style={{ marginTop: 40 }}>
           <button onClick={() => onAuth("signup")} style={{
             background: C.cream, color: C.bg, border: "none", borderRadius: 10,
             padding: "13px 36px", fontFamily: "var(--sans)", fontSize: 15, fontWeight: 600,
