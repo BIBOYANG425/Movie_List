@@ -58,12 +58,27 @@ function useInView(threshold = 0.12): [React.RefObject<HTMLDivElement>, boolean]
   return [ref, vis];
 }
 
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return reduced;
+}
+
 function Reveal({ children, delay = 0, y = 30, style = {} }: { children: React.ReactNode, delay?: number, y?: number, style?: React.CSSProperties }) {
   const [ref, vis] = useInView(0.08);
+  const reduced = useReducedMotion();
   return (
     <div ref={ref} style={{
-      opacity: vis ? 1 : 0, transform: vis ? "none" : `translateY(${y}px)`,
-      transition: `opacity 0.65s cubic-bezier(0.16,1,0.3,1) ${delay}s, transform 0.65s cubic-bezier(0.16,1,0.3,1) ${delay}s`,
+      opacity: reduced || vis ? 1 : 0,
+      transform: reduced || vis ? "none" : `translateY(${y}px)`,
+      transition: reduced ? "none" : `opacity 0.65s cubic-bezier(0.16,1,0.3,1) ${delay}s, transform 0.65s cubic-bezier(0.16,1,0.3,1) ${delay}s`,
       ...style,
     }}>{children}</div>
   );
@@ -238,7 +253,7 @@ function LiveFeedPreview({ t }: { t: (key: any) => string }) {
       }}>
         <span style={{ fontFamily: "var(--sans)", fontSize: 13, fontWeight: 600, color: C.cream }}>{t('landing.liveActivity')}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.tierB, boxShadow: `0 0 6px ${C.tierB}`, animation: "pulse 2s infinite" }} />
+          <div className="pulse-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: C.tierB, boxShadow: `0 0 6px ${C.tierB}`, animation: "pulse 2s infinite" }} />
           <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.dim }}>{t('landing.realTime')}</span>
         </div>
       </div>
@@ -256,7 +271,7 @@ function LiveFeedPreview({ t }: { t: (key: any) => string }) {
       }}>
         <span style={{ fontFamily: "var(--sans)", fontSize: 11, color: C.dim, letterSpacing: "0.04em" }}>{t('landing.signUpCTA')}</span>
       </div>
-      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
+      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } } @media (prefers-reduced-motion: reduce) { .pulse-dot { animation: none !important; } }`}</style>
     </div>
   );
 }
