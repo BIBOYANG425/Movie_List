@@ -38,7 +38,7 @@ export default function AppLayout({ activeView, onViewChange, children, topBar, 
   const mobileTabs = NAV_ITEMS.filter(n => n.mobileTab);
 
   return (
-    <div className="h-screen flex bg-background">
+    <div className="h-dvh flex bg-background">
       {/* Desktop Sidebar (>=1024px) */}
       <aside className={`hidden lg:flex flex-col border-r border-border/30 transition-all duration-200 ${
         collapsed ? 'w-16' : 'w-60'
