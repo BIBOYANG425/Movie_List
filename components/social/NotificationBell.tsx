@@ -95,6 +95,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ userId, onUn
                 onClick={handleOpen}
                 className="p-2 rounded-lg text-muted-foreground hover:text-muted-foreground hover:bg-card transition-colors relative"
                 title="Notifications"
+                aria-label="Notifications"
             >
                 <Bell size={20} />
                 {unreadCount > 0 && (

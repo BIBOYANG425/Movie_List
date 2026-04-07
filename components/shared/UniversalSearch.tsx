@@ -210,6 +210,7 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
           value={query}
           onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
           onFocus={() => setIsOpen(true)}
+          aria-label="Search"
           className="flex-1 bg-transparent text-foreground placeholder-muted-foreground text-sm focus:outline-none"
         />
         {loading && <Loader2 size={16} className="text-muted-foreground animate-spin flex-shrink-0" />}
