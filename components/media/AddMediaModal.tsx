@@ -594,7 +594,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                     </span>
                   </div>
                   {person.knownFor.length > 0 && (
-                    <p className="text-[11px] text-muted-foreground truncate">Known for: {person.knownFor.join(', ')}</p>
+                    <p className="text-xs text-muted-foreground truncate">Known for: {person.knownFor.join(', ')}</p>
                   )}
                 </div>
                 <ChevronRight size={14} className="text-muted-foreground/60 flex-shrink-0" />
@@ -636,7 +636,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                     {selectedDirector.role}
                   </span>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {selectedDirector.placeOfBirth && <span>{selectedDirector.placeOfBirth}</span>}
                   {selectedDirector.birthday && <span> · Born {selectedDirector.birthday}</span>}
                 </p>
@@ -644,7 +644,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             </div>
 
             {selectedDirector.biography && (
-              <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">{selectedDirector.biography}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{selectedDirector.biography}</p>
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -663,7 +663,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                       className="w-full aspect-[2/3] object-cover rounded-lg bg-secondary shadow-md group-hover:shadow-lg transition-all mb-1.5"
                     />
                   </button>
-                  <button onClick={() => handleSelectMovie(movie)} className="text-[11px] font-medium text-muted-foreground leading-tight line-clamp-2 hover:text-accent transition-colors w-full text-left">
+                  <button onClick={() => handleSelectMovie(movie)} className="text-xs font-medium text-muted-foreground leading-tight line-clamp-2 hover:text-accent transition-colors w-full text-left">
                     {movie.title}
                   </button>
                   <p className="text-[10px] text-muted-foreground/60 w-full text-left">{movie.year}</p>
@@ -769,7 +769,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                     Refresh
                   </button>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {filteredSuggestions.map((movie) => (
                     <div key={movie.id} className="relative group">
                       <div className="flex flex-col items-center text-center rounded-xl hover:bg-secondary/60 p-2 transition-colors w-full">
@@ -874,8 +874,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   return (
     <FocusTrap focusTrapOptions={{ allowOutsideClick: true }}>
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-label="Add media" className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-label="Add media" className="bg-background border border-border w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-3 sm:p-5 border-b border-border bg-card/30 flex-shrink-0">
           <div className="flex items-center gap-2 sm:gap-3">

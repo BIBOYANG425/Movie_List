@@ -245,7 +245,7 @@ const PublicProfilePage: React.FC = () => {
                       alt={item.title}
                       className="w-full aspect-[2/3] rounded-lg object-cover border border-border/30"
                     />
-                    <div className={`absolute top-1 left-1 px-1 py-0.5 rounded text-[9px] font-bold border ${TIER_COLORS[item.tier]}`}>
+                    <div className={`absolute top-1 left-1 px-1 py-0.5 rounded text-[10px] font-bold border ${TIER_COLORS[item.tier]}`}>
                       {item.tier}
                     </div>
                     <p className="mt-1 text-[10px] text-muted-foreground truncate">{item.title}</p>
@@ -279,7 +279,7 @@ const PublicProfilePage: React.FC = () => {
                             alt={item.title}
                             className="w-12 h-[72px] rounded object-cover border border-border/20"
                           />
-                          <p className="text-[8px] text-muted-foreground truncate mt-0.5">{item.title}</p>
+                          <p className="text-[10px] text-muted-foreground truncate mt-0.5">{item.title}</p>
                         </div>
                       ))}
                     </div>

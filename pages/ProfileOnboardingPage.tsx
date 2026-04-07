@@ -166,7 +166,7 @@ const ProfileOnboardingPage = () => {
               placeholder="Tell people what kind of movies you love"
               className="w-full h-24 resize-none bg-input-background border border-border text-foreground rounded-xl px-3 py-2 text-sm placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
             />
-            <p className="text-[11px] text-muted-foreground/60 text-right">{bio.length}/{MAX_BIO_LENGTH}</p>
+            <p className="text-xs text-muted-foreground/60 text-right">{bio.length}/{MAX_BIO_LENGTH}</p>
           </div>
 
           {error && (

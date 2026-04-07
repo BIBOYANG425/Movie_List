@@ -254,7 +254,7 @@ export const MovieListView: React.FC<MovieListViewProps> = ({ userId }) => {
                                 )}
                             </div>
                             {list.description && (
-                                <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{list.description}</p>
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{list.description}</p>
                             )}
                             <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
                                 <span>{list.itemCount ?? 0} movies</span>

@@ -193,7 +193,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               >
                 {/* Day number */}
                 <span
-                  className={`text-[9px] leading-none font-sans ${
+                  className={`text-[10px] leading-none font-sans ${
                     isToday(day)
                       ? 'text-gold font-semibold'
                       : dayStubs.length > 0
@@ -241,7 +241,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       {/* Monthly summary */}
       {totalStubs > 0 && !loading && (
         <div className="flex items-center justify-between">
-          <p className="text-[11px] text-muted-foreground font-sans">
+          <p className="text-xs text-muted-foreground font-sans">
             {totalStubs} {totalStubs !== 1 ? t('stubs.moments') : t('stubs.moment')}
             {topMood ? ` · ${t('stubs.mostFelt')} ${topMood[0]} (${topMood[1]})` : ''}
             {sTierCount > 0 ? ` · ${t('stubs.sTier')} ${sTierCount}` : ''}
@@ -251,7 +251,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             {username && (
               <button
                 onClick={() => setRecapOpen(true)}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Share2 size={11} />
                 {t('recap.shareMonth')}

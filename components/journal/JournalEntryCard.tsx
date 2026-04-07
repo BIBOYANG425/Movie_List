@@ -71,14 +71,14 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
     .filter(Boolean);
 
   return (
-    <div className="bg-card/30 border border-border rounded-xl p-3.5">
-      <div className="flex gap-3">
+    <div className="bg-card/30 border border-border rounded-xl p-2.5 sm:p-3.5">
+      <div className="flex gap-2 sm:gap-3">
         {/* Poster */}
         {entry.posterUrl && (
           <img
             src={entry.posterUrl}
             alt={entry.title}
-            className="w-12 h-[72px] rounded-lg object-cover shrink-0"
+            className="w-10 h-[60px] sm:w-12 sm:h-[72px] rounded-lg object-cover shrink-0"
           />
         )}
 
@@ -86,7 +86,7 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
           {/* Title + tier + date */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold text-foreground truncate">{entry.title}</h4>
+              <h4 className="text-xs sm:text-sm font-semibold text-foreground truncate">{entry.title}</h4>
               <div className="flex items-center gap-2 mt-0.5">
                 {entry.ratingTier && (
                   <span className={`text-xs font-bold ${tierColorClass}`}>{entry.ratingTier}</span>
@@ -109,7 +109,7 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
 
           {/* Review text */}
           {entry.reviewText && (
-            <div className="mt-2">
+            <div className="mt-1.5 sm:mt-2">
               <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
                 {displayText}
                 {reviewTruncated && !expanded && '...'}

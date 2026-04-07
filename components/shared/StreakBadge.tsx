@@ -18,7 +18,7 @@ export const StreakBadge: React.FC<StreakBadgeProps> = ({
   if (currentStreak <= 0 && longestStreak <= 0) return null;
 
   const iconSize = size === 'sm' ? 12 : 14;
-  const textClass = size === 'sm' ? 'text-[11px]' : 'text-xs';
+  const textClass = 'text-xs';
 
   if (currentStreak > 0) {
     return (

@@ -46,7 +46,7 @@ export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick
         )}
         {/* Tier badge */}
         <span
-          className="absolute bottom-0.5 right-0.5 text-[8px] font-bold rounded-sm px-1 leading-tight"
+          className="absolute bottom-0.5 right-0.5 text-[10px] font-bold rounded-sm px-1 leading-tight"
           style={{ backgroundColor: tierColor, color: '#fff' }}
         >
           {stub.tier}
@@ -98,7 +98,7 @@ export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick
             {stub.moodTags.slice(0, 3).map((tag) => (
               <span
                 key={tag}
-                className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/15 text-white/80 font-sans"
+                className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/15 text-white/80 font-sans"
               >
                 {tag}
               </span>
@@ -108,7 +108,7 @@ export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick
 
         {/* Stub line (AI-enriched) */}
         {stub.stubLine && (
-          <p className="text-[11px] italic text-white/75 font-serif leading-snug line-clamp-2 drop-shadow-sm">
+          <p className="text-xs italic text-white/75 font-serif leading-snug line-clamp-2 drop-shadow-sm">
             {stub.isAiEnriched && <span className="not-italic mr-0.5">&#10024;</span>}
             &ldquo;{stub.stubLine}&rdquo;
           </p>
@@ -122,7 +122,7 @@ export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick
           >
             {stub.tier}
           </span>
-          <span className="text-[9px] text-white/50 font-sans">
+          <span className="text-[10px] text-white/50 font-sans">
             {TIER_LABELS[stub.tier as keyof typeof TIER_LABELS]}
           </span>
         </div>

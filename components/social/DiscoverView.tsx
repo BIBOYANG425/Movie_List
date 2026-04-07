@@ -102,7 +102,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                     <button
                         key={key}
                         onClick={() => setActiveSection(key)}
-                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeSection === key
+                        className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${activeSection === key
                             ? 'bg-secondary text-foreground shadow-lg'
                             : 'text-muted-foreground hover:text-muted-foreground'
                             }`}
@@ -121,9 +121,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
             {/* For You — Friend Recommendations */}
             {activeSection === 'recs' && (
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-1">
-                        <Sparkles size={18} className="text-gold" />
-                        <h2 className="text-lg font-bold">{t('discover.fromCircle')}</h2>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <Sparkles size={18} className="text-gold shrink-0" />
+                        <h2 className="text-base sm:text-lg font-bold">{t('discover.fromCircle')}</h2>
                         <span className="text-xs text-muted-foreground">
                             {t('discover.circleHint')}
                         </span>
@@ -199,7 +199,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                     {/* Info */}
                                     <div className="p-3">
                                         <h3 className="text-sm font-semibold text-foreground truncate">{rec.title}</h3>
-                                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        <p className="text-xs text-muted-foreground mt-0.5">
                                             {rec.year} · {rec.genres.slice(0, 2).join(', ')}
                                         </p>
 
@@ -215,7 +215,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                                             {avatar ? (
                                                                 <img src={avatar} alt="" className="w-full h-full object-cover" />
                                                             ) : (
-                                                                <div className="w-full h-full bg-gold flex items-center justify-center text-[8px] text-foreground font-bold">
+                                                                <div className="w-full h-full bg-gold flex items-center justify-center text-[10px] text-foreground font-bold">
                                                                     {rec.friendUsernames[i]?.[0]?.toUpperCase() || '?'}
                                                                 </div>
                                                             )}
@@ -284,7 +284,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                     {/* Info */}
                                     <div className="flex-1 min-w-0">
                                         <h3 className="text-sm font-semibold text-foreground truncate">{movie.title}</h3>
-                                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        <p className="text-xs text-muted-foreground mt-0.5">
                                             {movie.year} · {movie.genres.slice(0, 2).join(', ')}
                                         </p>
                                         <div className="flex items-center gap-3 mt-1.5">
@@ -303,7 +303,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                                 <Flame size={12} className="text-orange-500" />
                                                 <span className="text-sm font-bold text-foreground">{movie.rankerCount}</span>
                                             </div>
-                                            <span className="text-[9px] text-muted-foreground block">{t('discover.rankers')}</span>
+                                            <span className="text-[10px] text-muted-foreground block">{t('discover.rankers')}</span>
                                         </div>
                                         <span
                                             className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-black"

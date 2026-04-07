@@ -50,7 +50,7 @@ export const FeedMilestoneCard: React.FC<FeedMilestoneCardProps> = ({
           {card.milestoneDescription && (
             <p className="text-sm text-muted-foreground">{card.milestoneDescription}</p>
           )}
-          <span className="text-[11px] text-muted-foreground/60">
+          <span className="text-xs text-muted-foreground/60">
             {relativeDate(card.createdAt, t, locale)}
           </span>
         </div>

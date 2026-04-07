@@ -766,7 +766,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
               </div>
 
               {selectedShow.overview && (
-                <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">{selectedShow.overview}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{selectedShow.overview}</p>
               )}
 
               {/* Season grid */}
@@ -824,7 +824,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                           </div>
                         )}
 
-                        <p className="text-[11px] font-medium text-muted-foreground leading-tight line-clamp-1">{season.name}</p>
+                        <p className="text-xs font-medium text-muted-foreground leading-tight line-clamp-1">{season.name}</p>
                         <p className="text-[10px] text-muted-foreground/60 mt-0.5">
                           {season.episodeCount} ep{season.episodeCount !== 1 ? 's' : ''}
                           {season.airDate ? ` · ${season.airDate.slice(0, 4)}` : ''}

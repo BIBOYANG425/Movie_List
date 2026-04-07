@@ -876,7 +876,7 @@ const MovieOnboardingPage: React.FC = () => {
                                             alt={movie.title}
                                             className="w-full aspect-[2/3] object-cover rounded-lg bg-secondary shadow-md group-hover:shadow-lg group-hover:scale-[1.03] transition-all"
                                         />
-                                        <p className="text-[11px] font-medium text-muted-foreground mt-1.5 leading-tight line-clamp-2 group-hover:text-foreground transition-colors">
+                                        <p className="text-xs font-medium text-muted-foreground mt-1.5 leading-tight line-clamp-2 group-hover:text-foreground transition-colors">
                                             {movie.title}
                                         </p>
                                         <p className="text-[10px] text-muted-foreground/60">{movie.year}</p>

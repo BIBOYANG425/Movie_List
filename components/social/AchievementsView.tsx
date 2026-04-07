@@ -123,12 +123,12 @@ export const AchievementsView: React.FC<AchievementsViewProps> = ({ userId, isOw
                                             {badge.description}
                                         </p>
                                         {unlocked && achievement && (
-                                            <p className="text-[9px] text-muted-foreground/60 mt-1">
+                                            <p className="text-[10px] text-muted-foreground/60 mt-1">
                                                 {new Date(achievement.unlockedAt).toLocaleDateString()}
                                             </p>
                                         )}
                                         {!unlocked && (
-                                            <p className="text-[9px] text-muted-foreground/40 mt-1">{badge.requirement}</p>
+                                            <p className="text-[10px] text-muted-foreground/40 mt-1">{badge.requirement}</p>
                                         )}
                                     </div>
                                 );

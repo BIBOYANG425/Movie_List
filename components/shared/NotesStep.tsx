@@ -48,7 +48,7 @@ export const NotesStep: React.FC<NotesStepProps> = ({
         <p className="font-serif text-foreground leading-tight">{selectedItem?.title}</p>
         <p className="text-muted-foreground text-xs mt-0.5">{selectedItem?.year}</p>
         {selectedItem?.seasonTitle && (
-          <p className="text-muted text-[11px] mt-0.5">{selectedItem.seasonTitle}</p>
+          <p className="text-muted text-xs mt-0.5">{selectedItem.seasonTitle}</p>
         )}
         {selectedTier && (
           <span className={`inline-block mt-2 text-xs font-bold px-2 py-0.5 rounded-full border ${TIER_COLORS[selectedTier]}`}>

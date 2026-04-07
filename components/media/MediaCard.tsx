@@ -99,7 +99,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
           {item.type === 'book' && item.author && (
             <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">{item.author}</p>
           )}
-          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
             {item.type === 'book' ? <BookOpen size={11} /> : item.type === 'tv_season' ? <Tv size={11} /> : <Film size={11} />}
             <span>{item.year}</span>
             {item.notes && (

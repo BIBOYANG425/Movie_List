@@ -451,7 +451,7 @@ const ProfilePage = () => {
                   className="w-full h-20 resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
                   placeholder={t('profile.bioHint')}
                 />
-                <p className="text-[11px] text-muted-foreground text-right">{bioInput.length}/{MAX_BIO_LENGTH}</p>
+                <p className="text-xs text-muted-foreground text-right">{bioInput.length}/{MAX_BIO_LENGTH}</p>
               </div>
 
               <div className="space-y-1">
