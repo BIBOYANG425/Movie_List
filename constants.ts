@@ -12,20 +12,20 @@ export const TIER_COLORS = {
 
 /** Hex colors for tier badges in share/export cards (html2canvas-safe) */
 export const TIER_HEX: Record<string, string> = {
-  S: '#A855F7',
-  A: '#3B82F6',
-  B: '#10B981',
-  C: '#F59E0B',
-  D: '#EF4444',
+  S: '#B87FFF',
+  A: '#5BC0EB',
+  B: '#43D9AD',
+  C: '#FFB547',
+  D: '#FF6B6B',
 };
 
 /** Hex colors for radar charts and tier distribution bars */
 export const TIER_RADAR_HEX: Record<string, string> = {
-  S: '#A855F7',
-  A: '#3B82F6',
-  B: '#10B981',
-  C: '#F59E0B',
-  D: '#EF4444',
+  S: '#B87FFF',
+  A: '#5BC0EB',
+  B: '#43D9AD',
+  C: '#FFB547',
+  D: '#FF6B6B',
 };
 
 /** Tier → left-border accent color class for feed cards */

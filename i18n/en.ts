@@ -16,8 +16,8 @@ const en = {
   'tab.groups': 'Groups',
   'tab.resetRankings': 'Reset rankings',
 
-  // ── Ticket Stubs ────────────────────────────────────────────────────────
-  'stubs.title': 'Ticket Stubs',
+  // ── Ticket Stubs / Memories ──────────────────────────────────────────────
+  'stubs.title': 'Memories',
   'stubs.noStubsMonth': 'No stubs this month',
   'stubs.noStubsYet': 'No stubs yet',
   'stubs.noStubsHint': 'Rank a movie or TV show to collect your first ticket stub.',
@@ -35,9 +35,16 @@ const en = {
   'stubs.noReview': 'No review yet for this title.',
   'stubs.asCharacter': 'as',
 
+  // ── First Run ────────────────────────────────────────────────────────────
+  'firstRun.title': 'Start your collection',
+  'firstRun.subtitle': 'What was the last movie you loved? Search for it and give it a tier.',
+  'firstRun.searchCta': 'Find a movie',
+  'firstRun.previewLabel': 'Here is what your board could look like',
+  'firstRun.reassurance': 'You can always change your mind. Rankings are living things.',
+
   // ── Ranking Page ─────────────────────────────────────────────────────────
   'ranking.myCanon': 'My Canon',
-  'ranking.subtitle': 'Add a movie and rank it head-to-head against your list. Order implies superiority.',
+  'ranking.subtitle': 'Your definitive rankings, from masterpiece to meh.',
   'ranking.allGenres': 'All Genres',
 
   // ── Ranking Page Toasts ───────────────────────────────────────────────────

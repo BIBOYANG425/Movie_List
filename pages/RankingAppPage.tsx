@@ -21,6 +21,7 @@ import { JournalConversation } from '../components/journal/JournalConversation';
 import { CalendarView } from '../components/stubs/CalendarView';
 import { StubCollectionView } from '../components/stubs/StubCollectionView';
 import { ErrorBoundary } from '../components/shared/ErrorBoundary';
+import { FirstRunGuide } from '../components/shared/FirstRunGuide';
 import { Toast } from '../components/shared/Toast';
 import { LanguageToggle } from '../components/shared/LanguageToggle';
 import AppLayout from '../components/layout/AppLayout';
@@ -1377,7 +1378,10 @@ const RankingAppPage = () => {
   const topBar = (
     <div className="sticky top-0 z-40 h-14 px-4 lg:px-8 flex items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/20">
       <div className="flex items-center gap-4">
-        <h1 className="font-serif text-xl text-foreground tracking-tight">{t('ranking.myCanon')}</h1>
+        <div>
+          <h1 className="font-serif text-2xl text-foreground tracking-tight">{t('ranking.myCanon')}</h1>
+          <p className="text-xs text-muted-foreground/60 hidden sm:block">{t('ranking.subtitle')}</p>
+        </div>
         <div className="flex bg-card/50 rounded-lg p-1 border border-border/30">
           <button
             onClick={() => setMediaMode('movies')}
@@ -1489,13 +1493,20 @@ const RankingAppPage = () => {
         )}
 
         {/* --- Tab Content --- */}
-        {activeTab === 'ranking' && (
+        {activeTab === 'ranking' && localizedItems.length === 0 && (
+          <FirstRunGuide onStartSearch={() => {
+            const searchInput = document.querySelector<HTMLInputElement>('[data-universal-search] input');
+            searchInput?.focus();
+          }} />
+        )}
+        {activeTab === 'ranking' && localizedItems.length > 0 && (
           <ErrorBoundary>
           <div className="space-y-4">
-            {TIERS.map((tier) => (
+            {TIERS.map((tier, tierIndex) => (
               <TierRow
                 key={tier}
                 tier={tier}
+                index={tierIndex}
                 items={localizedItems.filter((i) => i.tier === tier).sort((a, b) => a.rank - b.rank)}
                 scoreMap={scoreMap}
                 showScores={showScores}

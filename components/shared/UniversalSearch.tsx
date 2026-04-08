@@ -199,7 +199,7 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
   ];
 
   return (
-    <div ref={containerRef} className="relative z-50">
+    <div ref={containerRef} className="relative z-50" data-universal-search>
       {/* Search input — always expanded */}
       <div className="flex items-center gap-2 bg-card border border-border/30 rounded-xl px-4 py-2.5 w-full">
         <Search size={16} className="text-muted-foreground flex-shrink-0" />

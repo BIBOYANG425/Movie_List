@@ -46,7 +46,7 @@ export const FeedRankingCard: React.FC<FeedRankingCardProps> = ({
 
   return (
     <div
-      className={`bg-card border border-border rounded-xl p-3 sm:p-4 hover:border-muted-foreground/30 transition-colors cursor-pointer ${tierAccent ? `border-l-[3px] ${tierAccent}` : ''}`}
+      className={`bg-card border border-border rounded-xl p-3 sm:p-4 hover:border-muted-foreground/30 hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5 transition-all duration-[var(--duration-normal)] cursor-pointer ${tierAccent ? `border-l-[3px] ${tierAccent}` : ''}`}
       onClick={handleCardClick}
     >
       {/* Header */}

@@ -48,7 +48,7 @@ export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank })
         {items.map((item) => (
           <div
             key={item.id}
-            className="group relative rounded-xl overflow-hidden bg-card border border-border hover:border-border transition-all shadow-lg"
+            className="group relative rounded-xl overflow-hidden bg-card border border-border hover:border-muted-foreground/30 hover:scale-[1.02] transition-all duration-[var(--duration-normal)] shadow-lg"
           >
             {/* Poster */}
             <div className="relative aspect-[2/3] w-full bg-secondary">

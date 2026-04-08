@@ -1,4 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { RefreshCw, Home } from 'lucide-react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -37,14 +39,28 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     return (
-      <div className="rounded-xl bg-card border border-border p-6 text-center">
-        <p className="text-muted-foreground text-sm mb-3">Something went wrong</p>
-        <button
-          onClick={this.handleReset}
-          className="px-4 py-1.5 text-sm rounded-lg bg-secondary text-muted-foreground hover:bg-secondary transition-colors"
-        >
-          Try again
-        </button>
+      <div className="rounded-xl bg-card border border-border p-8 text-center max-w-sm mx-auto my-8">
+        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-4">
+          <span className="font-serif text-lg text-gold">oo</span>
+        </div>
+        <p className="text-foreground font-medium text-sm mb-1">Something hit a snag</p>
+        <p className="text-muted-foreground text-xs mb-4">Your rankings are safe. Try refreshing, or come back in a minute.</p>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={this.handleReset}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-gold text-background font-medium hover:opacity-90 transition-opacity"
+          >
+            <RefreshCw size={14} />
+            Try again
+          </button>
+          <Link
+            to="/"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Home size={14} />
+            Go home
+          </Link>
+        </div>
       </div>
     );
   }
