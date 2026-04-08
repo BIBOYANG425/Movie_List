@@ -88,7 +88,7 @@ const ProfilePage = () => {
 
   const canSeeFullProfile = useMemo(() => {
     if (!profile) return false;
-    return profile.isSelf || profile.isMutual;
+    return profile.isSelf || profile.isMutual || profile.profileVisibility === 'public';
   }, [profile]);
 
   const avatarPreview = useMemo(() => {

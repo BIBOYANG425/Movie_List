@@ -19,6 +19,7 @@ function rowToRankedItem(row: Record<string, unknown>, type: MediaType): RankedI
 }
 
 const RANKING_COLUMNS = 'tmdb_id, title, year, poster_url, tier, rank_position, genres, bracket, director, notes';
+const BOOK_RANKING_COLUMNS = 'tmdb_id, title, year, poster_url, tier, rank_position, genres, bracket, notes';
 
 function extractItems(
   result: PromiseSettledResult<{ data: Record<string, unknown>[] | null; error: unknown }>,
@@ -56,7 +57,7 @@ export async function getPublicRankings(userId: string): Promise<{
       .order('rank_position'),
     supabase
       .from('book_rankings')
-      .select(RANKING_COLUMNS)
+      .select(BOOK_RANKING_COLUMNS)
       .eq('user_id', userId)
       .order('tier')
       .order('rank_position'),

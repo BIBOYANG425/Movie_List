@@ -90,6 +90,26 @@ const PublicProfilePage: React.FC = () => {
     };
   }, [profile]);
 
+  const isPrivate = profile?.profileVisibility === 'private';
+  const isFriendsOnly = profile?.profileVisibility === 'friends';
+  const isPublic = profile?.profileVisibility === 'public';
+
+  const activeItems = mediaTab === 'movies' ? movies : mediaTab === 'tv' ? tv : books;
+  const totalRankings = movies.length + tv.length + books.length;
+
+  const topPicks = useMemo(
+    () => activeItems.filter((i) => i.tier === 'S' || i.tier === 'A').slice(0, 6),
+    [activeItems],
+  );
+  const itemsByTier = useMemo(
+    () => TIERS.reduce((acc, tier) => {
+      const tierItems = activeItems.filter((i) => i.tier === tier);
+      if (tierItems.length > 0) acc.push({ tier, items: tierItems });
+      return acc;
+    }, [] as { tier: Tier; items: RankedItem[] }[]),
+    [activeItems],
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -108,26 +128,6 @@ const PublicProfilePage: React.FC = () => {
       </div>
     );
   }
-
-  const isPrivate = profile.profileVisibility === 'private';
-  const isFriendsOnly = profile.profileVisibility === 'friends';
-  const isPublic = profile.profileVisibility === 'public';
-
-  const activeItems = mediaTab === 'movies' ? movies : mediaTab === 'tv' ? tv : books;
-  const totalRankings = movies.length + tv.length + books.length;
-
-  const topPicks = useMemo(
-    () => activeItems.filter((i) => i.tier === 'S' || i.tier === 'A').slice(0, 6),
-    [activeItems],
-  );
-  const itemsByTier = useMemo(
-    () => TIERS.reduce((acc, tier) => {
-      const tierItems = activeItems.filter((i) => i.tier === tier);
-      if (tierItems.length > 0) acc.push({ tier, items: tierItems });
-      return acc;
-    }, [] as { tier: Tier; items: RankedItem[] }[]),
-    [activeItems],
-  );
 
   return (
     <div className="min-h-screen bg-background">
