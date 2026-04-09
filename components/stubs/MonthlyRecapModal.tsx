@@ -6,6 +6,7 @@ import { exportCardImage } from '../../utils/exportCardImage';
 import { MovieStub } from '../../types';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { MonthlyRecapCard } from './MonthlyRecapCard';
+import { Toast } from '../shared/Toast';
 
 interface MonthlyRecapModalProps {
   open: boolean;
@@ -35,6 +36,7 @@ export const MonthlyRecapModal: React.FC<MonthlyRecapModalProps> = ({
   const { t } = useTranslation();
   const cardRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   if (!open) return null;
 
@@ -47,8 +49,9 @@ export const MonthlyRecapModal: React.FC<MonthlyRecapModalProps> = ({
         `spool-recap-${monthLabel.replace(/\s/g, '-')}.png`,
         `${monthLabel} on Spool`,
       );
-    } catch {
-      // export failed silently
+    } catch (err) {
+      console.error('Monthly recap export failed:', err);
+      setToastMessage(t('share.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -104,6 +107,9 @@ export const MonthlyRecapModal: React.FC<MonthlyRecapModalProps> = ({
             </button>
           </div>
         </div>
+        {toastMessage && (
+          <Toast message={toastMessage} onDone={() => setToastMessage(null)} />
+        )}
       </div>
     </FocusTrap>,
     document.body,

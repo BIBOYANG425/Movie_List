@@ -28,7 +28,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({ onEnterApp }) => {
                   <img
                     src={movie.posterUrl}
                     alt={movie.title}
-                    className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                    className="h-full w-full object-cover transition duration-[var(--duration-slow)] group-hover:scale-105"
                   />
                 </div>
                 <p className="px-3 py-2 text-xs text-[color:var(--text-muted)] landing-body">{movie.title}</p>

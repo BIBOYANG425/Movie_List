@@ -1,6 +1,6 @@
 import React from 'react';
 import { MovieStub } from '../../types';
-import { TIER_LABELS } from '../../constants';
+import { TIER_LABELS, TIER_HEX } from '../../constants';
 import { useTranslation } from '../../contexts/LanguageContext';
 
 interface StubCardProps {
@@ -8,14 +8,6 @@ interface StubCardProps {
   size?: 'mini' | 'full';
   onClick?: () => void;
 }
-
-const TIER_HEX: Record<string, string> = {
-  S: '#A855F7',
-  A: '#3B82F6',
-  B: '#10B981',
-  C: '#F59E0B',
-  D: '#EF4444',
-};
 
 export const StubCard: React.FC<StubCardProps> = ({ stub, size = 'full', onClick }) => {
   const { locale } = useTranslation();

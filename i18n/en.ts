@@ -203,6 +203,15 @@ const en = {
 
   // ── Toast ────────────────────────────────────────────────────────────────
   'toast.movieSaved': 'Movie saved to watchlist',
+  'toast.ranked': 'Added to {tier} tier',
+  'toast.moved': 'Moved to {tier} tier',
+
+  // ── Profile Sub-tabs ────────────────────────────────────────────────────
+  'profile.tabJournal': 'Journal',
+  'profile.tabMemories': 'Memories',
+  'profile.tabStats': 'Stats',
+  'profile.tabLists': 'Lists',
+  'profile.tabAchievements': 'Achievements',
 
   // ── Landing Page ─────────────────────────────────────────────────────────
   'landing.tagline': 'Your movies, ranked and remembered',
@@ -306,6 +315,7 @@ const en = {
   'share.exporting': 'Exporting...',
   'share.shareImage': 'Share image',
   'share.downloadImage': 'Download image',
+  'share.exportFailed': "Couldn't save image. Try a screenshot instead.",
 
   // ── Streaks ────────────────────────────────────────────────────────────────
   'streak.current': 'day streak',

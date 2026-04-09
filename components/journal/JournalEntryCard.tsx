@@ -71,111 +71,114 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
     .filter(Boolean);
 
   return (
-    <div className="bg-card/30 border border-border rounded-xl p-2.5 sm:p-3.5">
-      <div className="flex gap-2 sm:gap-3">
-        {/* Poster */}
-        {entry.posterUrl && (
+    <div className="group relative rounded-2xl overflow-hidden bg-card/30">
+      {/* Poster — hero of the card */}
+      <div className="relative aspect-[2/3]">
+        {entry.posterUrl ? (
           <img
             src={entry.posterUrl}
             alt={entry.title}
-            className="w-10 h-[60px] sm:w-12 sm:h-[72px] rounded-lg object-cover shrink-0"
+            className="absolute inset-0 w-full h-full object-cover"
           />
+        ) : (
+          <div className="absolute inset-0 bg-secondary" />
         )}
 
-        <div className="flex-1 min-w-0">
-          {/* Title + tier + date */}
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h4 className="text-xs sm:text-sm font-semibold text-foreground truncate">{entry.title}</h4>
-              <div className="flex items-center gap-2 mt-0.5">
-                {entry.ratingTier && (
-                  <span className={`text-xs font-bold ${tierColorClass}`}>{entry.ratingTier}</span>
-                )}
-                <span className="text-[10px] text-muted-foreground/60">{timeAgo(entry.createdAt)}</span>
-                {entry.containsSpoilers && (
-                  <span className="text-[10px] text-gold font-medium">Spoiler</span>
-                )}
-              </div>
-            </div>
-            {isOwnProfile && onEdit && (
-              <button
-                onClick={() => onEdit(entry)}
-                className="p-1.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-              >
-                <Edit3 size={14} />
-              </button>
-            )}
-          </div>
+        {/* Bottom gradient for text */}
+        <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
 
-          {/* Review text */}
-          {entry.reviewText && (
-            <div className="mt-1.5 sm:mt-2">
-              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
-                {displayText}
-                {reviewTruncated && !expanded && '...'}
-              </p>
-              {reviewTruncated && (
-                <button
-                  onClick={() => setExpanded(!expanded)}
-                  className="flex items-center gap-0.5 text-[10px] text-accent hover:text-accent mt-1"
-                >
-                  {expanded ? <><ChevronUp size={10} /> less</> : <><ChevronDown size={10} /> read more</>}
-                </button>
+        {/* Tier badge — top-left */}
+        {entry.ratingTier && (
+          <span
+            className={`absolute top-2 left-2 text-xs font-bold px-1.5 py-0.5 rounded ${tierColorClass} bg-black/50 backdrop-blur-sm`}
+          >
+            {entry.ratingTier}
+          </span>
+        )}
+
+        {/* Mood emoji — top-right */}
+        {moodChips.length > 0 && (
+          <div className="absolute top-2 right-2 flex gap-0.5">
+            {moodChips.slice(0, 2).map((tag) => (
+              <span key={tag!.id} className="text-sm drop-shadow-md" title={tag!.label}>
+                {tag!.emoji}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Edit button — top-right, on hover */}
+        {isOwnProfile && onEdit && (
+          <button
+            onClick={() => onEdit(entry)}
+            className="absolute top-2 right-2 p-1.5 rounded-full bg-black/40 backdrop-blur-sm text-white/70 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+            style={moodChips.length > 0 ? { top: '2.25rem' } : undefined}
+          >
+            <Edit3 size={12} />
+          </button>
+        )}
+
+        {/* Bottom content — title + actions */}
+        <div className="absolute inset-x-0 bottom-0 p-3 space-y-1.5">
+          <h4 className="text-sm font-semibold text-white leading-snug line-clamp-2 drop-shadow-sm">
+            {entry.title}
+          </h4>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleLike}
+                className={`flex items-center gap-1 text-xs transition-colors ${
+                  liked ? 'text-pink-400' : 'text-white/50 hover:text-white/80'
+                }`}
+              >
+                <Heart size={13} fill={liked ? 'currentColor' : 'none'} />
+                {likeCount > 0 && <span>{likeCount}</span>}
+              </button>
+              {entry.photoPaths.length > 0 && (
+                <span className="text-white/40"><Camera size={12} /></span>
+              )}
+              {entry.favoriteMoments.filter(Boolean).length > 0 && (
+                <span className="text-white/40"><Sparkles size={12} /></span>
               )}
             </div>
-          )}
-
-          {/* Mood chips */}
-          {moodChips.length > 0 && (
-            <div className="flex gap-1 flex-wrap mt-2">
-              {moodChips.map((tag) => (
-                <span
-                  key={tag!.id}
-                  className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] bg-secondary text-muted-foreground border border-border/50"
-                >
-                  {tag!.emoji} {tag!.label}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Watched with */}
-          {watchedWithNames.length > 0 && (
-            <div className="flex items-center gap-1.5 mt-2 text-[10px] text-muted-foreground">
-              <Users size={11} className="text-accent" />
-              <span>Watched with {watchedWithNames.map(u => `@${u}`).join(', ')}</span>
-            </div>
-          )}
-
-          {/* Meta indicators */}
-          <div className="flex items-center gap-3 mt-2.5">
-            {/* Like */}
-            <button
-              onClick={handleLike}
-              className={`flex items-center gap-1 text-xs transition-colors ${
-                liked ? 'text-pink-400' : 'text-muted-foreground/60 hover:text-muted-foreground'
-              }`}
-            >
-              <Heart size={13} fill={liked ? 'currentColor' : 'none'} />
-              {likeCount > 0 && <span>{likeCount}</span>}
-            </button>
-
-            {/* Photo count */}
-            {entry.photoPaths.length > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
-                <Camera size={11} /> {entry.photoPaths.length}
-              </span>
-            )}
-
-            {/* Moments count */}
-            {entry.favoriteMoments.filter(Boolean).length > 0 && (
-              <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
-                <Sparkles size={11} /> {entry.favoriteMoments.filter(Boolean).length}
-              </span>
-            )}
+            <span className="text-[11px] text-white/40">{timeAgo(entry.createdAt)}</span>
           </div>
         </div>
+
+        {/* Spoiler overlay */}
+        {entry.containsSpoilers && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[10px] font-semibold text-gold bg-black/50 backdrop-blur-sm rounded-full px-2 py-0.5">
+            Spoiler
+          </div>
+        )}
       </div>
+
+      {/* Review text — below poster if present */}
+      {entry.reviewText && (
+        <div className="px-3 py-2.5">
+          <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line line-clamp-3">
+            {displayText}
+            {reviewTruncated && !expanded && '...'}
+          </p>
+          {reviewTruncated && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-0.5 text-[11px] text-accent hover:text-accent mt-1"
+            >
+              {expanded ? <><ChevronUp size={10} /> less</> : <><ChevronDown size={10} /> more</>}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Watched with — below poster if present */}
+      {watchedWithNames.length > 0 && (
+        <div className={`flex items-center gap-1.5 px-3 pb-2.5 text-[11px] text-muted-foreground ${!entry.reviewText ? 'pt-2' : ''}`}>
+          <Users size={10} className="text-accent" />
+          <span>with {watchedWithNames.map(u => `@${u}`).join(', ')}</span>
+        </div>
+      )}
     </div>
   );
 };

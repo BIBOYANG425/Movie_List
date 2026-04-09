@@ -7,6 +7,7 @@ import { RankedItem, GenreProfileItem } from '../../types';
 import { TIERS, TIER_HEX, TIER_RADAR_HEX } from '../../constants';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { ShareCardFooter } from '../shared/ShareCardFooter';
+import { Toast } from '../shared/Toast';
 
 type CardType = 'top5' | 'tasteDna';
 
@@ -30,6 +31,7 @@ export const ShareCardModal: React.FC<ShareCardModalProps> = ({
   const { t } = useTranslation();
   const [activeCard, setActiveCard] = useState<CardType>('top5');
   const [exporting, setExporting] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   if (!open) return null;
@@ -51,8 +53,9 @@ export const ShareCardModal: React.FC<ShareCardModalProps> = ({
     setExporting(true);
     try {
       await exportCardImage(cardRef.current, `spool-${activeCard}.png`, `${name} on Spool`);
-    } catch {
-      // export failed silently
+    } catch (err) {
+      console.error('Share card export failed:', err);
+      setToastMessage(t('share.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -141,6 +144,9 @@ export const ShareCardModal: React.FC<ShareCardModalProps> = ({
             </button>
           </div>
         </div>
+        {toastMessage && (
+          <Toast message={toastMessage} onDone={() => setToastMessage(null)} />
+        )}
       </div>
     </FocusTrap>,
     document.body,

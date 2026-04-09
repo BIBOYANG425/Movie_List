@@ -23,50 +23,49 @@ interface AppLayoutProps {
   activeView: string;
   onViewChange: (view: string) => void;
   children: React.ReactNode;
-  topBar?: React.ReactNode;
+  headerActions?: React.ReactNode;
   unreadNotificationCount?: number;
 }
 
-export default function AppLayout({ activeView, onViewChange, children, topBar, unreadNotificationCount = 0 }: AppLayoutProps) {
+export default function AppLayout({ activeView, onViewChange, children, headerActions, unreadNotificationCount = 0 }: AppLayoutProps) {
   return (
     <div className="h-dvh flex flex-col bg-background">
       {/* Top Bar — all screen sizes */}
-      <header className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-border/20">
-        <Link to="/">
-          <SpoolLogo size="sm" />
-        </Link>
+      <header className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-border/20">
+        <div className="flex items-center gap-1">
+          <Link to="/" className="mr-2">
+            <SpoolLogo size="sm" />
+          </Link>
 
-        {/* Desktop horizontal nav (>=768px) */}
-        <nav className="hidden md:flex items-center gap-1">
-          {NAV_ITEMS.map((item) => {
-            const active = activeView === item.path;
-            return (
-              <button
-                key={item.path}
-                onClick={() => onViewChange(item.path)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all duration-[var(--duration-normal)] ${
-                  active
-                    ? 'text-gold bg-gold/8'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/30'
-                }`}
-              >
-                <item.icon className="w-4 h-4" />
-                <span>{item.label}</span>
-                {item.path === 'profile' && unreadNotificationCount > 0 && (
-                  <span className="w-4 h-4 rounded-full bg-red-500 text-[9px] font-bold text-white flex items-center justify-center">
-                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
+          {/* Desktop horizontal nav (>=768px) */}
+          <nav className="hidden md:flex items-center gap-0.5">
+            {NAV_ITEMS.map((item) => {
+              const active = activeView === item.path;
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => onViewChange(item.path)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all duration-[var(--duration-normal)] ${
+                    active
+                      ? 'text-gold bg-gold/8'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/30'
+                  }`}
+                >
+                  <item.icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                  {item.path === 'profile' && unreadNotificationCount > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-red-500 text-[9px] font-bold text-white flex items-center justify-center">
+                      {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
 
-        {topBar && <div className="hidden md:flex">{topBar}</div>}
+        {headerActions && <div className="hidden md:flex items-center gap-2">{headerActions}</div>}
       </header>
-
-      {/* Mobile top bar extras */}
-      {topBar && <div className="md:hidden px-4 py-2 border-b border-border/10">{topBar}</div>}
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto">

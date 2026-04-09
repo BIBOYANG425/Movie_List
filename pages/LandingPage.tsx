@@ -79,7 +79,7 @@ function Reveal({ children, delay = 0, y = 30, style = {} }: { children: React.R
     <div ref={ref} style={{
       opacity: reduced || vis ? 1 : 0,
       transform: reduced || vis ? "none" : `translateY(${y}px)`,
-      transition: reduced ? "none" : `opacity 0.65s cubic-bezier(0.16,1,0.3,1) ${delay}s, transform 0.65s cubic-bezier(0.16,1,0.3,1) ${delay}s`,
+      transition: reduced ? "none" : `opacity 0.65s var(--ease-out) ${delay}s, transform 0.65s var(--ease-out) ${delay}s`,
       ...style,
     }}>{children}</div>
   );
@@ -93,7 +93,7 @@ function TierBar({ dist, height = 6 }: { dist: any, height?: number }) {
       {tiers.map(t => (
         <div key={t} style={{
           width: `${dist[t]}%`, background: TIER_COLORS[t], opacity: 0.8,
-          transition: "width 0.6s cubic-bezier(0.16,1,0.3,1)",
+          transition: "width 0.6s var(--ease-out)",
         }} />
       ))}
     </div>
@@ -114,7 +114,7 @@ function Nav({ onAuth, t, locale, toggleLocale }: { onAuth: (mode: string) => vo
       background: scrolled ? "rgba(8,8,11,0.88)" : "transparent",
       backdropFilter: scrolled ? "blur(24px) saturate(1.4)" : "none",
       borderBottom: scrolled ? `1px solid ${C.border}` : "1px solid transparent",
-      transition: "all 0.35s ease",
+      transition: "all var(--duration-slow) var(--ease-out)",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         <SpoolLogo size="sm" showWordmark={false} />
@@ -124,7 +124,7 @@ function Nav({ onAuth, t, locale, toggleLocale }: { onAuth: (mode: string) => vo
         <button onClick={toggleLocale} style={{
           background: "transparent", border: `1px solid ${C.border}`, color: C.text, padding: "10px 14px",
           fontFamily: "var(--sans)", fontSize: 12, fontWeight: 600, cursor: "pointer",
-          borderRadius: 8, transition: "color 0.2s, border-color 0.2s", display: "flex", alignItems: "center", gap: 4, minHeight: 44,
+          borderRadius: 8, transition: "color var(--duration-normal) var(--ease-out), border-color var(--duration-normal) var(--ease-out)", display: "flex", alignItems: "center", gap: 4, minHeight: 44,
         }}
           onMouseOver={e => { e.currentTarget.style.color = C.cream; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
           onMouseOut={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.border; }}
@@ -132,14 +132,14 @@ function Nav({ onAuth, t, locale, toggleLocale }: { onAuth: (mode: string) => vo
         <button onClick={() => onAuth("login")} style={{
           background: "transparent", border: "none", color: C.text, padding: "12px 18px",
           fontFamily: "var(--sans)", fontSize: 13, fontWeight: 500, cursor: "pointer",
-          borderRadius: 8, transition: "color 0.2s", minHeight: 44,
+          borderRadius: 8, transition: "color var(--duration-normal) var(--ease-out)", minHeight: 44,
         }}
           onMouseOver={e => e.currentTarget.style.color = C.cream} onMouseOut={e => e.currentTarget.style.color = C.text}
         >{t('landing.logIn')}</button>
         <button onClick={() => onAuth("signup")} style={{
           background: C.cream, color: C.bg, border: "none", borderRadius: 8,
           padding: "12px 18px", fontFamily: "var(--sans)", fontSize: 13, fontWeight: 600,
-          cursor: "pointer", transition: "transform 0.15s, opacity 0.15s", minHeight: 44,
+          cursor: "pointer", transition: "transform var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out)", minHeight: 44,
         }}
           onMouseOver={e => e.currentTarget.style.opacity = "0.88"} onMouseOut={e => e.currentTarget.style.opacity = "1"}
         >{t('landing.startRanking')}</button>
@@ -152,7 +152,7 @@ function Nav({ onAuth, t, locale, toggleLocale }: { onAuth: (mode: string) => vo
 function Hero({ onAuth, t }: { onAuth: (mode: string) => void; t: (key: any) => string }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setMounted(true)); }, []);
-  const tr = (d: number) => `opacity 0.7s cubic-bezier(0.16,1,0.3,1) ${d}s, transform 0.7s cubic-bezier(0.16,1,0.3,1) ${d}s`;
+  const tr = (d: number) => `opacity 0.7s var(--ease-out) ${d}s, transform 0.7s var(--ease-out) ${d}s`;
   return (
     <section style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
@@ -194,7 +194,7 @@ function Hero({ onAuth, t }: { onAuth: (mode: string) => void; t: (key: any) => 
             <button onClick={() => onAuth("signup")} style={{
               background: C.cream, color: C.bg, border: "none", borderRadius: 10,
               padding: "13px 32px", fontFamily: "var(--sans)", fontSize: 15, fontWeight: 600,
-              cursor: "pointer", transition: "transform 0.15s, box-shadow 0.25s",
+              cursor: "pointer", transition: "transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-normal) var(--ease-out)",
             }}
               onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(212,197,176,0.18)"; }}
               onMouseOut={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "none"; }}
@@ -202,7 +202,7 @@ function Hero({ onAuth, t }: { onAuth: (mode: string) => void; t: (key: any) => 
             <button onClick={() => onAuth("login")} style={{
               background: "transparent", color: C.cream, border: `1px solid ${C.border}`,
               borderRadius: 10, padding: "13px 28px", fontFamily: "var(--sans)", fontSize: 15,
-              fontWeight: 500, cursor: "pointer", transition: "all 0.15s",
+              fontWeight: 500, cursor: "pointer", transition: "all var(--duration-fast) var(--ease-out)",
             }}
               onMouseOver={e => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
               onMouseOut={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = C.border; }}
@@ -286,7 +286,7 @@ function FeedItem({ item, index }: { item: any; index: number }) {
       style={{
         padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
         background: hovered ? "rgba(255,255,255,0.015)" : "transparent",
-        transition: "background 0.2s", cursor: "default",
+        transition: "background var(--duration-normal) var(--ease-out)", cursor: "default",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: item.review ? 8 : 0 }}>
@@ -351,7 +351,7 @@ function TrendingSection({ t }: { t: (key: any) => string }) {
                 background: hoveredIdx === i ? C.elevated : C.card,
                 border: `1px solid ${hoveredIdx === i ? "rgba(240,235,227,0.08)" : C.border}`,
                 borderRadius: 14, padding: "20px 22px",
-                transition: "all 0.25s ease", cursor: "pointer",
+                transition: "all var(--duration-normal) var(--ease-out)", cursor: "pointer",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
@@ -457,8 +457,8 @@ function Footer({ t }: { t: (key: any) => string }) {
       </div>
       <div style={{ display: "flex", gap: 24 }}>
         {links.map(link => (
-          <a key={link.key} href={link.href} style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.dim, textDecoration: "none", transition: "color 0.15s", padding: "12px 4px", display: "inline-block" }}
-            onMouseOver={e => e.currentTarget.style.color = C.text} onMouseOut={e => e.currentTarget.style.color = C.muted}
+          <a key={link.key} href={link.href} style={{ fontFamily: "var(--sans)", fontSize: 12, color: C.dim, textDecoration: "none", transition: "color var(--duration-fast) var(--ease-out)", padding: "12px 4px", display: "inline-block" }}
+            onMouseOver={e => e.currentTarget.style.color = C.text} onMouseOut={e => e.currentTarget.style.color = C.dim}
           >{t(link.key as any)}</a>
         ))}
       </div>

@@ -8,18 +8,13 @@ import { TierRow } from '../components/ranking/TierRow';
 import { AddMediaModal } from '../components/media/AddMediaModal';
 import { AddTVSeasonModal } from '../components/media/AddTVSeasonModal';
 import { RankingFlowModal } from '../components/media/RankingFlowModal';
-import { StatsView } from '../components/ranking/StatsView';
 import { Watchlist } from '../components/media/Watchlist';
 import { UniversalSearch } from '../components/shared/UniversalSearch';
 import { SocialFeedView } from '../components/feed/SocialFeedView';
 import { DiscoverView } from '../components/social/DiscoverView';
 import { NotificationBell } from '../components/social/NotificationBell';
-import { MovieListView } from '../components/social/MovieListView';
-import { AchievementsView } from '../components/social/AchievementsView';
 import { MediaDetailModal } from '../components/media/MediaDetailModal';
 import { JournalConversation } from '../components/journal/JournalConversation';
-import { CalendarView } from '../components/stubs/CalendarView';
-import { StubCollectionView } from '../components/stubs/StubCollectionView';
 import { ErrorBoundary } from '../components/shared/ErrorBoundary';
 import { FirstRunGuide } from '../components/shared/FirstRunGuide';
 import { Toast } from '../components/shared/Toast';
@@ -29,7 +24,6 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
-import { getJournalStats } from '../services/journalService';
 import { createStub } from '../services/stubService';
 import { TMDBMovie, TMDBTVShow } from '../services/tmdbService';
 import { OpenLibraryBook } from '../services/openLibraryService';
@@ -234,7 +228,7 @@ const RankingAppPage = () => {
   const [isTVModalOpen, setIsTVModalOpen] = useState(false);
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const [bookItemToRank, setBookItemToRank] = useState<RankedItem | null>(null);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'stats' | 'watchlist' | 'feed' | 'discover' | 'lists' | 'journal' | 'stubs' | 'achievements'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'watchlist' | 'feed' | 'discover'>('ranking');
   const [mediaMode, setMediaMode] = useState<'movies' | 'tv' | 'books'>('movies');
   const [filterType, setFilterType] = useState<'all' | 'movie'>('all');
   const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
@@ -246,17 +240,8 @@ const RankingAppPage = () => {
   const [journalSheetItem, setJournalSheetItem] = useState<RankedItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
-  const [streakStats, setStreakStats] = useState<{ currentStreak: number; longestStreak: number } | undefined>();
   const [searchParams, setSearchParams] = useSearchParams();
   const linkedMovieId = searchParams.get('movieId');
-
-  // Load streak stats when stats tab becomes active
-  useEffect(() => {
-    if (activeTab !== 'stats' || !user) return;
-    getJournalStats(user.id)
-      .then((s) => setStreakStats({ currentStreak: s.currentStreak, longestStreak: s.longestStreak }))
-      .catch(() => {});
-  }, [activeTab, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -1197,6 +1182,7 @@ const RankingAppPage = () => {
 
   const handleAddBookItem = async (newItem: RankedItem) => {
     await addBookItem(newItem);
+    setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
     if (bookItemToRank) {
       await removeBookFromWatchlist(bookItemToRank.id);
       setBookItemToRank(null);
@@ -1209,9 +1195,11 @@ const RankingAppPage = () => {
       await removeTVFromWatchlist(preselectedTVItem.id);
       setPreselectedTVItem(null);
     }
+    setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
   };
 
   const handleAddItem = async (newItem: RankedItem) => {
+    const wasMigration = !!migrationState;
     await addItem(newItem);
     if (preselectedForRank) {
       await removeFromWatchlist(preselectedForRank.id);
@@ -1220,6 +1208,11 @@ const RankingAppPage = () => {
     if (migrationState) {
       setMigrationState(null);
     }
+    setToastMessage(
+      wasMigration
+        ? t('toast.moved').replace('{tier}', newItem.tier)
+        : t('toast.ranked').replace('{tier}', newItem.tier)
+    );
     setJournalSheetItem(newItem);
   };
 
@@ -1375,65 +1368,66 @@ const RankingAppPage = () => {
     addToBookWatchlist(item);
   };
 
-  const topBar = (
-    <div className="sticky top-0 z-40 h-14 px-4 lg:px-8 flex items-center justify-between bg-background/80 backdrop-blur-xl border-b border-border/20">
-      <div className="flex items-center gap-4">
-        <div>
-          <h1 className="font-serif text-2xl text-foreground tracking-tight">{t('ranking.myCanon')}</h1>
-          <p className="text-xs text-muted-foreground/60 hidden sm:block">{t('ranking.subtitle')}</p>
-        </div>
-        <div className="flex bg-card/50 rounded-lg p-1 border border-border/30">
-          <button
-            onClick={() => setMediaMode('movies')}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'movies' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            <Film size={13} />
-            {t('nav.movies')}
-          </button>
-          <button
-            onClick={() => setMediaMode('tv')}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'tv' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            <Tv size={13} />
-            {t('nav.tv')}
-          </button>
-          <button
-            onClick={() => { setMediaMode('books'); setActiveBracket('all'); setActiveGenre(null); }}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'books' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            <BookOpen size={13} />
-            {t('nav.books')}
-          </button>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        {user && <NotificationBell userId={user.id} onUnreadCountChange={setUnreadNotifCount} />}
-        <LanguageToggle />
-        <button
-          onClick={handleReset}
-          title={t('tab.resetRankings')}
-          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors"
-        >
-          <RotateCcw size={18} />
-        </button>
-        <button
-          onClick={signOut}
-          title="Sign out"
-          className="text-muted-foreground hover:text-foreground text-[13px] font-medium transition-colors"
-        >
-          {t('nav.logOut')}
-        </button>
-      </div>
-    </div>
+  const headerActions = (
+    <>
+      {user && <NotificationBell userId={user.id} onUnreadCountChange={setUnreadNotifCount} />}
+      <LanguageToggle />
+      <button
+        onClick={signOut}
+        title="Sign out"
+        className="text-muted-foreground hover:text-foreground text-xs font-medium transition-colors px-2 py-1"
+      >
+        {t('nav.logOut')}
+      </button>
+    </>
   );
 
   return (
-    <AppLayout activeView={activeTab} onViewChange={handleViewChange} topBar={topBar} unreadNotificationCount={unreadNotifCount}>
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+    <AppLayout activeView={activeTab} onViewChange={handleViewChange} headerActions={headerActions} unreadNotificationCount={unreadNotifCount}>
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+
+        {/* Page header — inside content area, not the global nav */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="font-serif text-2xl text-foreground tracking-tight">{t('ranking.myCanon')}</h1>
+            <p className="text-xs text-muted-foreground/60 hidden sm:block">{t('ranking.subtitle')}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex bg-card/50 rounded-lg p-1 border border-border/30">
+              <button
+                onClick={() => setMediaMode('movies')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'movies' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <Film size={13} />
+                {t('nav.movies')}
+              </button>
+              <button
+                onClick={() => setMediaMode('tv')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'tv' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <Tv size={13} />
+                {t('nav.tv')}
+              </button>
+              <button
+                onClick={() => { setMediaMode('books'); setActiveBracket('all'); setActiveGenre(null); }}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${mediaMode === 'books' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <BookOpen size={13} />
+                {t('nav.books')}
+              </button>
+            </div>
+            <button
+              onClick={handleReset}
+              title={t('tab.resetRankings')}
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors"
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
+        </div>
 
         {activeTab === 'ranking' && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <UniversalSearch
               rankedIds={allRankedIds}
               watchlistIds={allWatchlistIds}
@@ -1445,49 +1439,57 @@ const RankingAppPage = () => {
               onSaveBook={handleSearchSaveBook}
             />
 
+            {/* Filters: bracket tabs + genre pills on one line */}
             {mediaMode !== 'books' && (
-            <div className="flex bg-card/50 rounded-lg p-1 overflow-x-auto border border-border/30 scrollbar-hide">
-              <button
-                onClick={() => { setActiveBracket('all'); setActiveGenre(null); }}
-                className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === 'all' ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                All
-                <span className="ml-1.5 text-[10px] opacity-50">{activeItems.length}</span>
-              </button>
-              {BRACKETS.map(bracket => {
-                const count = bracketCounts[bracket] ?? 0;
-                return (
-                  <button
-                    key={bracket}
-                    onClick={() => { setActiveBracket(bracket); setActiveGenre(null); }}
-                    className={`flex-shrink-0 px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeBracket === bracket ? 'bg-secondary text-foreground shadow' : 'text-muted-foreground hover:text-foreground'} ${count === 0 ? 'opacity-40' : ''}`}
-                  >
-                    {BRACKET_LABELS[bracket]}
-                    <span className="ml-1.5 text-[10px] opacity-50">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-            )}
-
-            {availableGenres.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pb-2">
+            <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-hide">
+              {/* Bracket tabs */}
+              <div className="flex items-center gap-0.5 flex-shrink-0">
                 <button
-                  onClick={() => setActiveGenre(null)}
-                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${!activeGenre ? 'bg-accent/20 text-accent border-accent/30' : 'bg-transparent text-muted-foreground border-border hover:border-border/60'}`}
+                  onClick={() => { setActiveBracket('all'); setActiveGenre(null); }}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${activeBracket === 'all' ? 'text-foreground bg-secondary/60' : 'text-muted-foreground hover:text-foreground'}`}
                 >
-                  {t('ranking.allGenres')}
+                  All <span className="opacity-40">{activeItems.length}</span>
                 </button>
-                {availableGenres.map(genre => (
-                  <button
-                    key={genre}
-                    onClick={() => setActiveGenre(genre === activeGenre ? null : genre)}
-                    className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all ${genre === activeGenre ? 'bg-accent/20 text-accent border-accent/30' : 'bg-transparent text-muted-foreground border-border hover:border-border/60'}`}
-                  >
-                    {genre}
-                  </button>
-                ))}
+                {BRACKETS.map(bracket => {
+                  const count = bracketCounts[bracket] ?? 0;
+                  return (
+                    <button
+                      key={bracket}
+                      onClick={() => { setActiveBracket(bracket); setActiveGenre(null); }}
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${activeBracket === bracket ? 'text-foreground bg-secondary/60' : 'text-muted-foreground hover:text-foreground'} ${count === 0 ? 'opacity-30' : ''}`}
+                    >
+                      {BRACKET_LABELS[bracket]} <span className="opacity-40">{count}</span>
+                    </button>
+                  );
+                })}
               </div>
+
+              {/* Genre pills — shown when filtering by bracket or when a genre is active */}
+              {(activeBracket !== 'all' || activeGenre) && availableGenres.length > 0 && (
+                <>
+                  <div className="w-px h-4 bg-border/40 flex-shrink-0" />
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {activeGenre && (
+                      <button
+                        onClick={() => setActiveGenre(null)}
+                        className="px-2 py-0.5 rounded-full text-[11px] font-medium text-accent bg-accent/15 border border-accent/20 transition-all"
+                      >
+                        {activeGenre} ×
+                      </button>
+                    )}
+                    {availableGenres.filter(g => g !== activeGenre).map(genre => (
+                      <button
+                        key={genre}
+                        onClick={() => setActiveGenre(genre)}
+                        className="px-2 py-0.5 rounded-full text-[11px] font-medium text-muted-foreground/70 hover:text-muted-foreground transition-all"
+                      >
+                        {genre}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             )}
           </div>
         )}
@@ -1547,8 +1549,6 @@ const RankingAppPage = () => {
           />
         )}
 
-        {activeTab === 'stats' && user && <StatsView items={localizedItems} userId={user.id} mediaMode={mediaMode} streakStats={streakStats} />}
-
         {activeTab === 'feed' && user && (
           <SocialFeedView
             userId={user.id}
@@ -1570,20 +1570,6 @@ const RankingAppPage = () => {
           />
         )}
 
-        {activeTab === 'lists' && user && (
-          <MovieListView userId={user.id} />
-        )}
-
-
-        {activeTab === 'stubs' && user && (
-          <section className="rounded-xl border border-border/30 bg-card/50 p-4">
-            <StubCollectionView userId={user.id} />
-          </section>
-        )}
-
-        {activeTab === 'achievements' && user && (
-          <AchievementsView userId={user.id} />
-        )}
       </div>
 
       <ErrorBoundary>

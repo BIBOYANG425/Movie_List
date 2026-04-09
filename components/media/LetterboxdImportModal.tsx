@@ -311,7 +311,7 @@ export const LetterboxdImportModal: React.FC<LetterboxdImportModalProps> = ({
               <div className="space-y-2">
                 <div className="h-3 rounded-full bg-secondary overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-gold transition-all duration-300 ease-out"
+                    className="h-full rounded-full bg-gold transition-all duration-[var(--duration-normal)] ease-out"
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>

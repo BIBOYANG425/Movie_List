@@ -210,7 +210,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
                     <button
                       onClick={() => handleFollow(row.id)}
                       disabled={isWorking}
-                      className="inline-flex items-center gap-1 rounded-md bg-emerald-500/90 px-2.5 py-1 text-xs font-semibold text-black hover:bg-emerald-400 transition-colors disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded-md bg-gold px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:bg-gold-muted transition-colors disabled:opacity-50"
                     >
                       <UserPlus size={12} />
                       Follow

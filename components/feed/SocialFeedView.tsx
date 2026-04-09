@@ -257,34 +257,39 @@ export const SocialFeedView: React.FC<SocialFeedViewProps> = ({ userId, onMovieC
 
   return (
     <div className="space-y-4">
-      {/* Sub-tabs: Friends Feed / Explore Feed */}
-      <div className="flex gap-2 bg-card rounded-xl p-1 border border-border">
-        <button
-          onClick={() => handleTabChange('friends')}
-          className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
-            filters.tab === 'friends'
-              ? 'bg-secondary text-foreground shadow-lg'
-              : 'text-muted-foreground hover:text-muted'
-          }`}
-        >
-          <Rss size={16} />
-          {t('feed.friendsFeed')}
-        </button>
-        <button
-          onClick={() => handleTabChange('explore')}
-          className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
-            filters.tab === 'explore'
-              ? 'bg-secondary text-foreground shadow-lg'
-              : 'text-muted-foreground hover:text-muted'
-          }`}
-        >
-          <Compass size={16} />
-          {t('feed.explore')}
-        </button>
-      </div>
+      {/* Filters: tab toggle + type/tier/time in one row */}
+      <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-hide">
+        {/* Friends / Explore toggle */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            onClick={() => handleTabChange('friends')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+              filters.tab === 'friends'
+                ? 'text-foreground bg-secondary/60'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Rss size={13} />
+            {t('feed.friendsFeed')}
+          </button>
+          <button
+            onClick={() => handleTabChange('explore')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+              filters.tab === 'explore'
+                ? 'text-foreground bg-secondary/60'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Compass size={13} />
+            {t('feed.explore')}
+          </button>
+        </div>
 
-      {/* Filters */}
-      <FeedFilterBar filters={filters} onFilterChange={handleFilterChange} />
+        <div className="w-px h-4 bg-border/40 flex-shrink-0" />
+
+        {/* Inline filters */}
+        <FeedFilterBar filters={filters} onFilterChange={handleFilterChange} />
+      </div>
 
       {/* Feed Cards */}
       {loading ? (

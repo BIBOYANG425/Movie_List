@@ -682,7 +682,7 @@ const MovieOnboardingPage: React.FC = () => {
                     </div>
                     <div className="h-2 bg-secondary rounded-full overflow-hidden">
                         <div
-                            className="h-full rounded-full transition-all duration-500 ease-out"
+                            className="h-full rounded-full transition-all duration-[var(--duration-slow)] ease-out"
                             style={{
                                 width: `${progress * 100}%`,
                                 background: progress >= 1
@@ -697,7 +697,7 @@ const MovieOnboardingPage: React.FC = () => {
                 {rankedItems.length >= REQUIRED_MOVIES && (
                     <button
                         onClick={handleContinue}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 text-black font-bold text-sm hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/20 animate-fade-in"
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gold text-primary-foreground font-bold text-sm hover:bg-gold-muted transition-colors shadow-lg shadow-gold/20 animate-fade-in"
                     >
                         {user ? 'Continue to Spool' : 'Create your account'}
                         <ChevronRight size={16} />

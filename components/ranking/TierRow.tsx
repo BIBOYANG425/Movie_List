@@ -102,7 +102,7 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showSco
         <div
           onDragOver={handleDragOver}
           onDrop={(e) => onDrop(e, tier)}
-          className="relative flex flex-col bg-card/40 backdrop-blur-sm rounded-2xl border border-border/30 overflow-hidden transition-colors duration-300"
+          className="relative flex flex-col bg-card/40 backdrop-blur-sm rounded-2xl border border-border/30 overflow-hidden transition-colors duration-[var(--duration-normal)]"
         >
           {header}
         </div>
@@ -130,7 +130,7 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showSco
     <div
       onDragOver={handleDragOver}
       onDrop={(e) => onDrop(e, tier)}
-      className="relative flex flex-col bg-card/40 backdrop-blur-sm rounded-2xl border border-border/30 overflow-hidden min-h-[220px] transition-colors duration-300 animate-fade-in-up"
+      className="relative flex flex-col bg-card/40 backdrop-blur-sm rounded-2xl border border-border/30 overflow-hidden min-h-[220px] transition-colors duration-[var(--duration-normal)] animate-fade-in-up"
       style={{ animationDelay: `${index * 80}ms` }}
     >
       {header}

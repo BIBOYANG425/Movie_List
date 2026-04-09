@@ -203,6 +203,15 @@ const zh: Record<string, string> = {
 
   // ── Toast ────────────────────────────────────────────────────────────────
   'toast.movieSaved': '电影已保存到观影清单',
+  'toast.ranked': '已添加到 {tier} 级',
+  'toast.moved': '已移至 {tier} 级',
+
+  // ── Profile Sub-tabs ────────────────────────────────────────────────────
+  'profile.tabJournal': '日记',
+  'profile.tabMemories': '回忆',
+  'profile.tabStats': '统计',
+  'profile.tabLists': '片单',
+  'profile.tabAchievements': '成就',
 
   // ── Landing Page ─────────────────────────────────────────────────────────
   'landing.tagline': '你的电影，排名并铭记',
@@ -306,6 +315,7 @@ const zh: Record<string, string> = {
   'share.exporting': '导出中...',
   'share.shareImage': '分享图片',
   'share.downloadImage': '下载图片',
+  'share.exportFailed': '保存图片失败。请尝试截屏。',
 
   // ── 连续记录 ──────────────────────────────────────────────────────────────
   'streak.current': '天连续',

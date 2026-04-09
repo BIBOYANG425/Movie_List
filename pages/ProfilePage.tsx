@@ -4,8 +4,9 @@ import {
   ArrowLeft,
   Camera,
   Check,
+  ChevronDown,
   Globe,
-  Search,
+  Pencil,
   Share2,
   Upload,
   UserMinus,
@@ -15,11 +16,14 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useTranslation } from '../contexts/LanguageContext';
-import { FriendProfile, JournalEntry, RankedItem, UserProfileSummary, UserSearchResult } from '../types';
+import { FriendProfile, JournalEntry, RankedItem, UserProfileSummary } from '../types';
 import { ErrorBoundary } from '../components/shared/ErrorBoundary';
 import { CalendarView } from '../components/stubs/CalendarView';
+import { StubCollectionView } from '../components/stubs/StubCollectionView';
 import { JournalHomeView } from '../components/journal/JournalHomeView';
 import { JournalConversation } from '../components/journal/JournalConversation';
+import { MovieListView } from '../components/social/MovieListView';
+import { AchievementsView } from '../components/social/AchievementsView';
 import { Toast } from '../components/shared/Toast';
 import { LetterboxdImportModal } from '../components/media/LetterboxdImportModal';
 import {
@@ -29,14 +33,12 @@ import {
   getFollowerProfilesForUser,
   getFollowingProfilesForUser,
   getProfileSummary,
-  searchUsers,
   unfollowUser,
   updateMyProfile,
   uploadAvatarPhoto,
 } from '../services/friendsService';
 import type { ProfileVisibility } from '../services/profileService';
 import { getJournalStats } from '../services/journalService';
-import { StreakBadge } from '../components/shared/StreakBadge';
 import { shareOrCopyLink } from '../utils/shareLink';
 import { relativeDate } from '../utils/relativeDate';
 
@@ -57,13 +59,8 @@ const ProfilePage = () => {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [visibilityInput, setVisibilityInput] = useState<ProfileVisibility>('friends');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-
-  // Friend search state (own profile only)
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
-  const [searchAttempted, setSearchAttempted] = useState(false);
-  const [searchActionUserId, setSearchActionUserId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [expandedList, setExpandedList] = useState<'followers' | 'following' | null>(null);
 
   const [profile, setProfile] = useState<UserProfileSummary | null>(null);
   const [followers, setFollowers] = useState<FriendProfile[]>([]);
@@ -74,6 +71,7 @@ const ProfilePage = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [streakStats, setStreakStats] = useState<{ currentStreak: number; longestStreak: number }>({ currentStreak: 0, longestStreak: 0 });
   const [linkCopied, setLinkCopied] = useState(false);
+  const [profileTab, setProfileTab] = useState<'journal' | 'memories' | 'lists' | 'achievements'>('journal');
 
   const handleShareProfile = async () => {
     if (!profile) return;
@@ -243,72 +241,30 @@ const ProfilePage = () => {
     setProfileBusy(false);
   };
 
-  // ── Friend Search (own profile) ──────────────────────────────────────────
-
-  const handleFriendSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !searchQuery.trim()) {
-      setSearchResults([]);
-      setSearchAttempted(false);
-      return;
-    }
-    setSearching(true);
-    setSearchAttempted(true);
-    try {
-      const results = await searchUsers(user.id, searchQuery);
-      setSearchResults(results);
-    } catch {
-      setSearchResults([]);
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleSearchFollow = async (targetUserId: string) => {
-    if (!user) return;
-    setSearchActionUserId(targetUserId);
-    const ok = await followUser(user.id, targetUserId);
-    if (ok) {
-      setSearchResults(prev =>
-        prev.map(r => r.id === targetUserId ? { ...r, isFollowing: true } : r),
-      );
-      await loadProfile();
-    }
-    setSearchActionUserId(null);
-  };
-
-  const handleSearchUnfollow = async (targetUserId: string) => {
-    if (!user) return;
-    setSearchActionUserId(targetUserId);
-    const ok = await unfollowUser(user.id, targetUserId);
-    if (ok) {
-      setSearchResults(prev =>
-        prev.map(r => r.id === targetUserId ? { ...r, isFollowing: false } : r),
-      );
-      await loadProfile();
-    }
-    setSearchActionUserId(null);
-  };
-
   if (!user) return null;
 
   if (loading) {
     return (
       <div className="min-h-screen bg-background text-foreground">
         <main className="max-w-4xl mx-auto px-4 py-8">
-          <div className="animate-pulse space-y-4 p-6">
+          <div className="animate-pulse space-y-5 py-6">
             <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-full bg-secondary" />
+              <div className="w-[72px] h-[72px] rounded-full bg-secondary" />
               <div className="space-y-2">
-                <div className="h-5 w-32 bg-secondary rounded" />
-                <div className="h-4 w-24 bg-secondary rounded" />
+                <div className="h-5 w-36 bg-secondary rounded-full" />
+                <div className="h-4 w-24 bg-secondary rounded-full" />
               </div>
             </div>
-            <div className="flex gap-4">
-              <div className="h-8 w-20 bg-secondary rounded-lg" />
-              <div className="h-8 w-20 bg-secondary rounded-lg" />
+            <div className="flex gap-2">
+              <div className="h-8 w-28 bg-secondary rounded-full" />
+              <div className="h-8 w-28 bg-secondary rounded-full" />
             </div>
-            <div className="h-16 w-full bg-secondary rounded-lg" />
+            <div className="flex gap-1.5">
+              <div className="h-9 w-20 bg-secondary rounded-full" />
+              <div className="h-9 w-24 bg-secondary rounded-full" />
+              <div className="h-9 w-16 bg-secondary rounded-full" />
+              <div className="h-9 w-28 bg-secondary rounded-full" />
+            </div>
           </div>
         </main>
       </div>
@@ -337,102 +293,176 @@ const ProfilePage = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        <div className="flex items-center justify-between">
-          <Link
-            to="/app"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft size={14} />
-            {t('profile.backToApp')}
-          </Link>
-        </div>
+      <main className="max-w-4xl mx-auto px-4 pt-6 pb-10">
+        <Link
+          to="/app"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
+        >
+          <ArrowLeft size={14} />
+          {t('profile.backToApp')}
+        </Link>
 
-        <section className="rounded-2xl border border-border/30 bg-card/50 p-6 space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+        {/* ── Profile Header ──────────────────────────────────────────── */}
+        <section className="mb-10">
+          {/* Identity: avatar + name + actions */}
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5 mb-5">
             <div className="flex items-center gap-4">
-              <img
-                src={avatarPreview}
-                alt={profile.username}
-                className="w-20 h-20 rounded-2xl object-cover border border-border bg-secondary"
-              />
-              <div>
-                <h1 className="text-2xl font-bold">{profile.displayName ?? profile.username}</h1>
-                <p className="text-muted-foreground text-sm mt-0.5">@{profile.username}</p>
-                <p className="text-muted-foreground text-sm mt-1">
-                  {profile.isSelf
-                    ? t('profile.yourProfile')
-                    : profile.isMutual
-                      ? t('profile.youAreFriends')
-                      : profile.isFollowing
-                        ? t('profile.following')
-                        : t('profile.notConnected')}
-                </p>
-                <div className="flex items-center gap-3 mt-3 text-sm">
-                  <span className="text-muted-foreground">
-                    <strong>{profile.followersCount}</strong> {t('profile.followers')}
-                  </span>
-                  <span className="text-muted-foreground">
-                    <strong>{profile.followingCount}</strong> {t('profile.following')}
-                  </span>
-                  {profile.isSelf && (
-                    <StreakBadge currentStreak={streakStats.currentStreak} longestStreak={streakStats.longestStreak} size="sm" />
-                  )}
+              {/* Round avatar with gradient ring */}
+              <div className="relative flex-shrink-0">
+                <div className="w-[72px] h-[72px] rounded-full p-[2.5px] bg-gradient-to-br from-[var(--tier-s)] via-[var(--tier-a)] to-[var(--tier-b)]">
+                  <img
+                    src={avatarPreview}
+                    alt={profile.username}
+                    className="w-full h-full rounded-full object-cover bg-background"
+                  />
                 </div>
+                {profile.isSelf && streakStats.currentStreak > 0 && (
+                  <div className="absolute -bottom-1 -right-1 flex items-center gap-0.5 bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-lg">
+                    🔥 {streakStats.currentStreak}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h1 className="text-xl font-bold tracking-tight">{profile.displayName ?? profile.username}</h1>
+                <p className="text-muted-foreground text-sm">@{profile.username}</p>
+                {!profile.isSelf && (
+                  <div className="mt-1.5">
+                    {profile.isMutual ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-[var(--tier-b)]/15 text-[var(--tier-b)] rounded-full px-2 py-0.5">
+                        <Users size={10} /> {t('profile.youAreFriends')}
+                      </span>
+                    ) : profile.isFollowing ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-accent/15 text-accent rounded-full px-2 py-0.5">
+                        <Check size={10} /> {t('profile.following')}
+                      </span>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
 
-            {!profile.isSelf && (
-              profile.isFollowing ? (
+            <div className="flex items-center gap-2">
+              {profile.isSelf && visibilityInput !== 'private' && (
                 <button
-                  onClick={handleUnfollow}
-                  disabled={followBusy}
-                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:text-red-300 hover:border-red-400 transition-colors disabled:opacity-50"
+                  onClick={handleShareProfile}
+                  className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+                  title={t('profile.shareProfile')}
                 >
-                  <UserMinus size={14} />
-                  {t('profile.unfollow')}
+                  {linkCopied ? <Check size={16} className="text-[var(--tier-b)]" /> : <Share2 size={16} />}
                 </button>
-              ) : (
+              )}
+              {profile.isSelf && (
                 <button
-                  onClick={handleFollow}
-                  disabled={followBusy}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-400 transition-colors disabled:opacity-50"
+                  onClick={() => setIsEditing(!isEditing)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                    isEditing
+                      ? 'bg-secondary text-foreground'
+                      : 'border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                  }`}
                 >
-                  <UserPlus size={14} />
-                  {t('profile.follow')}
+                  <Pencil size={13} />
+                  {t('profile.editProfile')}
                 </button>
-              )
+              )}
+              {!profile.isSelf && (
+                profile.isFollowing ? (
+                  <button
+                    onClick={handleUnfollow}
+                    disabled={followBusy}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-1.5 text-sm font-medium text-foreground hover:text-red-300 hover:border-red-400/50 transition-colors disabled:opacity-50"
+                  >
+                    <UserMinus size={14} />
+                    {t('profile.unfollow')}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleFollow}
+                    disabled={followBusy}
+                    className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--tier-s)] to-[var(--tier-a)] px-5 py-1.5 text-sm font-bold text-white shadow-lg shadow-[var(--tier-s)]/20 hover:shadow-[var(--tier-s)]/30 transition-all disabled:opacity-50"
+                  >
+                    <UserPlus size={14} />
+                    {t('profile.follow')}
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+
+          {/* Stats row — pill-style chips */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <button
+              onClick={() => setExpandedList(expandedList === 'followers' ? null : 'followers')}
+              className="inline-flex items-center gap-1.5 rounded-full bg-secondary/60 px-3 py-1.5 text-sm hover:bg-secondary transition-colors"
+            >
+              <strong>{profile.followersCount}</strong>
+              <span className="text-muted-foreground">{t('profile.followers')}</span>
+            </button>
+            <button
+              onClick={() => setExpandedList(expandedList === 'following' ? null : 'following')}
+              className="inline-flex items-center gap-1.5 rounded-full bg-secondary/60 px-3 py-1.5 text-sm hover:bg-secondary transition-colors"
+            >
+              <strong>{profile.followingCount}</strong>
+              <span className="text-muted-foreground">{t('profile.following')}</span>
+            </button>
+            {profile.isSelf && streakStats.longestStreak > 0 && streakStats.currentStreak === 0 && (
+              <div className="inline-flex items-center gap-1 rounded-full bg-secondary/40 px-3 py-1.5 text-xs text-muted-foreground">
+                🔥 {t('streak.longest').replace('{n}', String(streakStats.longestStreak))}
+              </div>
             )}
           </div>
 
-          {profile.isSelf && visibilityInput !== 'private' && (
-            <button
-              onClick={handleShareProfile}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {linkCopied ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
-              {linkCopied ? t('profile.linkCopied') : t('profile.shareProfile')}
-            </button>
-          )}
-
           {(profile.bio && canSeeFullProfile) && (
-            <p className="text-sm text-muted-foreground rounded-lg border border-border/30 bg-background px-3 py-2">{profile.bio}</p>
+            <p className="text-sm text-muted-foreground max-w-lg leading-relaxed">{profile.bio}</p>
           )}
 
-          {profile.isSelf && (
-            <div className="rounded-xl border border-border/30 bg-background p-4 space-y-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Camera size={14} />
-                {t('profile.editProfile')}
+          {/* Expanded followers/following list */}
+          {expandedList && canSeeFullProfile && (
+            <div className="mt-4 rounded-2xl border border-border/30 bg-card/50 p-3 animate-fade-in-up">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold">
+                  {expandedList === 'followers' ? t('profile.followers') : t('profile.following')}
+                </h3>
+                <button onClick={() => setExpandedList(null)} className="text-muted-foreground hover:text-foreground p-1">
+                  <ChevronDown size={14} className="rotate-180" />
+                </button>
               </div>
+              {(expandedList === 'followers' ? followers : following).length === 0 ? (
+                <p className="text-xs text-muted-foreground py-2">
+                  {expandedList === 'followers' ? t('profile.noFollowers') : t('profile.notFollowing')}
+                </p>
+              ) : (
+                <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                  {(expandedList === 'followers' ? followers : following).map((row) => (
+                    <Link
+                      key={row.id}
+                      to={`/profile/${row.id}`}
+                      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-secondary/30 transition-colors"
+                    >
+                      <img src={row.avatarUrl} alt={row.username} className="w-7 h-7 rounded-full object-cover bg-secondary" />
+                      <span className="text-sm font-medium truncate flex-1">{row.displayName ?? row.username}</span>
+                      <span className="text-[11px] text-muted-foreground">{relativeDate(row.followedAt ?? '', t)}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
 
+        {/* ── Edit Profile (collapsed by default) ─────────────────────── */}
+        {profile.isSelf && isEditing && (
+          <section className="rounded-xl border border-border/30 bg-card/50 p-4 space-y-4 animate-fade-in-up mb-8">
+            <div className="flex items-center gap-3">
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/gif"
                 onChange={(e) => handleAvatarFile(e.target.files?.[0] ?? null)}
                 className="block text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary/80 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-foreground hover:file:bg-secondary/60"
               />
+            </div>
 
+            <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground">{t('profile.displayName')}</label>
                 <input
@@ -442,18 +472,6 @@ const ProfilePage = () => {
                   className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
                 />
               </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">{t('profile.bio')}</label>
-                <textarea
-                  value={bioInput}
-                  onChange={(e) => setBioInput(e.target.value.slice(0, MAX_BIO_LENGTH))}
-                  className="w-full h-20 resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-                  placeholder={t('profile.bioHint')}
-                />
-                <p className="text-xs text-muted-foreground text-right">{bioInput.length}/{MAX_BIO_LENGTH}</p>
-              </div>
-
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                   <Globe size={12} />
@@ -469,111 +487,39 @@ const ProfilePage = () => {
                   <option value="private">{t('public.visibilityPrivate')}</option>
                 </select>
               </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={handleProfileSave}
-                  disabled={profileBusy}
-                  className="rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-foreground hover:bg-gold-muted transition-colors disabled:opacity-50"
-                >
-                  {profileBusy ? t('profile.saving') : t('profile.saveProfile')}
-                </button>
-                <button
-                  onClick={() => setIsImportModalOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                >
-                  <Upload size={14} />
-                  Import from Letterboxd
-                </button>
-              </div>
             </div>
-          )}
 
-          {statusMessage && (
-            <p className="text-xs text-muted-foreground rounded-md border border-border/30 bg-background px-3 py-2">{statusMessage}</p>
-          )}
-        </section>
-
-        {/* Find Friends section (own profile only) */}
-        {profile.isSelf && (
-          <section className="rounded-xl border border-border/30 bg-card/50 p-4 space-y-3">
-            <div className="flex items-center gap-2 text-foreground">
-              <Search size={16} />
-              <h3 className="font-semibold">{t('profile.findFriends')}</h3>
-            </div>
-            <form onSubmit={handleFriendSearch} className="flex gap-2">
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('profile.searchUsername')}
-                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">{t('profile.bio')}</label>
+              <textarea
+                value={bioInput}
+                onChange={(e) => setBioInput(e.target.value.slice(0, MAX_BIO_LENGTH))}
+                className="w-full h-16 resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                placeholder={t('profile.bioHint')}
               />
+              <p className="text-xs text-muted-foreground text-right">{bioInput.length}/{MAX_BIO_LENGTH}</p>
+            </div>
+
+            <div className="flex items-center gap-3">
               <button
-                type="submit"
-                className="rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-foreground hover:bg-gold-muted transition-colors"
+                onClick={handleProfileSave}
+                disabled={profileBusy}
+                className="rounded-lg bg-gold px-4 py-1.5 text-sm font-semibold text-primary-foreground hover:bg-gold-muted transition-colors disabled:opacity-50"
               >
-                {searching ? t('profile.searching') : t('profile.search')}
+                {profileBusy ? t('profile.saving') : t('profile.saveProfile')}
               </button>
-            </form>
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Upload size={12} />
+                Import from Letterboxd
+              </button>
+            </div>
 
-            {searchResults.length > 0 && (
-              <div className="space-y-2">
-                {searchResults.map((row) => (
-                  <div
-                    key={row.id}
-                    className="flex items-center justify-between rounded-lg border border-border/30 bg-background px-3 py-2"
-                  >
-                    <Link to={`/profile/${row.id}`} className="flex items-center gap-2 min-w-0">
-                      <img
-                        src={row.avatarUrl}
-                        alt={row.username}
-                        className="w-7 h-7 rounded-md object-cover bg-secondary"
-                      />
-                      <span className="text-sm font-medium truncate">{row.displayName ?? row.username}</span>
-                    </Link>
-                    {row.isFollowing ? (
-                      <button
-                        onClick={() => handleSearchUnfollow(row.id)}
-                        disabled={searchActionUserId === row.id}
-                        className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:border-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
-                      >
-                        <UserMinus size={12} />
-                        {t('profile.unfollow')}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleSearchFollow(row.id)}
-                        disabled={searchActionUserId === row.id}
-                        className="inline-flex items-center gap-1 rounded-md bg-emerald-500/90 px-2.5 py-1 text-xs font-semibold text-black hover:bg-emerald-400 transition-colors disabled:opacity-50"
-                      >
-                        <UserPlus size={12} />
-                        {t('profile.follow')}
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
+            {statusMessage && (
+              <p className="text-xs text-muted-foreground rounded-md border border-border/30 bg-background px-3 py-2">{statusMessage}</p>
             )}
-
-            {searchAttempted && !searching && searchResults.length === 0 && (
-              <p className="text-xs text-muted-foreground rounded-md border border-border/30 bg-background px-3 py-2">
-                {t('profile.noUsersFound')}
-              </p>
-            )}
-          </section>
-        )}
-
-        {/* Ticket Stubs Calendar — visible to self and mutual follows */}
-        {profile && canSeeFullProfile && (
-          <section className="rounded-xl border border-border/30 bg-card/50 p-4">
-            <CalendarView
-              userId={profile.id}
-              isOwnProfile={profile.isSelf}
-              currentStreak={streakStats.currentStreak}
-              longestStreak={streakStats.longestStreak}
-              username={profile.username}
-              displayName={profile.displayName}
-            />
           </section>
         )}
 
@@ -591,67 +537,26 @@ const ProfilePage = () => {
 
         {canSeeFullProfile && (
           <>
-            <section className="grid md:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-border/30 bg-card/50 p-4">
-                <h2 className="font-semibold mb-3">{t('profile.followers')}</h2>
-                {followers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{t('profile.noFollowers')}</p>
-                ) : (
-                  <div className="space-y-2">
-                    {followers.map((row) => (
-                      <Link
-                        key={row.id}
-                        to={`/profile/${row.id}`}
-                        className="flex items-center gap-3 rounded-lg border border-border/30 bg-background px-3 py-2 hover:border-border transition-colors"
-                      >
-                        <img
-                          src={row.avatarUrl}
-                          alt={row.username}
-                          className="w-8 h-8 rounded-lg object-cover bg-secondary"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{row.displayName ?? row.username}</p>
-                          <p className="text-xs text-muted-foreground truncate">@{row.username}</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '', t)}</p>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {/* Sub-tab navigation — pill style */}
+            <nav className="flex items-center gap-1.5 mb-6 overflow-x-auto scrollbar-hide">
+              {(['journal', 'memories', 'lists', 'achievements'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setProfileTab(tab)}
+                  className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-[var(--duration-normal)] ${
+                    profileTab === tab
+                      ? 'bg-foreground text-background'
+                      : 'bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary'
+                  }`}
+                >
+                  {t(`profile.tab${tab.charAt(0).toUpperCase() + tab.slice(1)}` as any)}
+                </button>
+              ))}
+            </nav>
 
-              <div className="rounded-xl border border-border/30 bg-card/50 p-4">
-                <h2 className="font-semibold mb-3">{t('profile.following')}</h2>
-                {following.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{t('profile.notFollowing')}</p>
-                ) : (
-                  <div className="space-y-2">
-                    {following.map((row) => (
-                      <Link
-                        key={row.id}
-                        to={`/profile/${row.id}`}
-                        className="flex items-center gap-3 rounded-lg border border-border/30 bg-background px-3 py-2 hover:border-border transition-colors"
-                      >
-                        <img
-                          src={row.avatarUrl}
-                          alt={row.username}
-                          className="w-8 h-8 rounded-lg object-cover bg-secondary"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{row.displayName ?? row.username}</p>
-                          <p className="text-xs text-muted-foreground truncate">@{row.username}</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground">{relativeDate(row.followedAt ?? '', t)}</p>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {profile && user && (
+            {/* Tab content — no card wrappers, views own their structure */}
+            {profileTab === 'journal' && profile && user && (
               <ErrorBoundary>
-              <section className="rounded-xl border border-border/30 bg-card/50 p-4">
                 <JournalHomeView
                   userId={profile.id}
                   currentUserId={user.id}
@@ -670,7 +575,34 @@ const ProfilePage = () => {
                     });
                   }}
                 />
-              </section>
+              </ErrorBoundary>
+            )}
+
+            {profileTab === 'memories' && profile && (
+              <ErrorBoundary>
+              <div className="space-y-6">
+                <CalendarView
+                  userId={profile.id}
+                  isOwnProfile={profile.isSelf}
+                  currentStreak={streakStats.currentStreak}
+                  longestStreak={streakStats.longestStreak}
+                  username={profile.username}
+                  displayName={profile.displayName}
+                />
+                <StubCollectionView userId={profile.id} isOwnProfile={profile.isSelf} />
+              </div>
+              </ErrorBoundary>
+            )}
+
+            {profileTab === 'lists' && user && (
+              <ErrorBoundary>
+                <MovieListView userId={user.id} />
+              </ErrorBoundary>
+            )}
+
+            {profileTab === 'achievements' && user && (
+              <ErrorBoundary>
+                <AchievementsView userId={user.id} isOwnProfile={profile.isSelf} />
               </ErrorBoundary>
             )}
 
