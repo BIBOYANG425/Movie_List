@@ -8,14 +8,7 @@ import {
     getTrendingAmongFriends,
 } from '../../services/friendsService';
 import { SkeletonList } from '../shared/SkeletonCard';
-
-const TIER_COLORS: Record<string, string> = {
-    S: '#f59e0b',
-    A: '#22c55e',
-    B: '#3b82f6',
-    C: '#8b5cf6',
-    D: '#ef4444',
-};
+import { TIER_RADAR_HEX } from '../../constants';
 
 const TIER_LABELS: Record<string, string> = {
     S: 'S-Tier',
@@ -109,7 +102,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                     <button
                         key={key}
                         onClick={() => setActiveSection(key)}
-                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeSection === key
+                        className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${activeSection === key
                             ? 'bg-secondary text-foreground shadow-lg'
                             : 'text-muted-foreground hover:text-muted-foreground'
                             }`}
@@ -128,9 +121,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
             {/* For You — Friend Recommendations */}
             {activeSection === 'recs' && (
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-1">
-                        <Sparkles size={18} className="text-gold" />
-                        <h2 className="text-lg font-bold">{t('discover.fromCircle')}</h2>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <Sparkles size={18} className="text-gold shrink-0" />
+                        <h2 className="text-base sm:text-lg font-bold">{t('discover.fromCircle')}</h2>
                         <span className="text-xs text-muted-foreground">
                             {t('discover.circleHint')}
                         </span>
@@ -170,7 +163,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                         <div className="absolute top-2 left-2">
                                             <span
                                                 className="px-2 py-0.5 rounded-md text-[10px] font-bold text-black"
-                                                style={{ backgroundColor: TIER_COLORS[rec.topTier] || '#71717a' }}
+                                                style={{ backgroundColor: TIER_RADAR_HEX[rec.topTier] || '#71717a' }}
                                             >
                                                 {TIER_LABELS[rec.topTier] || rec.topTier}
                                             </span>
@@ -204,9 +197,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                     </div>
 
                                     {/* Info */}
-                                    <div className="p-3">
-                                        <h3 className="text-sm font-semibold text-foreground truncate">{rec.title}</h3>
-                                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                                    <div className="p-2 sm:p-3">
+                                        <h3 className="text-xs sm:text-sm font-semibold text-foreground truncate">{rec.title}</h3>
+                                        <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
                                             {rec.year} · {rec.genres.slice(0, 2).join(', ')}
                                         </p>
 
@@ -222,7 +215,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                                             {avatar ? (
                                                                 <img src={avatar} alt="" className="w-full h-full object-cover" />
                                                             ) : (
-                                                                <div className="w-full h-full bg-gold flex items-center justify-center text-[8px] text-foreground font-bold">
+                                                                <div className="w-full h-full bg-gold flex items-center justify-center text-[10px] text-foreground font-bold">
                                                                     {rec.friendUsernames[i]?.[0]?.toUpperCase() || '?'}
                                                                 </div>
                                                             )}
@@ -247,10 +240,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
             {/* Trending Among Friends */}
             {activeSection === 'trending' && (
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-1">
-                        <TrendingUp size={18} className="text-emerald-500" />
-                        <h2 className="text-lg font-bold">{t('discover.trendingTitle')}</h2>
-                        <span className="text-xs text-muted-foreground">{t('discover.trendingHint')}</span>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <TrendingUp size={18} className="text-emerald-500 shrink-0" />
+                        <h2 className="text-base sm:text-lg font-bold">{t('discover.trendingTitle')}</h2>
+                        <span className="text-[11px] sm:text-xs text-muted-foreground">{t('discover.trendingHint')}</span>
                     </div>
 
                     {trending.length === 0 ? (
@@ -263,16 +256,16 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                             {trending.map((movie, idx) => (
                                 <div
                                     key={movie.tmdbId}
-                                    className="flex items-center gap-4 p-3 rounded-xl bg-card/60 border border-border/30 hover:border-border transition-all"
+                                    className="flex items-center gap-2 sm:gap-4 p-2 sm:p-3 rounded-xl bg-card/60 border border-border/30 hover:border-border transition-all"
                                 >
                                     {/* Rank number */}
-                                    <div className="text-2xl font-black text-muted-foreground/40 w-8 text-center">
+                                    <div className="text-xl sm:text-2xl font-black text-muted-foreground/40 w-6 sm:w-8 text-center shrink-0">
                                         {idx + 1}
                                     </div>
 
                                     {/* Poster thumbnail */}
                                     <div
-                                        className="w-12 h-[72px] rounded-lg overflow-hidden bg-secondary flex-shrink-0 cursor-pointer"
+                                        className="w-10 h-[60px] sm:w-12 sm:h-[72px] rounded-lg overflow-hidden bg-secondary flex-shrink-0 cursor-pointer"
                                         onClick={() => onMovieClick?.(normalizeTmdbId(movie.tmdbId))}
                                     >
                                         {movie.posterUrl ? (
@@ -291,7 +284,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                     {/* Info */}
                                     <div className="flex-1 min-w-0">
                                         <h3 className="text-sm font-semibold text-foreground truncate">{movie.title}</h3>
-                                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        <p className="text-xs text-muted-foreground mt-0.5">
                                             {movie.year} · {movie.genres.slice(0, 2).join(', ')}
                                         </p>
                                         <div className="flex items-center gap-3 mt-1.5">
@@ -304,17 +297,17 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                                     </div>
 
                                     {/* Stats */}
-                                    <div className="flex items-center gap-3 flex-shrink-0">
-                                        <div className="text-center">
+                                    <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                                        <div className="text-center hidden sm:block">
                                             <div className="flex items-center gap-1">
                                                 <Flame size={12} className="text-orange-500" />
                                                 <span className="text-sm font-bold text-foreground">{movie.rankerCount}</span>
                                             </div>
-                                            <span className="text-[9px] text-muted-foreground block">{t('discover.rankers')}</span>
+                                            <span className="text-[10px] text-muted-foreground block">{t('discover.rankers')}</span>
                                         </div>
                                         <span
-                                            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-black"
-                                            style={{ backgroundColor: TIER_COLORS[movie.avgTier] || '#71717a' }}
+                                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-[10px] sm:text-xs font-bold text-black"
+                                            style={{ backgroundColor: TIER_RADAR_HEX[movie.avgTier] || '#71717a' }}
                                         >
                                             {movie.avgTier}
                                         </span>

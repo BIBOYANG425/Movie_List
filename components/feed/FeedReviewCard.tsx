@@ -2,29 +2,11 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { FeedCard, ReactionType } from '../../types';
-import { TIER_COLORS } from '../../constants';
+import { TIER_COLORS, TIER_BORDER_ACCENT, TIER_SCORE_BG } from '../../constants';
 import { ReactionPicker } from './ReactionPicker';
 import { FeedCardMenu } from './FeedCardMenu';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { relativeDate } from '../../utils/relativeDate';
-
-/** Tier → left-border accent color class */
-const TIER_BORDER_ACCENT: Record<string, string> = {
-    S: 'border-l-tier-s',
-    A: 'border-l-tier-a',
-    B: 'border-l-tier-b',
-    C: 'border-l-tier-c',
-    D: 'border-l-tier-d',
-};
-
-/** Tier → bg color for score badge */
-const TIER_SCORE_BG: Record<string, string> = {
-    S: 'bg-tier-s/20 text-tier-s',
-    A: 'bg-tier-a/20 text-tier-a',
-    B: 'bg-tier-b/20 text-tier-b',
-    C: 'bg-tier-c/20 text-tier-c',
-    D: 'bg-tier-d/20 text-tier-d',
-};
 
 interface FeedReviewCardProps {
     card: FeedCard;
@@ -69,23 +51,23 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
 
     return (
         <div
-            className={`bg-card border border-border rounded-xl p-4 hover:border-muted-foreground/30 transition-colors cursor-pointer ${tierAccent ? `border-l-[3px] ${tierAccent}` : ''}`}
+            className={`bg-card border border-border rounded-xl p-3 sm:p-4 hover:border-muted-foreground/30 transition-colors cursor-pointer ${tierAccent ? `border-l-[3px] ${tierAccent}` : ''}`}
             onClick={handleCardClick}
         >
             {/* Header */}
-            <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-start justify-between gap-2 sm:gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                     <Link to={`/profile/${card.userId}`} className="shrink-0" onClick={(e) => e.stopPropagation()}>
                         <img
                             src={card.avatarUrl || `https://api.dicebear.com/8.x/thumbs/svg?seed=${card.username}`}
                             alt={card.username}
-                            className="w-8 h-8 rounded-full border border-border object-cover"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-border object-cover"
                         />
                     </Link>
-                    <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                    <div className="min-w-0 flex items-center gap-1.5 sm:gap-2 flex-wrap">
                         <Link
                             to={`/profile/${card.userId}`}
-                            className="text-sm font-semibold text-foreground hover:text-accent transition-colors truncate"
+                            className="text-xs sm:text-sm font-semibold text-foreground hover:text-accent transition-colors truncate"
                             onClick={(e) => e.stopPropagation()}
                         >
                             {card.displayName || card.username}
@@ -109,12 +91,12 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
             </div>
 
             {/* Content area */}
-            <div className="mt-3 flex gap-3">
+            <div className="mt-2 sm:mt-3 flex gap-2 sm:gap-3">
                 {/* Score badge */}
                 {card.mediaTier && card.mediaScore != null && (
-                    <div className={`flex flex-col items-center justify-center w-10 flex-shrink-0 rounded-lg ${TIER_SCORE_BG[card.mediaTier]}`}>
-                        <span className="text-lg font-bold leading-none">{card.mediaScore.toFixed(1)}</span>
-                        <span className="text-[9px] font-semibold opacity-70">/10</span>
+                    <div className={`flex flex-col items-center justify-center w-8 sm:w-10 flex-shrink-0 rounded-lg ${TIER_SCORE_BG[card.mediaTier]}`}>
+                        <span className="text-base sm:text-lg font-bold leading-none">{card.mediaScore.toFixed(1)}</span>
+                        <span className="text-[10px] font-semibold opacity-70">/10</span>
                     </div>
                 )}
                 {/* Poster */}
@@ -122,7 +104,7 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
                     <img
                         src={card.mediaPosterUrl}
                         alt={card.mediaTitle ?? 'Movie poster'}
-                        className={`w-20 h-30 rounded-lg object-cover shrink-0 ${card.mediaTmdbId && onMovieClick ? 'cursor-pointer hover:ring-2 hover:ring-gold/50 transition-all' : ''}`}
+                        className={`w-14 h-21 sm:w-20 sm:h-30 rounded-lg object-cover shrink-0 ${card.mediaTmdbId && onMovieClick ? 'cursor-pointer hover:ring-2 hover:ring-gold/50 transition-all' : ''}`}
                         onClick={handleMovieClick}
                     />
                 )}
@@ -131,7 +113,7 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
                 <div className="min-w-0 flex-1">
                     {card.mediaTitle && (
                         <h3
-                            className={`text-sm font-semibold text-foreground truncate ${card.mediaTmdbId && onMovieClick ? 'cursor-pointer hover:text-gold transition-colors' : ''}`}
+                            className={`text-xs sm:text-sm font-semibold text-foreground truncate ${card.mediaTmdbId && onMovieClick ? 'cursor-pointer hover:text-gold transition-colors' : ''}`}
                             onClick={handleMovieClick}
                         >
                             {card.mediaTitle}
@@ -178,7 +160,7 @@ export const FeedReviewCard: React.FC<FeedReviewCardProps> = ({
             </div>
 
             {/* Footer: reactions + comments */}
-            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/50">
+            <div className="flex items-center gap-3 sm:gap-4 mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-border/50">
                 <ReactionPicker
                     reactionCounts={card.reactionCounts}
                     myReactions={card.myReactions}

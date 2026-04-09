@@ -35,6 +35,7 @@ export const FeedCardMenu: React.FC<FeedCardMenuProps> = ({
       <button
         onClick={() => setOpen((prev) => !prev)}
         className="p-1 rounded-lg text-muted-foreground hover:text-muted-foreground hover:bg-secondary transition-colors"
+        aria-label="Post options"
       >
         <MoreHorizontal size={16} />
       </button>

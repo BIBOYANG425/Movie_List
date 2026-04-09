@@ -14,13 +14,13 @@ const TIER_TEXT_COLOR: Record<Tier, string> = {
   [Tier.D]: 'text-tier-d',
 };
 
-/** Subtle background tint per tier for the header strip */
+/** Background tint per tier for the header strip */
 const TIER_HEADER_BG: Record<Tier, string> = {
-  [Tier.S]: 'bg-tier-s/8',
-  [Tier.A]: 'bg-tier-a/8',
-  [Tier.B]: 'bg-tier-b/8',
-  [Tier.C]: 'bg-tier-c/8',
-  [Tier.D]: 'bg-tier-d/8',
+  [Tier.S]: 'bg-tier-s/10',
+  [Tier.A]: 'bg-tier-a/10',
+  [Tier.B]: 'bg-tier-b/10',
+  [Tier.C]: 'bg-tier-c/10',
+  [Tier.D]: 'bg-tier-d/10',
 };
 
 interface TierRowProps {
@@ -34,9 +34,10 @@ interface TierRowProps {
   onDelete: (id: string) => void;
   onOpenJournal?: (tmdbId: string) => void;
   onRerank?: (item: RankedItem) => void;
+  index?: number;
 }
 
-export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showScores, onDrop, onDragStart, onDropOnItem, onDelete, onOpenJournal, onRerank }) => {
+export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showScores, onDrop, onDragStart, onDropOnItem, onDelete, onOpenJournal, onRerank, index = 0 }) => {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const handleDragOver = (e: React.DragEvent) => {
@@ -46,7 +47,7 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showSco
   const header = (
     <div className={`flex items-center justify-between px-4 py-3 md:px-6 md:py-4 ${TIER_HEADER_BG[tier]}`}>
       <div className="flex items-center gap-3">
-        <span className={`font-serif text-3xl font-black select-none ${TIER_TEXT_COLOR[tier]}`}>{tier}</span>
+        <span className={`font-serif text-4xl font-black select-none drop-shadow-[0_0_8px_currentColor] ${TIER_TEXT_COLOR[tier]}`}>{tier}</span>
         <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground">
           {TIER_LABELS[tier]}
         </span>
@@ -101,7 +102,7 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showSco
         <div
           onDragOver={handleDragOver}
           onDrop={(e) => onDrop(e, tier)}
-          className="relative flex flex-col bg-card/40 backdrop-blur-sm rounded-2xl border border-border/30 overflow-hidden transition-colors duration-300"
+          className="relative flex flex-col bg-card/40 backdrop-blur-sm rounded-2xl border border-border/30 overflow-hidden transition-colors duration-[var(--duration-normal)]"
         >
           {header}
         </div>
@@ -129,7 +130,8 @@ export const TierRow: React.FC<TierRowProps> = ({ tier, items, scoreMap, showSco
     <div
       onDragOver={handleDragOver}
       onDrop={(e) => onDrop(e, tier)}
-      className="relative flex flex-col bg-card/40 backdrop-blur-sm rounded-2xl border border-border/30 overflow-hidden min-h-[220px] transition-colors duration-300"
+      className="relative flex flex-col bg-card/40 backdrop-blur-sm rounded-2xl border border-border/30 overflow-hidden min-h-[220px] transition-colors duration-[var(--duration-normal)] animate-fade-in-up"
+      style={{ animationDelay: `${index * 80}ms` }}
     >
       {header}
 

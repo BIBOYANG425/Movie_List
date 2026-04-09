@@ -43,12 +43,18 @@
 
   --radius: 0.5rem;
 
-  /* Keep vibrant tier colors from current app */
-  --tier-s: #A855F7;
-  --tier-a: #3B82F6;
-  --tier-b: #10B981;
-  --tier-c: #F59E0B;
-  --tier-d: #EF4444;
+  /* Spool-owned tier palette (not stock Tailwind) */
+  --tier-s: #B87FFF;
+  --tier-a: #5BC0EB;
+  --tier-b: #43D9AD;
+  --tier-c: #FFB547;
+  --tier-d: #FF6B6B;
+
+  /* Motion tokens */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @theme inline {
@@ -149,5 +155,28 @@
     font-size: 1rem;
     font-weight: 400;
     line-height: 1.5;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Entrance animations */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }

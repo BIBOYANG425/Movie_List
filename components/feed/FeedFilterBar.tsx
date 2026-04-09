@@ -47,18 +47,27 @@ export const FeedFilterBar: React.FC<FeedFilterBarProps> = ({ filters, onFilterC
   const currentTier = filters.tier ?? 'all';
   const currentTimeRange = filters.timeRange ?? 'all';
 
+  const hasActiveFilters = currentCardType !== 'all' || currentTier !== 'all' || currentTimeRange !== 'all';
+
   return (
-    <div className="space-y-2">
-      {/* Card Type */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+    <>
+      {/* Card Type — always visible */}
+      <div className="flex items-center gap-1 flex-shrink-0">
         {cardTypeOptions.map((opt) => (
           <button
             key={opt.value}
-            className={`${chipBase} ${currentCardType === opt.value ? chipActive : chipInactive}`}
+            aria-pressed={currentCardType === opt.value}
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${
+              currentCardType === opt.value
+                ? 'text-foreground bg-secondary/60'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
             onClick={() =>
               onFilterChange({
                 ...filters,
                 cardType: opt.value === 'all' ? 'all' : opt.value,
+                tier: opt.value === 'all' ? 'all' : filters.tier,
+                timeRange: opt.value === 'all' ? 'all' : filters.timeRange,
               })
             }
           >
@@ -67,41 +76,60 @@ export const FeedFilterBar: React.FC<FeedFilterBarProps> = ({ filters, onFilterC
         ))}
       </div>
 
-      {/* Tier */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {TIER_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            className={`${chipBase} ${currentTier === opt.value ? chipActive : chipInactive}`}
-            onClick={() =>
-              onFilterChange({
-                ...filters,
-                tier: opt.value === 'all' ? 'all' : opt.value,
-              })
-            }
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
+      {/* Tier + Time — shown when type filter is active */}
+      {(currentCardType !== 'all' || currentTier !== 'all') && (
+        <>
+          <div className="w-px h-4 bg-border/40 flex-shrink-0" />
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {TIER_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                aria-pressed={currentTier === opt.value}
+                className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                  currentTier === opt.value
+                    ? 'text-foreground bg-secondary/60'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() =>
+                  onFilterChange({
+                    ...filters,
+                    tier: opt.value === 'all' ? 'all' : opt.value,
+                  })
+                }
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
-      {/* Time Range */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {timeRangeOptions.map((opt) => (
-          <button
-            key={opt.value}
-            className={`${chipBase} ${currentTimeRange === opt.value ? chipActive : chipInactive}`}
-            onClick={() =>
-              onFilterChange({
-                ...filters,
-                timeRange: opt.value === 'all' ? 'all' : opt.value,
-              })
-            }
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-    </div>
+      {(currentCardType !== 'all' || currentTimeRange !== 'all') && (
+        <>
+          <div className="w-px h-4 bg-border/40 flex-shrink-0" />
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {timeRangeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                aria-pressed={currentTimeRange === opt.value}
+                className={`px-2 py-1 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${
+                  currentTimeRange === opt.value
+                    ? 'text-foreground bg-secondary/60'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() =>
+                  onFilterChange({
+                    ...filters,
+                    timeRange: opt.value === 'all' ? 'all' : opt.value,
+                  })
+                }
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
   );
 };

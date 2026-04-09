@@ -80,6 +80,19 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
     return () => document.removeEventListener('keydown', handler);
   }, [isOpen]);
 
+  // Cmd/Ctrl+K to focus search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+        setIsOpen(true);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
   // Debounced search
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -199,7 +212,7 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
   ];
 
   return (
-    <div ref={containerRef} className="relative z-50">
+    <div ref={containerRef} className="relative z-50" data-universal-search>
       {/* Search input — always expanded */}
       <div className="flex items-center gap-2 bg-card border border-border/30 rounded-xl px-4 py-2.5 w-full">
         <Search size={16} className="text-muted-foreground flex-shrink-0" />
@@ -210,9 +223,15 @@ export const UniversalSearch: React.FC<UniversalSearchProps> = ({
           value={query}
           onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
           onFocus={() => setIsOpen(true)}
+          aria-label="Search"
           className="flex-1 bg-transparent text-foreground placeholder-muted-foreground text-sm focus:outline-none"
         />
         {loading && <Loader2 size={16} className="text-muted-foreground animate-spin flex-shrink-0" />}
+        {!query && (
+          <kbd className="hidden sm:inline text-[10px] text-muted-foreground/50 border border-border/40 rounded px-1.5 py-0.5 font-mono flex-shrink-0">
+            {navigator.platform?.includes('Mac') ? '\u2318' : 'Ctrl+'}K
+          </kbd>
+        )}
         {query && (
           <button onClick={() => { setQuery(''); setResults([]); }} className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
             <X size={16} />

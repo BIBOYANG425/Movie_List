@@ -40,7 +40,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
         onDragOver={(e) => onDragOver?.(e, item.id)}
         onDrop={(e) => onDrop?.(e, item.id)}
         onClick={handleClick}
-        className="group relative flex-shrink-0 w-32 md:w-40 cursor-pointer active:cursor-grabbing active:scale-95 transition-transform duration-200 select-none"
+        className="group relative flex-shrink-0 w-36 md:w-44 cursor-pointer hover:scale-[1.03] active:cursor-grabbing active:scale-95 transition-transform duration-[var(--duration-normal)] select-none"
       >
         {/* Rank Badge */}
         <div className="absolute top-2 left-2 z-10 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded text-xs font-bold text-foreground border border-border/30">
@@ -99,7 +99,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, score, showSco
           {item.type === 'book' && item.author && (
             <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">{item.author}</p>
           )}
-          <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
             {item.type === 'book' ? <BookOpen size={11} /> : item.type === 'tv_season' ? <Tv size={11} /> : <Film size={11} />}
             <span>{item.year}</span>
             {item.notes && (

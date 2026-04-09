@@ -76,6 +76,7 @@ export interface UserProfileSummary extends FriendProfile {
   isFollowing: boolean;
   isFollowedBy: boolean;
   isMutual: boolean;
+  profileVisibility?: 'public' | 'friends' | 'private';
 }
 
 export interface AppProfile {

@@ -571,7 +571,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   return (
     <FocusTrap focusTrapOptions={{ allowOutsideClick: true }}>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div role="dialog" aria-modal="true" aria-label="Add TV season" className="bg-background border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border bg-card/30 flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -766,7 +766,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
               </div>
 
               {selectedShow.overview && (
-                <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3">{selectedShow.overview}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{selectedShow.overview}</p>
               )}
 
               {/* Season grid */}
@@ -824,7 +824,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
                           </div>
                         )}
 
-                        <p className="text-[11px] font-medium text-muted-foreground leading-tight line-clamp-1">{season.name}</p>
+                        <p className="text-xs font-medium text-muted-foreground leading-tight line-clamp-1">{season.name}</p>
                         <p className="text-[10px] text-muted-foreground/60 mt-0.5">
                           {season.episodeCount} ep{season.episodeCount !== 1 ? 's' : ''}
                           {season.airDate ? ` · ${season.airDate.slice(0, 4)}` : ''}

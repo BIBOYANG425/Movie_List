@@ -1,11 +1,13 @@
 import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FocusTrap from 'focus-trap-react';
-import html2canvas from 'html2canvas';
 import { Download, Share2, X } from 'lucide-react';
+import { exportCardImage } from '../../utils/exportCardImage';
 import { RankedItem, GenreProfileItem } from '../../types';
-import { TIERS } from '../../constants';
+import { TIERS, TIER_HEX, TIER_RADAR_HEX } from '../../constants';
 import { useTranslation } from '../../contexts/LanguageContext';
+import { ShareCardFooter } from '../shared/ShareCardFooter';
+import { Toast } from '../shared/Toast';
 
 type CardType = 'top5' | 'tasteDna';
 
@@ -29,6 +31,7 @@ export const ShareCardModal: React.FC<ShareCardModalProps> = ({
   const { t } = useTranslation();
   const [activeCard, setActiveCard] = useState<CardType>('top5');
   const [exporting, setExporting] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   if (!open) return null;
@@ -49,53 +52,13 @@ export const ShareCardModal: React.FC<ShareCardModalProps> = ({
     if (!cardRef.current) return;
     setExporting(true);
     try {
-      const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: null,
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
-
-      // Try native share first, fall back to download
-      canvas.toBlob(async (blob) => {
-        if (!blob) { setExporting(false); return; }
-        const file = new File([blob], `spool-${activeCard}.png`, { type: 'image/png' });
-
-        if (navigator.share && navigator.canShare?.({ files: [file] })) {
-          try {
-            await navigator.share({ files: [file], title: `${name} on Spool` });
-          } catch {
-            // User cancelled share — ignore
-          }
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `spool-${activeCard}.png`;
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-        setExporting(false);
-      }, 'image/png');
-    } catch {
+      await exportCardImage(cardRef.current, `spool-${activeCard}.png`, `${name} on Spool`);
+    } catch (err) {
+      console.error('Share card export failed:', err);
+      setToastMessage(t('share.exportFailed'));
+    } finally {
       setExporting(false);
     }
-  };
-
-  const TIER_HEX: Record<string, string> = {
-    S: '#FCD34D',
-    A: '#4ADE80',
-    B: '#60A5FA',
-    C: '#A78BFA',
-    D: '#F87171',
-  };
-
-  const TIER_RADAR_HEX: Record<string, string> = {
-    S: '#f59e0b',
-    A: '#22c55e',
-    B: '#3b82f6',
-    C: '#8b5cf6',
-    D: '#ef4444',
   };
 
   return createPortal(
@@ -181,6 +144,9 @@ export const ShareCardModal: React.FC<ShareCardModalProps> = ({
             </button>
           </div>
         </div>
+        {toastMessage && (
+          <Toast message={toastMessage} onDone={() => setToastMessage(null)} />
+        )}
       </div>
     </FocusTrap>,
     document.body,
@@ -301,36 +267,7 @@ const Top5Card = React.forwardRef<
       ))}
     </div>
 
-    {/* Footer */}
-    <div
-      style={{
-        marginTop: 16,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <div
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: '50%',
-            background: '#D4C5B0',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 9,
-            fontWeight: 800,
-            color: '#0F1419',
-          }}
-        >
-          S
-        </div>
-        <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>spool</span>
-      </div>
-      <div style={{ fontSize: 10, color: '#4B5563' }}>spool.app/u/{username}</div>
-    </div>
+    <ShareCardFooter username={username} />
   </div>
 ));
 
@@ -554,36 +491,7 @@ const TasteDnaCard = React.forwardRef<
         ))}
       </div>
 
-      {/* Footer */}
-      <div
-        style={{
-          marginTop: 16,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: '50%',
-              background: '#D4C5B0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 9,
-              fontWeight: 800,
-              color: '#0F1419',
-            }}
-          >
-            S
-          </div>
-          <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>spool</span>
-        </div>
-        <div style={{ fontSize: 10, color: '#4B5563' }}>spool.app/u/{username}</div>
-      </div>
+      <ShareCardFooter username={username} />
     </div>
   );
 });

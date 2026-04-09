@@ -16,8 +16,8 @@ const en = {
   'tab.groups': 'Groups',
   'tab.resetRankings': 'Reset rankings',
 
-  // ── Ticket Stubs ────────────────────────────────────────────────────────
-  'stubs.title': 'Ticket Stubs',
+  // ── Ticket Stubs / Memories ──────────────────────────────────────────────
+  'stubs.title': 'Memories',
   'stubs.noStubsMonth': 'No stubs this month',
   'stubs.noStubsYet': 'No stubs yet',
   'stubs.noStubsHint': 'Rank a movie or TV show to collect your first ticket stub.',
@@ -35,9 +35,16 @@ const en = {
   'stubs.noReview': 'No review yet for this title.',
   'stubs.asCharacter': 'as',
 
+  // ── First Run ────────────────────────────────────────────────────────────
+  'firstRun.title': 'Start your collection',
+  'firstRun.subtitle': 'What was the last movie you loved? Search for it and give it a tier.',
+  'firstRun.searchCta': 'Find a movie',
+  'firstRun.previewLabel': 'Here is what your board could look like',
+  'firstRun.reassurance': 'You can always change your mind. Rankings are living things.',
+
   // ── Ranking Page ─────────────────────────────────────────────────────────
   'ranking.myCanon': 'My Canon',
-  'ranking.subtitle': 'Add a movie and rank it head-to-head against your list. Order implies superiority.',
+  'ranking.subtitle': 'Your definitive rankings, from masterpiece to meh.',
   'ranking.allGenres': 'All Genres',
 
   // ── Ranking Page Toasts ───────────────────────────────────────────────────
@@ -196,6 +203,15 @@ const en = {
 
   // ── Toast ────────────────────────────────────────────────────────────────
   'toast.movieSaved': 'Movie saved to watchlist',
+  'toast.ranked': 'Added to {tier} tier',
+  'toast.moved': 'Moved to {tier} tier',
+
+  // ── Profile Sub-tabs ────────────────────────────────────────────────────
+  'profile.tabJournal': 'Journal',
+  'profile.tabMemories': 'Memories',
+  'profile.tabStats': 'Stats',
+  'profile.tabLists': 'Lists',
+  'profile.tabAchievements': 'Achievements',
 
   // ── Landing Page ─────────────────────────────────────────────────────────
   'landing.tagline': 'Your movies, ranked and remembered',
@@ -299,6 +315,7 @@ const en = {
   'share.exporting': 'Exporting...',
   'share.shareImage': 'Share image',
   'share.downloadImage': 'Download image',
+  'share.exportFailed': "Couldn't save image. Try a screenshot instead.",
 
   // ── Streaks ────────────────────────────────────────────────────────────────
   'streak.current': 'day streak',

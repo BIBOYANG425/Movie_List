@@ -178,13 +178,13 @@ export const JournalEntrySheet: React.FC<JournalEntrySheetProps> = ({
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-[var(--duration-normal)] ${visible ? 'opacity-100' : 'opacity-0'}`}
         onClick={handleDismiss}
       />
 
       {/* Sheet */}
       <div
-        className={`relative w-full max-w-md bg-card rounded-t-2xl shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
+        className={`relative w-full max-w-md bg-card rounded-t-2xl shadow-2xl flex flex-col transition-transform duration-[var(--duration-normal)] ease-out ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ maxHeight: '80vh' }}

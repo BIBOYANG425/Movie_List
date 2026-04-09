@@ -83,7 +83,7 @@ export const FeedCommentThread: React.FC<FeedCommentThreadProps> = ({
           >
             {comment.displayName || comment.username}
           </Link>
-          <span className="text-[11px] text-muted-foreground/60">
+          <span className="text-xs text-muted-foreground/60">
             {relativeDate(comment.createdAt, t, locale)}
           </span>
         </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Users, Film, Tv, BookOpen, Lock, UserPlus, Share2, Check } from 'lucide-react';
 import { RankedItem, Tier } from '../types';
@@ -7,6 +7,7 @@ import { getProfileByUsername, PublicProfile } from '../services/profileService'
 import { getPublicRankings } from '../services/publicProfileService';
 import { useTranslation } from '../contexts/LanguageContext';
 import SpoolLogo from '../components/layout/SpoolLogo';
+import { shareOrCopyLink } from '../utils/shareLink';
 
 type MediaTab = 'movies' | 'tv' | 'books';
 
@@ -26,15 +27,11 @@ const PublicProfilePage: React.FC = () => {
   const handleShare = async () => {
     const url = `${window.location.origin}/u/${username}`;
     const title = `${profile?.displayName || username} on Spool`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title, url });
-        return;
-      }
-    } catch { /* user cancelled */ }
-    await navigator.clipboard.writeText(url);
-    setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), 2000);
+    const copied = await shareOrCopyLink(title, url);
+    if (copied) {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
   };
 
   useEffect(() => {
@@ -93,6 +90,26 @@ const PublicProfilePage: React.FC = () => {
     };
   }, [profile]);
 
+  const isPrivate = profile?.profileVisibility === 'private';
+  const isFriendsOnly = profile?.profileVisibility === 'friends';
+  const isPublic = profile?.profileVisibility === 'public';
+
+  const activeItems = mediaTab === 'movies' ? movies : mediaTab === 'tv' ? tv : books;
+  const totalRankings = movies.length + tv.length + books.length;
+
+  const topPicks = useMemo(
+    () => activeItems.filter((i) => i.tier === 'S' || i.tier === 'A').slice(0, 6),
+    [activeItems],
+  );
+  const itemsByTier = useMemo(
+    () => TIERS.reduce((acc, tier) => {
+      const tierItems = activeItems.filter((i) => i.tier === tier);
+      if (tierItems.length > 0) acc.push({ tier, items: tierItems });
+      return acc;
+    }, [] as { tier: Tier; items: RankedItem[] }[]),
+    [activeItems],
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -111,20 +128,6 @@ const PublicProfilePage: React.FC = () => {
       </div>
     );
   }
-
-  const isPrivate = profile.profileVisibility === 'private';
-  const isFriendsOnly = profile.profileVisibility === 'friends';
-  const isPublic = profile.profileVisibility === 'public';
-
-  const activeItems = mediaTab === 'movies' ? movies : mediaTab === 'tv' ? tv : books;
-  const totalRankings = movies.length + tv.length + books.length;
-
-  const topPicks = activeItems.filter((i) => i.tier === 'S' || i.tier === 'A').slice(0, 6);
-  const itemsByTier = TIERS.reduce((acc, tier) => {
-    const tierItems = activeItems.filter((i) => i.tier === tier);
-    if (tierItems.length > 0) acc.push({ tier, items: tierItems });
-    return acc;
-  }, [] as { tier: Tier; items: RankedItem[] }[]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -242,7 +245,7 @@ const PublicProfilePage: React.FC = () => {
                       alt={item.title}
                       className="w-full aspect-[2/3] rounded-lg object-cover border border-border/30"
                     />
-                    <div className={`absolute top-1 left-1 px-1 py-0.5 rounded text-[9px] font-bold border ${TIER_COLORS[item.tier]}`}>
+                    <div className={`absolute top-1 left-1 px-1 py-0.5 rounded text-[10px] font-bold border ${TIER_COLORS[item.tier]}`}>
                       {item.tier}
                     </div>
                     <p className="mt-1 text-[10px] text-muted-foreground truncate">{item.title}</p>
@@ -276,7 +279,7 @@ const PublicProfilePage: React.FC = () => {
                             alt={item.title}
                             className="w-12 h-[72px] rounded object-cover border border-border/20"
                           />
-                          <p className="text-[8px] text-muted-foreground truncate mt-0.5">{item.title}</p>
+                          <p className="text-[10px] text-muted-foreground truncate mt-0.5">{item.title}</p>
                         </div>
                       ))}
                     </div>

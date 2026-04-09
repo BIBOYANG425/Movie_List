@@ -87,7 +87,7 @@ export const AchievementsView: React.FC<AchievementsViewProps> = ({ userId, isOw
             {/* Progress bar */}
             <div className="bg-secondary rounded-full h-2 overflow-hidden">
                 <div
-                    className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all duration-500"
+                    className="h-full bg-gradient-to-r from-gold to-gold-muted rounded-full transition-all duration-[var(--duration-slow)]"
                     style={{ width: `${(achievements.length / BADGE_CATALOG.length) * 100}%` }}
                 />
             </div>
@@ -123,12 +123,12 @@ export const AchievementsView: React.FC<AchievementsViewProps> = ({ userId, isOw
                                             {badge.description}
                                         </p>
                                         {unlocked && achievement && (
-                                            <p className="text-[9px] text-muted-foreground/60 mt-1">
+                                            <p className="text-[10px] text-muted-foreground/60 mt-1">
                                                 {new Date(achievement.unlockedAt).toLocaleDateString()}
                                             </p>
                                         )}
                                         {!unlocked && (
-                                            <p className="text-[9px] text-muted-foreground/40 mt-1">{badge.requirement}</p>
+                                            <p className="text-[10px] text-muted-foreground/40 mt-1">{badge.requirement}</p>
                                         )}
                                     </div>
                                 );

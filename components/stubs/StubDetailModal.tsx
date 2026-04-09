@@ -76,6 +76,9 @@ export const StubDetailModal: React.FC<StubDetailModalProps> = ({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Stub details"
         className="relative w-full max-w-md space-y-4 my-auto"
         onClick={(e) => e.stopPropagation()}
       >

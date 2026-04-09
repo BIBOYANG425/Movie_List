@@ -33,7 +33,7 @@ export const PosterMosaic: React.FC<PosterMosaicProps> = ({ items }) => {
             />
             <div className="landing-mosaic-overlay">
               <p className="landing-body text-sm text-white">{item.title}</p>
-              <p className="landing-mono text-[11px] text-white/80">{item.year}</p>
+              <p className="landing-mono text-xs text-white/80">{item.year}</p>
             </div>
           </article>
         ))}

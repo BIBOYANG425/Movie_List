@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Share2, Ticket } from 'lucide-react';
 import { MovieStub } from '../../types';
 import { getStubsForMonth, backfillStubs } from '../../services/stubService';
+import { TIER_HEX } from '../../constants';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { StreakBadge } from '../shared/StreakBadge';
-import { StubCard } from './StubCard';
 import { StubDetailModal } from './StubDetailModal';
 import { MonthlyRecapModal } from './MonthlyRecapModal';
 
@@ -126,8 +126,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Ticket size={16} className="text-gold" />
+        <div className="flex items-center gap-2.5">
+          <Ticket size={18} className="text-gold" />
           <h3 className="font-serif text-lg text-foreground">{t('stubs.title')}</h3>
         </div>
         {isOwnProfile && !backfillDone && (
@@ -146,93 +146,109 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         <button
           onClick={prevMonth}
           aria-label="Previous month"
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors"
+          className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
         >
           <ChevronLeft size={18} aria-hidden="true" />
         </button>
-        <span className="font-serif text-base text-foreground">
+        <span className="font-serif text-base font-semibold text-foreground">
           {monthName}
         </span>
         <button
           onClick={nextMonth}
           aria-label="Next month"
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors"
+          className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
         >
           <ChevronRight size={18} aria-hidden="true" />
         </button>
       </div>
 
       {/* Day labels */}
-      <div className="grid grid-cols-7 gap-px">
+      <div className="grid grid-cols-7">
         {dayLabels.map((d) => (
-          <div key={d} className="text-center text-[10px] text-muted-foreground font-sans py-1">
+          <div key={d} className="text-center text-xs text-muted-foreground font-medium py-1.5">
             {d}
           </div>
         ))}
       </div>
 
       {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-px bg-border/10 rounded-lg overflow-hidden">
+      <div className="grid grid-cols-7 border border-border/20 rounded-xl overflow-hidden">
         {loading ? (
-          // Skeleton
           Array.from({ length: 35 }).map((_, i) => (
-            <div key={i} className="bg-card/30 aspect-square animate-pulse" />
+            <div key={i} className="bg-card/20 aspect-square animate-pulse border-b border-r border-border/10" />
           ))
         ) : (
           cells.map((day, idx) => {
             if (day === null) {
-              return <div key={idx} className="bg-card/20 aspect-square" />;
+              return <div key={idx} className="bg-card/10 aspect-square border-b border-r border-border/10" />;
             }
             const dayStubs = stubsByDay.get(day) ?? [];
+            const heroStub = dayStubs[0];
+            const posterSrc = heroStub?.posterPath
+              ? (heroStub.posterPath.startsWith('http') ? heroStub.posterPath : `https://image.tmdb.org/t/p/w185${heroStub.posterPath}`)
+              : null;
+            const tierColor = heroStub ? (TIER_HEX[heroStub.tier] ?? '#71717a') : undefined;
+
             return (
-              <div
+              <button
                 key={idx}
-                className={`relative bg-card/30 aspect-square p-0.5 flex flex-col ${
-                  isToday(day) ? 'ring-1 ring-gold/50' : ''
-                }`}
+                onClick={heroStub ? () => setSelectedStub(heroStub) : undefined}
+                disabled={!heroStub}
+                className={`relative aspect-square border-b border-r border-border/10 overflow-hidden transition-transform ${
+                  heroStub ? 'cursor-pointer hover:z-10 hover:scale-[1.04] active:scale-95' : ''
+                } ${isToday(day) ? 'ring-1 ring-inset ring-gold/40' : ''}`}
               >
-                {/* Day number */}
+                {/* Background: poster fills cell, or subtle bg */}
+                {posterSrc ? (
+                  <img
+                    src={posterSrc}
+                    alt={heroStub.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className={`absolute inset-0 ${isToday(day) ? 'bg-gold/5' : 'bg-card/10'}`} />
+                )}
+
+                {/* Gradient overlay for text readability on posters */}
+                {posterSrc && (
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/40" />
+                )}
+
+                {/* Day number — top-left */}
                 <span
-                  className={`text-[9px] leading-none font-sans ${
-                    isToday(day)
-                      ? 'text-gold font-semibold'
-                      : dayStubs.length > 0
-                        ? 'text-foreground/70'
-                        : 'text-muted-foreground/40'
+                  className={`relative z-10 block p-1 sm:p-1.5 text-[10px] sm:text-xs font-semibold leading-none ${
+                    posterSrc
+                      ? 'text-white drop-shadow-md'
+                      : isToday(day)
+                        ? 'text-gold font-bold'
+                        : 'text-muted-foreground/50'
                   }`}
                 >
                   {day}
                 </span>
 
-                {/* Stub thumbnails */}
-                {dayStubs.length > 0 && (
-                  <div className="flex-1 flex items-center justify-center">
-                    {dayStubs.length <= 2 ? (
-                      <div className="flex gap-0.5">
-                        {dayStubs.map((stub) => (
-                          <div key={stub.id} className="w-5 sm:w-6">
-                            <StubCard
-                              stub={stub}
-                              size="mini"
-                              onClick={() => setSelectedStub(stub)}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setSelectedStub(dayStubs[0])}
-                        className="relative w-6 sm:w-7"
-                      >
-                        <StubCard stub={dayStubs[0]} size="mini" />
-                        <span className="absolute -top-0.5 -right-0.5 text-[7px] font-bold bg-gold text-background rounded-full w-3 h-3 flex items-center justify-center">
-                          {dayStubs.length}
-                        </span>
-                      </button>
-                    )}
-                  </div>
+                {/* Tier badge — bottom-left */}
+                {heroStub && tierColor && (
+                  <span
+                    className="absolute bottom-1 left-1 z-10 text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded-sm shadow"
+                    style={{ backgroundColor: tierColor, color: '#fff' }}
+                  >
+                    {heroStub.tier}
+                  </span>
                 )}
-              </div>
+
+                {/* Multi-stub count — top-right */}
+                {dayStubs.length > 1 && (
+                  <span className="absolute top-1 right-1 z-10 text-[8px] sm:text-[10px] font-bold bg-gold text-background rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center shadow">
+                    {dayStubs.length}
+                  </span>
+                )}
+
+                {/* S-tier shimmer */}
+                {heroStub?.tier === 'S' && (
+                  <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/15 via-transparent to-amber-500/10 pointer-events-none" />
+                )}
+              </button>
             );
           })
         )}
@@ -240,8 +256,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
       {/* Monthly summary */}
       {totalStubs > 0 && !loading && (
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] text-muted-foreground font-sans">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 pt-1">
+          <p className="text-xs text-muted-foreground">
             {totalStubs} {totalStubs !== 1 ? t('stubs.moments') : t('stubs.moment')}
             {topMood ? ` · ${t('stubs.mostFelt')} ${topMood[0]} (${topMood[1]})` : ''}
             {sTierCount > 0 ? ` · ${t('stubs.sTier')} ${sTierCount}` : ''}
@@ -251,9 +267,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             {username && (
               <button
                 onClick={() => setRecapOpen(true)}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                <Share2 size={11} />
+                <Share2 size={12} />
                 {t('recap.shareMonth')}
               </button>
             )}
@@ -263,7 +279,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
       {/* Empty state */}
       {totalStubs === 0 && !loading && (
-        <p className="text-xs text-muted-foreground text-center py-4">
+        <p className="text-sm text-muted-foreground text-center py-6">
           {t('stubs.noStubsMonth')}
         </p>
       )}
@@ -278,8 +294,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         />
       )}
 
-      {/* Monthly recap share modal */}
-      {username && (
+      {/* Monthly recap share modal — only mount when open to avoid bundling html2canvas eagerly */}
+      {recapOpen && username && (
         <MonthlyRecapModal
           open={recapOpen}
           onClose={() => setRecapOpen(false)}

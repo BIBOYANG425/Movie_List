@@ -17,7 +17,7 @@ const zh: Record<string, string> = {
   'tab.resetRankings': '重置排名',
 
   // ── 票根 ───────────────────────────────────────────────────────────────
-  'stubs.title': '票根',
+  'stubs.title': '回忆',
   'stubs.noStubsMonth': '本月没有票根',
   'stubs.noStubsYet': '还没有票根',
   'stubs.noStubsHint': '为电影或电视节目排名，收集你的第一张票根。',
@@ -36,8 +36,15 @@ const zh: Record<string, string> = {
   'stubs.asCharacter': '饰',
 
   // ── Ranking Page ─────────────────────────────────────────────────────────
+  // ── 首次使用 ─────────────────────────────────────────────────────────────
+  'firstRun.title': '开始你的收藏',
+  'firstRun.subtitle': '你最近喜欢的电影是什么？搜索它并给它一个评级。',
+  'firstRun.searchCta': '搜索电影',
+  'firstRun.previewLabel': '你的排行榜可能是这样的',
+  'firstRun.reassurance': '你随时可以改变主意。排名是活的。',
+
   'ranking.myCanon': '我的片单',
-  'ranking.subtitle': '添加电影并与你的列表进行对比排名。顺序代表优劣。',
+  'ranking.subtitle': '你的终极排名，从杰作到一般。',
   'ranking.allGenres': '所有类型',
 
   // ── 排名页提示 ──────────────────────────────────────────────────────────
@@ -196,6 +203,15 @@ const zh: Record<string, string> = {
 
   // ── Toast ────────────────────────────────────────────────────────────────
   'toast.movieSaved': '电影已保存到观影清单',
+  'toast.ranked': '已添加到 {tier} 级',
+  'toast.moved': '已移至 {tier} 级',
+
+  // ── Profile Sub-tabs ────────────────────────────────────────────────────
+  'profile.tabJournal': '日记',
+  'profile.tabMemories': '回忆',
+  'profile.tabStats': '统计',
+  'profile.tabLists': '片单',
+  'profile.tabAchievements': '成就',
 
   // ── Landing Page ─────────────────────────────────────────────────────────
   'landing.tagline': '你的电影，排名并铭记',
@@ -299,6 +315,7 @@ const zh: Record<string, string> = {
   'share.exporting': '导出中...',
   'share.shareImage': '分享图片',
   'share.downloadImage': '下载图片',
+  'share.exportFailed': '保存图片失败。请尝试截屏。',
 
   // ── 连续记录 ──────────────────────────────────────────────────────────────
   'streak.current': '天连续',

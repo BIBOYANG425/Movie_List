@@ -1,11 +1,12 @@
 import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FocusTrap from 'focus-trap-react';
-import html2canvas from 'html2canvas';
 import { Download, Share2, X } from 'lucide-react';
+import { exportCardImage } from '../../utils/exportCardImage';
 import { MovieStub } from '../../types';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { MonthlyRecapCard } from './MonthlyRecapCard';
+import { Toast } from '../shared/Toast';
 
 interface MonthlyRecapModalProps {
   open: boolean;
@@ -35,6 +36,7 @@ export const MonthlyRecapModal: React.FC<MonthlyRecapModalProps> = ({
   const { t } = useTranslation();
   const cardRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   if (!open) return null;
 
@@ -42,36 +44,15 @@ export const MonthlyRecapModal: React.FC<MonthlyRecapModalProps> = ({
     if (!cardRef.current) return;
     setExporting(true);
     try {
-      const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: null,
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
-
-      canvas.toBlob(async (blob) => {
-        if (!blob) { setExporting(false); return; }
-        const file = new File([blob], `spool-recap-${monthLabel.replace(/\s/g, '-')}.png`, {
-          type: 'image/png',
-        });
-
-        if (navigator.share && navigator.canShare?.({ files: [file] })) {
-          try {
-            await navigator.share({ files: [file], title: `${monthLabel} on Spool` });
-          } catch {
-            // User cancelled
-          }
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = file.name;
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-        setExporting(false);
-      }, 'image/png');
-    } catch {
+      await exportCardImage(
+        cardRef.current,
+        `spool-recap-${monthLabel.replace(/\s/g, '-')}.png`,
+        `${monthLabel} on Spool`,
+      );
+    } catch (err) {
+      console.error('Monthly recap export failed:', err);
+      setToastMessage(t('share.exportFailed'));
+    } finally {
       setExporting(false);
     }
   };
@@ -126,6 +107,9 @@ export const MonthlyRecapModal: React.FC<MonthlyRecapModalProps> = ({
             </button>
           </div>
         </div>
+        {toastMessage && (
+          <Toast message={toastMessage} onDone={() => setToastMessage(null)} />
+        )}
       </div>
     </FocusTrap>,
     document.body,

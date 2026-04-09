@@ -503,7 +503,7 @@ export async function getProfileSummary(
 
   const initial = await supabase
     .from('profiles')
-    .select('id, username, display_name, bio, avatar_url, avatar_path, onboarding_completed')
+    .select('id, username, display_name, bio, avatar_url, avatar_path, onboarding_completed, profile_visibility')
     .eq('id', targetUserId)
     .maybeSingle();
 
@@ -573,6 +573,7 @@ export async function getProfileSummary(
     isFollowing,
     isFollowedBy,
     isMutual: isFollowing && isFollowedBy,
+    profileVisibility: (row as unknown as Record<string, unknown>).profile_visibility as 'public' | 'friends' | 'private' | undefined,
   };
 }
 

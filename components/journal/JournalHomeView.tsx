@@ -136,8 +136,8 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
         />
       )}
 
-      {/* Entry list */}
-      <div className="space-y-2.5">
+      {/* Entry grid — poster-forward cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {entries.map((entry) => (
           <JournalEntryCard
             key={entry.id}
@@ -147,27 +147,31 @@ export const JournalHomeView: React.FC<JournalHomeViewProps> = ({
             onEdit={onEditEntry}
           />
         ))}
-
-        {/* Sentinel for infinite scroll */}
-        {hasMore && <div ref={sentinelRef} className="h-4" />}
-
-        {/* Loading */}
-        {loading && entries.length === 0 && (
-          <SkeletonList count={4} variant="journal" />
-        )}
-
-        {/* Empty state */}
-        {!loading && entries.length === 0 && (
-          <div className="py-12 text-center">
-            <Film size={32} className="mx-auto text-muted-foreground/40 mb-3" />
-            <p className="text-sm text-muted-foreground">
-              {isOwnProfile
-                ? t('journal.emptyOwn')
-                : t('journal.emptyOther')}
-            </p>
-          </div>
-        )}
       </div>
+
+      {/* Sentinel for infinite scroll */}
+      {hasMore && <div ref={sentinelRef} className="h-4" />}
+
+      {/* Loading */}
+      {loading && entries.length === 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="aspect-[2/3] rounded-2xl bg-card/30 animate-pulse" />
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && entries.length === 0 && (
+        <div className="py-16 text-center">
+          <Film size={36} className="mx-auto text-muted-foreground/30 mb-3" />
+          <p className="text-sm text-muted-foreground">
+            {isOwnProfile
+              ? t('journal.emptyOwn')
+              : t('journal.emptyOther')}
+          </p>
+        </div>
+      )}
     </div>
   );
 };

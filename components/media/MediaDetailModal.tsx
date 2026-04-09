@@ -8,6 +8,7 @@ import { TIER_COLORS, TIER_LABELS } from '../../constants';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/LanguageContext';
+import { shareOrCopyLink } from '../../utils/shareLink';
 import { JournalConversation } from '../journal/JournalConversation';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 
@@ -88,16 +89,8 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
     const handleShare = async () => {
         const url = `${window.location.origin}/app?movieId=${encodeURIComponent(tmdbId)}`;
-        try {
-            if (navigator.share) {
-                await navigator.share({ title: detailTitle ?? t('detail.shareTitle'), url });
-            } else {
-                await navigator.clipboard.writeText(url);
-                setLinkCopied(true);
-                setTimeout(() => setLinkCopied(false), 2000);
-            }
-        } catch {
-            await navigator.clipboard.writeText(url);
+        const copied = await shareOrCopyLink(detailTitle ?? t('detail.shareTitle'), url);
+        if (copied) {
             setLinkCopied(true);
             setTimeout(() => setLinkCopied(false), 2000);
         }
@@ -253,6 +246,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                 <button
                     onClick={onClose}
                     className="absolute top-4 right-4 z-20 p-2 bg-black/50 backdrop-blur-md rounded-full text-foreground/70 hover:text-foreground hover:bg-black/80 transition"
+                    aria-label="Close"
                 >
                     <X size={20} />
                 </button>
@@ -265,7 +259,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                         {/* Backdrop */}
                         <div className="absolute inset-0 h-80 bg-card overflow-hidden">
                             {detailBackdropUrl ? (
-                                <img src={detailBackdropUrl} className="w-full h-full object-cover opacity-60 mix-blend-screen animate-fade-in" />
+                                <img src={detailBackdropUrl} alt="" className="w-full h-full object-cover opacity-60 mix-blend-screen animate-fade-in" />
                             ) : (
                                 <div className="w-full h-full animate-pulse bg-secondary" />
                             )}
@@ -274,7 +268,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
 
                         <div className="relative pt-32 px-6 flex flex-col items-center">
                             <div className="w-32 sm:w-40 aspect-[2/3] rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden border border-border/30 shrink-0">
-                                <img src={detailPosterUrl} className="w-full h-full object-cover" />
+                                <img src={detailPosterUrl} alt={`${detailTitle} poster`} className="w-full h-full object-cover" />
                             </div>
 
                             <h2 className="mt-5 text-3xl font-serif text-foreground text-center leading-tight tracking-tight">
@@ -452,7 +446,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                     <div className="flex -space-x-2">
                                         {socialStats.friendAvatars.map((url, i) => (
                                             <div key={i} className="w-8 h-8 rounded-full border-2 border-[#0a0a0c] bg-secondary overflow-hidden">
-                                                <img src={url} className="w-full h-full object-cover" />
+                                                <img src={url} alt="" className="w-full h-full object-cover" />
                                             </div>
                                         ))}
                                     </div>
@@ -468,7 +462,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                             <div key={fr.userId} className="flex items-center gap-3 bg-white/5 border border-border/30 rounded-xl px-3 py-2">
                                                 <div className="w-7 h-7 rounded-full border border-border bg-secondary overflow-hidden flex-shrink-0">
                                                     {fr.avatarUrl ? (
-                                                        <img src={fr.avatarUrl} className="w-full h-full object-cover" />
+                                                        <img src={fr.avatarUrl} alt={fr.username} className="w-full h-full object-cover" />
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground font-bold bg-card">
                                                             {fr.username.charAt(0).toUpperCase()}
@@ -496,7 +490,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                     <div className="bg-white/5 border border-border/30 rounded-xl p-4 mt-2">
                                         <p className="text-base text-foreground font-medium italic">"{socialStats.topFriendReview.body}"</p>
                                         <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
-                                            <img src={socialStats.topFriendReview.avatarUrl} className="w-5 h-5 rounded-full" />
+                                            <img src={socialStats.topFriendReview.avatarUrl} alt={socialStats.topFriendReview.username} className="w-5 h-5 rounded-full" />
                                             <span className="font-semibold text-muted-foreground">{socialStats.topFriendReview.username}</span>
                                             <span>{t('detail.rankedIt')} <span className="font-bold text-foreground">#{socialStats.topFriendReview.rankPosition + 1}</span></span>
                                         </div>
@@ -511,7 +505,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({ initialItem,
                                                 <div key={activity.id} className="flex items-center gap-3">
                                                     <div className="w-8 h-8 rounded-full border border-border bg-secondary overflow-hidden flex-shrink-0">
                                                         {activity.avatarUrl ? (
-                                                            <img src={activity.avatarUrl} className="w-full h-full object-cover" />
+                                                            <img src={activity.avatarUrl} alt={activity.username} className="w-full h-full object-cover" />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground font-bold bg-card">
                                                                 {activity.username.charAt(0).toUpperCase()}

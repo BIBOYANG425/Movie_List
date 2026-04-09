@@ -18,6 +18,25 @@ function rowToRankedItem(row: Record<string, unknown>, type: MediaType): RankedI
   };
 }
 
+const RANKING_COLUMNS = 'tmdb_id, title, year, poster_url, tier, rank_position, genres, bracket, director, notes';
+const BOOK_RANKING_COLUMNS = 'tmdb_id, title, year, poster_url, tier, rank_position, genres, bracket, notes';
+
+function extractItems(
+  result: PromiseSettledResult<{ data: Record<string, unknown>[] | null; error: unknown }>,
+  type: MediaType,
+  label: string,
+): RankedItem[] {
+  if (result.status !== 'fulfilled') {
+    console.error(`${label} rankings query rejected:`, result.reason);
+    return [];
+  }
+  if (result.value.error) {
+    console.error(`Failed to fetch ${label} rankings:`, result.value.error);
+    return [];
+  }
+  return (result.value.data ?? []).map((r) => rowToRankedItem(r, type));
+}
+
 export async function getPublicRankings(userId: string): Promise<{
   movies: RankedItem[];
   tv: RankedItem[];
@@ -26,57 +45,27 @@ export async function getPublicRankings(userId: string): Promise<{
   const [movieResult, tvResult, bookResult] = await Promise.allSettled([
     supabase
       .from('user_rankings')
-      .select('*')
+      .select(RANKING_COLUMNS)
       .eq('user_id', userId)
       .order('tier')
       .order('rank_position'),
     supabase
       .from('tv_rankings')
-      .select('*')
+      .select(RANKING_COLUMNS)
       .eq('user_id', userId)
       .order('tier')
       .order('rank_position'),
     supabase
       .from('book_rankings')
-      .select('*')
+      .select(BOOK_RANKING_COLUMNS)
       .eq('user_id', userId)
       .order('tier')
       .order('rank_position'),
   ]);
 
-  let movies: RankedItem[] = [];
-  let tv: RankedItem[] = [];
-  let books: RankedItem[] = [];
-
-  if (movieResult.status === 'fulfilled') {
-    if (movieResult.value.error) {
-      console.error('Failed to fetch movie rankings:', movieResult.value.error);
-    } else {
-      movies = (movieResult.value.data ?? []).map((r) => rowToRankedItem(r, 'movie'));
-    }
-  } else {
-    console.error('Movie rankings query rejected:', movieResult.reason);
-  }
-
-  if (tvResult.status === 'fulfilled') {
-    if (tvResult.value.error) {
-      console.error('Failed to fetch TV rankings:', tvResult.value.error);
-    } else {
-      tv = (tvResult.value.data ?? []).map((r) => rowToRankedItem(r, 'tv_season'));
-    }
-  } else {
-    console.error('TV rankings query rejected:', tvResult.reason);
-  }
-
-  if (bookResult.status === 'fulfilled') {
-    if (bookResult.value.error) {
-      console.error('Failed to fetch book rankings:', bookResult.value.error);
-    } else {
-      books = (bookResult.value.data ?? []).map((r) => rowToRankedItem(r, 'book'));
-    }
-  } else {
-    console.error('Book rankings query rejected:', bookResult.reason);
-  }
-
-  return { movies, tv, books };
+  return {
+    movies: extractItems(movieResult, 'movie', 'movie'),
+    tv: extractItems(tvResult, 'tv_season', 'TV'),
+    books: extractItems(bookResult, 'book', 'book'),
+  };
 }

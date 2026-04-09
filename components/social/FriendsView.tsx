@@ -179,7 +179,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
         </form>
 
         {results.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-2" role="list" aria-label="Search results">
             {results.map((row) => {
               const isFollowing = row.isFollowing || followingSet.has(row.id);
               const isWorking = actionUserId === row.id;
@@ -210,7 +210,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
                     <button
                       onClick={() => handleFollow(row.id)}
                       disabled={isWorking}
-                      className="inline-flex items-center gap-1 rounded-md bg-emerald-500/90 px-2.5 py-1 text-xs font-semibold text-black hover:bg-emerald-400 transition-colors disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded-md bg-gold px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:bg-gold-muted transition-colors disabled:opacity-50"
                     >
                       <UserPlus size={12} />
                       Follow
@@ -243,7 +243,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
           {following.length === 0 ? (
             <p className="text-sm text-muted-foreground">You are not following anyone yet.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2" role="list" aria-label="Following">
               {following.map((row) => (
                 <div
                   key={row.id}
@@ -275,7 +275,7 @@ export const FriendsView: React.FC<FriendsViewProps> = ({ userId, selfUsername }
           {followers.length === 0 ? (
             <p className="text-sm text-muted-foreground">No followers yet.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2" role="list" aria-label="Followers">
               {followers.map((row) => (
                 <div
                   key={row.id}

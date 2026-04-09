@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { GenreProfileItem } from '../../types';
+import { TIER_RADAR_HEX } from '../../constants';
 
 interface GenreRadarChartProps {
     genres: GenreProfileItem[];
@@ -8,14 +9,6 @@ interface GenreRadarChartProps {
     comparisonLabel?: string;
     size?: number;
 }
-
-const TIER_COLORS: Record<string, string> = {
-    S: '#f59e0b',
-    A: '#22c55e',
-    B: '#3b82f6',
-    C: '#8b5cf6',
-    D: '#ef4444',
-};
 
 const TIER_BG_COLORS: Record<string, string> = {
     S: 'rgba(245, 158, 11, 0.15)',
@@ -200,7 +193,7 @@ export const GenreRadarChart: React.FC<GenreRadarChartProps> = ({
                     >
                         <span
                             className="w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold text-black"
-                            style={{ backgroundColor: TIER_COLORS[g.avgTier] || '#71717a' }}
+                            style={{ backgroundColor: TIER_RADAR_HEX[g.avgTier] || '#71717a' }}
                         >
                             {g.avgTier}
                         </span>
