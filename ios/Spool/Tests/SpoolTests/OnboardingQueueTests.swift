@@ -1,6 +1,7 @@
 import XCTest
 @testable import Spool
 
+@MainActor
 final class OnboardingQueueTests: XCTestCase {
 
     /// Use an isolated UserDefaults suite so tests don't collide with the
@@ -66,7 +67,7 @@ final class OnboardingQueueTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
-    // MARK: - enqueue / pending / clear
+    // MARK: - replace / pending / clear
 
     func testPendingStartsEmpty() {
         XCTAssertTrue(OnboardingQueue.pending.isEmpty)
@@ -78,20 +79,20 @@ final class OnboardingQueueTests: XCTestCase {
             makeRow(tmdbId: "2", tier: "S", rank: 2),
             makeRow(tmdbId: "3", tier: "A", rank: 1),
         ]
-        OnboardingQueue.enqueue(rows)
+        OnboardingQueue.replace(rows)
         XCTAssertEqual(OnboardingQueue.pending, rows)
     }
 
     func testEnqueueReplacesPriorQueue() {
-        OnboardingQueue.enqueue([makeRow(tmdbId: "old", tier: "B", rank: 1)])
+        OnboardingQueue.replace([makeRow(tmdbId: "old", tier: "B", rank: 1)])
         let newRows = [makeRow(tmdbId: "new", tier: "S", rank: 1)]
-        OnboardingQueue.enqueue(newRows)
+        OnboardingQueue.replace(newRows)
         XCTAssertEqual(OnboardingQueue.pending, newRows)
         XCTAssertEqual(OnboardingQueue.pending.first?.tmdbId, "new")
     }
 
     func testClearEmptiesTheQueue() {
-        OnboardingQueue.enqueue([makeRow(tmdbId: "1", tier: "S", rank: 1)])
+        OnboardingQueue.replace([makeRow(tmdbId: "1", tier: "S", rank: 1)])
         XCTAssertFalse(OnboardingQueue.pending.isEmpty)
         OnboardingQueue.clear()
         XCTAssertTrue(OnboardingQueue.pending.isEmpty)
@@ -119,7 +120,7 @@ final class OnboardingQueueTests: XCTestCase {
         // session check. In the test environment `SpoolClient.shared` is nil
         // (no Info.plist keys), so we expect `.notConfigured`. If credentials
         // were present but no session existed it would throw `.notAuthenticated`.
-        OnboardingQueue.enqueue([makeRow(tmdbId: "1", tier: "S", rank: 1)])
+        OnboardingQueue.replace([makeRow(tmdbId: "1", tier: "S", rank: 1)])
 
         do {
             try await OnboardingQueue.flush()

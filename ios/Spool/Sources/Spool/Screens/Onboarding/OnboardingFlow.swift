@@ -126,7 +126,7 @@ public struct OnboardingFlow: View {
                 }
             }
         } else {
-            OnboardingQueue.enqueue(rankings)
+            OnboardingQueue.replace(rankings)
             onFinish(.init(handle: handle, signedIn: signedIn))
         }
     }

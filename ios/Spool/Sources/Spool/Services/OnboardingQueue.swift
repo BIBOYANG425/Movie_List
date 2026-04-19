@@ -20,7 +20,16 @@ import Foundation
 ///  - `pending` is a computed read of the UserDefaults key; no in-memory cache
 ///    so the queue stays consistent across calls.
 ///
+/// Concurrency: the whole enum is `@MainActor`. The `defaults` property is
+/// mutable static state (tests swap in a suite-specific `UserDefaults`), so
+/// isolating to the main actor gives us a single serial queue for reads/writes
+/// without pulling in a dedicated actor. All current callers already hop to an
+/// async context (AuthService flushes via `await`, the onboarding flow's Task
+/// inherits main actor from its enclosing View), so this is zero-cost at the
+/// call sites.
+///
 /// Header last reviewed: 2026-04-18
+@MainActor
 public enum OnboardingQueue {
 
     /// UserDefaults key — stable, do not rename without a migration.
@@ -40,7 +49,10 @@ public enum OnboardingQueue {
 
     /// Replace the queued set with `rankings`. Callers assemble the full list
     /// for a single onboarding pass and call this once — we don't append.
-    public static func enqueue(_ rankings: [QueuedRanking]) {
+    ///
+    /// Name is `replace` (not `enqueue`) to make the semantics obvious at the
+    /// call site: a subsequent call discards the prior queue.
+    public static func replace(_ rankings: [QueuedRanking]) {
         do {
             let data = try JSONEncoder().encode(rankings)
             defaults.set(data, forKey: storageKey)
