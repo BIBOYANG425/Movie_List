@@ -309,8 +309,9 @@ public struct RankH2HScreen: View {
         let year = Self.normalizedYear(movie.year)
 
         if await SpoolClient.currentUserID() != nil {
-            // Signed-in path: write directly. `try?` stays until Task 4 wires
-            // a toast for the failure path.
+            // Signed-in path: write directly. Surface failures via a toast so
+            // the user knows the rank didn't land — prior silent `try?` hid
+            // every network/RLS error.
             let insert = RankingInsert(
                 tmdbId: movie.id,
                 title: movie.title,
@@ -323,7 +324,16 @@ public struct RankH2HScreen: View {
                 rankPosition: finalRank,
                 notes: nil
             )
-            _ = try? await RankingRepository.shared.insertRanking(insert)
+            do {
+                _ = try await RankingRepository.shared.insertRanking(insert)
+            } catch {
+                await MainActor.run {
+                    ToastCenter.shared.show(
+                        "couldn't save your rank — check connection",
+                        level: .error
+                    )
+                }
+            }
             return
         }
 

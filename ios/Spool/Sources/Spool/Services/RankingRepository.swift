@@ -129,7 +129,14 @@ public actor RankingRepository {
             media_tier: ranking.tier.rawValue,
             media_poster_url: ranking.posterURL
         )
-        _ = try? await client.from("activity_events").insert(event).execute()
+        // Fire-and-forget telemetry — the ranking itself already landed, so
+        // we don't want a feed-insert hiccup to surface a user-facing toast.
+        // Log so failures show up in device logs for triage.
+        do {
+            _ = try await client.from("activity_events").insert(event).execute()
+        } catch {
+            print("activity_events insert failed: \(error)")
+        }
 
         return inserted
     }

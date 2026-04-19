@@ -40,16 +40,23 @@ public struct SpoolAppRoot: View {
     enum RankFlowStep { case entry, tier, h2h, ceremony, printed }
 
     public var body: some View {
-        Group {
-            if !onboardingCompleted {
-                OnboardingFlow(onFinish: { outcome in
-                    userHandle = outcome.handle
-                    previewMode = !outcome.signedIn
-                    onboardingCompleted = true
-                })
-            } else {
-                mainApp
+        ZStack {
+            Group {
+                if !onboardingCompleted {
+                    OnboardingFlow(onFinish: { outcome in
+                        userHandle = outcome.handle
+                        previewMode = !outcome.signedIn
+                        onboardingCompleted = true
+                    })
+                } else {
+                    mainApp
+                }
             }
+            // Toast overlay sits above main content but below any `.sheet`
+            // (SwiftUI sheets present above overlays natively), so error
+            // messages float over the UI without blocking sign-in or future
+            // modals. Mounted once at the root so every screen shares one toast.
+            ToastHost()
         }
     }
 
