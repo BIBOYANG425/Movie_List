@@ -40,7 +40,12 @@ public struct FeedScreen: View {
 
     @ViewBuilder
     private var content: some View {
-        if hasSession {
+        if loading {
+            // Render nothing until the first reload() resolves. Prevents a
+            // one-frame flash of the preview-mode demo card on launch for
+            // signed-in users, since `hasSession` defaults to false.
+            Color.clear.frame(height: 1)
+        } else if hasSession {
             if liveFeedItems.isEmpty {
                 signedInEmptyState
             } else {
