@@ -181,7 +181,7 @@ struct OnbSignInScreen: View {
                         .padding(.top, 22)
 
                         Button(action: { onDone(.skipped) }) {
-                            Text("skip — rank first, sign in later")
+                            Text("continue without account — preview only")
                                 .font(SpoolFonts.hand(12))
                                 .foregroundStyle(t.inkSoft)
                                 .underline()

@@ -5,8 +5,14 @@ import SwiftUI
 public struct SpoolAppRoot: View {
     @AppStorage("spool.onboarding_completed") private var onboardingCompleted: Bool = false
     @AppStorage("spool.user_handle") private var userHandle: String = ""
+    /// True when the user completed onboarding WITHOUT signing in. Drives the
+    /// preview-mode banner over the tab bar + tells rank persistence sites to
+    /// queue (via `OnboardingQueue.append`) instead of writing to Supabase.
+    /// Cleared when the user successfully signs in via `SignInSheet`.
+    @AppStorage("spool.preview_mode") private var previewMode: Bool = false
     @State private var mode: SpoolMode = .paper
     @State private var tab: SpoolTab = .feed
+    @State private var showSignInSheet: Bool = false
 
     // Rank flow
     @State private var flow: RankFlowStep? = nil
@@ -33,6 +39,7 @@ public struct SpoolAppRoot: View {
             if !onboardingCompleted {
                 OnboardingFlow(onFinish: { outcome in
                     userHandle = outcome.handle
+                    previewMode = !outcome.signedIn
                     onboardingCompleted = true
                 })
             } else {
@@ -53,14 +60,61 @@ public struct SpoolAppRoot: View {
 
             screen
                 .overlay(alignment: .bottom) {
-                    if !navHidden {
-                        BottomNav(active: tab, onTab: onTab)
+                    VStack(spacing: 0) {
+                        if previewMode && !navHidden {
+                            previewBanner
+                        }
+                        if !navHidden {
+                            BottomNav(active: tab, onTab: onTab)
+                        }
                     }
                 }
                 .overlay(alignment: .topTrailing) { paletteToggle }
         }
         .spoolMode(mode)
         .preferredColorScheme(mode == .paper ? .light : .dark)
+        .sheet(isPresented: $showSignInSheet) {
+            SignInSheet(onDone: { result in
+                if result == .signedIn {
+                    // AuthService already flushed the queue on success; drop
+                    // the banner so the user's shelf starts persisting normally.
+                    previewMode = false
+                }
+                showSignInSheet = false
+            })
+        }
+    }
+
+    /// Slim gold banner above the tab bar. Tap → opens the sign-in sheet.
+    /// Only shown when `previewMode == true` and no modal screen is covering
+    /// the nav (`navHidden`). Not dismissible — the single recovery path is
+    /// to sign in.
+    private var previewBanner: some View {
+        SpoolThemeReader { t, _ in
+            Button {
+                showSignInSheet = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "icloud.slash")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(t.ink)
+                    Text("preview mode — sign in to save your rankings")
+                        .font(SpoolFonts.hand(12))
+                        .foregroundStyle(t.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(t.yellow)
+                        .overlay(Capsule().stroke(t.ink, lineWidth: 1))
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 6)
+        }
     }
 
     private var navHidden: Bool {

@@ -103,6 +103,36 @@ final class OnboardingQueueTests: XCTestCase {
         XCTAssertTrue(OnboardingQueue.pending.isEmpty)
     }
 
+    // MARK: - append
+
+    func testAppendOnEmptyQueueAddsSingleRow() {
+        let row = makeRow(tmdbId: "42", tier: "S", rank: 1)
+        OnboardingQueue.append(row)
+        XCTAssertEqual(OnboardingQueue.pending, [row])
+    }
+
+    func testAppendPreservesExistingRows() {
+        let first = makeRow(tmdbId: "1", tier: "S", rank: 1)
+        let second = makeRow(tmdbId: "2", tier: "A", rank: 1)
+        OnboardingQueue.replace([first, second])
+
+        let third = makeRow(tmdbId: "3", tier: "B", rank: 1)
+        OnboardingQueue.append(third)
+
+        // Original two rows stay put, new row lands at the tail.
+        XCTAssertEqual(OnboardingQueue.pending, [first, second, third])
+    }
+
+    func testAppendMultipleTimesAccumulates() {
+        let a = makeRow(tmdbId: "a", tier: "S", rank: 1)
+        let b = makeRow(tmdbId: "b", tier: "S", rank: 2)
+        OnboardingQueue.append(a)
+        OnboardingQueue.append(b)
+
+        XCTAssertEqual(OnboardingQueue.pending.count, 2)
+        XCTAssertEqual(OnboardingQueue.pending, [a, b])
+    }
+
     // MARK: - flush
 
     func testFlushWithEmptyQueueIsNoop() async {

@@ -27,6 +27,11 @@ public struct RankH2HScreen: View {
     @State private var finalRank = 0
     @State private var finalScore = 0.0
     @State private var allItems: [RankedItem] = []
+    /// True while the sign-in recovery sheet is visible. Set when a preview-mode
+    /// user's rank was captured into `OnboardingQueue` instead of written to
+    /// Supabase — the sheet offers them the recovery path without blocking the
+    /// ranking flow itself (the stub ceremony proceeds in parallel).
+    @State private var showSignIn = false
 
     public var body: some View {
         SpoolScreen {
@@ -73,6 +78,14 @@ public struct RankH2HScreen: View {
             }
         }
         .task { await start() }
+        .sheet(isPresented: $showSignIn) {
+            // .signedIn: AuthService.signInOrSignUp already flushes the queue
+            //   on success (Task 1), so our appended row lands automatically.
+            // .skipped: the queued row stays; Task 4 will surface a toast.
+            SignInSheet(onDone: { _ in
+                showSignIn = false
+            })
+        }
     }
 
     // MARK: header / subviews
@@ -289,20 +302,50 @@ public struct RankH2HScreen: View {
         }
     }
 
+    /// Persist the newly-ranked movie, or queue it if the user is in preview
+    /// mode (no session). Never blocks the stub ceremony — the sign-in sheet,
+    /// when needed, is presented alongside the proceeding flow so the user
+    /// can keep going.
     private func persistRanking() async {
-        let insert = RankingInsert(
+        let genres = movie.genres.isEmpty ? ["Drama"] : movie.genres
+        let director = movie.director.isEmpty ? nil : movie.director
+
+        if await SpoolClient.currentUserID() != nil {
+            // Signed-in path: write directly. `try?` stays until Task 4 wires
+            // a toast for the failure path.
+            let insert = RankingInsert(
+                tmdbId: movie.id,
+                title: movie.title,
+                year: String(movie.year),
+                posterURL: movie.posterUrl,
+                type: "movie",
+                genres: genres,
+                director: director,
+                tier: tier,
+                rankPosition: finalRank,
+                notes: nil
+            )
+            _ = try? await RankingRepository.shared.insertRanking(insert)
+            return
+        }
+
+        // Preview mode: append to the queue and offer a recovery sign-in.
+        // AuthService will flush the queue on a successful sign-in so this
+        // row lands without a second trip through the ranking flow.
+        let queued = QueuedRanking(
             tmdbId: movie.id,
             title: movie.title,
-            year: String(movie.year),
+            year: movie.year == 0 ? nil : String(movie.year),
             posterURL: movie.posterUrl,
-            type: "movie",
-            genres: movie.genres.isEmpty ? ["Drama"] : movie.genres,
-            director: movie.director.isEmpty ? nil : movie.director,
-            tier: tier,
-            rankPosition: finalRank,
-            notes: nil
+            genres: genres,
+            director: director,
+            tier: tier.rawValue,
+            rankPosition: finalRank
         )
-        _ = try? await RankingRepository.shared.insertRanking(insert)
+        await MainActor.run {
+            OnboardingQueue.append(queued)
+            showSignIn = true
+        }
     }
 }
 

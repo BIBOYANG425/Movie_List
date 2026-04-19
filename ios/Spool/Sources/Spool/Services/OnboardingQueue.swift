@@ -28,6 +28,11 @@ import Foundation
 /// inherits main actor from its enclosing View), so this is zero-cost at the
 /// call sites.
 ///
+/// Two write entry points:
+///   - `replace(_:)` — one-shot onboarding write (overwrites prior queue).
+///   - `append(_:)`  — preview-mode rank capture after onboarding is done;
+///                     appends without disturbing existing rows.
+///
 /// Header last reviewed: 2026-04-18
 @MainActor
 public enum OnboardingQueue {
@@ -101,6 +106,21 @@ public enum OnboardingQueue {
     /// Remove the queue entirely. Safe to call even if no key is set.
     public static func clear() {
         defaults.removeObject(forKey: storageKey)
+    }
+
+    /// Add a single ranking to the end of the queue without replacing existing
+    /// entries. Used by `RankH2HScreen` preview mode (Task 2) to capture an
+    /// ad-hoc rank after onboarding is already done — separate semantics from
+    /// `replace`, which is a one-shot write for the whole onboarding pass.
+    public static func append(_ ranking: QueuedRanking) {
+        var current = pending
+        current.append(ranking)
+        do {
+            let data = try JSONEncoder().encode(current)
+            defaults.set(data, forKey: storageKey)
+        } catch {
+            assertionFailure("QueuedRanking encode failed: \(error)")
+        }
     }
 }
 
