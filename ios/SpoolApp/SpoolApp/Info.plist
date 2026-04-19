@@ -41,6 +41,18 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save your movie stubs to Photos.</string>
 
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.spool.app</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>com.spool.app.oauth</string>
+		</dict>
+	</array>
+
 	<!-- App-specific keys. Values come from Secrets.xcconfig at build time. -->
 	<key>SUPABASE_URL</key>
 	<string>$(SUPABASE_URL)</string>

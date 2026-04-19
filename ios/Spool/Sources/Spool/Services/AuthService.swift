@@ -1,13 +1,19 @@
 import Foundation
 import Supabase
 
-/// Email + password auth wrapper on top of `supabase-swift`.
+/// Email + password + Google OAuth auth wrapper on top of `supabase-swift`.
 /// Mirrors the behavior of `contexts/AuthContext.tsx` on the web — first tries
 /// sign-in; on "invalid credentials" falls through to sign-up. This gives a
 /// single "sign in / sign up" button for onboarding.
 ///
-/// OAuth (Google etc.) is not wired here yet — it needs URL scheme + an
-/// `ASWebAuthenticationSession` handoff; will be a follow-up.
+/// Google OAuth uses supabase-swift's built-in `ASWebAuthenticationSession`
+/// overload of `signInWithOAuth` — it opens a system-provided Safari sheet,
+/// handles the callback back to `com.spool.app://auth/callback`, and returns
+/// a fully-hydrated `Session`. `SpoolAppEntry.onOpenURL` also forwards any
+/// stray callback URL to `client.auth.handle(_:)` as a belt-and-suspenders
+/// path in case the caller relies on a plain deep-link flow.
+///
+/// Header last reviewed: 2026-04-18
 public actor AuthService {
 
     public static let shared = AuthService()
@@ -70,6 +76,25 @@ public actor AuthService {
         }
     }
 
+    /// Launches the Google OAuth flow via `ASWebAuthenticationSession`. The
+    /// call suspends until the user completes (or cancels) the Safari sheet,
+    /// at which point supabase-swift extracts the session from the callback
+    /// URL and returns it. On success we drain the onboarding queue just like
+    /// the email/password path so any stubs ranked in preview mode persist.
+    public func signInWithGoogle() async -> AuthResult {
+        guard let client = SpoolClient.shared else { return .failure(.notConfigured) }
+        do {
+            let session = try await client.auth.signInWithOAuth(
+                provider: .google,
+                redirectTo: URL(string: "com.spool.app://auth/callback")
+            )
+            await flushOnboardingQueue()
+            return .success(session.user.id)
+        } catch {
+            return .failure(classify(error))
+        }
+    }
+
     /// Drain any queued onboarding rankings into `user_rankings`. Errors are
     /// logged but never thrown — a failed flush must not keep the user from
     /// completing sign-in.
@@ -79,6 +104,24 @@ public actor AuthService {
         } catch {
             print("[AuthService] OnboardingQueue.flush failed: \(error)")
         }
+    }
+
+    /// Called by `SpoolAppEntry.onOpenURL` after the OAuth callback URL has
+    /// already been handed to `client.auth.handle(_:)`. Flushes any queued
+    /// onboarding rankings now that a session exists. Safe to call multiple
+    /// times — `OnboardingQueue.flush` is idempotent on empty.
+    public func flushOnboardingQueueForOAuthCallback() async {
+        await flushOnboardingQueue()
+    }
+
+    /// Entry point for the SwiftUI `.onOpenURL` modifier at the app root.
+    /// Forwards the callback URL to supabase-swift so a session is established,
+    /// then flushes the onboarding queue. Defined `nonisolated static` so the
+    /// caller doesn't need to hop through the actor or import `Supabase`.
+    public nonisolated static func handleOAuthCallback(_ url: URL) {
+        guard let client = SpoolClient.shared else { return }
+        client.auth.handle(url)
+        Task { await AuthService.shared.flushOnboardingQueueForOAuthCallback() }
     }
 
     public func signOut() async {

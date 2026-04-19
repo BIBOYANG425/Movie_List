@@ -105,6 +105,34 @@ struct SignInFormBody: View {
     var body: some View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 0) {
+                Button(action: signInWithGoogle) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "g.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(t.ink)
+                        Text("continue with Google")
+                            .font(SpoolFonts.serif(16))
+                            .tracking(0.2)
+                            .foregroundStyle(t.ink)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Capsule().stroke(t.ink, lineWidth: 1.5))
+                }
+                .buttonStyle(.plain)
+                .disabled(working)
+                .opacity(working ? 0.45 : 1)
+
+                HStack(spacing: 10) {
+                    Rectangle().fill(t.inkSoft.opacity(0.35)).frame(height: 1)
+                    Text("or")
+                        .font(SpoolFonts.mono(11))
+                        .tracking(2)
+                        .foregroundStyle(t.inkSoft)
+                    Rectangle().fill(t.inkSoft.opacity(0.35)).frame(height: 1)
+                }
+                .padding(.vertical, 16)
+
                 VStack(alignment: .leading, spacing: 10) {
                     SignInFieldRow(label: "EMAIL", placeholder: "you@spool.co",
                                    text: $email, isSecure: false)
@@ -135,6 +163,24 @@ struct SignInFormBody: View {
                 .disabled(working || !formValid)
                 .opacity(formValid ? 1 : 0.45)
                 .padding(.top, 22)
+            }
+        }
+    }
+
+    private func signInWithGoogle() {
+        guard !working else { return }
+        working = true
+        error = nil
+        Task {
+            let result = await AuthService.shared.signInWithGoogle()
+            await MainActor.run {
+                working = false
+                switch result {
+                case .success:
+                    onSuccess()
+                case .failure(let e):
+                    error = e.userMessage
+                }
             }
         }
     }
