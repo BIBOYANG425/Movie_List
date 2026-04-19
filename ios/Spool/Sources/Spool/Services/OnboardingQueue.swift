@@ -58,15 +58,7 @@ public enum OnboardingQueue {
     /// Name is `replace` (not `enqueue`) to make the semantics obvious at the
     /// call site: a subsequent call discards the prior queue.
     public static func replace(_ rankings: [QueuedRanking]) {
-        do {
-            let data = try JSONEncoder().encode(rankings)
-            defaults.set(data, forKey: storageKey)
-        } catch {
-            // Best-effort: drop the queue rather than crash. The onboarding
-            // picks are recoverable (user can rank again), losing them is
-            // strictly better than a crash on the happy path.
-            defaults.removeObject(forKey: storageKey)
-        }
+        writeRows(rankings)
     }
 
     /// Drain the queue into `user_rankings`. Throws if there's no session or
@@ -115,11 +107,21 @@ public enum OnboardingQueue {
     public static func append(_ ranking: QueuedRanking) {
         var current = pending
         current.append(ranking)
+        writeRows(current)
+    }
+
+    // MARK: Internal
+
+    /// Single write path so `replace` and `append` can't drift in failure
+    /// handling. Best-effort: drops the queue on encode failure rather than
+    /// crashing. A lost queue is recoverable (user can rank again) — a crash
+    /// on the happy path is not.
+    private static func writeRows(_ rankings: [QueuedRanking]) {
         do {
-            let data = try JSONEncoder().encode(current)
+            let data = try JSONEncoder().encode(rankings)
             defaults.set(data, forKey: storageKey)
         } catch {
-            assertionFailure("QueuedRanking encode failed: \(error)")
+            defaults.removeObject(forKey: storageKey)
         }
     }
 }

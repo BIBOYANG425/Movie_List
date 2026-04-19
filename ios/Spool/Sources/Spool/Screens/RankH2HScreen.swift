@@ -27,11 +27,14 @@ public struct RankH2HScreen: View {
     @State private var finalRank = 0
     @State private var finalScore = 0.0
     @State private var allItems: [RankedItem] = []
-    /// True while the sign-in recovery sheet is visible. Set when a preview-mode
-    /// user's rank was captured into `OnboardingQueue` instead of written to
-    /// Supabase — the sheet offers them the recovery path without blocking the
-    /// ranking flow itself (the stub ceremony proceeds in parallel).
-    @State private var showSignIn = false
+
+    /// Cross-view signal: when a preview-mode rank is captured into the queue
+    /// we flip this flag and let `SpoolAppRoot` present its own `SignInSheet`.
+    /// Keeping the sheet parent at the app root avoids a race where this
+    /// screen unmounts ~0.9s after `onDone` fires — a sheet anchored here
+    /// would get orphaned on the way out, and (worse) its onDone would not
+    /// clear `previewMode` since that state lives at the root.
+    @AppStorage("spool.show_signin_sheet") private var showSignInSheet: Bool = false
 
     public var body: some View {
         SpoolScreen {
@@ -78,14 +81,6 @@ public struct RankH2HScreen: View {
             }
         }
         .task { await start() }
-        .sheet(isPresented: $showSignIn) {
-            // .signedIn: AuthService.signInOrSignUp already flushes the queue
-            //   on success (Task 1), so our appended row lands automatically.
-            // .skipped: the queued row stays; Task 4 will surface a toast.
-            SignInSheet(onDone: { _ in
-                showSignIn = false
-            })
-        }
     }
 
     // MARK: header / subviews
@@ -305,10 +300,13 @@ public struct RankH2HScreen: View {
     /// Persist the newly-ranked movie, or queue it if the user is in preview
     /// mode (no session). Never blocks the stub ceremony — the sign-in sheet,
     /// when needed, is presented alongside the proceeding flow so the user
-    /// can keep going.
+    /// can keep going. The sheet itself lives on `SpoolAppRoot`; we just
+    /// flip `spool.show_signin_sheet` via `@AppStorage` and let the root
+    /// pick it up.
     private func persistRanking() async {
         let genres = movie.genres.isEmpty ? ["Drama"] : movie.genres
         let director = movie.director.isEmpty ? nil : movie.director
+        let year = Self.normalizedYear(movie.year)
 
         if await SpoolClient.currentUserID() != nil {
             // Signed-in path: write directly. `try?` stays until Task 4 wires
@@ -316,7 +314,7 @@ public struct RankH2HScreen: View {
             let insert = RankingInsert(
                 tmdbId: movie.id,
                 title: movie.title,
-                year: String(movie.year),
+                year: year,
                 posterURL: movie.posterUrl,
                 type: "movie",
                 genres: genres,
@@ -329,13 +327,13 @@ public struct RankH2HScreen: View {
             return
         }
 
-        // Preview mode: append to the queue and offer a recovery sign-in.
-        // AuthService will flush the queue on a successful sign-in so this
-        // row lands without a second trip through the ranking flow.
+        // Preview mode: append to the queue and ask SpoolAppRoot to present
+        // its sign-in sheet. AuthService will flush the queue on a successful
+        // sign-in so this row lands without a second trip through ranking.
         let queued = QueuedRanking(
             tmdbId: movie.id,
             title: movie.title,
-            year: movie.year == 0 ? nil : String(movie.year),
+            year: year,
             posterURL: movie.posterUrl,
             genres: genres,
             director: director,
@@ -344,8 +342,17 @@ public struct RankH2HScreen: View {
         )
         await MainActor.run {
             OnboardingQueue.append(queued)
-            showSignIn = true
+            // @AppStorage write — SpoolAppRoot observes the same key and will
+            // present its SignInSheet. Survives this view unmounting when the
+            // stub ceremony advances.
+            showSignInSheet = true
         }
+    }
+
+    /// Normalize a movie's integer year to the `year: String?` the DB expects.
+    /// `0` means "unknown" in our model — store as `nil` rather than "0".
+    private static func normalizedYear(_ y: Int) -> String? {
+        y > 0 ? String(y) : nil
     }
 }
 

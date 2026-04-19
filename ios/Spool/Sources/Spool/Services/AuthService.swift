@@ -84,6 +84,14 @@ public actor AuthService {
     public func signOut() async {
         guard let client = SpoolClient.shared else { return }
         try? await client.auth.signOut()
+        // Without this, a user who signs out keeps `spool.preview_mode == false`
+        // and the next rank attempt falls into the "signed in" branch of
+        // `RankH2HScreen.persistRanking`, silently failing with no banner to
+        // warn them. Flip the flag so the preview-mode banner + queue behavior
+        // kicks back in until they sign in again.
+        await MainActor.run {
+            UserDefaults.standard.set(true, forKey: "spool.preview_mode")
+        }
     }
 
     public func currentUserID() async -> UUID? {

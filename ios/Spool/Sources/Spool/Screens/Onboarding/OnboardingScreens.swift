@@ -112,12 +112,11 @@ struct OnbColdOpen: View {
 
 public enum SignInResult { case signedIn, skipped }
 
+/// Step 1 of onboarding. Framing copy + progress dots + skip link live here;
+/// the email/password form itself is the shared `SignInFormBody` used by
+/// `SignInSheet` so the two surfaces stay in lockstep.
 struct OnbSignInScreen: View {
     var onDone: (SignInResult) -> Void
-    @State private var email = ""
-    @State private var password = ""
-    @State private var working = false
-    @State private var error: String?
 
     var body: some View {
         SpoolThemeReader { t, _ in
@@ -146,39 +145,8 @@ struct OnbSignInScreen: View {
                             .lineSpacing(3)
                             .padding(.top, 10)
 
-                        VStack(alignment: .leading, spacing: 10) {
-                            FieldRow(label: "EMAIL", placeholder: "you@spool.co",
-                                     text: $email, isSecure: false)
-                            FieldRow(label: "PASSCODE", placeholder: "8+ characters",
-                                     text: $password, isSecure: true)
-                        }
-                        .padding(.top, 28)
-
-                        if let error {
-                            Text(error)
-                                .font(SpoolFonts.hand(12))
-                                .foregroundStyle(t.accent)
-                                .padding(.top, 8)
-                        }
-
-                        HStack(spacing: 10) {
-                            Button(action: submit) {
-                                HStack(spacing: 8) {
-                                    if working { ProgressView().tint(t.cream) }
-                                    Text(working ? "working…" : "sign in / sign up")
-                                        .font(SpoolFonts.serif(16))
-                                        .tracking(0.3)
-                                        .foregroundStyle(t.cream)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Capsule().fill(t.ink))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(working || !formValid)
-                            .opacity(formValid ? 1 : 0.45)
-                        }
-                        .padding(.top, 22)
+                        SignInFormBody(onSuccess: { onDone(.signedIn) })
+                            .padding(.top, 28)
 
                         Button(action: { onDone(.skipped) }) {
                             Text("continue without account — preview only")
@@ -192,75 +160,6 @@ struct OnbSignInScreen: View {
                         .padding(.bottom, 60)
                     }
                     .padding(.horizontal, 28)
-                }
-            }
-        }
-    }
-
-    private var formValid: Bool {
-        !email.trimmingCharacters(in: .whitespaces).isEmpty && password.count >= 8
-    }
-
-    private func submit() {
-        guard formValid, !working else { return }
-        working = true
-        error = nil
-        Task {
-            let result = await AuthService.shared.signInOrSignUp(
-                email: email.trimmingCharacters(in: .whitespaces),
-                password: password
-            )
-            await MainActor.run {
-                working = false
-                switch result {
-                case .success:
-                    onDone(.signedIn)
-                case .failure(let e):
-                    error = e.userMessage
-                }
-            }
-        }
-    }
-}
-
-private struct FieldRow: View {
-    let label: String
-    let placeholder: String
-    @Binding var text: String
-    let isSecure: Bool
-
-    @ViewBuilder
-    private func emailField(placeholder: String, text: Binding<String>) -> some View {
-        #if os(iOS)
-        TextField(placeholder, text: text)
-            .textInputAutocapitalization(.never)
-            .keyboardType(.emailAddress)
-            .autocorrectionDisabled()
-            .textFieldStyle(.plain)
-        #else
-        TextField(placeholder, text: text)
-        #endif
-    }
-
-    var body: some View {
-        SpoolThemeReader { t, _ in
-            VStack(alignment: .leading, spacing: 4) {
-                Text(label)
-                    .font(SpoolFonts.mono(9))
-                    .tracking(2)
-                    .foregroundStyle(t.inkSoft)
-                Group {
-                    if isSecure {
-                        SecureField(placeholder, text: $text)
-                    } else {
-                        emailField(placeholder: placeholder, text: $text)
-                    }
-                }
-                .font(SpoolFonts.serif(20))
-                .foregroundStyle(t.ink)
-                .padding(.bottom, 6)
-                .overlay(alignment: .bottom) {
-                    Rectangle().fill(t.ink).frame(height: 1.5)
                 }
             }
         }

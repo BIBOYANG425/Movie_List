@@ -10,9 +10,14 @@ public struct SpoolAppRoot: View {
     /// queue (via `OnboardingQueue.append`) instead of writing to Supabase.
     /// Cleared when the user successfully signs in via `SignInSheet`.
     @AppStorage("spool.preview_mode") private var previewMode: Bool = false
+    /// Cross-view signal for presenting the sign-in recovery sheet. Any view
+    /// (today: `RankH2HScreen`, the preview-mode banner) can flip this to
+    /// `true` to ask the root to present the sheet. Stored in UserDefaults
+    /// so `@AppStorage` writes from other views propagate here without a
+    /// bindings ping-pong through every intermediate screen.
+    @AppStorage("spool.show_signin_sheet") private var showSignInSheet: Bool = false
     @State private var mode: SpoolMode = .paper
     @State private var tab: SpoolTab = .feed
-    @State private var showSignInSheet: Bool = false
 
     // Rank flow
     @State private var flow: RankFlowStep? = nil
