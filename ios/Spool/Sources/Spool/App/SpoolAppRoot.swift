@@ -58,6 +58,13 @@ public struct SpoolAppRoot: View {
             // modals. Mounted once at the root so every screen shares one toast.
             ToastHost()
         }
+        // Apply spoolMode here (not inside `mainApp`) so ToastHost — a sibling
+        // of the onboarding/mainApp Group — inherits the dark/paper palette
+        // too. Without this, toasts render in paper colors even when the user
+        // has flipped into dark mode. OnboardingFlow internally forces paper
+        // mode; that inner modifier still wins for the onboarding subtree.
+        .spoolMode(mode)
+        .preferredColorScheme(mode == .paper ? .light : .dark)
     }
 
     private var mainApp: some View {
@@ -83,8 +90,8 @@ public struct SpoolAppRoot: View {
                 }
                 .overlay(alignment: .topTrailing) { paletteToggle }
         }
-        .spoolMode(mode)
-        .preferredColorScheme(mode == .paper ? .light : .dark)
+        // spoolMode + preferredColorScheme are applied at the root body so
+        // ToastHost inherits them. Kept here removed to avoid double-application.
         .sheet(isPresented: $showSignInSheet) {
             SignInSheet(onDone: { result in
                 if result == .signedIn {
@@ -162,7 +169,11 @@ public struct SpoolAppRoot: View {
             case .me:
                 ProfileScreen()
             case .rank:
-                FeedScreen() // impossible state; tab won't actually become .rank
+                // Unreachable — `onTab(.rank)` intercepts the tap and sets
+                // `flow = .entry` before `tab` becomes `.rank`. If that
+                // invariant ever breaks, fall through to Feed consistently
+                // (same onRankTap wiring) instead of a silently-broken CTA.
+                FeedScreen(onRankTap: { onTab(.rank) })
             }
         }
     }

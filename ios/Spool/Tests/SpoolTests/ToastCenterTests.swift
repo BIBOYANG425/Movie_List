@@ -45,21 +45,18 @@ final class ToastCenterTests: XCTestCase {
         center.show("poof", level: .info, duration: 1)
         XCTAssertNotNil(center.current)
 
-        // Yield until the pending dismiss task finishes. The sleeper returns
-        // immediately, so one `Task.yield` cycle is usually enough, but we
-        // loop a few times to be resilient to scheduler ordering.
-        for _ in 0..<10 {
-            if center.current == nil { break }
-            await Task.yield()
-        }
+        // Deterministic wait via the test hook on ToastCenter — awaits the
+        // pending dismiss Task directly instead of yield-looping.
+        await center.waitForPendingDismiss()
 
         XCTAssertNil(center.current, "auto-dismiss should clear current after the sleeper resolves")
     }
 
-    // A sleeper that never returns, so auto-dismiss stays pending forever and
-    // tests can observe `show`/`dismiss` state without a race.
+    // A sleeper that awaits cancellation rather than burning a fixed-duration
+    // timer. Cooperates with `Task.isCancelled` in `show`'s dismiss Task so a
+    // follow-up `show`/`dismiss` call returns this immediately — no 60-second
+    // leaked sleep hanging around after the test exits.
     private let neverSleeper: @Sendable (TimeInterval) async -> Void = { _ in
-        // Sleep indefinitely; caller is expected to cancel via `pendingDismiss?.cancel()`.
-        try? await Task.sleep(nanoseconds: 60_000_000_000)
+        try? await Task.sleep(nanoseconds: .max)
     }
 }
