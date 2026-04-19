@@ -29,6 +29,13 @@ public actor AuthService {
         case invalidCredentials
         case weakPassword
         case emailTaken
+        /// Supabase signed up a new user but requires email confirmation
+        /// before the session is active — response.session was nil. The
+        /// account exists; the user must click the confirmation link.
+        case emailNotConfirmed
+        /// User closed the OAuth sheet without completing auth. Callers
+        /// should treat this as a no-op — don't render an error message.
+        case cancelled
         case unknown(String)
 
         public var userMessage: String {
@@ -37,6 +44,8 @@ public actor AuthService {
             case .invalidCredentials:return "wrong password."
             case .weakPassword:      return "password too short."
             case .emailTaken:        return "email already has an account. check your password."
+            case .emailNotConfirmed: return "check your email for a confirmation link, then try again."
+            case .cancelled:         return ""
             case .network(let msg):  return msg
             case .unknown(let msg):  return msg
             }
@@ -53,13 +62,14 @@ public actor AuthService {
             await flushOnboardingQueue()
             return .success(session.user.id)
         } catch {
-            // If the error is "user doesn't exist" fall through to sign-up.
-            // Supabase surfaces these as AuthError with specific messages/codes.
+            // Fall through to sign-up only when the user genuinely doesn't
+            // exist. "email not confirmed" means the account IS registered
+            // but needs email verification — falling through would fail
+            // with "already registered" and hide the real state.
             let msg = "\(error)".lowercased()
             let looksLikeMissingUser =
                 msg.contains("invalid login credentials") ||
-                msg.contains("user not found") ||
-                msg.contains("email not confirmed")
+                msg.contains("user not found")
 
             if !looksLikeMissingUser {
                 return .failure(classify(error))
@@ -68,6 +78,13 @@ public actor AuthService {
             // Fall through to sign-up
             do {
                 let response = try await client.auth.signUp(email: trimmed, password: password)
+                // When email confirmation is required, Supabase returns a
+                // user record with session == nil. We can't auto-flush
+                // anything without a session, so surface the verification
+                // step instead of pretending the flow completed.
+                guard response.session != nil else {
+                    return .failure(.emailNotConfirmed)
+                }
                 await flushOnboardingQueue()
                 return .success(response.user.id)
             } catch {
@@ -145,6 +162,12 @@ public actor AuthService {
 
     private func classify(_ error: Error) -> AuthError {
         let m = "\(error)".lowercased()
+        // OAuth user-cancellation surfaces as an ASWebAuthenticationSession
+        // error with Code=1 (canceledLogin). Swallow silently — the user
+        // closed the sheet on purpose, nothing broke.
+        if m.contains("webauthenticationsession") || m.contains("canceledlogin") {
+            return .cancelled
+        }
         if m.contains("password") && (m.contains("short") || m.contains("weak")) {
             return .weakPassword
         }

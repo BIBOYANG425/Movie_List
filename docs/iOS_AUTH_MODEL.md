@@ -50,7 +50,11 @@ If an iOS query returns an empty list, that is not an error. It means either the
 
 ## Keychain considerations
 
-The SDK stores the session in Keychain under `io.supabase.token` by default. On app uninstall + reinstall the session is gone — that is correct behavior. If the user deletes Keychain items manually the next launch will require re-auth.
+`supabase-swift` persists the session via `KeychainLocalStorage`. The Keychain service identifier is derived from the Supabase URL's host — specifically `sb-{project-ref}-auth-token`, where `project-ref` is the subdomain portion of the project URL. For a project at `https://xyzcompany.supabase.co` the Keychain service is `sb-xyzcompany-auth-token`.
+
+`KeychainLocalStorage` accepts a `service` parameter in its initializer, so an integrator can override the default (e.g., for sharing a session across an app group, or for test isolation). We use the default today — if we ever need to customize it (e.g., to move the session into a shared keychain for a share extension), pass a custom `KeychainLocalStorage(service:)` into the `SupabaseClientOptions.auth` builder.
+
+On app uninstall + reinstall the session is gone — that is correct behavior. If the user deletes Keychain items manually the next launch will require re-auth.
 
 ## Things this doc explicitly does NOT cover yet
 

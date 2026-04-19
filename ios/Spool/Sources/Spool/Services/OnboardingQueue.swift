@@ -62,15 +62,24 @@ public enum OnboardingQueue {
     }
 
     /// Drain the queue into `user_rankings`. Throws if there's no session or
-    /// Supabase isn't configured. On any per-row failure the queue is kept
-    /// intact so a retry can pick up where this left off.
+    /// Supabase isn't configured.
+    ///
+    /// Each successful insert is removed from the queue individually so a
+    /// partial failure retains ONLY the rows that didn't make it. That matters
+    /// for two reasons:
+    ///   1. A transient failure mid-loop rethrows, but the rows that already
+    ///      succeeded are gone from the queue — a retry won't duplicate them.
+    ///   2. Another caller can append() to the queue while this method awaits
+    ///      a network call; clearing the whole queue at the end would nuke
+    ///      those fresh rows. Incremental removal by row identity preserves
+    ///      them.
     public static func flush() async throws {
-        let rows = pending
-        guard !rows.isEmpty else { return }
+        var snapshot = pending
+        guard !snapshot.isEmpty else { return }
         guard SpoolClient.shared != nil else { throw QueueError.notConfigured }
         guard await SpoolClient.currentUserID() != nil else { throw QueueError.notAuthenticated }
 
-        for row in rows {
+        while let row = snapshot.first {
             let insert = RankingInsert(
                 tmdbId: row.tmdbId,
                 title: row.title,
@@ -84,9 +93,15 @@ public enum OnboardingQueue {
                 notes: nil
             )
             _ = try await RankingRepository.shared.insertRanking(insert)
+            // Success — remove this specific row from the live queue.
+            // Re-fetch `pending` in case appends landed during the await.
+            var live = pending
+            if let idx = live.firstIndex(of: row) {
+                live.remove(at: idx)
+                writeRows(live)
+            }
+            snapshot.removeFirst()
         }
-
-        clear()
     }
 
     /// Current queue contents (empty when no key is set or decode fails).

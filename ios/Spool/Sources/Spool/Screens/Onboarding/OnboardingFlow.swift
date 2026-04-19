@@ -86,12 +86,20 @@ public struct OnboardingFlow: View {
         case 6: OnbSeason(handle: handle, onNext: { advance() })
         case 7: OnbSignInScreen(onDone: { result in
                     signedIn = (result == .signedIn)
-                    // Persist the picks now — friend search (step 8) works
-                    // off the session that was just established, not the
-                    // ranking flush. Advancing instead of finishing keeps the
-                    // user in the flow for one more screen.
+                    // Persist the picks now. For signed-in users, this kicks
+                    // off the insert-to-Supabase path so friend search (step
+                    // 8) sees a populated shelf. For skipped users, picks get
+                    // queued to UserDefaults for a later sign-in.
                     persistIfNeeded()
-                    advance()
+                    // Friend search depends on an authenticated session —
+                    // `ProfileService.searchUsers` returns empty under RLS for
+                    // preview users. Skipping the step here avoids dropping
+                    // them on a dead search box.
+                    if signedIn {
+                        advance()
+                    } else {
+                        finish()
+                    }
                 })
         case 8: OnbFriendSearch(onNext: { finish() })
         default:
@@ -143,29 +151,20 @@ public struct OnboardingFlow: View {
         picks = []
 
         if signedIn, SpoolClient.shared != nil {
+            // Stage the full set in the queue FIRST, then drain via the
+            // queue's flush which removes rows incrementally on success.
+            // That way a partial failure (transient network, RLS hiccup,
+            // duplicate) leaves the unfinished rows queued for a retry
+            // instead of silently losing them with a blanket `replace([])`.
+            OnboardingQueue.replace(rankings)
             persisting = true
-            let task = Task { [rankings] in
-                for r in rankings {
-                    do {
-                        let insert = RankingInsert(
-                            tmdbId: r.tmdbId,
-                            title: r.title,
-                            year: r.year,
-                            posterURL: r.posterURL,
-                            type: "movie",
-                            genres: r.genres,
-                            director: r.director,
-                            tier: Tier(rawValue: r.tier) ?? .B,
-                            rankPosition: r.rankPosition,
-                            notes: nil
-                        )
-                        _ = try await RankingRepository.shared.insertRanking(insert)
-                    } catch {
-                        print("[OnboardingFlow] insertRanking failed: \(error)")
-                    }
+            let task = Task {
+                do {
+                    try await OnboardingQueue.flush()
+                } catch {
+                    print("[OnboardingFlow] flush failed, queue preserved: \(error)")
                 }
                 await MainActor.run {
-                    OnboardingQueue.replace([])
                     persisting = false
                     persistTask = nil
                     completion?()

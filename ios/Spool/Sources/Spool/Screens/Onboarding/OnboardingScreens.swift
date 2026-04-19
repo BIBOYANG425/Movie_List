@@ -414,16 +414,27 @@ struct OnbGrid: View {
 
 extension TMDBMovie {
     /// Local fallback when TMDB is unreachable — posterUrl nil so PosterBlock's
-    /// synthetic palette kicks in.
+    /// synthetic palette kicks in. `tmdbId` is a deterministic FNV-1a hash of
+    /// the string id, negated to stay out of real TMDB id space and to remain
+    /// stable across app launches (String.hashValue is randomized per-run,
+    /// which would corrupt queued rankings and poster seeds).
     static func fixture(id: String, title: String, year: Int, seed: Int) -> TMDBMovie {
         TMDBMovie(
-            id: id, tmdbId: -abs(id.hashValue), title: title,
+            id: id, tmdbId: stableFixtureId(id), title: title,
             year: String(year), posterUrl: nil, genres: [],
             overview: "", voteAverage: nil
         )
-        // seed is derived from tmdbId in gridItem; for fixtures we use the provided
-        // seed via a second hashing but the simple negative-id stands in fine.
-        // (seed arg kept for readability / future switch.)
+    }
+
+    /// FNV-1a 32-bit over the UTF-8 bytes, negated. Deterministic across
+    /// launches and distinct from any real (positive) TMDB id.
+    private static func stableFixtureId(_ s: String) -> Int {
+        var hash: UInt32 = 0x811c9dc5
+        for byte in s.utf8 {
+            hash ^= UInt32(byte)
+            hash = hash &* 0x01000193
+        }
+        return -Int(hash)
     }
 }
 
@@ -549,9 +560,12 @@ struct OnbH2H: View {
         let next = challengerIdx + 1
         if next >= contenders.count {
             // All matchups done — hand back the final champion + eliminated
-            // contenders in the order they fell.
+            // contenders. Reverse the losers list so the RUNNER-UP (last to
+            // fall) comes first; that's the order callers use to assign
+            // rank_position 2..N in the contender tier, with the runner-up
+            // directly below the winner rather than the earliest knockout.
             let winner = contenders[championIdx]
-            onNext(winner, losers)
+            onNext(winner, Array(losers.reversed()))
         } else {
             challengerIdx = next
             self.picked = nil

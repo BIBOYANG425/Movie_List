@@ -278,10 +278,25 @@ public struct RankH2HScreen: View {
 
     // MARK: data
 
+    /// Load the signed-in user's existing ranked items so the engine can
+    /// place the new movie against their actual shelf. We intentionally do
+    /// NOT fall back to fixture data for signed-in users: a transient fetch
+    /// failure would otherwise rank the new movie against demo content and
+    /// then persist a bogus `rankPosition` to `user_rankings`. Fixtures are
+    /// only acceptable in preview mode, where writes go to the local queue
+    /// and the user hasn't committed to a shelf yet.
     private func loadAllItems() async -> [RankedItem] {
+        let hasSession = await SpoolClient.currentUserID() != nil
         do {
             return try await RankingRepository.shared.getAllRankedItems()
         } catch {
+            if hasSession {
+                // Bail rather than mix fixtures into a real shelf. Returning
+                // [] means the engine treats this as a first-pick — the
+                // predicted tier will be rough, but we never persist against
+                // fake data.
+                return []
+            }
             return fixtureRankedItems()
         }
     }
