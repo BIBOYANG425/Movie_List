@@ -8,7 +8,7 @@ import SwiftUI
 /// `friend_follows`. Errors are swallowed to stay out of the user's way; the
 /// button state reflects whatever was actually recorded.
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-04-18
 struct OnbFriendSearch: View {
     var onNext: () -> Void
 

@@ -12,8 +12,10 @@ import SwiftUI
 ///    ranking". The parent (RankH2HScreen) decides what to do with that
 ///    signal.
 ///
-/// The email/password form itself is shared with OnbSignInScreen via
-/// `SignInFormBody` below so the two entry points stay in lockstep.
+/// The email/password form AND Google OAuth button are shared with
+/// OnbSignInScreen via `SignInFormBody` below so the two entry points
+/// stay in lockstep. Both surfaces get Continue-with-Google as the
+/// primary CTA + email/password as the fallback.
 ///
 /// Header last reviewed: 2026-04-18
 public struct SignInSheet: View {

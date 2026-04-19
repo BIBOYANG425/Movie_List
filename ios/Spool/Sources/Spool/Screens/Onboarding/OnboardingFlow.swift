@@ -24,7 +24,7 @@ import SwiftUI
 ///  7 Sign In / Sign Up — email+password, or skip into preview mode
 ///  8 Friend Search    — search profiles + follow (terminal; calls finish)
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-04-18
 public struct OnboardingFlow: View {
     public var onFinish: (OnboardingOutcome) -> Void
     @State private var step: Int = 0
@@ -34,6 +34,11 @@ public struct OnboardingFlow: View {
     @State private var h2hWinner: TMDBMovie? = nil
     @State private var h2hLosers: [TMDBMovie] = []
     @State private var persisting: Bool = false
+    /// In-flight ranking-insert Task, if any. Set when step 7's sign-in
+    /// triggers the signed-in persist path; re-entered by `finish()` at
+    /// step 8 so the terminal callback awaits rather than spawning a
+    /// second persist off the same `picks` array.
+    @State private var persistTask: Task<Void, Never>? = nil
 
     public init(onFinish: @escaping (OnboardingOutcome) -> Void) {
         self.onFinish = onFinish
@@ -108,17 +113,38 @@ public struct OnboardingFlow: View {
     /// Build the ordered ranking list and either insert (signed-in path) or
     /// enqueue (preview path). Called twice: once at sign-in (step 7) so the
     /// friend-search step has a clean-slate session with rankings already
-    /// saved, and once at finish (step 8) as a safety net. The queue is
-    /// drained after a successful persist so the second call is a no-op.
+    /// saved, and once at finish (step 8).
+    ///
+    /// Re-entry safety: when step 7 kicks off a background insert Task, we
+    /// store it in `persistTask` and clear `picks` synchronously BEFORE the
+    /// Task launches. If `finish()` re-enters while that Task is still in
+    /// flight, we chain the completion behind the in-flight Task rather
+    /// than spawning a second persist off a stale `picks` snapshot.
     private func persistIfNeeded(completion: (() -> Void)? = nil) {
+        // Re-entry: an earlier call is still persisting. Wait for it to
+        // finish before firing our completion. Do NOT rebuild rankings
+        // from `picks` — that was already consumed by the in-flight Task.
+        if let inFlight = persistTask {
+            Task {
+                await inFlight.value
+                await MainActor.run { completion?() }
+            }
+            return
+        }
+
         let rankings = buildRankings()
         guard !rankings.isEmpty else {
             completion?()
             return
         }
+
+        // Clear picks synchronously so any concurrent re-entry sees empty
+        // state. The Task below captures `rankings` by value.
+        picks = []
+
         if signedIn, SpoolClient.shared != nil {
             persisting = true
-            Task {
+            let task = Task { [rankings] in
                 for r in rankings {
                     do {
                         let insert = RankingInsert(
@@ -139,14 +165,13 @@ public struct OnboardingFlow: View {
                     }
                 }
                 await MainActor.run {
-                    // Clear the queue + picks so a subsequent finish call is
-                    // a no-op — we don't want to double-insert.
                     OnboardingQueue.replace([])
-                    picks = []
                     persisting = false
+                    persistTask = nil
                     completion?()
                 }
             }
+            persistTask = task
         } else {
             OnboardingQueue.replace(rankings)
             completion?()

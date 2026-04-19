@@ -11,7 +11,7 @@ import Supabase
 /// return an empty list for unauthenticated callers, which is the right
 /// behavior for a preview-mode user who shouldn't see the step anyway).
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-04-18
 public actor ProfileService {
 
     public static let shared = ProfileService()

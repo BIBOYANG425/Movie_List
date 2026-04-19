@@ -11,7 +11,7 @@ import Supabase
 /// and the notification flow can be added alongside a proper notifications
 /// surface.
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-04-18
 public actor FollowService {
 
     public static let shared = FollowService()

@@ -112,9 +112,11 @@ struct OnbColdOpen: View {
 
 public enum SignInResult { case signedIn, skipped }
 
-/// Step 1 of onboarding. Framing copy + progress dots + skip link live here;
-/// the email/password form itself is the shared `SignInFormBody` used by
-/// `SignInSheet` so the two surfaces stay in lockstep.
+/// Step 7 of onboarding (moved from step 1 — users now experience the full
+/// product before being asked to commit). Framing copy + progress dots +
+/// skip link live here; the email/password form AND Google OAuth button
+/// are the shared `SignInFormBody` used by `SignInSheet` so the two
+/// surfaces stay in lockstep.
 struct OnbSignInScreen: View {
     var onDone: (SignInResult) -> Void
 
