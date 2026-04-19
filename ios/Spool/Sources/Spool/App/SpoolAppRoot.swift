@@ -154,7 +154,7 @@ public struct SpoolAppRoot: View {
         } else {
             switch tab {
             case .feed:
-                FeedScreen()
+                FeedScreen(onRankTap: { onTab(.rank) })
             case .stubs:
                 StubsScreen { stubDetail = $0 }
             case .friends:

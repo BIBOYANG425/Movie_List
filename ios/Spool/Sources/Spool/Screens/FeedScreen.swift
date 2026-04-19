@@ -5,8 +5,15 @@ public struct FeedScreen: View {
     @State private var filter: FeedFilter = .week
     @State private var liveEvents: [ActivityEventRow] = []
     @State private var loading: Bool = true
+    @State private var hasSession: Bool = false
 
-    public init() {}
+    /// Invoked when the signed-in empty state's "rank something" CTA is tapped.
+    /// SpoolAppRoot wires this to its rank-tab handler.
+    private let onRankTap: (() -> Void)?
+
+    public init(onRankTap: (() -> Void)? = nil) {
+        self.onRankTap = onRankTap
+    }
 
     enum FeedFilter { case all, week }
 
@@ -20,25 +27,86 @@ public struct FeedScreen: View {
                     }
                 }
                 ScrollView {
-                    VStack(spacing: 14) {
-                        // Live events (most recent first) render above fixtures so
-                        // a freshly-ranked movie appears at the top of the feed.
-                        ForEach(Array(liveFeedItems.enumerated()), id: \.element.id) { i, item in
-                            FeedCardView(item: item, tilt: tiltFor(i))
-                        }
-
-                        ForEach(Array(SpoolData.feed.enumerated()), id: \.element.id) { i, item in
-                            FeedCardView(item: item, tilt: tiltFor(i + liveFeedItems.count))
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 110)
-                    .padding(.top, 2)
+                    content
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 110)
+                        .padding(.top, 2)
                 }
                 .refreshable { await reload() }
             }
         }
         .task { await reload() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if hasSession {
+            if liveFeedItems.isEmpty {
+                signedInEmptyState
+            } else {
+                VStack(spacing: 14) {
+                    ForEach(Array(liveFeedItems.enumerated()), id: \.element.id) { i, item in
+                        FeedCardView(item: item, tilt: tiltFor(i))
+                    }
+                }
+            }
+        } else {
+            VStack(spacing: 14) {
+                demoHeaderCard
+                ForEach(Array(SpoolData.feed.enumerated()), id: \.element.id) { i, item in
+                    FeedCardView(item: item, tilt: tiltFor(i + 1))
+                }
+            }
+        }
+    }
+
+    private var demoHeaderCard: some View {
+        SpoolThemeReader { t, _ in
+            VStack(alignment: .leading, spacing: 6) {
+                Text("DEMO — SIGN IN TO SEE REAL FRIENDS")
+                    .font(SpoolFonts.mono(10))
+                    .tracking(2)
+                    .foregroundStyle(t.ink)
+                Text("the cards below are sample friends. your real feed starts the moment you sign in.")
+                    .font(SpoolFonts.hand(13))
+                    .foregroundStyle(t.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(t.yellow.opacity(0.9))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(t.ink, lineWidth: 1.5)
+            )
+        }
+    }
+
+    private var signedInEmptyState: some View {
+        SpoolThemeReader { t, _ in
+            VStack(spacing: 16) {
+                Spacer(minLength: 40)
+                Text("no rankings yet")
+                    .font(SpoolFonts.serif(26))
+                    .foregroundStyle(t.ink)
+                Text("rank something to start your feed")
+                    .font(SpoolFonts.hand(15))
+                    .foregroundStyle(t.inkSoft)
+                    .multilineTextAlignment(.center)
+                SpoolPill("rank something", filled: true, size: .md) {
+                    onRankTap?()
+                }
+                .padding(.top, 4)
+                Spacer(minLength: 20)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
+            .padding(.horizontal, 24)
+        }
     }
 
     private var liveFeedItems: [FeedItem] {
@@ -58,15 +126,28 @@ public struct FeedScreen: View {
     }
 
     private func reload() async {
-        do {
-            let events = try await RankingRepository.shared.getRecentActivity(limit: 25)
-            await MainActor.run {
-                liveEvents = events
-                loading = false
+        let userID = await SpoolClient.currentUserID()
+        let sessionPresent = userID != nil
+
+        if sessionPresent {
+            do {
+                let events = try await RankingRepository.shared.getRecentActivity(limit: 25)
+                await MainActor.run {
+                    liveEvents = events
+                    hasSession = true
+                    loading = false
+                }
+            } catch {
+                await MainActor.run {
+                    liveEvents = []
+                    hasSession = true
+                    loading = false
+                }
             }
-        } catch {
+        } else {
             await MainActor.run {
                 liveEvents = []
+                hasSession = false
                 loading = false
             }
         }
