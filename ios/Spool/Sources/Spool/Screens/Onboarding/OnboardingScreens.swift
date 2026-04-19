@@ -530,13 +530,19 @@ extension TMDBMovie {
 
 struct OnbH2H: View {
     var contenders: [TMDBMovie]
-    var onNext: () -> Void
+    /// Called when the H2H round ends. `winner` is the final champion (nil when
+    /// we skip the round because there were fewer than 2 contenders). `losers`
+    /// is the other contenders in elimination order — the earliest eliminated
+    /// first, so the caller can assign rank_position 2..N in that order.
+    var onNext: (_ winner: TMDBMovie?, _ losers: [TMDBMovie]) -> Void
 
     // Sort state: champion keeps winning; each challenger steps up until all
     // contenders have faced the champion. Number of matches = N - 1.
     @State private var championIdx: Int = 0
     @State private var challengerIdx: Int = 1
     @State private var picked: Side? = nil
+    /// Losers in elimination order — appended when a match resolves.
+    @State private var losers: [TMDBMovie] = []
 
     private enum Side { case champion, challenger }
 
@@ -629,16 +635,22 @@ struct OnbH2H: View {
 
     private func advance() {
         guard let picked else {
-            if shouldSkip { onNext() }
+            if shouldSkip { onNext(contenders.first, []) }
             return
         }
+        // Record the loser of this match in elimination order.
+        let loser = (picked == .champion) ? contenders[challengerIdx] : contenders[championIdx]
+        losers.append(loser)
         // Apply the choice: if challenger won, they become champion.
         if picked == .challenger {
             championIdx = challengerIdx
         }
         let next = challengerIdx + 1
         if next >= contenders.count {
-            onNext()  // All matchups done — advance to Print.
+            // All matchups done — hand back the final champion + eliminated
+            // contenders in the order they fell.
+            let winner = contenders[championIdx]
+            onNext(winner, losers)
         } else {
             challengerIdx = next
             self.picked = nil

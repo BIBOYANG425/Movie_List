@@ -44,6 +44,7 @@ public actor AuthService {
         // First attempt: sign in
         do {
             let session = try await client.auth.signIn(email: trimmed, password: password)
+            await flushOnboardingQueue()
             return .success(session.user.id)
         } catch {
             // If the error is "user doesn't exist" fall through to sign-up.
@@ -61,10 +62,22 @@ public actor AuthService {
             // Fall through to sign-up
             do {
                 let response = try await client.auth.signUp(email: trimmed, password: password)
+                await flushOnboardingQueue()
                 return .success(response.user.id)
             } catch {
                 return .failure(classify(error))
             }
+        }
+    }
+
+    /// Drain any queued onboarding rankings into `user_rankings`. Errors are
+    /// logged but never thrown — a failed flush must not keep the user from
+    /// completing sign-in.
+    private func flushOnboardingQueue() async {
+        do {
+            try await OnboardingQueue.flush()
+        } catch {
+            print("[AuthService] OnboardingQueue.flush failed: \(error)")
         }
     }
 
