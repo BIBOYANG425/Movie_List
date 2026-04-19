@@ -3,6 +3,11 @@ import SwiftUI
 public struct StubsScreen: View {
     public var onOpenDetail: (WatchedDay) -> Void
 
+    @State private var hasSession: Bool = false
+    @State private var loading: Bool = true
+    @State private var topItems: [RankedItem] = []
+    @State private var recentItems: [RankedItem] = []
+
     public init(onOpenDetail: @escaping (WatchedDay) -> Void = { _ in }) {
         self.onOpenDetail = onOpenDetail
     }
@@ -11,167 +16,254 @@ public struct StubsScreen: View {
         SpoolScreen {
             VStack(spacing: 0) {
                 SpoolHeader(title: "my stubs") {
-                    HStack(spacing: 6) {
-                        SpoolPill("2026", size: .sm)
-                        SpoolPill("april", active: true, size: .sm)
-                    }
+                    SpoolPill(monthLabel, active: true, size: .sm)
                 }
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("14 WATCHED · 3 RE-WATCHES")
-                            .font(SpoolFonts.mono(10))
-                            .tracking(2)
-                            .foregroundStyle(SpoolTokens.paper.inkSoft)
-                            .padding(.top, 2)
-
-                        FilmStripCalendar(onTap: onOpenDetail)
-                            .padding(.top, 10)
-
-                        SpoolThemeReader { t, _ in
-                            Text("tap a day to see the stub ↑")
-                                .font(SpoolFonts.script(13))
-                                .foregroundStyle(t.inkSoft)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.top, 6)
-                        }
-
-                        Text("LAST WATCHED")
-                            .font(SpoolFonts.mono(10))
-                            .tracking(2)
-                            .foregroundStyle(SpoolTokens.paper.inkSoft)
-                            .padding(.top, 16)
-
-                        AdmitStub(
-                            movie: .init(id: "past-lives", title: "Past Lives", year: 2023,
-                                         director: "celine song", seed: 0),
-                            tier: .S, line: "cried on the 6 train.",
-                            moods: ["tender","devastating"],
-                            date: "APR · 18 · 2026", stubNo: "#0127",
-                            compact: true
-                        )
-                        .rotationEffect(.degrees(-0.5))
-                        .padding(.top, 6)
-
-                        MonthRecapBox().padding(.top, 16)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 110)
+                    content
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 110)
+                        .padding(.top, 2)
                 }
+                .refreshable { await reload() }
+            }
+        }
+        .task { await reload() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if loading {
+            // Prevent a one-frame flash of preview-mode fixtures before
+            // `reload()` resolves, same as FeedScreen.
+            Color.clear.frame(height: 1)
+        } else if hasSession {
+            if topItems.isEmpty {
+                signedInEmptyState
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    topFourSection(items: topItems).padding(.top, 6)
+                    recentSection(items: recentItems).padding(.top, 22)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                demoHeaderCard.padding(.top, 2)
+                topFourSection(items: fixtureTopFour).padding(.top, 18)
+                recentSection(items: fixtureRecent).padding(.top, 22)
             }
         }
     }
-}
 
-struct FilmStripCalendar: View {
-    let onTap: (WatchedDay) -> Void
-    let days: Int = 30
+    // MARK: sections
 
-    private var byDay: [Int: WatchedDay] {
-        Dictionary(uniqueKeysWithValues: SpoolData.aprilWatched.map { ($0.day, $0) })
-    }
+    private func topFourSection(items: [RankedItem]) -> some View {
+        SpoolThemeReader { _, _ in
+            VStack(alignment: .leading, spacing: 0) {
+                Text("MY TOP 4 · ALL TIME")
+                    .font(SpoolFonts.mono(10))
+                    .tracking(2)
+                    .foregroundStyle(SpoolTokens.paper.inkSoft)
 
-    var body: some View {
-        SpoolThemeReader { t, mode in
-            VStack(spacing: 4) {
-                SprocketRow()
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 7), spacing: 3) {
-                    ForEach(1...days, id: \.self) { day in
-                        let w = byDay[day]
-                        Button { if let w = w { onTap(w) } } label: {
-                            VStack {
-                                Text("\(day)")
-                                    .font(SpoolFonts.mono(7))
-                                    .foregroundStyle(t.cream.opacity(0.6))
-                                Spacer(minLength: 0)
-                                if let w = w {
-                                    Text(w.tier.rawValue)
-                                        .font(SpoolFonts.serif(9))
-                                        .foregroundStyle(t.cream)
-                                        .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
-                                }
-                            }
-                            .padding(.vertical, 2)
-                            .frame(maxWidth: .infinity)
-                            .aspectRatio(2.0/3.0, contentMode: .fit)
-                            .background((w != nil) ? tierColor(w!.tier, mode: mode) : Color(hex: 0x2A2A2A))
-                            .cornerRadius(1)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(w == nil)
+                HStack(spacing: 6) {
+                    ForEach(Array(items.prefix(4).enumerated()), id: \.offset) { i, item in
+                        topFourCard(index: i, item: item)
+                            .rotationEffect(.degrees([-3, 2, -1, 3][i % 4]))
                     }
                 }
-                SprocketRow()
+                .padding(.top, 8)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 8)
-            .background(t.ink)
-            .cornerRadius(6)
         }
     }
-}
 
-struct SprocketRow: View {
-    var body: some View {
+    private func topFourCard(index: Int, item: RankedItem) -> some View {
         SpoolThemeReader { t, _ in
-            HStack {
-                ForEach(0..<14, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(t.cream)
-                        .frame(width: 6, height: 6)
-                    Spacer(minLength: 0)
-                }
+            ZStack(alignment: .topLeading) {
+                PosterBlock(
+                    title: firstWord(item.title),
+                    director: item.director,
+                    seed: item.seed,
+                    posterUrl: item.posterUrl
+                )
+                Text("\(index + 1)")
+                    .font(SpoolFonts.mono(10))
+                    .foregroundStyle(t.ink)
+                    .frame(width: 18, height: 18)
+                    .background(t.yellow)
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(t.ink, lineWidth: 1))
+                    .rotationEffect(.degrees(-6))
+                    .offset(x: 4, y: -4)
             }
-            .padding(.horizontal, 4)
         }
     }
-}
 
-struct MonthRecapBox: View {
-    var body: some View {
+    private func recentSection(items: [RankedItem]) -> some View {
         SpoolThemeReader { t, mode in
             VStack(alignment: .leading, spacing: 0) {
-                Text("april, in letters.")
-                    .font(SpoolFonts.serif(20))
-                    .foregroundStyle(t.ink)
-                Text("a pretty stacked month.")
-                    .font(SpoolFonts.script(20))
+                Text("RECENT STUBS · \(monthLabel.uppercased())")
+                    .font(SpoolFonts.mono(10))
+                    .tracking(2)
                     .foregroundStyle(t.inkSoft)
-                    .padding(.top, 4)
 
-                HStack(spacing: 10) {
-                    ForEach(tierCounts(), id: \.tier) { item in
-                        VStack(spacing: -4) {
-                            TierStamp(tier: item.tier, size: 34)
-                            Text("× \(item.count)")
-                                .font(SpoolFonts.mono(11))
-                                .foregroundStyle(t.inkSoft)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(items.prefix(12).enumerated()), id: \.offset) { _, item in
+                            recentCard(item: item, t: t, mode: mode)
+                                .frame(width: 100)
+                                .onTapGesture {
+                                    onOpenDetail(watchedDay(from: item))
+                                }
                         }
-                        .frame(maxWidth: .infinity)
                     }
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
                 }
-                .padding(.top, 12)
-
-                HStack {
-                    Spacer()
-                    SpoolPill("🎞 make april recap", filled: true, size: .sm)
-                    Spacer()
-                }
-                .padding(.top, 10)
             }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+        }
+    }
+
+    private func recentCard(item: RankedItem, t: SpoolPalette, mode: SpoolMode) -> some View {
+        VStack(spacing: 0) {
+            PosterBlock(
+                title: firstWord(item.title),
+                year: item.year,
+                director: item.director,
+                seed: item.seed,
+                cornerRadius: 0,
+                posterUrl: item.posterUrl
+            )
+            .frame(maxWidth: .infinity)
+
+            Text(item.tier.rawValue)
+                .font(SpoolFonts.serif(20))
+                .foregroundStyle(tierColor(item.tier, mode: mode))
+                .frame(maxWidth: .infinity)
+                .frame(height: 28)
+                .background(t.ink)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .stroke(t.ink, lineWidth: 1.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+
+    // MARK: empty + demo
+
+    private var signedInEmptyState: some View {
+        SpoolThemeReader { t, _ in
+            VStack(spacing: 16) {
+                Spacer(minLength: 40)
+                Text("no stubs yet")
+                    .font(SpoolFonts.serif(26))
                     .foregroundStyle(t.ink)
+                Text("rank a movie to collect your first stub")
+                    .font(SpoolFonts.hand(15))
+                    .foregroundStyle(t.inkSoft)
+                    .multilineTextAlignment(.center)
+                Spacer(minLength: 20)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private var demoHeaderCard: some View {
+        SpoolThemeReader { t, _ in
+            VStack(alignment: .leading, spacing: 6) {
+                Text("DEMO — SIGN IN TO SEE YOUR STUBS")
+                    .font(SpoolFonts.mono(10))
+                    .tracking(2)
+                    .foregroundStyle(t.ink)
+                Text("these are sample picks. your real top 4 and recent stubs appear once you sign in and rank.")
+                    .font(SpoolFonts.hand(13))
+                    .foregroundStyle(t.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(t.yellow.opacity(0.9))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(t.ink, lineWidth: 1.5)
             )
         }
     }
 
-    struct TierCount { let tier: Tier; let count: Int }
-    private func tierCounts() -> [TierCount] {
-        [.init(tier: .S, count: 3), .init(tier: .A, count: 5),
-         .init(tier: .B, count: 4),          .init(tier: .C, count: 1), .init(tier: .D, count: 0)]
+    // MARK: data
+
+    private func reload() async {
+        let userID = await SpoolClient.currentUserID()
+        let sessionPresent = userID != nil
+
+        if sessionPresent {
+            do {
+                let all = try await RankingRepository.shared.getAllRankedItems()
+                let top = Array(all.prefix(4))
+                let recent = Array(all.prefix(12))
+                await MainActor.run {
+                    topItems = top
+                    recentItems = recent
+                    hasSession = true
+                    loading = false
+                }
+            } catch {
+                await MainActor.run {
+                    topItems = []
+                    recentItems = []
+                    hasSession = true
+                    loading = false
+                }
+            }
+        } else {
+            await MainActor.run {
+                topItems = []
+                recentItems = []
+                hasSession = false
+                loading = false
+            }
+        }
+    }
+
+    // MARK: fixtures (preview-mode only)
+
+    private var fixtureTopFour: [RankedItem] {
+        SpoolData.topFour.enumerated().map { i, entry in
+            RankedItem(id: "fixture-top-\(i)", title: entry.title,
+                       year: nil, director: "—",
+                       tier: .S, rank: i + 1, seed: entry.seed)
+        }
+    }
+
+    private var fixtureRecent: [RankedItem] {
+        SpoolData.recent.enumerated().map { i, stub in
+            RankedItem(id: "fixture-recent-\(i)", title: stub.title,
+                       year: stub.year, director: stub.director,
+                       tier: stub.tier, rank: i + 1, seed: stub.seed)
+        }
+    }
+
+    // MARK: helpers
+
+    private var monthLabel: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM"
+        return f.string(from: Date()).lowercased()
+    }
+
+    private func firstWord(_ s: String) -> String {
+        s.split(separator: " ").first.map(String.init) ?? s
+    }
+
+    private func watchedDay(from item: RankedItem) -> WatchedDay {
+        let day = Calendar.current.component(.day, from: Date())
+        return WatchedDay(day: day, tier: item.tier, title: item.title)
     }
 }
 
