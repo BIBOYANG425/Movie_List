@@ -124,7 +124,7 @@ struct OnbSignInScreen: View {
                 t.cream.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        OnbDots(step: 1)
+                        OnbDots(step: 8)
 
                         Text("— RESERVE YOUR SEAT —")
                             .font(SpoolFonts.mono(10))
@@ -175,7 +175,7 @@ struct OnbManifesto: View {
             ZStack(alignment: .top) {
                 t.cream.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 0) {
-                    OnbDots(step: 2)
+                    OnbDots(step: 1)
 
                     Text("— THE RULES —")
                         .font(SpoolFonts.mono(10))
@@ -265,7 +265,7 @@ struct OnbGrid: View {
                 t.cream.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        OnbDots(step: 3)
+                        OnbDots(step: 2)
 
                         Text("seen it? tier it.")
                             .font(SpoolFonts.serif(26))
@@ -458,7 +458,7 @@ struct OnbH2H: View {
             ZStack(alignment: .top) {
                 t.cream.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    OnbDots(step: 4)
+                    OnbDots(step: 3)
 
                     Text("— HEAD TO HEAD · MATCH \(currentMatch + 1) OF \(totalMatches) —")
                         .font(SpoolFonts.mono(10))
@@ -610,7 +610,7 @@ struct OnbPrint: View {
             ZStack(alignment: .top) {
                 t.cream.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    OnbDots(step: 5)
+                    OnbDots(step: 4)
 
                     Text(stage < 2 ? "printing…" : "your first stub.")
                         .font(SpoolFonts.script(28))
@@ -743,7 +743,7 @@ struct OnbIdentity: View {
                 t.cream.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        OnbDots(step: 6)
+                        OnbDots(step: 5)
 
                         Text("— WHO SHALL WE SEAT? —")
                             .font(SpoolFonts.mono(10))
@@ -844,7 +844,7 @@ struct OnbTwins: View {
                 t.cream.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        OnbDots(step: 7)
+                        OnbDots(step: 6)
 
                         Text("— SCORED FROM YOUR TIERS —")
                             .font(SpoolFonts.mono(10))
@@ -960,7 +960,7 @@ struct OnbTwins: View {
 
 struct OnbSeason: View {
     var handle: String
-    var onFinish: () -> Void
+    var onNext: () -> Void
 
     var body: some View {
         ZStack {
@@ -1030,7 +1030,7 @@ struct OnbSeason: View {
 
                 Spacer()
 
-                Button(action: onFinish) {
+                Button(action: onNext) {
                     Text("start spooling ▸")
                         .font(SpoolFonts.serif(22))
                         .tracking(0.8)

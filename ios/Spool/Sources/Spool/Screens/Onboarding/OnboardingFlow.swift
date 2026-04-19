@@ -1,24 +1,26 @@
 import SwiftUI
 
-/// Bold 8-step onboarding flow with an inserted sign-in screen after the
-/// Cold Open "take your seat" CTA. Completion persists via `@AppStorage`
-/// so the flow only appears on first launch.
+/// Bold 9-step onboarding flow with sign-in deferred to the end so users
+/// experience the product before being asked to create an account.
+/// Completion persists via `@AppStorage` so the flow only appears on first launch.
 ///
-/// Persistence: on finish, tier picks from step 3 (and the H2H winner/loser
-/// order from step 4) are either inserted into `user_rankings` (signed-in
+/// Persistence: on finish, tier picks from the Grid step (and the H2H
+/// winner/loser order) are either inserted into `user_rankings` (signed-in
 /// path) or queued to `UserDefaults` via `OnboardingQueue.enqueue` so a
-/// later sign-in can flush them.
+/// later sign-in can flush them. `AuthService.signInOrSignUp` calls
+/// `flushOnboardingQueue` automatically, so signing in at step 8 drains
+/// anything that was queued while previewing earlier steps.
 ///
 /// Steps:
-///  0 Cold Open     — tap "take your seat ↘"
-///  1 Sign In       — email+password, or skip
-///  2 Manifesto     — house rules
-///  3 Grid tap      — seed 4+ films into tiers
-///  4 H2H           — pick one S-tier head-to-head
-///  5 Print         — stub prints with stamp animation
-///  6 Identity      — @handle + two bio questions
-///  7 Twins         — revealed taste twins
-///  8 Season        — "start spooling ▸" closes the flow
+///  0 Cold Open        — tap "take your seat ↘"
+///  1 Manifesto        — house rules
+///  2 Grid tap         — seed 4+ films into tiers
+///  3 H2H              — pick one S-tier head-to-head
+///  4 Print            — stub prints with stamp animation
+///  5 Identity         — @handle + two bio questions
+///  6 Twins            — revealed taste twins
+///  7 Season           — "start spooling ▸" advances to sign-in
+///  8 Sign In / Sign Up — email+password, or skip into preview mode
 ///
 /// Header last reviewed: 2026-04-18
 public struct OnboardingFlow: View {
@@ -59,27 +61,27 @@ public struct OnboardingFlow: View {
     private var content: some View {
         switch step {
         case 0: OnbColdOpen(onNext: { advance() })
-        case 1: OnbSignInScreen(onDone: { result in
-                    signedIn = (result == .signedIn)
-                    advance()
-                })
-        case 2: OnbManifesto(onNext: { advance() })
-        case 3: OnbGrid(onNext: { newPicks in
+        case 1: OnbManifesto(onNext: { advance() })
+        case 2: OnbGrid(onNext: { newPicks in
                     picks = newPicks
                     advance()
                 })
-        case 4: OnbH2H(contenders: h2hContenders, onNext: { winner, losers in
+        case 3: OnbH2H(contenders: h2hContenders, onNext: { winner, losers in
                     h2hWinner = winner
                     h2hLosers = losers
                     advance()
                 })
-        case 5: OnbPrint(onNext: { advance() })
-        case 6: OnbIdentity(onNext: { newHandle in
+        case 4: OnbPrint(onNext: { advance() })
+        case 5: OnbIdentity(onNext: { newHandle in
                     handle = newHandle
                     advance()
                 })
-        case 7: OnbTwins(onNext: { advance() })
-        case 8: OnbSeason(handle: handle, onFinish: { finish() })
+        case 6: OnbTwins(onNext: { advance() })
+        case 7: OnbSeason(handle: handle, onNext: { advance() })
+        case 8: OnbSignInScreen(onDone: { result in
+                    signedIn = (result == .signedIn)
+                    finish()
+                })
         default:
             Color.clear.onAppear { finish() }
         }
