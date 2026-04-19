@@ -1,15 +1,17 @@
 import SwiftUI
 
-/// Bold 9-step onboarding flow with sign-in deferred to the end so users
-/// experience the product before being asked to create an account.
+/// Bold 9-step onboarding flow with sign-in slotted before a friend-search
+/// finale so users experience the product, commit to an account, and then
+/// populate their graph before landing in the app.
 /// Completion persists via `@AppStorage` so the flow only appears on first launch.
 ///
 /// Persistence: on finish, tier picks from the Grid step (and the H2H
 /// winner/loser order) are either inserted into `user_rankings` (signed-in
 /// path) or queued to `UserDefaults` via `OnboardingQueue.enqueue` so a
 /// later sign-in can flush them. `AuthService.signInOrSignUp` calls
-/// `flushOnboardingQueue` automatically, so signing in at step 8 drains
-/// anything that was queued while previewing earlier steps.
+/// `flushOnboardingQueue` automatically, so signing in at step 7 drains
+/// anything that was queued while previewing earlier steps — and by the
+/// time step 8 (friend search) renders, the user's rankings already exist.
 ///
 /// Steps:
 ///  0 Cold Open        — tap "take your seat ↘"
@@ -18,11 +20,11 @@ import SwiftUI
 ///  3 H2H              — pick one S-tier head-to-head
 ///  4 Print            — stub prints with stamp animation
 ///  5 Identity         — @handle + two bio questions
-///  6 Twins            — revealed taste twins
-///  7 Season           — "start spooling ▸" advances to sign-in
-///  8 Sign In / Sign Up — email+password, or skip into preview mode
+///  6 Season           — "start spooling ▸" advances to sign-in
+///  7 Sign In / Sign Up — email+password, or skip into preview mode
+///  8 Friend Search    — search profiles + follow (terminal; calls finish)
 ///
-/// Header last reviewed: 2026-04-18
+/// Header last reviewed: 2026-04-19
 public struct OnboardingFlow: View {
     public var onFinish: (OnboardingOutcome) -> Void
     @State private var step: Int = 0
@@ -76,12 +78,17 @@ public struct OnboardingFlow: View {
                     handle = newHandle
                     advance()
                 })
-        case 6: OnbTwins(onNext: { advance() })
-        case 7: OnbSeason(handle: handle, onNext: { advance() })
-        case 8: OnbSignInScreen(onDone: { result in
+        case 6: OnbSeason(handle: handle, onNext: { advance() })
+        case 7: OnbSignInScreen(onDone: { result in
                     signedIn = (result == .signedIn)
-                    finish()
+                    // Persist the picks now — friend search (step 8) works
+                    // off the session that was just established, not the
+                    // ranking flush. Advancing instead of finishing keeps the
+                    // user in the flow for one more screen.
+                    persistIfNeeded()
+                    advance()
                 })
+        case 8: OnbFriendSearch(onNext: { finish() })
         default:
             Color.clear.onAppear { finish() }
         }
@@ -89,13 +96,24 @@ public struct OnboardingFlow: View {
 
     private func advance() { step += 1 }
 
-    /// Build the ordered insert list, then either persist (if signed in) or
-    /// enqueue (if skipped). Never blocks the flow's completion callback — a
-    /// failed insert path still calls `onFinish`.
+    /// Terminal step handler. Kicks off any remaining persistence (no-op if
+    /// step 7's sign-in path already handled it) and hands control back to
+    /// the caller. Never blocks the callback on a failing insert.
     private func finish() {
+        persistIfNeeded {
+            onFinish(.init(handle: handle, signedIn: signedIn))
+        }
+    }
+
+    /// Build the ordered ranking list and either insert (signed-in path) or
+    /// enqueue (preview path). Called twice: once at sign-in (step 7) so the
+    /// friend-search step has a clean-slate session with rankings already
+    /// saved, and once at finish (step 8) as a safety net. The queue is
+    /// drained after a successful persist so the second call is a no-op.
+    private func persistIfNeeded(completion: (() -> Void)? = nil) {
         let rankings = buildRankings()
         guard !rankings.isEmpty else {
-            onFinish(.init(handle: handle, signedIn: signedIn))
+            completion?()
             return
         }
         if signedIn, SpoolClient.shared != nil {
@@ -117,19 +135,21 @@ public struct OnboardingFlow: View {
                         )
                         _ = try await RankingRepository.shared.insertRanking(insert)
                     } catch {
-                        // Toast is deferred to Task 4 — log for now so the
-                        // failure isn't silent during development.
                         print("[OnboardingFlow] insertRanking failed: \(error)")
                     }
                 }
                 await MainActor.run {
+                    // Clear the queue + picks so a subsequent finish call is
+                    // a no-op — we don't want to double-insert.
+                    OnboardingQueue.replace([])
+                    picks = []
                     persisting = false
-                    onFinish(.init(handle: handle, signedIn: signedIn))
+                    completion?()
                 }
             }
         } else {
             OnboardingQueue.replace(rankings)
-            onFinish(.init(handle: handle, signedIn: signedIn))
+            completion?()
         }
     }
 
