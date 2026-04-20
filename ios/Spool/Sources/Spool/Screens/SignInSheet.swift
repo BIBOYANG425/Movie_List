@@ -12,10 +12,8 @@ import SwiftUI
 ///    ranking". The parent (RankH2HScreen) decides what to do with that
 ///    signal.
 ///
-/// The email/password form AND Google OAuth button are shared with
-/// OnbSignInScreen via `SignInFormBody` below so the two entry points
-/// stay in lockstep. Both surfaces get Continue-with-Google as the
-/// primary CTA + email/password as the fallback.
+/// The email/password form itself is shared with OnbSignInScreen via
+/// `SignInFormBody` below so the two entry points stay in lockstep.
 ///
 /// Header last reviewed: 2026-04-18
 public struct SignInSheet: View {
@@ -102,38 +100,22 @@ struct SignInFormBody: View {
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var working: Bool = false
+    @State private var googleWorking: Bool = false
     @State private var error: String?
+    /// When true, the primary CTA creates a new account instead of signing in.
+    /// Default is false — the expected path is "existing user signing back in."
+    /// New-account UX is an explicit opt-in below the primary button so a
+    /// wrong-password typo can never silently spawn a phantom user (which is
+    /// what the old "sign in / sign up" combo button used to do).
+    @State private var mode: Mode = .signIn
+
+    enum Mode { case signIn, signUp }
 
     var body: some View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 0) {
-                Button(action: signInWithGoogle) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "g.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(t.ink)
-                        Text("continue with Google")
-                            .font(SpoolFonts.serif(16))
-                            .tracking(0.2)
-                            .foregroundStyle(t.ink)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Capsule().stroke(t.ink, lineWidth: 1.5))
-                }
-                .buttonStyle(.plain)
-                .disabled(working)
-                .opacity(working ? 0.45 : 1)
-
-                HStack(spacing: 10) {
-                    Rectangle().fill(t.inkSoft.opacity(0.35)).frame(height: 1)
-                    Text("or")
-                        .font(SpoolFonts.mono(11))
-                        .tracking(2)
-                        .foregroundStyle(t.inkSoft)
-                    Rectangle().fill(t.inkSoft.opacity(0.35)).frame(height: 1)
-                }
-                .padding(.vertical, 16)
+                googleButton(theme: t)
+                dividerRow(theme: t)
 
                 VStack(alignment: .leading, spacing: 10) {
                     SignInFieldRow(label: "EMAIL", placeholder: "you@spool.co",
@@ -152,7 +134,7 @@ struct SignInFormBody: View {
                 Button(action: submit) {
                     HStack(spacing: 8) {
                         if working { ProgressView().tint(t.cream) }
-                        Text(working ? "working…" : "sign in / sign up")
+                        Text(working ? "working…" : primaryLabel)
                             .font(SpoolFonts.serif(16))
                             .tracking(0.3)
                             .foregroundStyle(t.cream)
@@ -165,16 +147,58 @@ struct SignInFormBody: View {
                 .disabled(working || !formValid)
                 .opacity(formValid ? 1 : 0.45)
                 .padding(.top, 22)
+
+                // Mode toggle — small secondary link so the default CTA stays
+                // obvious. Toggling clears any stale error for the new intent.
+                // Disable while auth is in flight so a returning Google/email
+                // response can't land into a mode the user just switched away
+                // from.
+                Button(action: toggleMode) {
+                    Text(toggleLabel)
+                        .font(SpoolFonts.hand(12))
+                        .foregroundStyle(t.inkSoft)
+                        .underline()
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 10)
+                .disabled(working || googleWorking)
+                .opacity((working || googleWorking) ? 0.5 : 1)
             }
         }
     }
 
-    private func signInWithGoogle() {
-        guard !working else { return }
+    private var primaryLabel: String {
+        mode == .signIn ? "sign in" : "create account"
+    }
+    private var toggleLabel: String {
+        mode == .signIn ? "new here? create an account" : "have an account? sign in"
+    }
+
+    private var formValid: Bool {
+        !email.trimmingCharacters(in: .whitespaces).isEmpty && password.count >= 8
+    }
+
+    private func toggleMode() {
+        mode = (mode == .signIn) ? .signUp : .signIn
+        error = nil
+    }
+
+    private func submit() {
+        guard formValid, !working else { return }
         working = true
         error = nil
+        let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
+        let pw = password
+        let currentMode = mode
         Task {
-            let result = await AuthService.shared.signInWithGoogle()
+            let result: AuthService.AuthResult
+            switch currentMode {
+            case .signIn:
+                result = await AuthService.shared.signIn(email: trimmedEmail, password: pw)
+            case .signUp:
+                result = await AuthService.shared.signUp(email: trimmedEmail, password: pw)
+            }
             await MainActor.run {
                 working = false
                 switch result {
@@ -187,24 +211,64 @@ struct SignInFormBody: View {
         }
     }
 
-    private var formValid: Bool {
-        !email.trimmingCharacters(in: .whitespaces).isEmpty && password.count >= 8
+    // MARK: Google
+
+    /// "Continue with Google" button. Placed above the email form because this
+    /// matches the web app's primary auth path — most returning users tap it
+    /// first.
+    private func googleButton(theme t: SpoolPalette) -> some View {
+        Button(action: startGoogle) {
+            HStack(spacing: 10) {
+                if googleWorking {
+                    ProgressView().tint(t.ink)
+                } else {
+                    Text("G")
+                        .font(SpoolFonts.serif(18))
+                        .foregroundStyle(t.ink)
+                        .frame(width: 22, height: 22)
+                        .background(Circle().stroke(t.ink, lineWidth: 1.2))
+                }
+                Text(googleWorking ? "opening Google…" : "continue with Google")
+                    .font(SpoolFonts.serif(16))
+                    .tracking(0.2)
+                    .foregroundStyle(t.ink)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(Capsule().fill(t.cream2))
+            .overlay(Capsule().stroke(t.ink, lineWidth: 1.2))
+        }
+        .buttonStyle(.plain)
+        .disabled(working || googleWorking)
+        .opacity(working || googleWorking ? 0.6 : 1)
     }
 
-    private func submit() {
-        guard formValid, !working else { return }
-        working = true
+    private func dividerRow(theme t: SpoolPalette) -> some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(t.rule).frame(height: 1)
+            Text("or")
+                .font(SpoolFonts.mono(10))
+                .tracking(2)
+                .foregroundStyle(t.inkSoft)
+            Rectangle().fill(t.rule).frame(height: 1)
+        }
+        .padding(.vertical, 18)
+    }
+
+    private func startGoogle() {
+        guard !googleWorking, !working else { return }
+        googleWorking = true
         error = nil
         Task {
-            let result = await AuthService.shared.signInOrSignUp(
-                email: email.trimmingCharacters(in: .whitespaces),
-                password: password
-            )
+            let result = await AuthService.shared.signInWithGoogle()
             await MainActor.run {
-                working = false
+                googleWorking = false
                 switch result {
                 case .success:
                     onSuccess()
+                case .failure(.cancelled):
+                    // User dismissed the OAuth sheet deliberately — silent.
+                    break
                 case .failure(let e):
                     error = e.userMessage
                 }

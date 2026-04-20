@@ -11,7 +11,7 @@ public struct AdmitStub: View {
     public var compact: Bool
 
     public init(movie: Movie, tier: Tier = .S, line: String = "",
-                moods: [String] = [], date: String = "APR · 18 · 2026",
+                moods: [String] = [], date: String = Self.defaultDate(),
                 handle: String = "@yurui", stubNo: String = "#0127",
                 compact: Bool = false) {
         self.movie = movie
@@ -22,6 +22,23 @@ public struct AdmitStub: View {
         self.handle = handle
         self.stubNo = stubNo
         self.compact = compact
+    }
+
+    /// Default when the caller doesn't pass a date. Today's date in the same
+    /// "APR · 18 · 2026" shape as the real stubs use. Replaces the old
+    /// hardcoded "APR · 18 · 2026" which made every unscoped preview look
+    /// like it was watched on April 18.
+    /// Public because `public init`'s default argument needs a same-or-wider
+    /// access level than the init itself.
+    public static func defaultDate() -> String {
+        let calendar = Calendar(identifier: .gregorian)
+        let comps = calendar.dateComponents([.year, .month, .day], from: Date())
+        let months = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+        let m = comps.month.map { (1...12).contains($0) ? months[$0] : "—" } ?? "—"
+        let d = comps.day.map { String(format: "%02d", $0) } ?? "—"
+        let y = comps.year.map(String.init) ?? "—"
+        return "\(m) · \(d) · \(y)"
     }
 
     public var body: some View {

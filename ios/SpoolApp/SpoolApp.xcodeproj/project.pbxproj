@@ -7,11 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1D96D0BF685A56418473ECF0 /* Gloock-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CFCD1982ADAE5C39B8D0BA6F /* Gloock-Regular.ttf */; };
+		09EEE9A2F2055C9DA4AEA484 /* Kalam-Light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B8A3DCA034985C82BD8530BB /* Kalam-Light.ttf */; };
+		B6958BF71DBD5135A2CB67E9 /* Kalam-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1DE1E9A72C0B5489B15CDC90 /* Kalam-Regular.ttf */; };
+		5AC5301406DC50C0BFC7AF9C /* Kalam-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 02D51579995751B894866B55 /* Kalam-Bold.ttf */; };
+		2899CA12A665561993DA9694 /* Caveat-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1A756C0C969452159ADD6A78 /* Caveat-Regular.ttf */; };
+		853B09A3662D5035A5BEB9A9 /* Caveat-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4E4EEAEA53555374914DD14E /* Caveat-Bold.ttf */; };
+		EA7042EE031D5DA69D6068BA /* DMMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F828353CF317528C8EFC5FFD /* DMMono-Regular.ttf */; };
+		F08D3EBBAE3150908EF7A20D /* DMMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EF53327859125DB1BFEF31D9 /* DMMono-Medium.ttf */; };
+		33CB3CB46B725FE2B1FA92C7 /* DMMono-Light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 19B46C3FCB8255AF94A2EE6C /* DMMono-Light.ttf */; };
 		D100000000000000000000D1 /* SpoolAppEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000000000000D0 /* SpoolAppEntry.swift */; };
 		D100000000000000000000F2 /* Spool in Frameworks */ = {isa = PBXBuildFile; productRef = D100000000000000000000F1 /* Spool */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		CFCD1982ADAE5C39B8D0BA6F /* Gloock-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Gloock-Regular.ttf"; sourceTree = "<group>"; };
+		B8A3DCA034985C82BD8530BB /* Kalam-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Kalam-Light.ttf"; sourceTree = "<group>"; };
+		1DE1E9A72C0B5489B15CDC90 /* Kalam-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Kalam-Regular.ttf"; sourceTree = "<group>"; };
+		02D51579995751B894866B55 /* Kalam-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Kalam-Bold.ttf"; sourceTree = "<group>"; };
+		1A756C0C969452159ADD6A78 /* Caveat-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Caveat-Regular.ttf"; sourceTree = "<group>"; };
+		4E4EEAEA53555374914DD14E /* Caveat-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Caveat-Bold.ttf"; sourceTree = "<group>"; };
+		F828353CF317528C8EFC5FFD /* DMMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMMono-Regular.ttf"; sourceTree = "<group>"; };
+		EF53327859125DB1BFEF31D9 /* DMMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMMono-Medium.ttf"; sourceTree = "<group>"; };
+		19B46C3FCB8255AF94A2EE6C /* DMMono-Light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMMono-Light.ttf"; sourceTree = "<group>"; };
 		D100000000000000000000B1 /* SpoolApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SpoolApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D100000000000000000000D0 /* SpoolAppEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoolAppEntry.swift; sourceTree = "<group>"; };
 		D100000000000000000000D2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -54,8 +72,25 @@
 			children = (
 				D100000000000000000000D0 /* SpoolAppEntry.swift */,
 				D100000000000000000000D2 /* Info.plist */,
+				EDD07221D4E656AEB85F0216 /* Fonts */,
 			);
 			path = SpoolApp;
+			sourceTree = "<group>";
+		};
+		EDD07221D4E656AEB85F0216 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				CFCD1982ADAE5C39B8D0BA6F /* Gloock-Regular.ttf */,
+				B8A3DCA034985C82BD8530BB /* Kalam-Light.ttf */,
+				1DE1E9A72C0B5489B15CDC90 /* Kalam-Regular.ttf */,
+				02D51579995751B894866B55 /* Kalam-Bold.ttf */,
+				1A756C0C969452159ADD6A78 /* Caveat-Regular.ttf */,
+				4E4EEAEA53555374914DD14E /* Caveat-Bold.ttf */,
+				F828353CF317528C8EFC5FFD /* DMMono-Regular.ttf */,
+				EF53327859125DB1BFEF31D9 /* DMMono-Medium.ttf */,
+				19B46C3FCB8255AF94A2EE6C /* DMMono-Light.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -122,6 +157,15 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1D96D0BF685A56418473ECF0 /* Gloock-Regular.ttf in Resources */,
+				09EEE9A2F2055C9DA4AEA484 /* Kalam-Light.ttf in Resources */,
+				B6958BF71DBD5135A2CB67E9 /* Kalam-Regular.ttf in Resources */,
+				5AC5301406DC50C0BFC7AF9C /* Kalam-Bold.ttf in Resources */,
+				2899CA12A665561993DA9694 /* Caveat-Regular.ttf in Resources */,
+				853B09A3662D5035A5BEB9A9 /* Caveat-Bold.ttf in Resources */,
+				EA7042EE031D5DA69D6068BA /* DMMono-Regular.ttf in Resources */,
+				F08D3EBBAE3150908EF7A20D /* DMMono-Medium.ttf in Resources */,
+				33CB3CB46B725FE2B1FA92C7 /* DMMono-Light.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

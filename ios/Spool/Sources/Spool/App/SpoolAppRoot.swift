@@ -16,8 +16,37 @@ public struct SpoolAppRoot: View {
     /// so `@AppStorage` writes from other views propagate here without a
     /// bindings ping-pong through every intermediate screen.
     @AppStorage("spool.show_signin_sheet") private var showSignInSheet: Bool = false
-    @State private var mode: SpoolMode = .paper
+    /// Persisted theme choice. Defaults to `.system` so new installs pick up
+    /// the device's light/dark mode automatically. Previous installs that set
+    /// `.paper` or `.dark` keep their explicit pick.
+    @AppStorage("spool.theme_preference") private var themePreferenceRaw: String = ThemePreference.system.rawValue
+    /// System color scheme; only used when preference is `.system`.
+    @Environment(\.colorScheme) private var systemColorScheme
     @State private var tab: SpoolTab = .feed
+
+    /// Read-only typed view over `themePreferenceRaw`. Writes go directly to
+    /// the raw AppStorage string (one call site, `paletteToggle`) — we used
+    /// to have a `nonmutating set` here too, but nobody used it.
+    private var themePreference: ThemePreference {
+        ThemePreference(rawValue: themePreferenceRaw) ?? .system
+    }
+
+    /// Effective paper/dark mode used for palette lookups and the palette
+    /// toggle icon. When preference is `.system`, this follows whatever
+    /// light/dark the device is in.
+    private var mode: SpoolMode {
+        themePreference.resolved(environment: systemColorScheme)
+    }
+
+    /// `.preferredColorScheme` value — `nil` when the user chose system so
+    /// SwiftUI doesn't force a scheme and the app rides along with the OS.
+    private var forcedColorScheme: ColorScheme? {
+        switch themePreference {
+        case .system: return nil
+        case .paper:  return .light
+        case .dark:   return .dark
+        }
+    }
 
     // Rank flow
     @State private var flow: RankFlowStep? = nil
@@ -34,6 +63,13 @@ public struct SpoolAppRoot: View {
 
     // Twin modal
     @State private var twinOpen: Friend? = nil
+    // Read-only friend profile (pushed full-screen, mirrors twinOpen)
+    @State private var friendProfileOpen: Friend? = nil
+
+    // Settings sheet
+    @State private var showSettings: Bool = false
+    // Full shelf sheet (all tiers, all ranks, in one list)
+    @State private var showFullList: Bool = false
 
     public init() {}
 
@@ -58,13 +94,6 @@ public struct SpoolAppRoot: View {
             // modals. Mounted once at the root so every screen shares one toast.
             ToastHost()
         }
-        // Apply spoolMode here (not inside `mainApp`) so ToastHost — a sibling
-        // of the onboarding/mainApp Group — inherits the dark/paper palette
-        // too. Without this, toasts render in paper colors even when the user
-        // has flipped into dark mode. OnboardingFlow internally forces paper
-        // mode; that inner modifier still wins for the onboarding subtree.
-        .spoolMode(mode)
-        .preferredColorScheme(mode == .paper ? .light : .dark)
     }
 
     private var mainApp: some View {
@@ -90,8 +119,8 @@ public struct SpoolAppRoot: View {
                 }
                 .overlay(alignment: .topTrailing) { paletteToggle }
         }
-        // spoolMode + preferredColorScheme are applied at the root body so
-        // ToastHost inherits them. Kept here removed to avoid double-application.
+        .spoolMode(mode)
+        .preferredColorScheme(forcedColorScheme)
         .sheet(isPresented: $showSignInSheet) {
             SignInSheet(onDone: { result in
                 if result == .signedIn {
@@ -101,6 +130,25 @@ public struct SpoolAppRoot: View {
                 }
                 showSignInSheet = false
             })
+        }
+        .sheet(isPresented: $showFullList) {
+            FullListScreen(onClose: { showFullList = false })
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsScreen(
+                preference: Binding(
+                    get: { themePreference },
+                    set: { themePreferenceRaw = $0.rawValue }
+                ),
+                effectiveMode: mode,
+                onClose: { showSettings = false },
+                onSignedOut: {
+                    // Flip preview mode on so the signed-out user sees the
+                    // "sign in to save" banner above the tab bar again.
+                    previewMode = true
+                    showSettings = false
+                }
+            )
         }
     }
 
@@ -137,7 +185,8 @@ public struct SpoolAppRoot: View {
     }
 
     private var navHidden: Bool {
-        flow != nil || stubDetail != nil || stubShare != nil || twinOpen != nil
+        flow != nil || stubDetail != nil || stubShare != nil
+            || twinOpen != nil || friendProfileOpen != nil
     }
 
     @ViewBuilder
@@ -156,6 +205,19 @@ public struct SpoolAppRoot: View {
                     stubDetail = nil
                 }
             )
+        } else if let f = friendProfileOpen {
+            FriendProfileScreen(
+                friend: f,
+                onClose: { friendProfileOpen = nil },
+                onOpenTwin: {
+                    // Bounce from Profile → Twin. Clearing friendProfileOpen
+                    // first so TwinScreen's own back-button lands the user
+                    // back on FriendsScreen, not on the profile they just
+                    // left. (Profile ↔ Twin mutual links, but no deep stack.)
+                    twinOpen = f
+                    friendProfileOpen = nil
+                }
+            )
         } else if let f = twinOpen {
             TwinScreen(friend: f) { twinOpen = nil }
         } else {
@@ -165,15 +227,17 @@ public struct SpoolAppRoot: View {
             case .stubs:
                 StubsScreen { stubDetail = $0 }
             case .friends:
-                FriendsScreen { twinOpen = $0 }
+                FriendsScreen(
+                    onOpenTwin: { twinOpen = $0 },
+                    onOpenProfile: { friendProfileOpen = $0 }
+                )
             case .me:
-                ProfileScreen()
+                ProfileScreen(
+                    onOpenSettings: { showSettings = true },
+                    onOpenFullList: { showFullList = true }
+                )
             case .rank:
-                // Unreachable — `onTab(.rank)` intercepts the tap and sets
-                // `flow = .entry` before `tab` becomes `.rank`. If that
-                // invariant ever breaks, fall through to Feed consistently
-                // (same onRankTap wiring) instead of a silently-broken CTA.
-                FeedScreen(onRankTap: { onTab(.rank) })
+                FeedScreen() // impossible state; tab won't actually become .rank
             }
         }
     }
@@ -229,8 +293,28 @@ public struct SpoolAppRoot: View {
                 RankPrintedScreen(
                     movie: m, tier: t, moods: rankMoods, line: rankLine,
                     finalRank: rankFinalRank, finalScore: rankFinalScore,
+                    // Close = abandon the whole rank flow without saving.
+                    // RankH2HScreen no longer persists mid-flow, so this
+                    // is a true abort — user_rankings gets nothing.
                     onClose: { flow = nil },
+                    // Finish = commit. RankPersistence.save handles signed-in
+                    // users (direct DB insert) and preview mode (queue +
+                    // open the sign-in sheet via spool.show_signin_sheet).
                     onFinish: {
+                        let movieToSave = m
+                        let tierToSave = t
+                        let rankToSave = rankFinalRank
+                        let moodsToSave = rankMoods
+                        let lineToSave = rankLine
+                        Task {
+                            await RankPersistence.save(
+                                movie: movieToSave,
+                                tier: tierToSave,
+                                rank: rankToSave,
+                                moods: moodsToSave,
+                                line: lineToSave
+                            )
+                        }
                         flow = nil
                         tab = .feed
                     }
@@ -253,7 +337,11 @@ public struct SpoolAppRoot: View {
 
     private var paletteToggle: some View {
         Button {
-            mode = (mode == .paper) ? .dark : .paper
+            // Quick toggle: flip between explicit paper and dark. If the
+            // user was on `.system`, a tap commits to the opposite of the
+            // *current* rendered mode so the tap feels responsive. They
+            // can always pick `match system` back from Settings.
+            themePreferenceRaw = (mode == .paper ? ThemePreference.dark : ThemePreference.paper).rawValue
         } label: {
             Image(systemName: mode == .paper ? "moon.fill" : "sun.max.fill")
                 .font(.system(size: 14))

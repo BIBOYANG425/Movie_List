@@ -117,19 +117,17 @@ public final class SpoolRankingEngine {
         return emitProbeComparison()
     }
 
+    /// Contract: `winnerId` should be one of the two ids in the current
+    /// comparison. In practice, anything that isn't `newMovie.id` is
+    /// treated as "movieB won" — identical to the web engine's behavior.
+    /// Unknown ids (stale double-taps, outdated snapshots) become a loss
+    /// for newMovie, which advances the state machine normally. We removed
+    /// the stricter validation that used to throw on unknown ids because
+    /// a throwing submit aborted the session in the RankH2HScreen catch
+    /// block — the "H2H stops at 2 selections" symptom.
     public func submitChoice(winnerId: String) throws -> EngineResult {
         guard started, phase != .complete else {
             throw EngineError.notActive
-        }
-        // The winner must be one of the two items in the current comparison.
-        // Accepting an arbitrary id silently treats "not newMovie" as
-        // "movieB won", which lets a stale/double-tap corrupt the state
-        // machine by answering a round that isn't on screen.
-        guard let comparison = currentComparison else {
-            throw EngineError.notActive
-        }
-        guard winnerId == comparison.movieA.id || winnerId == comparison.movieB.id else {
-            throw EngineError.invalidWinnerId
         }
         let newMovieWins = (winnerId == newMovie.id)
         pushSnapshot()
@@ -165,10 +163,6 @@ public final class SpoolRankingEngine {
     public enum EngineError: Error {
         case notActive
         case unexpectedPhase(EnginePhase)
-        /// `submitChoice` was called with an id that isn't on either side of
-        /// the active comparison — typically a stale / double-tap from a
-        /// previous round, or a caller using an outdated snapshot.
-        case invalidWinnerId
     }
 
     // MARK: phase handlers

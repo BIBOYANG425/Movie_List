@@ -1,28 +1,24 @@
 import SwiftUI
 
-/// Bold 9-step onboarding flow with sign-in slotted before a friend-search
-/// finale so users experience the product, commit to an account, and then
-/// populate their graph before landing in the app.
-/// Completion persists via `@AppStorage` so the flow only appears on first launch.
+/// Bold 8-step onboarding flow with an inserted sign-in screen after the
+/// Cold Open "take your seat" CTA. Completion persists via `@AppStorage`
+/// so the flow only appears on first launch.
 ///
-/// Persistence: on finish, tier picks from the Grid step (and the H2H
-/// winner/loser order) are either inserted into `user_rankings` (signed-in
+/// Persistence: on finish, tier picks from step 3 (and the H2H winner/loser
+/// order from step 4) are either inserted into `user_rankings` (signed-in
 /// path) or queued to `UserDefaults` via `OnboardingQueue.enqueue` so a
-/// later sign-in can flush them. `AuthService.signInOrSignUp` calls
-/// `flushOnboardingQueue` automatically, so signing in at step 7 drains
-/// anything that was queued while previewing earlier steps — and by the
-/// time step 8 (friend search) renders, the user's rankings already exist.
+/// later sign-in can flush them.
 ///
 /// Steps:
-///  0 Cold Open        — tap "take your seat ↘"
-///  1 Manifesto        — house rules
-///  2 Grid tap         — seed 4+ films into tiers
-///  3 H2H              — pick one S-tier head-to-head
-///  4 Print            — stub prints with stamp animation
-///  5 Identity         — @handle + two bio questions
-///  6 Season           — "start spooling ▸" advances to sign-in
-///  7 Sign In / Sign Up — email+password, or skip into preview mode
-///  8 Friend Search    — search profiles + follow (terminal; calls finish)
+///  0 Cold Open     — tap "take your seat ↘"
+///  1 Sign In       — email+password, or skip
+///  2 Manifesto     — house rules
+///  3 Grid tap      — seed 4+ films into tiers
+///  4 H2H           — pick one S-tier head-to-head
+///  5 Print         — stub prints with stamp animation
+///  6 Identity      — @handle + two bio questions
+///  7 Twins         — revealed taste twins
+///  8 Season        — "start spooling ▸" closes the flow
 ///
 /// Header last reviewed: 2026-04-18
 public struct OnboardingFlow: View {
@@ -34,11 +30,11 @@ public struct OnboardingFlow: View {
     @State private var h2hWinner: TMDBMovie? = nil
     @State private var h2hLosers: [TMDBMovie] = []
     @State private var persisting: Bool = false
-    /// In-flight ranking-insert Task, if any. Set when step 7's sign-in
-    /// triggers the signed-in persist path; re-entered by `finish()` at
-    /// step 8 so the terminal callback awaits rather than spawning a
-    /// second persist off the same `picks` array.
-    @State private var persistTask: Task<Void, Never>? = nil
+    /// True when the user arrived at the sign-in step via the top-right
+    /// "log in ↗" shortcut on Cold Open (i.e. a returning user). On
+    /// successful sign-in we skip the rest of onboarding — they already
+    /// have data in Supabase and shouldn't re-rank.
+    @State private var loginShortcut: Bool = false
 
     public init(onFinish: @escaping (OnboardingOutcome) -> Void) {
         self.onFinish = onFinish
@@ -67,41 +63,58 @@ public struct OnboardingFlow: View {
     @ViewBuilder
     private var content: some View {
         switch step {
-        case 0: OnbColdOpen(onNext: { advance() })
-        case 1: OnbManifesto(onNext: { advance() })
-        case 2: OnbGrid(onNext: { newPicks in
+        case 0: OnbColdOpen(
+                    onNext: { advance() },
+                    onLogin: {
+                        loginShortcut = true
+                        step = 1
+                    }
+                )
+        case 1: OnbSignInScreen(onDone: { result in
+                    signedIn = (result == .signedIn)
+                    // Returning user took the log-in shortcut AND signed in
+                    // successfully → skip the rest of onboarding. They have
+                    // data in Supabase already and shouldn't re-rank.
+                    // Hydrate `handle` from the real profile first so the
+                    // AppStorage `spool.user_handle` isn't overwritten with
+                    // the "yurui" default that was seeded for new users.
+                    if loginShortcut, result == .signedIn {
+                        Task {
+                            if let row = try? await ProfileRepository.shared.getMyProfile() {
+                                await MainActor.run {
+                                    handle = row.username
+                                }
+                            }
+                            await MainActor.run { finish() }
+                        }
+                        return
+                    }
+                    advance()
+                })
+        case 2: OnbManifesto(onNext: { advance() })
+        case 3: OnbGrid(onNext: { newPicks in
                     picks = newPicks
                     advance()
                 })
-        case 3: OnbH2H(contenders: h2hContenders, onNext: { winner, losers in
+        case 4: OnbH2H(contenders: h2hContenders, onNext: { winner, losers in
                     h2hWinner = winner
                     h2hLosers = losers
                     advance()
                 })
-        case 4: OnbPrint(onNext: { advance() })
-        case 5: OnbIdentity(onNext: { newHandle in
+        case 5: OnbPrint(onNext: { advance() })
+        case 6: OnbIdentity(onNext: { newHandle in
                     handle = newHandle
                     advance()
                 })
-        case 6: OnbSeason(handle: handle, onNext: { advance() })
-        case 7: OnbSignInScreen(onDone: { result in
-                    signedIn = (result == .signedIn)
-                    // Persist the picks now. For signed-in users, this kicks
-                    // off the insert-to-Supabase path so friend search (step
-                    // 8) sees a populated shelf. For skipped users, picks get
-                    // queued to UserDefaults for a later sign-in.
-                    persistIfNeeded()
-                    // Friend search depends on an authenticated session —
-                    // `ProfileService.searchUsers` returns empty under RLS for
-                    // preview users. Skipping the step here avoids dropping
-                    // them on a dead search box.
-                    if signedIn {
-                        advance()
-                    } else {
-                        finish()
-                    }
-                })
-        case 8: OnbFriendSearch(onNext: { finish() })
+        // OnbTwins (old fixture taste-twins step) was replaced upstream by
+        // OnbFriendSearch — real debounced profile search + follow. Same
+        // init signature, strictly better UX for signed-in users; preview
+        // users see its skip-only state.
+        case 7: OnbFriendSearch(onNext: { advance() })
+        // OnbSeason's terminal callback was renamed `onNext` upstream
+        // (previously `onFinish`) — same semantics, just aligned with the
+        // rest of the onboarding screens.
+        case 8: OnbSeason(handle: handle, onNext: { finish() })
         default:
             Color.clear.onAppear { finish() }
         }
@@ -109,71 +122,61 @@ public struct OnboardingFlow: View {
 
     private func advance() { step += 1 }
 
-    /// Terminal step handler. Kicks off any remaining persistence (no-op if
-    /// step 7's sign-in path already handled it) and hands control back to
-    /// the caller. Never blocks the callback on a failing insert.
+    /// Build the ordered insert list, then either persist (if signed in) or
+    /// enqueue (if skipped). Never blocks the flow's completion callback — a
+    /// failed insert path still calls `onFinish`.
     private func finish() {
-        persistIfNeeded {
-            onFinish(.init(handle: handle, signedIn: signedIn))
-        }
-    }
-
-    /// Build the ordered ranking list and either insert (signed-in path) or
-    /// enqueue (preview path). Called twice: once at sign-in (step 7) so the
-    /// friend-search step has a clean-slate session with rankings already
-    /// saved, and once at finish (step 8).
-    ///
-    /// Re-entry safety: when step 7 kicks off a background insert Task, we
-    /// store it in `persistTask` and clear `picks` synchronously BEFORE the
-    /// Task launches. If `finish()` re-enters while that Task is still in
-    /// flight, we chain the completion behind the in-flight Task rather
-    /// than spawning a second persist off a stale `picks` snapshot.
-    private func persistIfNeeded(completion: (() -> Void)? = nil) {
-        // Re-entry: an earlier call is still persisting. Wait for it to
-        // finish before firing our completion. Do NOT rebuild rankings
-        // from `picks` — that was already consumed by the in-flight Task.
-        if let inFlight = persistTask {
-            Task {
-                await inFlight.value
-                await MainActor.run { completion?() }
-            }
-            return
-        }
-
         let rankings = buildRankings()
         guard !rankings.isEmpty else {
-            completion?()
+            onFinish(.init(handle: handle, signedIn: signedIn))
             return
         }
-
-        // Clear picks synchronously so any concurrent re-entry sees empty
-        // state. The Task below captures `rankings` by value.
-        picks = []
-
         if signedIn, SpoolClient.shared != nil {
-            // Stage the full set in the queue FIRST, then drain via the
-            // queue's flush which removes rows incrementally on success.
-            // That way a partial failure (transient network, RLS hiccup,
-            // duplicate) leaves the unfinished rows queued for a retry
-            // instead of silently losing them with a blanket `replace([])`.
-            OnboardingQueue.replace(rankings)
             persisting = true
-            let task = Task {
-                do {
-                    try await OnboardingQueue.flush()
-                } catch {
-                    print("[OnboardingFlow] flush failed, queue preserved: \(error)")
+            Task {
+                var failures: [QueuedRanking] = []
+                for r in rankings {
+                    do {
+                        let insert = RankingInsert(
+                            tmdbId: r.tmdbId,
+                            title: r.title,
+                            year: r.year,
+                            posterURL: r.posterURL,
+                            type: "movie",
+                            genres: r.genres,
+                            director: r.director,
+                            tier: Tier(rawValue: r.tier) ?? .B,
+                            rankPosition: r.rankPosition,
+                            notes: nil
+                        )
+                        _ = try await RankingRepository.shared.insertRanking(insert)
+                    } catch {
+                        NSLog("[OnboardingFlow] insertRanking failed for \(r.tmdbId): \(error)")
+                        failures.append(r)
+                    }
+                }
+                // Don't swallow failures — push them to the OnboardingQueue
+                // so the next flush cycle (triggered by a subsequent sign-in
+                // or an explicit retry) can replay them. Toast tells the
+                // user their picks didn't fully land.
+                if !failures.isEmpty {
+                    await MainActor.run {
+                        for row in failures { OnboardingQueue.append(row) }
+                        ToastCenter.shared.show(
+                            "saved \(rankings.count - failures.count) of \(rankings.count) picks — we'll retry on next sign-in",
+                            level: .error,
+                            duration: 5
+                        )
+                    }
                 }
                 await MainActor.run {
                     persisting = false
-                    persistTask = nil
-                    completion?()
+                    onFinish(.init(handle: handle, signedIn: signedIn))
                 }
             }
-            persistTask = task
         } else {
             OnboardingQueue.replace(rankings)
-            completion?()
+            onFinish(.init(handle: handle, signedIn: signedIn))
         }
     }
 

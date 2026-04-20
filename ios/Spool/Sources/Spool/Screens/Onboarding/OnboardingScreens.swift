@@ -4,6 +4,10 @@ import SwiftUI
 
 struct OnbColdOpen: View {
     var onNext: () -> Void
+    /// Returning-user shortcut. Tapping the top-right "log in" pill skips the
+    /// onboarding intro and jumps straight to the sign-in step. Optional so
+    /// callers that don't need it (tests, previews) can omit it.
+    var onLogin: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -105,6 +109,27 @@ struct OnbColdOpen: View {
             .padding(.top, 50)
         }
         .background(OnbTheater.bg)
+        .overlay(alignment: .topTrailing) {
+            if let onLogin {
+                Button(action: onLogin) {
+                    Text("log in ↗")
+                        .font(SpoolFonts.mono(11))
+                        .tracking(2)
+                        .foregroundStyle(OnbTheater.gold)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(OnbTheater.bg.opacity(0.85))
+                                .overlay(Capsule().stroke(OnbTheater.gold, lineWidth: 1.2))
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 54)
+                .padding(.trailing, 18)
+                .accessibilityLabel("Log in")
+            }
+        }
     }
 }
 

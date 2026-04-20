@@ -34,10 +34,17 @@ public struct Movie: Identifiable, Hashable, Sendable {
     public var rec: Bool
     public var genres: [String]
     public var posterUrl: String?
+    /// TMDB `vote_average` on a 0-10 scale. Feeds the ranking engine's
+    /// prediction signal (weight 0.35) and is the ONLY signal used for
+    /// new users below NEW_USER_THRESHOLD — web carries it end-to-end;
+    /// iOS was dropping it until this field existed, which meant the
+    /// predicted score defaulted to the tier midpoint for every new
+    /// user on iOS.
+    public var voteAverage: Double?
 
     public init(id: String, title: String, year: Int, director: String,
                 seed: Int = 0, rec: Bool = false, genres: [String] = [],
-                posterUrl: String? = nil) {
+                posterUrl: String? = nil, voteAverage: Double? = nil) {
         self.id = id
         self.title = title
         self.year = year
@@ -46,6 +53,7 @@ public struct Movie: Identifiable, Hashable, Sendable {
         self.rec = rec
         self.genres = genres
         self.posterUrl = posterUrl
+        self.voteAverage = voteAverage
     }
 }
 
@@ -54,6 +62,17 @@ public struct Friend: Identifiable, Hashable, Sendable {
     public let handle: String
     public let name: String
     public let twin: Int
+    /// Supabase user ID when the friend came from a real follow edge.
+    /// `nil` for fixture friends — callers that need DB access should
+    /// treat `nil` as "preview only, don't fetch."
+    public let userID: UUID?
+
+    public init(handle: String, name: String, twin: Int, userID: UUID? = nil) {
+        self.handle = handle
+        self.name = name
+        self.twin = twin
+        self.userID = userID
+    }
 }
 
 public struct FeedActor: Hashable, Sendable {
@@ -89,6 +108,19 @@ public struct WatchedDay: Identifiable, Hashable, Sendable {
     public let day: Int
     public let tier: Tier
     public let title: String
+    /// Year and month of the watched_date so detail screens can format the
+    /// full "APR · 18 · 2026" string instead of hardcoding one. Optional to
+    /// keep fixture constructors ergonomic.
+    public let year: Int?
+    public let month: Int?
+
+    public init(day: Int, tier: Tier, title: String, year: Int? = nil, month: Int? = nil) {
+        self.day = day
+        self.tier = tier
+        self.title = title
+        self.year = year
+        self.month = month
+    }
 }
 
 public struct TwinEntry: Hashable, Sendable {

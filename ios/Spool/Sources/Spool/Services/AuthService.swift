@@ -1,19 +1,23 @@
 import Foundation
 import Supabase
+#if canImport(AuthenticationServices)
+import AuthenticationServices
+#endif
 
-/// Email + password + Google OAuth auth wrapper on top of `supabase-swift`.
-/// Mirrors the behavior of `contexts/AuthContext.tsx` on the web — first tries
-/// sign-in; on "invalid credentials" falls through to sign-up. This gives a
-/// single "sign in / sign up" button for onboarding.
+/// Email + password auth wrapper on top of `supabase-swift`.
 ///
-/// Google OAuth uses supabase-swift's built-in `ASWebAuthenticationSession`
-/// overload of `signInWithOAuth` — it opens a system-provided Safari sheet,
-/// handles the callback back to `com.spool.app://auth/callback`, and returns
-/// a fully-hydrated `Session`. `SpoolAppEntry.onOpenURL` also forwards any
-/// stray callback URL to `client.auth.handle(_:)` as a belt-and-suspenders
-/// path in case the caller relies on a plain deep-link flow.
+/// **Why this isn't "signIn-or-signUp" anymore:** Supabase returns the same
+/// generic "invalid login credentials" error for both wrong password AND
+/// missing user (security policy — they don't want you to be able to enumerate
+/// accounts). An auto-fallthrough to `signUp` on that error ends up silently
+/// creating phantom unconfirmed accounts whenever someone mistypes their
+/// password. The correct surface is an explicit `signIn` call and a separate
+/// `signUp` call. Callers decide which intent to act on.
 ///
-/// Header last reviewed: 2026-04-18
+/// OAuth (Google etc.) is not wired here yet — it needs URL scheme + an
+/// `ASWebAuthenticationSession` handoff; will be a follow-up.
+///
+/// Header last reviewed: 2026-04-19
 public actor AuthService {
 
     public static let shared = AuthService()
@@ -29,88 +33,124 @@ public actor AuthService {
         case invalidCredentials
         case weakPassword
         case emailTaken
-        /// Supabase signed up a new user but requires email confirmation
-        /// before the session is active — response.session was nil. The
-        /// account exists; the user must click the confirmation link.
         case emailNotConfirmed
-        /// User closed the OAuth sheet without completing auth. Callers
-        /// should treat this as a no-op — don't render an error message.
+        /// ASWebAuthenticationSession was dismissed by the user without
+        /// completing auth. Callers should treat this as a silent no-op —
+        /// no toast, no error state. `userMessage` returns an empty string.
         case cancelled
         case unknown(String)
 
         public var userMessage: String {
             switch self {
-            case .notConfigured:     return "sign-in is offline. keep exploring."
-            case .invalidCredentials:return "wrong password."
-            case .weakPassword:      return "password too short."
-            case .emailTaken:        return "email already has an account. check your password."
-            case .emailNotConfirmed: return "check your email for a confirmation link, then try again."
-            case .cancelled:         return ""
-            case .network(let msg):  return msg
-            case .unknown(let msg):  return msg
+            case .notConfigured:      return "sign-in is offline. keep exploring."
+            case .invalidCredentials: return "wrong email or password."
+            case .weakPassword:       return "password too short."
+            case .emailTaken:         return "email already has an account. try signing in instead."
+            case .emailNotConfirmed:  return "check your email — confirm the link we sent, then try again."
+            case .cancelled:          return ""
+            case .network(let msg):   return msg
+            case .unknown(let msg):   return msg
             }
         }
     }
 
-    public func signInOrSignUp(email: String, password: String) async -> AuthResult {
+    /// Sign an existing user in. Does NOT fall through to signUp on failure —
+    /// a wrong password returns `.invalidCredentials`, full stop. Callers that
+    /// want to create a new account should call `signUp` explicitly.
+    public func signIn(email: String, password: String) async -> AuthResult {
         guard let client = SpoolClient.shared else { return .failure(.notConfigured) }
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
-        // First attempt: sign in
         do {
             let session = try await client.auth.signIn(email: trimmed, password: password)
+            NSLog("[AuthService] signIn OK: user=\(Self.redactUUID(session.user.id))")
             await flushOnboardingQueue()
             return .success(session.user.id)
         } catch {
-            // Fall through to sign-up only when the user genuinely doesn't
-            // exist. "email not confirmed" means the account IS registered
-            // but needs email verification — falling through would fail
-            // with "already registered" and hide the real state.
-            let msg = "\(error)".lowercased()
-            let looksLikeMissingUser =
-                msg.contains("invalid login credentials") ||
-                msg.contains("user not found")
-
-            if !looksLikeMissingUser {
-                return .failure(classify(error))
-            }
-
-            // Fall through to sign-up
-            do {
-                let response = try await client.auth.signUp(email: trimmed, password: password)
-                // When email confirmation is required, Supabase returns a
-                // user record with session == nil. We can't auto-flush
-                // anything without a session, so surface the verification
-                // step instead of pretending the flow completed.
-                guard response.session != nil else {
-                    return .failure(.emailNotConfirmed)
-                }
-                await flushOnboardingQueue()
-                return .success(response.user.id)
-            } catch {
-                return .failure(classify(error))
-            }
+            NSLog("[AuthService] signIn FAIL: \(error)")
+            return .failure(classify(error))
         }
     }
 
-    /// Launches the Google OAuth flow via `ASWebAuthenticationSession`. The
-    /// call suspends until the user completes (or cancels) the Safari sheet,
-    /// at which point supabase-swift extracts the session from the callback
-    /// URL and returns it. On success we drain the onboarding queue just like
-    /// the email/password path so any stubs ranked in preview mode persist.
+    /// Create a new account. Returns `.success` when Supabase returns a
+    /// session; if the project requires email confirmation, no session is
+    /// issued and this returns `.failure(.emailNotConfirmed)` — the user
+    /// needs to click the link in their inbox.
+    public func signUp(email: String, password: String) async -> AuthResult {
+        guard let client = SpoolClient.shared else { return .failure(.notConfigured) }
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        do {
+            let response = try await client.auth.signUp(email: trimmed, password: password)
+            NSLog("[AuthService] signUp OK: user=\(Self.redactUUID(response.user.id)) session=\(response.session != nil)")
+            // signUp can return a user with no session when email confirmation
+            // is enabled on the project. Treat that as "check your email".
+            if response.session == nil {
+                return .failure(.emailNotConfirmed)
+            }
+            await flushOnboardingQueue()
+            return .success(response.user.id)
+        } catch {
+            NSLog("[AuthService] signUp FAIL: \(error)")
+            return .failure(classify(error))
+        }
+    }
+
+    /// Back-compat shim. Existing call sites that still expect the old
+    /// "try sign-in then sign-up" affordance are routed through the safer
+    /// path: sign-in only. A failed login no longer silently creates a new
+    /// account. New-account flow should use `signUp` directly.
+    @available(*, deprecated, message: "Use signIn or signUp explicitly — this alias only calls signIn.")
+    public func signInOrSignUp(email: String, password: String) async -> AuthResult {
+        await signIn(email: email, password: password)
+    }
+
+    // MARK: OAuth — Google
+
+    /// The callback URL that Supabase redirects back to after Google auth
+    /// completes. The scheme (`spool`) is registered in `Info.plist` via
+    /// `CFBundleURLTypes`. The Supabase project must have this URL in its
+    /// allowed redirects: Dashboard → Authentication → URL Configuration.
+    public static let oauthRedirectURL = URL(string: "spool://auth-callback")!
+
+    /// Sign in via Google using Supabase-hosted OAuth. Presents an
+    /// `ASWebAuthenticationSession` so the user authenticates with Google in
+    /// a system-managed web sheet; the session comes back with tokens and
+    /// the SDK stores them in the keychain like the email/password flow.
+    ///
+    /// Requires:
+    /// - `spool://` URL scheme in Info.plist
+    /// - `spool://auth-callback` allowlisted in the Supabase project
+    /// - Google provider enabled + Client ID/Secret configured in the
+    ///   Supabase dashboard (the web app already uses this)
+    #if canImport(AuthenticationServices)
     public func signInWithGoogle() async -> AuthResult {
         guard let client = SpoolClient.shared else { return .failure(.notConfigured) }
         do {
             let session = try await client.auth.signInWithOAuth(
                 provider: .google,
-                redirectTo: URL(string: "com.spool.app://auth/callback")
-            )
+                redirectTo: Self.oauthRedirectURL,
+                scopes: "email profile"
+            ) { authSession in
+                // Prefer an ephemeral session so Safari cookies aren't reused
+                // across accounts — matches how the web app treats OAuth.
+                authSession.prefersEphemeralWebBrowserSession = true
+            }
+            NSLog("[AuthService] signInWithGoogle OK: user=\(Self.redactUUID(session.user.id))")
             await flushOnboardingQueue()
             return .success(session.user.id)
         } catch {
+            NSLog("[AuthService] signInWithGoogle FAIL: \(error)")
             return .failure(classify(error))
         }
     }
+    #else
+    public func signInWithGoogle() async -> AuthResult {
+        .failure(.notConfigured)
+    }
+    #endif
+
+    // MARK: lifecycle
 
     /// Drain any queued onboarding rankings into `user_rankings`. Errors are
     /// logged but never thrown — a failed flush must not keep the user from
@@ -119,26 +159,8 @@ public actor AuthService {
         do {
             try await OnboardingQueue.flush()
         } catch {
-            print("[AuthService] OnboardingQueue.flush failed: \(error)")
+            NSLog("[AuthService] OnboardingQueue.flush failed: \(error)")
         }
-    }
-
-    /// Called by `SpoolAppEntry.onOpenURL` after the OAuth callback URL has
-    /// already been handed to `client.auth.handle(_:)`. Flushes any queued
-    /// onboarding rankings now that a session exists. Safe to call multiple
-    /// times — `OnboardingQueue.flush` is idempotent on empty.
-    public func flushOnboardingQueueForOAuthCallback() async {
-        await flushOnboardingQueue()
-    }
-
-    /// Entry point for the SwiftUI `.onOpenURL` modifier at the app root.
-    /// Forwards the callback URL to supabase-swift so a session is established,
-    /// then flushes the onboarding queue. Defined `nonisolated static` so the
-    /// caller doesn't need to hop through the actor or import `Supabase`.
-    public nonisolated static func handleOAuthCallback(_ url: URL) {
-        guard let client = SpoolClient.shared else { return }
-        client.auth.handle(url)
-        Task { await AuthService.shared.flushOnboardingQueueForOAuthCallback() }
     }
 
     public func signOut() async {
@@ -158,24 +180,39 @@ public actor AuthService {
         await SpoolClient.currentUserID()
     }
 
+    // MARK: diagnostics
+
+    /// Stable identifiers (even inside debug logs) are a privacy risk —
+    /// they're the same string on every machine and let downstream log
+    /// aggregation correlate sessions across installs. Keep an 8-char
+    /// prefix for debugging repros ("did my sign-in land?") without
+    /// handing out the full user ID.
+    private static func redactUUID(_ id: UUID) -> String {
+        "\(id.uuidString.prefix(8))…"
+    }
+
     // MARK: classify
 
     private func classify(_ error: Error) -> AuthError {
         let m = "\(error)".lowercased()
-        // OAuth user-cancellation surfaces as an ASWebAuthenticationSession
-        // error with Code=1 (canceledLogin). Swallow silently — the user
-        // closed the sheet on purpose, nothing broke.
-        if m.contains("webauthenticationsession") || m.contains("canceledlogin") {
-            return .cancelled
-        }
         if m.contains("password") && (m.contains("short") || m.contains("weak")) {
             return .weakPassword
         }
-        if m.contains("already registered") || m.contains("already exists") {
+        if m.contains("already registered") || m.contains("already exists") || m.contains("user already") {
             return .emailTaken
         }
-        if m.contains("invalid login credentials") {
+        if m.contains("email not confirmed") || m.contains("not confirmed") {
+            return .emailNotConfirmed
+        }
+        if m.contains("invalid login credentials") || m.contains("invalid credentials") {
             return .invalidCredentials
+        }
+        // ASWebAuthenticationSession user-cancel surfaces as a specific code;
+        // return a distinct .cancelled so callers can suppress UI entirely
+        // (showing an error toast when the user deliberately backed out is
+        // noise).
+        if m.contains("canceledlogin") || m.contains("cancelled") || m.contains("user cancel") {
+            return .cancelled
         }
         if m.contains("network") || m.contains("offline") || m.contains("timed out") {
             return .network("couldn't reach the server.")

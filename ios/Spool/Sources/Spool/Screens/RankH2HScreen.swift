@@ -27,14 +27,51 @@ public struct RankH2HScreen: View {
     @State private var finalRank = 0
     @State private var finalScore = 0.0
     @State private var allItems: [RankedItem] = []
+    /// When the target tier has ≤20 items we skip the probe/escalation
+    /// engine in favour of a lightweight path — matches the web's
+    /// RankingFlowModal `smallTierRef` branch. iOS previously ran the
+    /// engine unconditionally, which terminates in ~2 rounds on small
+    /// tiers and felt like a premature abort. Nil means engine mode.
+    ///
+    /// Three sub-modes mirror the web:
+    ///  - `.compareAll` (≤5 items): sequential walk from rank 0 downward.
+    ///  - `.seed` (6–20 items, first comparison only): pivot on
+    ///    `computeSeedIndex` so the new movie meets a neighbour near its
+    ///    global-avg first.
+    ///  - `.quartile` (6–20 items, every subsequent comparison): narrow
+    ///    the [low, high) window by 25/75 quartile jumps for faster
+    ///    3–4 round convergence.
+    @State private var smallTier: SmallTierState? = nil
 
-    /// Cross-view signal: when a preview-mode rank is captured into the queue
-    /// we flip this flag and let `SpoolAppRoot` present its own `SignInSheet`.
-    /// Keeping the sheet parent at the app root avoids a race where this
-    /// screen unmounts ~0.9s after `onDone` fires — a sheet anchored here
-    /// would get orphaned on the way out, and (worse) its onDone would not
-    /// clear `previewMode` since that state lives at the root.
-    @AppStorage("spool.show_signin_sheet") private var showSignInSheet: Bool = false
+    /// State machine for the small-tier path. Shape mirrors the web's
+    /// `smallTierRef` exactly — `low`, `high`, `mid`, `seedIdx`, `round`
+    /// are carried across all modes so transitions are a simple
+    /// field-copy. The view holds the actual `tierItems` array here so
+    /// it can render posters; the pure algorithm only takes the count.
+    /// `cursor` is a compatibility alias for `mid` in `.compareAll` mode.
+    private struct SmallTierState {
+        enum Mode { case compareAll, seed, quartile }
+        var mode: Mode
+        var tierItems: [RankedItem]
+        var low: Int
+        var high: Int
+        var mid: Int
+        var round: Int
+        var seedIdx: Int
+
+        /// Sequential-walk accessor for `.compareAll` — returns `mid`,
+        /// which is the "next item to compare against" for that mode.
+        var cursor: Int {
+            get { mid }
+            set { mid = newValue }
+        }
+    }
+
+    // Persistence intentionally lives OUTSIDE this screen. `onDone` surfaces
+    // the computed `(finalRank, finalScore)` upward; the actual DB write runs
+    // only when the user reaches the RankPrintedScreen finish callback.
+    // Backing out of the flow from ceremony or printed should leave no row
+    // behind, which is why we don't call RankPersistence.save here anymore.
 
     public var body: some View {
         SpoolScreen {
@@ -221,47 +258,226 @@ public struct RankH2HScreen: View {
             id: movie.id, title: movie.title, year: movie.year,
             director: movie.director, genres: genres,
             tier: tier, rank: 0, bracket: bracket,
-            globalScore: nil, seed: movie.seed,
+            // TMDB vote_average (0-10) becomes the engine's globalScore.
+            // Web's RankingFlowModal does the same. Weight 0.35 inside
+            // predictScore, and the sole signal for new users below
+            // NEW_USER_THRESHOLD — iOS was dropping it (always nil)
+            // which meant every new iOS user's prediction landed at
+            // tier midpoint.
+            globalScore: movie.voteAverage, seed: movie.seed,
             posterUrl: movie.posterUrl
         )
+
+        // Web parity: branch on target-tier size. Empty → place immediately;
+        // 1-5 items → sequential compare-all walk; 6-20 → seed + quartile
+        // binary search (mirrors web's `smallTierRef` seed/quartile modes);
+        // >20 → full probe/escalation engine.
+        let tierItems = all.filter { $0.tier == tier }.sorted { $0.rank < $1.rank }
+        loading = false
+
+        if tierItems.isEmpty {
+            finalRank = 0
+            let range = SpoolConstants.tierScoreRanges[tier] ?? ScoreRange(min: 0, max: 10)
+            finalScore = (range.min + range.max) / 2
+            done = true
+            // Persistence deferred to RankPersistence.save, invoked
+            // from RankPrintedScreen.onFinish — aborting mid-flow
+            // (ceremony/printed back-out) leaves nothing behind.
+            return
+        }
+
+        if tierItems.count <= 5 {
+            startCompareAll(newItem: newItem, tierItems: tierItems)
+            return
+        }
+
+        if tierItems.count <= 20 {
+            startSeedMode(newItem: newItem, tierItems: tierItems)
+            return
+        }
+
         let signals = SpoolPrediction.computePredictionSignals(
             allItems: all, primaryGenre: genres[0],
-            bracket: bracket, globalScore: nil, tier: tier
+            bracket: bracket,
+            // Carry vote_average through to the engine's prediction so
+            // new-user ranking lands near the TMDB consensus instead of
+            // defaulting to tier midpoint. See RankedItem.globalScore above.
+            globalScore: movie.voteAverage, tier: tier
         )
         let result = engine.start(
             newMovie: newItem, tier: tier,
             allItems: all, signals: signals
         )
-        loading = false
         handle(result)
+        // No persist here. See RankPersistence.save call
+        // in SpoolAppRoot.onFinish.
+    }
 
-        if done {
-            // Edge: first movie in tier — persist immediately.
-            await persistRanking()
+    /// Emit the first comparison for the sequential walk-through (≤5 items).
+    @MainActor
+    private func startCompareAll(newItem: RankedItem, tierItems: [RankedItem]) {
+        smallTier = SmallTierState(
+            mode: .compareAll,
+            tierItems: tierItems,
+            low: 0, high: tierItems.count,
+            mid: 0, round: 1, seedIdx: 0
+        )
+        comparison = ComparisonRequest(
+            movieA: newItem,
+            movieB: tierItems[0],
+            question: "which do you love more?",
+            phase: .probe,
+            round: 1
+        )
+    }
+
+    /// Emit the first comparison for the seed + quartile binary search
+    /// (6-20 items). Matches web RankingFlowModal `proceedFromNotes`'s
+    /// `tierItems.length <= 20` branch: compute tier scores for each
+    /// existing slot, then pivot on `computeSeedIndex` so the new movie
+    /// meets a neighbour near its global-avg first.
+    @MainActor
+    private func startSeedMode(newItem: RankedItem, tierItems: [RankedItem]) {
+        let range = SpoolConstants.tierScoreRanges[tier] ?? ScoreRange(min: 0, max: 10)
+        let tierScores: [Double] = (0..<tierItems.count).map { idx in
+            RankingAlgorithm.computeTierScore(
+                position: idx, totalInTier: tierItems.count,
+                tierMin: range.min, tierMax: range.max
+            )
         }
+        let seedIdx = RankingAlgorithm.computeSeedIndex(
+            tierItemScores: tierScores,
+            tierMin: range.min, tierMax: range.max,
+            globalAvg: newItem.globalScore
+        )
+        smallTier = SmallTierState(
+            mode: .seed,
+            tierItems: tierItems,
+            low: 0, high: tierItems.count,
+            mid: seedIdx, round: 1, seedIdx: seedIdx
+        )
+        comparison = ComparisonRequest(
+            movieA: newItem,
+            movieB: tierItems[seedIdx],
+            question: "which do you love more?",
+            phase: .binarySearch,
+            round: 1
+        )
     }
 
     private func submit(winnerId: String) {
         guard !done, comparison != nil else { return }
+
+        if smallTier != nil {
+            submitSmallTier(winnerId: winnerId)
+            return
+        }
+
         do {
             let result = try engine.submitChoice(winnerId: winnerId)
             handle(result)
-            if done { Task { await persistRanking() } }
+            // Persist deferred to the printed-screen finish callback.
         } catch {
+            // Engine errors here (notActive / unexpectedPhase) mean the
+            // caller is out of sync with the state machine — we used to
+            // mark the session done and persist mid-flow, which is what
+            // made H2H terminate after a couple of taps. Keep the session
+            // alive instead; the next valid tap drives forward.
+            NSLog("[RankH2HScreen] submit ignored: \(error)")
+        }
+    }
+
+    /// Advance the small-tier state machine by one user choice. Delegates
+    /// to the pure `RankingAlgorithm.advanceSmallTier` helper; this
+    /// function is just the view-level glue that updates `smallTier` /
+    /// `comparison` / `done` based on the algorithm's decision.
+    @MainActor
+    private func submitSmallTier(winnerId: String) {
+        guard let st = smallTier, let c = comparison else { return }
+        let pick: RankingAlgorithm.NarrowChoice =
+            winnerId == c.movieA.id ? .new : .existing
+        let movieA = c.movieA
+
+        // Bridge the view's inline enum to the algorithm's public enum.
+        let algoMode: RankingAlgorithm.SmallTierMode = {
+            switch st.mode {
+            case .compareAll: return .compareAll
+            case .seed:       return .seed
+            case .quartile:   return .quartile
+            }
+        }()
+        let algoState = RankingAlgorithm.SmallTierState(
+            mode: algoMode,
+            tierCount: st.tierItems.count,
+            low: st.low, high: st.high, mid: st.mid,
+            round: st.round, seedIdx: st.seedIdx
+        )
+        switch RankingAlgorithm.advanceSmallTier(state: algoState, pick: pick) {
+        case .done(let rank):
+            finalRank = rank
+            let range = SpoolConstants.tierScoreRanges[tier] ?? ScoreRange(min: 0, max: 10)
+            // Approximate score for celebration copy only — true
+            // insertion order is set by rank_position in the DB.
+            let total = max(st.tierItems.count + 1, 1)
+            let frac = Double(total - rank - 1) / Double(total)
+            finalScore = ((range.min + (range.max - range.min) * frac) * 100).rounded() / 100
             done = true
-            Task { await persistRanking() }
+            smallTier = nil
+            comparison = nil
+
+        case .next(let nextState):
+            let viewMode: SmallTierState.Mode = {
+                switch nextState.mode {
+                case .compareAll: return .compareAll
+                case .seed:       return .seed
+                case .quartile:   return .quartile
+                }
+            }()
+            var nst = st
+            nst.mode = viewMode
+            nst.low = nextState.low
+            nst.high = nextState.high
+            nst.mid = nextState.mid
+            nst.round = nextState.round
+            smallTier = nst
+            comparison = ComparisonRequest(
+                movieA: movieA,
+                movieB: nst.tierItems[nst.mid],
+                question: "which do you love more?",
+                phase: nst.mode == .compareAll ? .probe : .binarySearch,
+                round: nst.round
+            )
         }
     }
 
     private func skip() {
         guard !done else { return }
+
+        // In compare-all mode, "skip" means "insert at the current cursor"
+        // — same semantics as the web's too_tough/skip branch for
+        // smallTier.mode == 'compare_all'.
+        if let st = smallTier {
+            finalRank = st.cursor
+            let range = SpoolConstants.tierScoreRanges[tier] ?? ScoreRange(min: 0, max: 10)
+            finalScore = ((range.min + range.max) / 2 * 100).rounded() / 100
+            done = true
+            smallTier = nil
+            comparison = nil
+            // Persist deferred to the printed-screen finish callback.
+            return
+        }
+
         do {
             let result = try engine.skip()
             handle(result)
-            if done { Task { await persistRanking() } }
+            // Persist deferred to the printed-screen finish callback.
         } catch {
+            // A genuine skip-fail is rare (engine already completed).
+            // Finish the session at the tentative score rather than
+            // leaving the user stuck.
+            NSLog("[RankH2HScreen] skip errored: \(error)")
             done = true
-            Task { await persistRanking() }
+            // Persist deferred to the printed-screen finish callback.
         }
     }
 
@@ -312,73 +528,6 @@ public struct RankH2HScreen: View {
         }
     }
 
-    /// Persist the newly-ranked movie, or queue it if the user is in preview
-    /// mode (no session). Never blocks the stub ceremony — the sign-in sheet,
-    /// when needed, is presented alongside the proceeding flow so the user
-    /// can keep going. The sheet itself lives on `SpoolAppRoot`; we just
-    /// flip `spool.show_signin_sheet` via `@AppStorage` and let the root
-    /// pick it up.
-    private func persistRanking() async {
-        let genres = movie.genres.isEmpty ? ["Drama"] : movie.genres
-        let director = movie.director.isEmpty ? nil : movie.director
-        let year = Self.normalizedYear(movie.year)
-
-        if await SpoolClient.currentUserID() != nil {
-            // Signed-in path: write directly. Surface failures via a toast so
-            // the user knows the rank didn't land — prior silent `try?` hid
-            // every network/RLS error.
-            let insert = RankingInsert(
-                tmdbId: movie.id,
-                title: movie.title,
-                year: year,
-                posterURL: movie.posterUrl,
-                type: "movie",
-                genres: genres,
-                director: director,
-                tier: tier,
-                rankPosition: finalRank,
-                notes: nil
-            )
-            do {
-                _ = try await RankingRepository.shared.insertRanking(insert)
-            } catch {
-                await MainActor.run {
-                    ToastCenter.shared.show(
-                        "couldn't save your rank — check connection",
-                        level: .error
-                    )
-                }
-            }
-            return
-        }
-
-        // Preview mode: append to the queue and ask SpoolAppRoot to present
-        // its sign-in sheet. AuthService will flush the queue on a successful
-        // sign-in so this row lands without a second trip through ranking.
-        let queued = QueuedRanking(
-            tmdbId: movie.id,
-            title: movie.title,
-            year: year,
-            posterURL: movie.posterUrl,
-            genres: genres,
-            director: director,
-            tier: tier.rawValue,
-            rankPosition: finalRank
-        )
-        await MainActor.run {
-            OnboardingQueue.append(queued)
-            // @AppStorage write — SpoolAppRoot observes the same key and will
-            // present its SignInSheet. Survives this view unmounting when the
-            // stub ceremony advances.
-            showSignInSheet = true
-        }
-    }
-
-    /// Normalize a movie's integer year to the `year: String?` the DB expects.
-    /// `0` means "unknown" in our model — store as `nil` rather than "0".
-    private static func normalizedYear(_ y: Int) -> String? {
-        y > 0 ? String(y) : nil
-    }
 }
 
 struct H2HCard: View {

@@ -41,15 +41,44 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save your movie stubs to Photos.</string>
 
+	<!-- Custom fonts from the Spool Hi-Fi design (Gloock, Kalam, Caveat,
+	     DM Mono) bundled under Fonts/. iOS only loads these when listed in
+	     UIAppFonts — without this block, SpoolFonts silently falls back
+	     to system fonts. -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>Gloock-Regular.ttf</string>
+		<string>Kalam-Light.ttf</string>
+		<string>Kalam-Regular.ttf</string>
+		<string>Kalam-Bold.ttf</string>
+		<string>Caveat-Regular.ttf</string>
+		<string>Caveat-Bold.ttf</string>
+		<string>DMMono-Regular.ttf</string>
+		<string>DMMono-Medium.ttf</string>
+		<string>DMMono-Light.ttf</string>
+	</array>
+
+	<!-- URL scheme for Supabase OAuth callbacks (Google sign-in).
+	     Paired with AuthService.oauthRedirectURL = spool://auth-callback.
+	     `spool` must also be allowlisted in the Supabase dashboard under
+	     Authentication → URL Configuration → Redirect URLs.
+	     TODO: the short scheme is theoretically hijackable — a rogue app
+	     could register the same scheme and intercept the OAuth redirect.
+	     Mitigate later via Universal Links + associated domains (https
+	     redirect), or at minimum switch to a reverse-DNS scheme such as
+	     `com.spool.app` (keeping the Supabase allowlist in sync). -->
+
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>com.spool.app</string>
-			</array>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
 			<key>CFBundleURLName</key>
 			<string>com.spool.app.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>spool</string>
+			</array>
 		</dict>
 	</array>
 
