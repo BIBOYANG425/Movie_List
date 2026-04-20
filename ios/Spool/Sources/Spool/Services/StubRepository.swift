@@ -93,16 +93,23 @@ public actor StubRepository {
 
     /// Returns ISO yyyy-MM-dd strings for the first and last day of `month`.
     /// Uses a gregorian calendar in UTC to match what Postgres stores.
+    /// Fails fast on out-of-range inputs — a malformed date string would
+    /// silently return empty results from the DB, which is harder to debug
+    /// than a precondition crash in development.
     private static func monthBounds(year: Int, month: Int) -> (String, String) {
+        precondition((1...12).contains(month), "StubRepository.monthBounds: month \(month) out of 1...12")
+
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
         var startComponents = DateComponents()
         startComponents.year = year
         startComponents.month = month
         startComponents.day = 1
-        let startDate = calendar.date(from: startComponents) ?? Date()
-        let range = calendar.range(of: .day, in: .month, for: startDate)
-        let lastDay = range?.upperBound.advanced(by: -1) ?? 28
+        guard let startDate = calendar.date(from: startComponents),
+              let range = calendar.range(of: .day, in: .month, for: startDate) else {
+            preconditionFailure("StubRepository.monthBounds: couldn't build date for year=\(year), month=\(month)")
+        }
+        let lastDay = range.upperBound - 1
 
         let mm = String(format: "%02d", month)
         let start = String(format: "%04d-%@-01", year, mm)

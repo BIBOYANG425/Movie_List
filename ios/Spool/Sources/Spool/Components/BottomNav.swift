@@ -47,13 +47,10 @@ public struct BottomNav: View {
         HStack(alignment: .center, spacing: 0) {
             tabButton(.feed, label: "feed", icon: "☆", t: t)
             tabButton(.stubs, label: "stubs", icon: "▢", t: t)
-            // Reserved slot for the floating +. The button is rendered in
-            // `plusOverlay`; this spacer keeps horizontal footprint in the
-            // flow so the four real tabs stay evenly distributed. Height is
-            // left to natural (tabButton's intrinsic) so the capsule stays
-            // pill-shaped — letting this fill vertically makes the nav
-            // grow to fill the available overlay space.
-            Color.clear.frame(width: 48, height: 1)
+            // Reserved slot for the floating +. Width matches the
+            // plusOverlay circle diameter (54pt) so the four real tabs
+            // stay evenly distributed and the button sits flush.
+            Color.clear.frame(width: 54, height: 1)
             tabButton(.friends, label: "friends", icon: "○", t: t)
             tabButton(.me, label: "me", icon: "✦", t: t)
         }
@@ -101,6 +98,10 @@ public struct BottomNav: View {
             .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
+        // VoiceOver reads glyphs like "☆" as "White Star" etc. — use the
+        // human label instead and mark the active tab as selected.
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(active == tab ? .isSelected : [])
     }
 }
 

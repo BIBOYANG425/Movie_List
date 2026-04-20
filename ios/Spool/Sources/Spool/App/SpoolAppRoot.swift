@@ -24,11 +24,11 @@ public struct SpoolAppRoot: View {
     @Environment(\.colorScheme) private var systemColorScheme
     @State private var tab: SpoolTab = .feed
 
-    /// Read/write helper around the raw AppStorage string so the rest of the
-    /// file works with a strongly-typed enum.
+    /// Read-only typed view over `themePreferenceRaw`. Writes go directly to
+    /// the raw AppStorage string (one call site, `paletteToggle`) — we used
+    /// to have a `nonmutating set` here too, but nobody used it.
     private var themePreference: ThemePreference {
-        get { ThemePreference(rawValue: themePreferenceRaw) ?? .system }
-        nonmutating set { themePreferenceRaw = newValue.rawValue }
+        ThemePreference(rawValue: themePreferenceRaw) ?? .system
     }
 
     /// Effective paper/dark mode used for palette lookups and the palette

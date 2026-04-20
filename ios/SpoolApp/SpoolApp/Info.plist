@@ -52,7 +52,6 @@
 		<string>Kalam-Regular.ttf</string>
 		<string>Kalam-Bold.ttf</string>
 		<string>Caveat-Regular.ttf</string>
-		<string>Caveat-SemiBold.ttf</string>
 		<string>Caveat-Bold.ttf</string>
 		<string>DMMono-Regular.ttf</string>
 		<string>DMMono-Medium.ttf</string>
@@ -62,7 +61,13 @@
 	<!-- URL scheme for Supabase OAuth callbacks (Google sign-in).
 	     Paired with AuthService.oauthRedirectURL = spool://auth-callback.
 	     `spool` must also be allowlisted in the Supabase dashboard under
-	     Authentication → URL Configuration → Redirect URLs. -->
+	     Authentication → URL Configuration → Redirect URLs.
+	     TODO: the short scheme is theoretically hijackable — a rogue app
+	     could register the same scheme and intercept the OAuth redirect.
+	     Mitigate later via Universal Links + associated domains (https
+	     redirect), or at minimum switch to a reverse-DNS scheme such as
+	     `com.spool.app` (keeping the Supabase allowlist in sync). -->
+
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

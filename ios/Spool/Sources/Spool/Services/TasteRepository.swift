@@ -60,18 +60,25 @@ public actor TasteRepository {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
         guard !targetIDs.isEmpty else { return [:] }
 
-        let allIDs = ([viewerID] + targetIDs).map { $0.uuidString }
-        let rows: [TasteBatchRow] = try await client
-            .from("user_rankings")
-            .select("user_id, tmdb_id, tier")
-            .in("user_id", values: allIDs)
-            .execute()
-            .value
-
-        // Bucket by user so we can cross the viewer's set against each target.
+        // PostgREST encodes `.in(...)` as a URL query param — a large
+        // targetIDs list can blow past URL-length limits around 2KB. Chunk
+        // the set into batches; include the viewer in every batch so the
+        // viewer's rankings are always available in-memory when the last
+        // batch resolves, no matter which one finishes first.
+        let targetChunks = targetIDs.chunked(into: 200)
         var byUser: [UUID: [String: String]] = [:]  // userID → (tmdbID → tier)
-        for row in rows {
-            byUser[row.user_id, default: [:]][row.tmdb_id] = row.tier
+
+        for chunk in targetChunks {
+            let ids = ([viewerID] + chunk).map { $0.uuidString }
+            let rows: [TasteBatchRow] = try await client
+                .from("user_rankings")
+                .select("user_id, tmdb_id, tier")
+                .in("user_id", values: ids)
+                .execute()
+                .value
+            for row in rows {
+                byUser[row.user_id, default: [:]][row.tmdb_id] = row.tier
+            }
         }
         let viewerMap = byUser[viewerID] ?? [:]
 
@@ -93,12 +100,15 @@ public actor TasteRepository {
     ) async throws -> [RecommendedMovie] {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
 
+        // Previously used `.order("tier", ascending: true)` expecting
+        // "S before A", but lexicographic sort puts A first ('A' < 'S').
+        // Drop DB-side tier ordering and sort in Swift below with the
+        // numeric tier weights so S genuinely outranks A.
         async let viewerPicks: [TasteRankingRow] = client
             .from("user_rankings")
             .select("tmdb_id, title, poster_url, tier, rank_position")
             .eq("user_id", value: viewerID.uuidString)
             .in("tier", values: ["S", "A"])
-            .order("tier", ascending: true)            // S before A (dict order)
             .order("rank_position", ascending: true)
             .execute()
             .value
@@ -120,8 +130,20 @@ public actor TasteRepository {
         for row in ranked { excluded.insert(row.tmdb_id) }
         for row in watchlist { excluded.insert(row.tmdb_id) }
 
+        // Sort client-side: tier score descending (S > A), break ties on
+        // rank_position ascending (best rank first). Drops picks whose tier
+        // string doesn't decode.
+        let sorted = picks
+            .filter { Tier(rawValue: $0.tier) != nil }
+            .sorted { lhs, rhs in
+                let ls = Self.tierScore[lhs.tier] ?? 0
+                let rs = Self.tierScore[rhs.tier] ?? 0
+                if ls != rs { return ls > rs }
+                return (lhs.rank_position ?? 0) < (rhs.rank_position ?? 0)
+            }
+
         var out: [RecommendedMovie] = []
-        for pick in picks where !excluded.contains(pick.tmdb_id) {
+        for pick in sorted where !excluded.contains(pick.tmdb_id) {
             guard let tier = Tier(rawValue: pick.tier) else { continue }
             out.append(RecommendedMovie(
                 tmdbId: pick.tmdb_id,
@@ -204,11 +226,15 @@ public actor TasteRepository {
             .prefix(5)
             .map(\.row)
 
+        // Filter zero-delta "non-fights" BEFORE taking the top 5 — otherwise
+        // a compat pair with lots of perfect agreements and a few real
+        // fights could end up showing fewer than 5 actual fights because
+        // the prefix slot got consumed by tier-matching rows.
         let biggestFights = decorated
+            .filter { $0.row.tierDelta != 0 }
             .sorted { $0.distance > $1.distance }
             .prefix(5)
             .map(\.row)
-            .filter { $0.tierDelta != 0 }
 
         let viewerOnly = viewerMap.count - sharedIDs.count
         let targetOnly = targetMap.count - sharedIDs.count
@@ -306,4 +332,17 @@ public struct TasteCompatibility: Sendable, Hashable {
     public let disagreements: Int
     public let topShared: [SharedMovie]
     public let biggestFights: [SharedMovie]
+}
+
+// MARK: - Array chunking
+
+private extension Array {
+    /// Split into consecutive chunks of at most `size` elements. Used to
+    /// keep PostgREST `.in()` params under URL-length limits.
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0 ..< Swift.min($0 + size, count)])
+        }
+    }
 }

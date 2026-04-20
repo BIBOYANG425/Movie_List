@@ -6,9 +6,12 @@ public struct StubsScreen: View {
     @State private var monthDays: [WatchedDay] = []
     @State private var lastStub: StubRow?
     @State private var monthTierCounts: [Tier: Int] = [:]
-    @State private var rewatchCount: Int = 0
     @State private var hasSession: Bool = false
     @State private var loading: Bool = true
+    /// Total stubs across all time. Drives the `#nnnn` sequence on the
+    /// "last watched" card — that card shows the newest stub overall, so
+    /// its number should reflect the global count, not this month's count.
+    @State private var totalStubsCount: Int = 0
     /// The month currently being viewed. Stored as plain (year, month) ints
     /// rather than a Date so arithmetic never drifts across timezones — the
     /// previous Date-based version mixed `Calendar.current` adds with a
@@ -16,6 +19,9 @@ public struct StubsScreen: View {
     /// whenever the user's local wall clock and UTC disagreed on which
     /// calendar day it was.
     @State private var displayedYM: YearMonth = YearMonth.current()
+    /// Currently running reload, tracked so we can cancel it when the user
+    /// rapidly taps ‹/› and the older fetch would clobber newer state.
+    @State private var loadTask: Task<Void, Never>? = nil
 
     public init(onOpenDetail: @escaping (WatchedDay) -> Void = { _ in }) {
         self.onOpenDetail = onOpenDetail
@@ -64,14 +70,29 @@ public struct StubsScreen: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 110)
                 }
-                .refreshable { await reload() }
+                .refreshable {
+                    // `refreshable` wants to suspend until the pull-to-refresh
+                    // finishes, so await the task we kick off instead of
+                    // returning immediately.
+                    triggerReload()
+                    await loadTask?.value
+                }
             }
         }
-        .task { await reload() }
+        .task { triggerReload() }
         // iOS 16-compatible onChange signature (no oldValue/newValue pair).
         .onChange(of: displayedYM) { _ in
-            Task { await reload() }
+            triggerReload()
         }
+    }
+
+    /// Cancel any in-flight reload and start a fresh one. The old task's
+    /// state mutations are guarded inside `reload()` by a requested-YM
+    /// check, so even a late-returning cancelled fetch can't clobber newer
+    /// data.
+    private func triggerReload() {
+        loadTask?.cancel()
+        loadTask = Task { await reload() }
     }
 
     // MARK: header stepper
@@ -126,8 +147,11 @@ public struct StubsScreen: View {
     private var daysInDisplayedMonth: Int { displayedYM.dayCount }
 
     private var countsLine: String {
-        let watched = monthDays.count
-        return "\(watched) WATCHED · \(rewatchCount) RE-WATCHES"
+        // Rewatches were hardcoded to 0 before (`movie_stubs` uses upsert
+        // on (user, media, tmdb_id) so reprints don't show as extra rows,
+        // and we don't read `journal_entries.is_rewatch` here yet). Ship
+        // the accurate WATCHED count alone until we wire real data.
+        "\(monthDays.count) WATCHED"
     }
 
     @ViewBuilder
@@ -146,7 +170,11 @@ public struct StubsScreen: View {
                 line: stub.stub_line ?? "",
                 moods: stub.mood_tags,
                 date: Self.admitDate(stub.watched_date),
-                stubNo: Self.stubNumber(monthDays.count),
+                // "Last watched" is the newest stub across ALL time, so the
+                // sequence number should reflect the global count (total
+                // stubs ever), not just this month. `totalStubsCount` is
+                // populated by `reload()` via `StubRepository.countStubs`.
+                stubNo: Self.stubNumber(totalStubsCount),
                 compact: true
             )
         } else if loading {
@@ -172,41 +200,54 @@ public struct StubsScreen: View {
 
         let userID = await SpoolClient.currentUserID()
         hasSession = userID != nil
-        NSLog("[StubsScreen] reload: userID=\(userID?.uuidString ?? "nil") year=\(displayedYear) month=\(displayedMonthNumber)")
+        // Capture the requested month up front so the comparison below
+        // rejects stale responses even if the user tapped ‹/› mid-flight.
+        let requested = displayedYM
+        NSLog("[StubsScreen] reload: hasSession=\(hasSession) year=\(requested.year) month=\(requested.month)")
 
         guard let userID else {
-            monthDays = SpoolData.aprilWatched
-            monthTierCounts = Self.bucketTiers(monthDays)
-            rewatchCount = 0
-            lastStub = nil
+            if !Task.isCancelled, requested == displayedYM {
+                monthDays = SpoolData.aprilWatched
+                monthTierCounts = Self.bucketTiers(monthDays)
+                lastStub = nil
+                totalStubsCount = 0
+            }
             return
         }
 
         do {
             let stubs = try await StubRepository.shared.getStubsForMonth(
-                userID: userID, year: displayedYear, month: displayedMonthNumber
+                userID: userID, year: requested.year, month: requested.month
             )
+            if Task.isCancelled || requested != displayedYM {
+                NSLog("[StubsScreen] month stubs stale — dropping")
+                return
+            }
             NSLog("[StubsScreen] month stubs ok: \(stubs.count)")
             monthDays = stubs.compactMap(Self.rowToDay)
             monthTierCounts = Self.bucketTiers(monthDays)
-            rewatchCount = 0
         } catch {
+            if Task.isCancelled { return }
             NSLog("[StubsScreen] getStubsForMonth FAIL: \(error)")
             monthDays = []
             monthTierCounts = [:]
         }
 
-        // Only hit getAllStubs once — "last watched" is always the newest
-        // across all time, so we don't need to re-pull it when the user
-        // browses back to an older month.
+        // "Last watched" + total count are month-independent — only fetch
+        // them on the first load of a session to avoid refetching when the
+        // user pages through months.
         if lastStub == nil {
             do {
-                let recent = try await StubRepository.shared.getAllStubs(userID: userID, limit: 1)
-                NSLog("[StubsScreen] last stub ok: \(recent.first?.title ?? "nil")")
-                lastStub = recent.first
+                async let recent = StubRepository.shared.getAllStubs(userID: userID, limit: 1)
+                async let total = StubRepository.shared.countStubs(userID: userID)
+                let (recentRows, totalCount) = try await (recent, total)
+                if Task.isCancelled { return }
+                NSLog("[StubsScreen] last stub ok: \(recentRows.first?.title ?? "nil") total=\(totalCount)")
+                lastStub = recentRows.first
+                totalStubsCount = totalCount
             } catch {
-                NSLog("[StubsScreen] getAllStubs FAIL: \(error)")
-                lastStub = nil
+                if Task.isCancelled { return }
+                NSLog("[StubsScreen] getAllStubs/countStubs FAIL: \(error)")
             }
         }
     }
@@ -233,8 +274,16 @@ public struct StubsScreen: View {
     }
 
     private static func stableSeed(_ id: String) -> Int {
-        // Deterministic hash → palette picks stay stable across renders.
-        abs(id.hashValue) % 10
+        // Deterministic 0-9 seed across process launches. `String.hashValue`
+        // is process-seeded, so relying on it would re-shuffle poster
+        // palettes every cold launch. Parse TMDB-ish ids ("tmdb_12345" →
+        // 12345) when we can; fall back to a plain djb2 digest otherwise.
+        if let digits = id.split(separator: "_").last.flatMap({ Int($0) }) {
+            return abs(digits) % 10
+        }
+        var h: UInt64 = 5381
+        for b in id.utf8 { h = h &* 33 &+ UInt64(b) }
+        return Int(h % 10)
     }
 
     private static func admitDate(_ dateString: String) -> String {

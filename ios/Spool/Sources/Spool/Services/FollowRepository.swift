@@ -28,56 +28,81 @@ public actor FollowRepository {
 
     /// Profiles the given user follows, newest follow first. Two-step query:
     /// (1) friend_follows rows → following IDs, (2) ProfileRepository for
-    /// username/avatar. This matches the web implementation and keeps RLS
-    /// enforcement in Postgres (no client-side permission checks).
+    /// username/avatar.
+    ///
+    /// An edge whose target profile can't be hydrated (deleted user, RLS
+    /// mismatch) is dropped — we can't render a row without a username. The
+    /// logged delta tells us when that happens so a count mismatch between
+    /// "what the DB says I follow" and "what we render" doesn't stay silent.
     public func getFollowing(userID: UUID) async throws -> [FollowedProfile] {
-        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
-
-        let rows: [FollowEdgeRow] = try await client
-            .from("friend_follows")
-            .select("follower_id, following_id, created_at")
-            .eq("follower_id", value: userID.uuidString)
-            .order("created_at", ascending: false)
-            .execute()
-            .value
-
-        let ids = rows.compactMap { $0.following_id }
-        guard !ids.isEmpty else { return [] }
-        let profiles = try await ProfileRepository.shared.getProfilesByIds(ids)
-
-        return rows.compactMap { row -> FollowedProfile? in
-            guard let targetID = row.following_id,
-                  let profile = profiles[targetID] else { return nil }
-            return FollowedProfile(profile: profile, followedAt: row.created_at)
-        }
+        try await hydratedEdges(
+            filter: .follower(userID),
+            edgeUserID: { $0.following_id }
+        )
     }
 
     /// Profiles that follow the given user, newest follower first.
     public func getFollowers(userID: UUID) async throws -> [FollowedProfile] {
+        try await hydratedEdges(
+            filter: .following(userID),
+            edgeUserID: { $0.follower_id }
+        )
+    }
+
+    // MARK: follow hydration — shared between getFollowing / getFollowers
+
+    private enum EdgeFilter {
+        case follower(UUID)   // edges WHERE follower_id = <uuid>  → the user's followings
+        case following(UUID)  // edges WHERE following_id = <uuid> → the user's followers
+
+        var column: String {
+            switch self {
+            case .follower:   return "follower_id"
+            case .following:  return "following_id"
+            }
+        }
+        var value: String {
+            switch self {
+            case .follower(let id), .following(let id): return id.uuidString
+            }
+        }
+    }
+
+    private func hydratedEdges(filter: EdgeFilter,
+                               edgeUserID: (FollowEdgeRow) -> UUID?) async throws -> [FollowedProfile] {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
 
         let rows: [FollowEdgeRow] = try await client
             .from("friend_follows")
             .select("follower_id, following_id, created_at")
-            .eq("following_id", value: userID.uuidString)
+            .eq(filter.column, value: filter.value)
             .order("created_at", ascending: false)
             .execute()
             .value
 
-        let ids = rows.compactMap { $0.follower_id }
+        let ids = rows.compactMap(edgeUserID)
         guard !ids.isEmpty else { return [] }
         let profiles = try await ProfileRepository.shared.getProfilesByIds(ids)
 
-        return rows.compactMap { row -> FollowedProfile? in
-            guard let actorID = row.follower_id,
-                  let profile = profiles[actorID] else { return nil }
+        let hydrated: [FollowedProfile] = rows.compactMap { row in
+            guard let id = edgeUserID(row), let profile = profiles[id] else { return nil }
             return FollowedProfile(profile: profile, followedAt: row.created_at)
         }
+        if hydrated.count != rows.count {
+            NSLog("[FollowRepository] dropped \(rows.count - hydrated.count) edge(s) — profile unreadable")
+        }
+        return hydrated
     }
 
-    /// Users who both `viewerID` and `targetID` follow, excluding the two
-    /// participants themselves. Two selects (viewer's following,
-    /// target's followers) — RLS already scopes both.
+    /// Users that `viewerID` follows who also follow `targetID`. In other
+    /// words, second-degree connections — "friends of mine who also follow
+    /// this person." Excludes both participants themselves.
+    ///
+    /// (This is NOT "users both viewer and target follow"; that would be a
+    /// different intersection. If we want that, both selects should project
+    /// `following_id`. Keeping the current semantics because FriendsScreen
+    /// uses this as a social-proof signal: "N people you follow already
+    /// follow them.")
     public func getMutualFollowCount(viewerID: UUID, targetID: UUID) async throws -> Int {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
 
@@ -104,9 +129,15 @@ public actor FollowRepository {
 
     // MARK: writes
 
-    /// Follow `targetID` as the signed-in user, plus fire-and-forget
-    /// notification insert. Matches the web `followUser` flow — a failed
-    /// notification insert does not fail the follow.
+    /// Follow `targetID` as the signed-in user, plus a best-effort
+    /// `new_follower` notification insert.
+    ///
+    /// **Duplicate follows short-circuit:** the `friend_follows` table has a
+    /// unique constraint on (follower_id, following_id), so re-following
+    /// somebody throws a constraint-violation error. This function catches
+    /// that, returns `false`, and does NOT attempt to write a notification.
+    /// Callers that want an idempotent "make sure I follow X" path should
+    /// check follow state first or await a feature-flagged upsert variant.
     @discardableResult
     public func follow(targetID: UUID) async throws -> Bool {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
@@ -116,12 +147,12 @@ public actor FollowRepository {
         do {
             _ = try await client.from("friend_follows").insert(payload).execute()
         } catch {
-            print("[FollowRepository] follow failed: \(error)")
+            NSLog("[FollowRepository] follow failed (likely duplicate): \(error)")
             return false
         }
 
-        // Best-effort follower notification. Already-follows may collide on
-        // the unique constraint above and skip this path — that's fine.
+        // Happy path only — duplicate-follow errors short-circuited above,
+        // so reaching here means we wrote a new edge and should notify.
         let notif = NotificationInsertPayload(
             user_id: targetID,
             type: "new_follower",
@@ -132,7 +163,7 @@ public actor FollowRepository {
         do {
             _ = try await client.from("notifications").insert(notif).execute()
         } catch {
-            print("[FollowRepository] follow notification insert failed: \(error)")
+            NSLog("[FollowRepository] follow notification insert failed: \(error)")
         }
         return true
     }

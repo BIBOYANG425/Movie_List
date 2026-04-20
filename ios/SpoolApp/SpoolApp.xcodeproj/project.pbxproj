@@ -12,7 +12,6 @@
 		B6958BF71DBD5135A2CB67E9 /* Kalam-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1DE1E9A72C0B5489B15CDC90 /* Kalam-Regular.ttf */; };
 		5AC5301406DC50C0BFC7AF9C /* Kalam-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 02D51579995751B894866B55 /* Kalam-Bold.ttf */; };
 		2899CA12A665561993DA9694 /* Caveat-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1A756C0C969452159ADD6A78 /* Caveat-Regular.ttf */; };
-		A9A816A2B5D05EB990385A7D /* Caveat-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D3EC4C7AE96F57E9B2744243 /* Caveat-SemiBold.ttf */; };
 		853B09A3662D5035A5BEB9A9 /* Caveat-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4E4EEAEA53555374914DD14E /* Caveat-Bold.ttf */; };
 		EA7042EE031D5DA69D6068BA /* DMMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F828353CF317528C8EFC5FFD /* DMMono-Regular.ttf */; };
 		F08D3EBBAE3150908EF7A20D /* DMMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EF53327859125DB1BFEF31D9 /* DMMono-Medium.ttf */; };
@@ -27,7 +26,6 @@
 		1DE1E9A72C0B5489B15CDC90 /* Kalam-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Kalam-Regular.ttf"; sourceTree = "<group>"; };
 		02D51579995751B894866B55 /* Kalam-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Kalam-Bold.ttf"; sourceTree = "<group>"; };
 		1A756C0C969452159ADD6A78 /* Caveat-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Caveat-Regular.ttf"; sourceTree = "<group>"; };
-		D3EC4C7AE96F57E9B2744243 /* Caveat-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Caveat-SemiBold.ttf"; sourceTree = "<group>"; };
 		4E4EEAEA53555374914DD14E /* Caveat-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Caveat-Bold.ttf"; sourceTree = "<group>"; };
 		F828353CF317528C8EFC5FFD /* DMMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMMono-Regular.ttf"; sourceTree = "<group>"; };
 		EF53327859125DB1BFEF31D9 /* DMMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "DMMono-Medium.ttf"; sourceTree = "<group>"; };
@@ -87,7 +85,6 @@
 				1DE1E9A72C0B5489B15CDC90 /* Kalam-Regular.ttf */,
 				02D51579995751B894866B55 /* Kalam-Bold.ttf */,
 				1A756C0C969452159ADD6A78 /* Caveat-Regular.ttf */,
-				D3EC4C7AE96F57E9B2744243 /* Caveat-SemiBold.ttf */,
 				4E4EEAEA53555374914DD14E /* Caveat-Bold.ttf */,
 				F828353CF317528C8EFC5FFD /* DMMono-Regular.ttf */,
 				EF53327859125DB1BFEF31D9 /* DMMono-Medium.ttf */,
@@ -165,7 +162,6 @@
 				B6958BF71DBD5135A2CB67E9 /* Kalam-Regular.ttf in Resources */,
 				5AC5301406DC50C0BFC7AF9C /* Kalam-Bold.ttf in Resources */,
 				2899CA12A665561993DA9694 /* Caveat-Regular.ttf in Resources */,
-				A9A816A2B5D05EB990385A7D /* Caveat-SemiBold.ttf in Resources */,
 				853B09A3662D5035A5BEB9A9 /* Caveat-Bold.ttf in Resources */,
 				EA7042EE031D5DA69D6068BA /* DMMono-Regular.ttf in Resources */,
 				F08D3EBBAE3150908EF7A20D /* DMMono-Medium.ttf in Resources */,

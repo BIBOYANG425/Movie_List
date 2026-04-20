@@ -254,16 +254,18 @@ public struct ProfileScreen: View {
                         }
                     } else {
                         ForEach(Array(recent.prefix(5).enumerated()), id: \.offset) { _, stub in
-                            if let tier = Tier(rawValue: stub.tier) {
-                                recentTile(
-                                    title: stub.title,
-                                    year: Self.parseYear(stub.watched_date),
-                                    director: "—",
-                                    tier: tier,
-                                    seed: Self.stableSeed(stub.tmdb_id),
-                                    mode: mode, t: t
-                                )
-                            }
+                            // Always render a tile — if the DB row has an
+                            // unexpected tier string, fall back to .B
+                            // (middle-of-the-road) rather than dropping the
+                            // slot and leaving the row visibly short.
+                            recentTile(
+                                title: stub.title,
+                                year: Self.parseYear(stub.watched_date),
+                                director: "—",
+                                tier: Tier(rawValue: stub.tier) ?? .B,
+                                seed: Self.stableSeed(stub.tmdb_id),
+                                mode: mode, t: t
+                            )
                         }
                     }
                 }
@@ -393,7 +395,17 @@ public struct ProfileScreen: View {
     }
 
     private static func stableSeed(_ id: String) -> Int {
-        abs(id.hashValue) % 10
+        // Deterministic 0-9 seed — Swift's `String.hashValue` is seeded per
+        // process, so relying on it would shuffle poster palettes every
+        // launch. We first try to parse the numeric portion of a TMDB id
+        // like "tmdb_12345" → 12345, and otherwise fall back to a plain
+        // djb2 digest over the bytes of the string.
+        if let digits = id.split(separator: "_").last.flatMap({ Int($0) }) {
+            return abs(digits) % 10
+        }
+        var h: UInt64 = 5381
+        for b in id.utf8 { h = h &* 33 &+ UInt64(b) }
+        return Int(h % 10)
     }
 
     private static func parseYear(_ dateString: String) -> Int {

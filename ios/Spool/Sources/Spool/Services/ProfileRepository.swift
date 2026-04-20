@@ -58,12 +58,13 @@ public actor ProfileRepository {
 
     // MARK: writes
 
-    /// Update the signed-in user's profile. Only non-nil fields are sent —
-    /// pass `nil` to leave a column untouched. Returns the updated row so
-    /// callers can refresh their local state without a separate re-fetch.
+    /// Update the signed-in user's profile using three-state patch semantics:
+    ///   - `nil`            → leave the column untouched (omitted from JSON)
+    ///   - `""` (or whitespace) → clear the column (encoded as JSON `null` → SQL NULL)
+    ///   - non-empty string → set the column to that value
     ///
-    /// RLS enforces `auth.uid() = id` on UPDATE, so there's nothing to check
-    /// on the client beyond having a session.
+    /// Returns the freshly-read row so callers can refresh their local state
+    /// without an extra round-trip. RLS enforces `auth.uid() = id` on UPDATE.
     @discardableResult
     public func updateMyProfile(
         displayName: String? = nil,
@@ -73,13 +74,13 @@ public actor ProfileRepository {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
         guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
 
-        // flatMap (not map) because normalizedString returns String? —
-        // without flatMap we'd end up with String?? and send the outer
-        // Optional unchanged.
+        // Trim whitespace but preserve the empty-string signal — the encoder
+        // below turns `""` into JSON null so the column is cleared, while
+        // `nil` means "don't touch this column at all."
         let payload = ProfileUpdatePayload(
-            display_name: displayName.flatMap(Self.normalizedString),
-            bio: bio.flatMap(Self.normalizedString),
-            avatar_url: avatarUrl.flatMap(Self.normalizedString)
+            display_name: displayName.map(Self.trim),
+            bio: bio.map(Self.trim),
+            avatar_url: avatarUrl.map(Self.trim)
         )
 
         let updated: [ProfileRow] = try await client
@@ -99,16 +100,19 @@ public actor ProfileRepository {
         return row
     }
 
-    /// Empty string → nil (so clearing a field writes SQL NULL instead of "").
-    /// Leading/trailing whitespace is trimmed.
-    private static func normalizedString(_ raw: String) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+    /// Whitespace trim only. Unlike the previous `normalizedString`, this
+    /// does NOT collapse `""` to `nil` — the distinction matters to the
+    /// three-state patch above.
+    private static func trim(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Username (or display_name) contains search. Returns up to 12 matches,
+    /// Username-contains search (case-insensitive). Returns up to 12 matches,
     /// excludes the current user. Empty query → []. Mirrors the web
-    /// `searchUsers` path but RLS-only (no edge function).
+    /// `searchUsers` username path — display-name matching is intentionally
+    /// NOT included here yet (the web edge function does it server-side with
+    /// ranked scoring; running an `.or(...)` on both columns client-side
+    /// spikes latency without matching the ranking logic).
     public func searchByHandle(_ query: String) async throws -> [ProfileRow] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "@", with: "")
@@ -143,17 +147,15 @@ public actor ProfileRepository {
 
 // MARK: - DTOs
 
-/// Partial-update payload for the profiles table. Using an `Encodable` struct
-/// with optionals lets PostgREST infer `NULL` for unset fields only where the
-/// caller explicitly chose nil; untouched fields are omitted entirely via the
-/// custom encode(to:). That's the contract we want — "send only what the user
-/// changed."
+/// Partial-update payload for the profiles table. Three encoding outcomes
+/// per field:
+///   - field is `nil`   → key omitted from JSON      → column untouched
+///   - field is `""`    → key present, value is null → column cleared to NULL
+///   - field is `"foo"` → key present, value is "foo" → column set to "foo"
 ///
-/// Why a custom encoder? The default Encodable of a struct with optionals
-/// encodes `nil` as a JSON `null`, which Supabase would interpret as "set
-/// this column to NULL." We want distinct semantics: omit a field from the
-/// JSON entirely to leave it untouched; include it (possibly as null) to
-/// write the new value.
+/// Default synthesized Encodable would emit `null` for `nil`, collapsing the
+/// first two cases. The custom `encode(to:)` below distinguishes them by
+/// checking for the empty string before the non-empty branch.
 private struct ProfileUpdatePayload: Encodable {
     let display_name: String?
     let bio: String?
@@ -165,9 +167,20 @@ private struct ProfileUpdatePayload: Encodable {
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        if let display_name { try c.encode(display_name, forKey: .display_name) }
-        if let bio { try c.encode(bio, forKey: .bio) }
-        if let avatar_url { try c.encode(avatar_url, forKey: .avatar_url) }
+        try Self.encodeField(display_name, forKey: .display_name, into: &c)
+        try Self.encodeField(bio, forKey: .bio, into: &c)
+        try Self.encodeField(avatar_url, forKey: .avatar_url, into: &c)
+    }
+
+    /// Three-state encoder: nil→omit, ""→encodeNil, non-empty→encode.
+    private static func encodeField(_ value: String?, forKey key: CodingKeys,
+                                    into container: inout KeyedEncodingContainer<CodingKeys>) throws {
+        guard let value else { return } // untouched
+        if value.isEmpty {
+            try container.encodeNil(forKey: key)     // clear to NULL
+        } else {
+            try container.encode(value, forKey: key) // set
+        }
     }
 }
 

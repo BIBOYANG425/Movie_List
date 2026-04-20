@@ -28,6 +28,12 @@ public struct SettingsScreen: View {
     @State private var profile: ProfileRow?
     @State private var email: String?
     @State private var editing: Bool = false
+    /// True once we've confirmed a Supabase session exists. This is the
+    /// single source of truth for session-dependent UI (sign out, edit
+    /// profile) — previously the view gated those on `profile != nil`,
+    /// so a transient profile-fetch failure stranded signed-in users
+    /// without a way to sign out.
+    @State private var hasSession: Bool = false
 
     public init(preference: Binding<ThemePreference>,
                 effectiveMode: SpoolMode,
@@ -48,7 +54,7 @@ public struct SettingsScreen: View {
                         accountSection
                         preferencesSection
                         aboutSection
-                        if profile != nil {
+                        if hasSession {
                             signOutButton
                         }
                     }
@@ -188,15 +194,18 @@ public struct SettingsScreen: View {
                 signingOut = false
                 profile = nil
                 email = nil
+                hasSession = false
                 onSignedOut()
             }
         }
     }
 
     private func loadProfile() async {
-        // Best-effort — no blockers if it fails. Settings still renders.
-        profile = (try? await ProfileRepository.shared.getMyProfile()) ?? nil
+        // Check session independently of profile-fetch outcome so a transient
+        // fetch error doesn't hide the sign-out button from a signed-in user.
+        hasSession = await SpoolClient.currentUserID() != nil
         email = await SpoolClient.currentUserEmail()
+        profile = (try? await ProfileRepository.shared.getMyProfile()) ?? nil
     }
 
     private static var versionLabel: String {

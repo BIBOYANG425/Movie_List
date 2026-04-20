@@ -162,13 +162,24 @@ public struct TwinScreen: View {
                 Text("you both ") + markText("obsess over ") + markText(shared.title) + Text(".")
             )
         }
-        // Biggest fight line — the widest tier split
+        // Biggest fight line — the widest tier split.
+        // Previous version used hard-coded "she"/"her" and broke grammar on
+        // the negative-delta branch ("she loves X, she is over it less.").
+        // Route the viewer and friend by name so neither is misgendered.
         if let fight = compat.biggestFights.first, abs(fight.tierDelta) >= 2 {
-            let verb = fight.tierDelta > 0 ? "loves" : "is over"
-            let target = fight.tierDelta > 0 ? "you love" : "she loves"
-            lines.append(
-                Text("\(target) ") + markText(fight.title) + Text(", she \(verb) it less.")
-            )
+            if fight.tierDelta > 0 {
+                // Viewer rates higher than friend.
+                lines.append(
+                    Text("you love ") + markText(fight.title)
+                    + Text(", \(friend.handle) isn't sold.")
+                )
+            } else {
+                // Friend rates higher than viewer.
+                lines.append(
+                    Text("\(friend.handle) loves ") + markText(fight.title)
+                    + Text(", you aren't.")
+                )
+            }
         }
         // Disagreement count line if we have enough data to make it feel real
         if compat.sharedCount >= 5 {
@@ -263,7 +274,7 @@ public struct TwinScreen: View {
                     Text(movie.title)
                         .font(SpoolFonts.serif(15))
                         .foregroundStyle(t.ink)
-                    Text("you \(movie.viewerTier.rawValue) · her \(movie.targetTier.rawValue)")
+                    Text("you \(movie.viewerTier.rawValue) · \(friend.handle) \(movie.targetTier.rawValue)")
                         .font(SpoolFonts.hand(11))
                         .foregroundStyle(t.inkSoft)
                 }
@@ -290,7 +301,7 @@ public struct TwinScreen: View {
                     Text(f.t)
                         .font(SpoolFonts.serif(15))
                         .foregroundStyle(t.ink)
-                    Text("you \(f.yours.rawValue) · her \(f.theirs.rawValue)")
+                    Text("you \(f.yours.rawValue) · \(friend.handle) \(f.theirs.rawValue)")
                         .font(SpoolFonts.hand(11))
                         .foregroundStyle(t.inkSoft)
                 }
@@ -333,7 +344,7 @@ public struct TwinScreen: View {
         async let recsRes = try? TasteRepository.shared
             .getRecommendationsForFriend(viewerID: viewerID, targetID: targetID, limit: 4)
 
-        compat = (await compatRes) ?? nil
+        compat = await compatRes
         recs = (await recsRes) ?? []
     }
 
@@ -348,7 +359,14 @@ public struct TwinScreen: View {
     }
 
     private static func stableSeed(_ id: String) -> Int {
-        abs(id.hashValue) % 10
+        // See ProfileScreen.stableSeed — process-stable across launches so
+        // poster palettes don't re-shuffle.
+        if let digits = id.split(separator: "_").last.flatMap({ Int($0) }) {
+            return abs(digits) % 10
+        }
+        var h: UInt64 = 5381
+        for b in id.utf8 { h = h &* 33 &+ UInt64(b) }
+        return Int(h % 10)
     }
 }
 

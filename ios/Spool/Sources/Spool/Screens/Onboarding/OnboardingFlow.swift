@@ -75,8 +75,18 @@ public struct OnboardingFlow: View {
                     // Returning user took the log-in shortcut AND signed in
                     // successfully → skip the rest of onboarding. They have
                     // data in Supabase already and shouldn't re-rank.
+                    // Hydrate `handle` from the real profile first so the
+                    // AppStorage `spool.user_handle` isn't overwritten with
+                    // the "yurui" default that was seeded for new users.
                     if loginShortcut, result == .signedIn {
-                        finish()
+                        Task {
+                            if let row = try? await ProfileRepository.shared.getMyProfile() {
+                                await MainActor.run {
+                                    handle = row.username
+                                }
+                            }
+                            await MainActor.run { finish() }
+                        }
                         return
                     }
                     advance()

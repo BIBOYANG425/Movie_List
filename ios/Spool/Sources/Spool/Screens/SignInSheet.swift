@@ -100,6 +100,7 @@ struct SignInFormBody: View {
     @State private var email: String = ""
     @State private var password: String = ""
     @State private var working: Bool = false
+    @State private var googleWorking: Bool = false
     @State private var error: String?
     /// When true, the primary CTA creates a new account instead of signing in.
     /// Default is false — the expected path is "existing user signing back in."
@@ -149,6 +150,9 @@ struct SignInFormBody: View {
 
                 // Mode toggle — small secondary link so the default CTA stays
                 // obvious. Toggling clears any stale error for the new intent.
+                // Disable while auth is in flight so a returning Google/email
+                // response can't land into a mode the user just switched away
+                // from.
                 Button(action: toggleMode) {
                     Text(toggleLabel)
                         .font(SpoolFonts.hand(12))
@@ -158,6 +162,8 @@ struct SignInFormBody: View {
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 10)
+                .disabled(working || googleWorking)
+                .opacity((working || googleWorking) ? 0.5 : 1)
             }
         }
     }
@@ -249,8 +255,6 @@ struct SignInFormBody: View {
         .padding(.vertical, 18)
     }
 
-    @State private var googleWorking: Bool = false
-
     private func startGoogle() {
         guard !googleWorking, !working else { return }
         googleWorking = true
@@ -262,6 +266,9 @@ struct SignInFormBody: View {
                 switch result {
                 case .success:
                     onSuccess()
+                case .failure(.cancelled):
+                    // User dismissed the OAuth sheet deliberately — silent.
+                    break
                 case .failure(let e):
                     error = e.userMessage
                 }

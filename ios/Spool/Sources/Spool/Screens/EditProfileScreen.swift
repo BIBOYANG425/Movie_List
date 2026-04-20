@@ -150,6 +150,9 @@ public struct EditProfileScreen: View {
     @ViewBuilder
     private func inputField(text: Binding<String>, placeholder: String,
                             multiline: Bool, t: SpoolPalette) -> some View {
+        // iOS-only keyboard modifiers (textInputAutocapitalization etc.) need
+        // the `#if os(iOS)` gate so the macOS target (the Swift Package uses
+        // the same sources for a macOS tooling target) compiles cleanly.
         Group {
             if multiline {
                 TextEditor(text: text)
@@ -159,13 +162,7 @@ public struct EditProfileScreen: View {
                     .frame(minHeight: 90)
                     .padding(10)
             } else {
-                TextField(placeholder, text: text)
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled(false)
-                    .font(SpoolFonts.serif(18))
-                    .foregroundStyle(t.ink)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
+                singleLineField(text: text, placeholder: placeholder, t: t)
             }
         }
         .background(
@@ -174,6 +171,22 @@ public struct EditProfileScreen: View {
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(t.rule, lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private func singleLineField(text: Binding<String>, placeholder: String, t: SpoolPalette) -> some View {
+        let base = TextField(placeholder, text: text)
+            .font(SpoolFonts.serif(18))
+            .foregroundStyle(t.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+        #if os(iOS)
+        base
+            .textInputAutocapitalization(.words)
+            .autocorrectionDisabled(false)
+        #else
+        base
+        #endif
     }
 
     // MARK: save
@@ -212,31 +225,40 @@ public struct EditProfileScreen: View {
         errorMessage = nil
         let name = displayName
         let newBio = bio
-        Task {
+        Task { @MainActor in
+            // Single `defer` on the main actor ensures `working` is always
+            // cleared, no matter which branch we take. Saves duplicating
+            // `working = false` across the success and error paths.
+            defer { working = false }
             do {
                 let updated = try await ProfileRepository.shared.updateMyProfile(
                     displayName: name, bio: newBio
                 )
-                await MainActor.run {
-                    working = false
-                    onSaved(updated)
-                    onClose()
-                }
+                onSaved(updated)
+                onClose()
             } catch {
-                await MainActor.run {
-                    working = false
-                    errorMessage = "couldn't save — \(errorDescription(error))"
-                }
+                errorMessage = "couldn't save — \(errorDescription(error))"
             }
         }
     }
 
+    /// Type-dispatched error mapping. Falls through to string matching only
+    /// for surfaces we don't control (e.g., unexpected Supabase errors) —
+    /// typed cases first avoids renames silently breaking the UX copy.
     private func errorDescription(_ error: Error) -> String {
-        // Trim the verbose Supabase error strings down to something a user
-        // can act on.
-        let raw = "\(error)"
-        if raw.lowercased().contains("notauthenticated") { return "sign in again and retry." }
-        if raw.lowercased().contains("network") { return "check your connection." }
+        if case ProfileRepository.RepoError.notAuthenticated = error {
+            return "sign in again and retry."
+        }
+        if case ProfileRepository.RepoError.notConfigured = error {
+            return "sign-in is offline — try again later."
+        }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .timedOut:
+                return "check your connection."
+            default: break
+            }
+        }
         return "try again."
     }
 }

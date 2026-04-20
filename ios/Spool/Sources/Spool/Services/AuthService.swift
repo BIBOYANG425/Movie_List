@@ -34,6 +34,10 @@ public actor AuthService {
         case weakPassword
         case emailTaken
         case emailNotConfirmed
+        /// ASWebAuthenticationSession was dismissed by the user without
+        /// completing auth. Callers should treat this as a silent no-op —
+        /// no toast, no error state. `userMessage` returns an empty string.
+        case cancelled
         case unknown(String)
 
         public var userMessage: String {
@@ -43,6 +47,7 @@ public actor AuthService {
             case .weakPassword:       return "password too short."
             case .emailTaken:         return "email already has an account. try signing in instead."
             case .emailNotConfirmed:  return "check your email — confirm the link we sent, then try again."
+            case .cancelled:          return ""
             case .network(let msg):   return msg
             case .unknown(let msg):   return msg
             }
@@ -192,9 +197,11 @@ public actor AuthService {
             return .invalidCredentials
         }
         // ASWebAuthenticationSession user-cancel surfaces as a specific code;
-        // don't spam the user with "unknown error" when they just tapped away.
+        // return a distinct .cancelled so callers can suppress UI entirely
+        // (showing an error toast when the user deliberately backed out is
+        // noise).
         if m.contains("canceledlogin") || m.contains("cancelled") || m.contains("user cancel") {
-            return .unknown("sign-in cancelled.")
+            return .cancelled
         }
         if m.contains("network") || m.contains("offline") || m.contains("timed out") {
             return .network("couldn't reach the server.")
