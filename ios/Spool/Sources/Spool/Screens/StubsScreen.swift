@@ -256,10 +256,15 @@ public struct StubsScreen: View {
 
     private static func rowToDay(_ row: StubRow) -> WatchedDay? {
         guard let tier = Tier(rawValue: row.tier) else { return nil }
-        // watched_date is "yyyy-MM-dd"; pluck the day portion.
+        // watched_date is "yyyy-MM-dd"; split into year / month / day so the
+        // detail sheet can format the full "APR · 18 · 2026" string instead
+        // of the hardcoded "APR · 18 · 2026" default.
         let parts = row.watched_date.split(separator: "-")
-        guard parts.count == 3, let day = Int(parts[2]) else { return nil }
-        return WatchedDay(day: day, tier: tier, title: row.title)
+        guard parts.count == 3,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              let day = Int(parts[2]) else { return nil }
+        return WatchedDay(day: day, tier: tier, title: row.title, year: year, month: month)
     }
 
     private static func bucketTiers(_ days: [WatchedDay]) -> [Tier: Int] {

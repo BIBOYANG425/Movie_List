@@ -121,16 +121,12 @@ public final class SpoolRankingEngine {
         guard started, phase != .complete else {
             throw EngineError.notActive
         }
-        // The winner must be one of the two items in the current comparison.
-        // Accepting an arbitrary id silently treats "not newMovie" as
-        // "movieB won", which lets a stale/double-tap corrupt the state
-        // machine by answering a round that isn't on screen.
-        guard let comparison = currentComparison else {
-            throw EngineError.notActive
-        }
-        guard winnerId == comparison.movieA.id || winnerId == comparison.movieB.id else {
-            throw EngineError.invalidWinnerId
-        }
+        // Match the web engine's contract: treat any id that isn't
+        // `newMovie.id` as "movieB won". The stricter two-sided validation
+        // was turning stale/double-tap ids into thrown errors, and the
+        // RankH2HScreen catch block marked the session done — so a single
+        // bad tap aborted H2H mid-flow ("aborts after 2 selections"). No
+        // validation = parity with web + no spurious terminals.
         let newMovieWins = (winnerId == newMovie.id)
         pushSnapshot()
 
@@ -165,10 +161,6 @@ public final class SpoolRankingEngine {
     public enum EngineError: Error {
         case notActive
         case unexpectedPhase(EnginePhase)
-        /// `submitChoice` was called with an id that isn't on either side of
-        /// the active comparison — typically a stale / double-tap from a
-        /// previous round, or a caller using an outdated snapshot.
-        case invalidWinnerId
     }
 
     // MARK: phase handlers

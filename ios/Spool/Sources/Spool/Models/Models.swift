@@ -100,6 +100,19 @@ public struct WatchedDay: Identifiable, Hashable, Sendable {
     public let day: Int
     public let tier: Tier
     public let title: String
+    /// Year and month of the watched_date so detail screens can format the
+    /// full "APR · 18 · 2026" string instead of hardcoding one. Optional to
+    /// keep fixture constructors ergonomic.
+    public let year: Int?
+    public let month: Int?
+
+    public init(day: Int, tier: Tier, title: String, year: Int? = nil, month: Int? = nil) {
+        self.day = day
+        self.tier = tier
+        self.title = title
+        self.year = year
+        self.month = month
+    }
 }
 
 public struct TwinEntry: Hashable, Sendable {

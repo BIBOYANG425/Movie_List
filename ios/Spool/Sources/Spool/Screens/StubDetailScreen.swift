@@ -32,13 +32,17 @@ public struct StubDetailScreen: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         AdmitStub(
-                            movie: Movie(id: stub.title, title: stub.title, year: 2023,
-                                         director: "celine song", seed: 0),
+                            movie: Movie(id: stub.title, title: stub.title, year: stub.year ?? 2026,
+                                         director: "—", seed: 0),
                             tier: stub.tier,
-                            line: "cried on the 6 train.",
-                            moods: ["tender","devastating"],
-                            date: "APR · 18 · 2026",
-                            stubNo: "#0127"
+                            line: "",
+                            moods: [],
+                            // Use the real watched_date passed through via
+                            // WatchedDay.year/month/day when available; fall
+                            // back to the day-only label for legacy fixtures
+                            // that don't carry full date info.
+                            date: Self.formatDate(day: stub.day, month: stub.month, year: stub.year),
+                            stubNo: "#\(String(format: "%04d", max(stub.day, 0)))"
                         )
                         .rotationEffect(.degrees(-1.2))
 
@@ -72,6 +76,21 @@ public struct StubDetailScreen: View {
                 }
             }
         }
+    }
+}
+
+extension StubDetailScreen {
+    /// "APR · 18 · 2026" style format. If year or month are missing (fixture
+    /// rows), returns a day-only fallback so we don't render a misleading
+    /// full date with placeholder values.
+    static func formatDate(day: Int, month: Int?, year: Int?) -> String {
+        guard let month, let year else {
+            return "DAY · \(String(format: "%02d", max(day, 0)))"
+        }
+        let months = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+        let m = (1...12).contains(month) ? months[month] : "—"
+        return "\(m) · \(String(format: "%02d", day)) · \(year)"
     }
 }
 

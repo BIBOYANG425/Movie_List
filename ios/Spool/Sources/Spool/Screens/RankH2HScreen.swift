@@ -27,6 +27,22 @@ public struct RankH2HScreen: View {
     @State private var finalRank = 0
     @State private var finalScore = 0.0
     @State private var allItems: [RankedItem] = []
+    /// When the target tier has ≤5 items we use a sequential walk-through
+    /// instead of the probe/escalation engine — matches the web's
+    /// RankingFlowModal `compare_all` branch. iOS previously ran the
+    /// engine unconditionally, which terminates in ~2 rounds on small
+    /// tiers and felt like a premature abort. Nil means engine mode.
+    @State private var smallTier: SmallTierState? = nil
+
+    /// State for the compare-all walk. `tierItems` is the target tier
+    /// sorted by rank (best first); `cursor` is the next item to compare
+    /// the new movie against. The new movie stops at the first item it
+    /// beats and inserts at that rank, or falls through to the end.
+    private struct SmallTierState {
+        var tierItems: [RankedItem]
+        var cursor: Int
+        var round: Int
+    }
 
     /// Cross-view signal: when a preview-mode rank is captured into the queue
     /// we flip this flag and let `SpoolAppRoot` present its own `SignInSheet`.
@@ -224,6 +240,26 @@ public struct RankH2HScreen: View {
             globalScore: nil, seed: movie.seed,
             posterUrl: movie.posterUrl
         )
+
+        // Web parity: branch on target-tier size. Empty → place immediately;
+        // 1-5 items → sequential compare-all walk; >5 → full engine.
+        let tierItems = all.filter { $0.tier == tier }.sorted { $0.rank < $1.rank }
+        loading = false
+
+        if tierItems.isEmpty {
+            finalRank = 0
+            let range = SpoolConstants.tierScoreRanges[tier] ?? ScoreRange(min: 0, max: 10)
+            finalScore = (range.min + range.max) / 2
+            done = true
+            await persistRanking()
+            return
+        }
+
+        if tierItems.count <= 5 {
+            startCompareAll(newItem: newItem, tierItems: tierItems)
+            return
+        }
+
         let signals = SpoolPrediction.computePredictionSignals(
             allItems: all, primaryGenre: genres[0],
             bracket: bracket, globalScore: nil, tier: tier
@@ -232,34 +268,115 @@ public struct RankH2HScreen: View {
             newMovie: newItem, tier: tier,
             allItems: all, signals: signals
         )
-        loading = false
         handle(result)
+        if done { await persistRanking() }
+    }
 
-        if done {
-            // Edge: first movie in tier — persist immediately.
-            await persistRanking()
-        }
+    /// Emit the first comparison for the sequential walk-through.
+    @MainActor
+    private func startCompareAll(newItem: RankedItem, tierItems: [RankedItem]) {
+        smallTier = SmallTierState(tierItems: tierItems, cursor: 0, round: 1)
+        comparison = ComparisonRequest(
+            movieA: newItem,
+            movieB: tierItems[0],
+            question: "which do you love more?",
+            phase: .probe,
+            round: 1
+        )
     }
 
     private func submit(winnerId: String) {
         guard !done, comparison != nil else { return }
+
+        if smallTier != nil {
+            submitSmallTier(winnerId: winnerId)
+            return
+        }
+
         do {
             let result = try engine.submitChoice(winnerId: winnerId)
             handle(result)
             if done { Task { await persistRanking() } }
         } catch {
-            done = true
-            Task { await persistRanking() }
+            // Engine errors here (notActive / unexpectedPhase) mean the
+            // caller is out of sync with the state machine — we used to
+            // mark the session done and persist mid-flow, which is what
+            // made H2H terminate after a couple of taps. Keep the session
+            // alive instead; the next valid tap drives forward.
+            NSLog("[RankH2HScreen] submit ignored: \(error)")
         }
+    }
+
+    /// Compare-all walk: "does new beat the current tier item?" If yes,
+    /// insert at the current cursor position. If no, advance. If the
+    /// cursor runs off the end, insert at rank N (below everyone).
+    @MainActor
+    private func submitSmallTier(winnerId: String) {
+        guard var st = smallTier, let c = comparison else { return }
+        let newMovieWins = (winnerId == c.movieA.id)
+        let insert: (Int) -> Void = { rank in
+            self.finalRank = rank
+            let range = SpoolConstants.tierScoreRanges[self.tier] ?? ScoreRange(min: 0, max: 10)
+            // Approximate score interpolating across the tier — the real
+            // insertion order happens via rank_position in the DB, score
+            // here is just for the celebration copy.
+            let total = max(st.tierItems.count + 1, 1)
+            let frac = Double(total - rank - 1) / Double(total)
+            self.finalScore = ((range.min + (range.max - range.min) * frac) * 100).rounded() / 100
+            self.done = true
+            self.smallTier = nil
+            self.comparison = nil
+            Task { await self.persistRanking() }
+        }
+
+        if newMovieWins {
+            insert(st.cursor)
+            return
+        }
+        // Lost → advance cursor. If we've compared against everyone, insert at end.
+        let next = st.cursor + 1
+        if next >= st.tierItems.count {
+            insert(st.tierItems.count)
+            return
+        }
+        st.cursor = next
+        st.round += 1
+        smallTier = st
+        comparison = ComparisonRequest(
+            movieA: c.movieA,
+            movieB: st.tierItems[next],
+            question: "which do you love more?",
+            phase: .probe,
+            round: st.round
+        )
     }
 
     private func skip() {
         guard !done else { return }
+
+        // In compare-all mode, "skip" means "insert at the current cursor"
+        // — same semantics as the web's too_tough/skip branch for
+        // smallTier.mode == 'compare_all'.
+        if let st = smallTier {
+            finalRank = st.cursor
+            let range = SpoolConstants.tierScoreRanges[tier] ?? ScoreRange(min: 0, max: 10)
+            finalScore = ((range.min + range.max) / 2 * 100).rounded() / 100
+            done = true
+            smallTier = nil
+            comparison = nil
+            Task { await persistRanking() }
+            return
+        }
+
         do {
             let result = try engine.skip()
             handle(result)
             if done { Task { await persistRanking() } }
         } catch {
+            // A genuine skip-fail is rare (engine already completed).
+            // Finish the session at the tentative score rather than
+            // leaving the user stuck.
+            NSLog("[RankH2HScreen] skip errored: \(error)")
             done = true
             Task { await persistRanking() }
         }
