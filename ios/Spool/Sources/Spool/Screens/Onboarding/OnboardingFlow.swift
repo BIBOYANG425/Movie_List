@@ -96,8 +96,15 @@ public struct OnboardingFlow: View {
                     handle = newHandle
                     advance()
                 })
-        case 7: OnbTwins(onNext: { advance() })
-        case 8: OnbSeason(handle: handle, onFinish: { finish() })
+        // OnbTwins (old fixture taste-twins step) was replaced upstream by
+        // OnbFriendSearch — real debounced profile search + follow. Same
+        // init signature, strictly better UX for signed-in users; preview
+        // users see its skip-only state.
+        case 7: OnbFriendSearch(onNext: { advance() })
+        // OnbSeason's terminal callback was renamed `onNext` upstream
+        // (previously `onFinish`) — same semantics, just aligned with the
+        // rest of the onboarding screens.
+        case 8: OnbSeason(handle: handle, onNext: { finish() })
         default:
             Color.clear.onAppear { finish() }
         }
