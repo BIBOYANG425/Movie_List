@@ -2,13 +2,16 @@ import SwiftUI
 
 public struct FriendsScreen: View {
     public var onOpenTwin: (Friend) -> Void
+    public var onOpenProfile: (Friend) -> Void
 
     @State private var state: LoadState = .loading
     @State private var friends: [Friend] = []
     @State private var hasSession: Bool = false
 
-    public init(onOpenTwin: @escaping (Friend) -> Void = { _ in }) {
+    public init(onOpenTwin: @escaping (Friend) -> Void = { _ in },
+                onOpenProfile: @escaping (Friend) -> Void = { _ in }) {
         self.onOpenTwin = onOpenTwin
+        self.onOpenProfile = onOpenProfile
     }
 
     enum LoadState { case loading, loaded, fallback, empty }
@@ -43,7 +46,11 @@ public struct FriendsScreen: View {
             VStack(alignment: .leading, spacing: 8) {
                 sectionHeader
                 ForEach(friends) { f in
-                    FriendRow(friend: f) { onOpenTwin(f) }
+                    FriendRow(
+                        friend: f,
+                        action: { onOpenTwin(f) },
+                        onOpenProfile: { onOpenProfile(f) }
+                    )
                 }
             }
         }
@@ -128,16 +135,33 @@ public struct FriendsScreen: View {
 struct FriendRow: View {
     let friend: Friend
     let action: () -> Void
+    let onOpenProfile: () -> Void
 
     var body: some View {
         SpoolThemeReader { t, _ in
+            // Outer button → taste twin (primary, keeps existing behavior).
+            // Inner button on the handle text → read-only profile. Nesting
+            // a button inside a button stays legible because SwiftUI hit-tests
+            // the innermost tappable view first — tapping the handle opens
+            // the profile, tapping anywhere else (avatar, twin %, card body)
+            // still opens TwinScreen.
             Button(action: action) {
                 HStack(spacing: 12) {
                     StripedAvatar(size: 42)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(friend.handle)
-                            .font(SpoolFonts.serif(18))
-                            .foregroundStyle(t.ink)
+                        Button(action: onOpenProfile) {
+                            HStack(spacing: 4) {
+                                Text(friend.handle)
+                                    .font(SpoolFonts.serif(18))
+                                    .foregroundStyle(t.ink)
+                                Text("→")
+                                    .font(SpoolFonts.mono(10))
+                                    .foregroundStyle(t.inkSoft)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("View \(friend.handle) profile")
+
                         HStack(spacing: 2) {
                             Text("last watched")
                             Text("Past Lives").italic()

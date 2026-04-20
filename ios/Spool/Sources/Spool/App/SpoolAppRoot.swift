@@ -63,9 +63,13 @@ public struct SpoolAppRoot: View {
 
     // Twin modal
     @State private var twinOpen: Friend? = nil
+    // Read-only friend profile (pushed full-screen, mirrors twinOpen)
+    @State private var friendProfileOpen: Friend? = nil
 
     // Settings sheet
     @State private var showSettings: Bool = false
+    // Full shelf sheet (all tiers, all ranks, in one list)
+    @State private var showFullList: Bool = false
 
     public init() {}
 
@@ -127,6 +131,9 @@ public struct SpoolAppRoot: View {
                 showSignInSheet = false
             })
         }
+        .sheet(isPresented: $showFullList) {
+            FullListScreen(onClose: { showFullList = false })
+        }
         .sheet(isPresented: $showSettings) {
             SettingsScreen(
                 preference: Binding(
@@ -178,7 +185,8 @@ public struct SpoolAppRoot: View {
     }
 
     private var navHidden: Bool {
-        flow != nil || stubDetail != nil || stubShare != nil || twinOpen != nil
+        flow != nil || stubDetail != nil || stubShare != nil
+            || twinOpen != nil || friendProfileOpen != nil
     }
 
     @ViewBuilder
@@ -197,6 +205,19 @@ public struct SpoolAppRoot: View {
                     stubDetail = nil
                 }
             )
+        } else if let f = friendProfileOpen {
+            FriendProfileScreen(
+                friend: f,
+                onClose: { friendProfileOpen = nil },
+                onOpenTwin: {
+                    // Bounce from Profile → Twin. Clearing friendProfileOpen
+                    // first so TwinScreen's own back-button lands the user
+                    // back on FriendsScreen, not on the profile they just
+                    // left. (Profile ↔ Twin mutual links, but no deep stack.)
+                    twinOpen = f
+                    friendProfileOpen = nil
+                }
+            )
         } else if let f = twinOpen {
             TwinScreen(friend: f) { twinOpen = nil }
         } else {
@@ -206,9 +227,15 @@ public struct SpoolAppRoot: View {
             case .stubs:
                 StubsScreen { stubDetail = $0 }
             case .friends:
-                FriendsScreen { twinOpen = $0 }
+                FriendsScreen(
+                    onOpenTwin: { twinOpen = $0 },
+                    onOpenProfile: { friendProfileOpen = $0 }
+                )
             case .me:
-                ProfileScreen(onOpenSettings: { showSettings = true })
+                ProfileScreen(
+                    onOpenSettings: { showSettings = true },
+                    onOpenFullList: { showFullList = true }
+                )
             case .rank:
                 FeedScreen() // impossible state; tab won't actually become .rank
             }
@@ -266,8 +293,28 @@ public struct SpoolAppRoot: View {
                 RankPrintedScreen(
                     movie: m, tier: t, moods: rankMoods, line: rankLine,
                     finalRank: rankFinalRank, finalScore: rankFinalScore,
+                    // Close = abandon the whole rank flow without saving.
+                    // RankH2HScreen no longer persists mid-flow, so this
+                    // is a true abort — user_rankings gets nothing.
                     onClose: { flow = nil },
+                    // Finish = commit. RankPersistence.save handles signed-in
+                    // users (direct DB insert) and preview mode (queue +
+                    // open the sign-in sheet via spool.show_signin_sheet).
                     onFinish: {
+                        let movieToSave = m
+                        let tierToSave = t
+                        let rankToSave = rankFinalRank
+                        let moodsToSave = rankMoods
+                        let lineToSave = rankLine
+                        Task {
+                            await RankPersistence.save(
+                                movie: movieToSave,
+                                tier: tierToSave,
+                                rank: rankToSave,
+                                moods: moodsToSave,
+                                line: lineToSave
+                            )
+                        }
                         flow = nil
                         tab = .feed
                     }

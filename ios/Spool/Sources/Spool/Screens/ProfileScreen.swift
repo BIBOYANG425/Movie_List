@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct ProfileScreen: View {
     public var onOpenSettings: () -> Void
+    public var onOpenFullList: () -> Void
 
     @State private var hasSession: Bool = false
     @State private var loading: Bool = true
@@ -12,8 +13,10 @@ public struct ProfileScreen: View {
     @State private var recent: [StubRow] = []
     @State private var topTwin: (handle: String, score: Int)?
 
-    public init(onOpenSettings: @escaping () -> Void = {}) {
+    public init(onOpenSettings: @escaping () -> Void = {},
+                onOpenFullList: @escaping () -> Void = {}) {
         self.onOpenSettings = onOpenSettings
+        self.onOpenFullList = onOpenFullList
     }
 
     public var body: some View {
@@ -192,12 +195,28 @@ public struct ProfileScreen: View {
     // MARK: top 4 + recent
 
     private var topFourSection: some View {
-        SpoolThemeReader { _, _ in
+        SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 0) {
-                Text("MY TOP 4 · ALL TIME")
-                    .font(SpoolFonts.mono(10))
-                    .tracking(2)
-                    .foregroundStyle(SpoolTokens.paper.inkSoft)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("MY TOP 4 · ALL TIME")
+                        .font(SpoolFonts.mono(10))
+                        .tracking(2)
+                        .foregroundStyle(t.inkSoft)
+                    Spacer()
+                    // Entry point to FullListScreen. Uses a hand-written pill
+                    // so it reads as a soft affordance next to the marquee
+                    // top-four cards, rather than a competing heading.
+                    Button(action: onOpenFullList) {
+                        Text("see full shelf →")
+                            .font(SpoolFonts.hand(12))
+                            .foregroundStyle(t.ink)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .background(Capsule().stroke(t.ink, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("See full shelf")
+                }
 
                 HStack(spacing: 6) {
                     if topFour.isEmpty {
