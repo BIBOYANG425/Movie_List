@@ -5,6 +5,35 @@ public enum SpoolMode: String, CaseIterable, Sendable {
     case dark
 }
 
+/// User-facing theme preference. `.system` is a meta-mode that resolves to
+/// `.paper` or `.dark` at render time based on the device's light/dark setting;
+/// the underlying `SpoolMode` stays a simple two-case enum so palette lookups
+/// remain exhaustive.
+public enum ThemePreference: String, CaseIterable, Sendable {
+    case system
+    case paper
+    case dark
+
+    public var label: String {
+        switch self {
+        case .system: return "match system"
+        case .paper:  return "paper"
+        case .dark:   return "dark"
+        }
+    }
+
+    /// Resolve to an effective `SpoolMode` given the current environment
+    /// color scheme. `.system` tracks the environment; explicit picks
+    /// override it.
+    public func resolved(environment: ColorScheme) -> SpoolMode {
+        switch self {
+        case .system: return environment == .dark ? .dark : .paper
+        case .paper:  return .paper
+        case .dark:   return .dark
+        }
+    }
+}
+
 public struct SpoolPalette: Sendable {
     public let cream: Color
     public let cream2: Color

@@ -17,10 +17,27 @@ public enum SpoolClient {
 
     /// Returns the currently signed-in user's UUID, or nil if there is no session.
     public static func currentUserID() async -> UUID? {
-        guard let client = shared else { return nil }
+        guard let client = shared else {
+            NSLog("[SpoolClient] currentUserID: no client (not configured)")
+            return nil
+        }
         do {
             let session = try await client.auth.session
             return session.user.id
+        } catch {
+            NSLog("[SpoolClient] currentUserID: no session (\(error))")
+            return nil
+        }
+    }
+
+    /// Returns the email for the currently signed-in user, or nil if there
+    /// is no session. Used by Settings to show which account is active —
+    /// the profile table's `display_name` doesn't always match the login email.
+    public static func currentUserEmail() async -> String? {
+        guard let client = shared else { return nil }
+        do {
+            let session = try await client.auth.session
+            return session.user.email
         } catch {
             return nil
         }

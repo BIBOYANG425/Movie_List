@@ -54,6 +54,17 @@ public struct Friend: Identifiable, Hashable, Sendable {
     public let handle: String
     public let name: String
     public let twin: Int
+    /// Supabase user ID when the friend came from a real follow edge.
+    /// `nil` for fixture friends — callers that need DB access should
+    /// treat `nil` as "preview only, don't fetch."
+    public let userID: UUID?
+
+    public init(handle: String, name: String, twin: Int, userID: UUID? = nil) {
+        self.handle = handle
+        self.name = name
+        self.twin = twin
+        self.userID = userID
+    }
 }
 
 public struct FeedActor: Hashable, Sendable {

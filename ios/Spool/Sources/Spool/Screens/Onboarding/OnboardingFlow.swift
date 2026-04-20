@@ -30,6 +30,11 @@ public struct OnboardingFlow: View {
     @State private var h2hWinner: TMDBMovie? = nil
     @State private var h2hLosers: [TMDBMovie] = []
     @State private var persisting: Bool = false
+    /// True when the user arrived at the sign-in step via the top-right
+    /// "log in ↗" shortcut on Cold Open (i.e. a returning user). On
+    /// successful sign-in we skip the rest of onboarding — they already
+    /// have data in Supabase and shouldn't re-rank.
+    @State private var loginShortcut: Bool = false
 
     public init(onFinish: @escaping (OnboardingOutcome) -> Void) {
         self.onFinish = onFinish
@@ -58,9 +63,22 @@ public struct OnboardingFlow: View {
     @ViewBuilder
     private var content: some View {
         switch step {
-        case 0: OnbColdOpen(onNext: { advance() })
+        case 0: OnbColdOpen(
+                    onNext: { advance() },
+                    onLogin: {
+                        loginShortcut = true
+                        step = 1
+                    }
+                )
         case 1: OnbSignInScreen(onDone: { result in
                     signedIn = (result == .signedIn)
+                    // Returning user took the log-in shortcut AND signed in
+                    // successfully → skip the rest of onboarding. They have
+                    // data in Supabase already and shouldn't re-rank.
+                    if loginShortcut, result == .signedIn {
+                        finish()
+                        return
+                    }
                     advance()
                 })
         case 2: OnbManifesto(onNext: { advance() })

@@ -16,8 +16,37 @@ public struct SpoolAppRoot: View {
     /// so `@AppStorage` writes from other views propagate here without a
     /// bindings ping-pong through every intermediate screen.
     @AppStorage("spool.show_signin_sheet") private var showSignInSheet: Bool = false
-    @State private var mode: SpoolMode = .paper
+    /// Persisted theme choice. Defaults to `.system` so new installs pick up
+    /// the device's light/dark mode automatically. Previous installs that set
+    /// `.paper` or `.dark` keep their explicit pick.
+    @AppStorage("spool.theme_preference") private var themePreferenceRaw: String = ThemePreference.system.rawValue
+    /// System color scheme; only used when preference is `.system`.
+    @Environment(\.colorScheme) private var systemColorScheme
     @State private var tab: SpoolTab = .feed
+
+    /// Read/write helper around the raw AppStorage string so the rest of the
+    /// file works with a strongly-typed enum.
+    private var themePreference: ThemePreference {
+        get { ThemePreference(rawValue: themePreferenceRaw) ?? .system }
+        nonmutating set { themePreferenceRaw = newValue.rawValue }
+    }
+
+    /// Effective paper/dark mode used for palette lookups and the palette
+    /// toggle icon. When preference is `.system`, this follows whatever
+    /// light/dark the device is in.
+    private var mode: SpoolMode {
+        themePreference.resolved(environment: systemColorScheme)
+    }
+
+    /// `.preferredColorScheme` value — `nil` when the user chose system so
+    /// SwiftUI doesn't force a scheme and the app rides along with the OS.
+    private var forcedColorScheme: ColorScheme? {
+        switch themePreference {
+        case .system: return nil
+        case .paper:  return .light
+        case .dark:   return .dark
+        }
+    }
 
     // Rank flow
     @State private var flow: RankFlowStep? = nil
@@ -34,6 +63,9 @@ public struct SpoolAppRoot: View {
 
     // Twin modal
     @State private var twinOpen: Friend? = nil
+
+    // Settings sheet
+    @State private var showSettings: Bool = false
 
     public init() {}
 
@@ -84,7 +116,7 @@ public struct SpoolAppRoot: View {
                 .overlay(alignment: .topTrailing) { paletteToggle }
         }
         .spoolMode(mode)
-        .preferredColorScheme(mode == .paper ? .light : .dark)
+        .preferredColorScheme(forcedColorScheme)
         .sheet(isPresented: $showSignInSheet) {
             SignInSheet(onDone: { result in
                 if result == .signedIn {
@@ -94,6 +126,22 @@ public struct SpoolAppRoot: View {
                 }
                 showSignInSheet = false
             })
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsScreen(
+                preference: Binding(
+                    get: { themePreference },
+                    set: { themePreferenceRaw = $0.rawValue }
+                ),
+                effectiveMode: mode,
+                onClose: { showSettings = false },
+                onSignedOut: {
+                    // Flip preview mode on so the signed-out user sees the
+                    // "sign in to save" banner above the tab bar again.
+                    previewMode = true
+                    showSettings = false
+                }
+            )
         }
     }
 
@@ -160,7 +208,7 @@ public struct SpoolAppRoot: View {
             case .friends:
                 FriendsScreen { twinOpen = $0 }
             case .me:
-                ProfileScreen()
+                ProfileScreen(onOpenSettings: { showSettings = true })
             case .rank:
                 FeedScreen() // impossible state; tab won't actually become .rank
             }
@@ -242,7 +290,11 @@ public struct SpoolAppRoot: View {
 
     private var paletteToggle: some View {
         Button {
-            mode = (mode == .paper) ? .dark : .paper
+            // Quick toggle: flip between explicit paper and dark. If the
+            // user was on `.system`, a tap commits to the opposite of the
+            // *current* rendered mode so the tap feels responsive. They
+            // can always pick `match system` back from Settings.
+            themePreferenceRaw = (mode == .paper ? ThemePreference.dark : ThemePreference.paper).rawValue
         } label: {
             Image(systemName: mode == .paper ? "moon.fill" : "sun.max.fill")
                 .font(.system(size: 14))

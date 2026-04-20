@@ -3,9 +3,15 @@ import SwiftUI
 public struct FriendsScreen: View {
     public var onOpenTwin: (Friend) -> Void
 
+    @State private var state: LoadState = .loading
+    @State private var friends: [Friend] = []
+    @State private var hasSession: Bool = false
+
     public init(onOpenTwin: @escaping (Friend) -> Void = { _ in }) {
         self.onOpenTwin = onOpenTwin
     }
+
+    enum LoadState { case loading, loaded, fallback, empty }
 
     public var body: some View {
         SpoolScreen {
@@ -14,20 +20,107 @@ public struct FriendsScreen: View {
                     SpoolPill("+ add", size: .sm)
                 }
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("YOUR TASTE TWINS · 14")
-                            .font(SpoolFonts.mono(10))
-                            .tracking(2)
-                            .foregroundStyle(SpoolTokens.paper.inkSoft)
+                    content
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 110)
+                }
+                .refreshable { await reload() }
+            }
+        }
+        .task { await reload() }
+    }
 
-                        ForEach(SpoolData.friends) { f in
-                            FriendRow(friend: f) { onOpenTwin(f) }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 110)
+    @ViewBuilder
+    private var content: some View {
+        switch state {
+        case .loading:
+            // Minimal placeholder — avoids flashing fixtures for signed-in users
+            // before the first fetch resolves.
+            Color.clear.frame(height: 1)
+        case .empty:
+            signedInEmptyState
+        case .loaded, .fallback:
+            VStack(alignment: .leading, spacing: 8) {
+                sectionHeader
+                ForEach(friends) { f in
+                    FriendRow(friend: f) { onOpenTwin(f) }
                 }
             }
+        }
+    }
+
+    private var sectionHeader: some View {
+        SpoolThemeReader { t, _ in
+            Text(state == .fallback
+                 ? "DEMO TWINS · SIGN IN FOR REAL FRIENDS"
+                 : "YOUR TASTE TWINS · \(friends.count)")
+                .font(SpoolFonts.mono(10))
+                .tracking(2)
+                .foregroundStyle(t.inkSoft)
+        }
+    }
+
+    private var signedInEmptyState: some View {
+        SpoolThemeReader { t, _ in
+            VStack(spacing: 10) {
+                Text("NO TWINS YET")
+                    .font(SpoolFonts.mono(11))
+                    .tracking(2)
+                    .foregroundStyle(t.inkSoft)
+                Text("follow someone to see how your tastes compare.")
+                    .font(SpoolFonts.hand(14))
+                    .foregroundStyle(t.ink)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
+        }
+    }
+
+    private func reload() async {
+        let userID = await SpoolClient.currentUserID()
+        hasSession = userID != nil
+        NSLog("[FriendsScreen] reload: userID=\(userID?.uuidString ?? "nil")")
+
+        guard let userID else {
+            friends = SpoolData.friends
+            state = .fallback
+            return
+        }
+
+        do {
+            let followed = try await FollowRepository.shared.getFollowing(userID: userID)
+            NSLog("[FriendsScreen] followed=\(followed.count)")
+            if followed.isEmpty {
+                friends = []
+                state = .empty
+                return
+            }
+
+            let targetIDs = followed.map(\.id)
+            var scores: [UUID: Int] = [:]
+            do {
+                scores = try await TasteRepository.shared.getCompatibilityScores(
+                    viewerID: userID, targetIDs: targetIDs
+                )
+                NSLog("[FriendsScreen] scores=\(scores.count)")
+            } catch {
+                NSLog("[FriendsScreen] scores FAIL: \(error)")
+            }
+
+            friends = followed.map { followed in
+                Friend(
+                    handle: followed.profile.handle,
+                    name: followed.profile.displayedName,
+                    twin: scores[followed.id] ?? 0,
+                    userID: followed.id
+                )
+            }
+            state = .loaded
+        } catch {
+            NSLog("[FriendsScreen] getFollowing FAIL: \(error)")
+            friends = []
+            state = .empty
         }
     }
 }
