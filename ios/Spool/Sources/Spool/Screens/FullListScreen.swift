@@ -286,8 +286,15 @@ public struct FullListScreen: View {
             NSLog("[FullListScreen] loaded \(fetched.count) items")
         } catch {
             if Task.isCancelled { return }
+            // Keep the previously-displayed shelf intact — a pull-to-refresh
+            // that fails shouldn't wipe the user's visible list. Surface
+            // the failure via a toast instead, same pattern RankPersistence
+            // uses on write failures.
             NSLog("[FullListScreen] getAllRankedItems FAIL: \(error)")
-            items = []
+            ToastCenter.shared.show(
+                "couldn't refresh — check connection",
+                level: .error
+            )
         }
     }
 

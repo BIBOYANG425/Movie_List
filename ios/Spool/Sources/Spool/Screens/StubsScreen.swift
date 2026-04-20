@@ -12,6 +12,10 @@ public struct StubsScreen: View {
     /// "last watched" card — that card shows the newest stub overall, so
     /// its number should reflect the global count, not this month's count.
     @State private var totalStubsCount: Int = 0
+    /// User ID whose data `lastStub`/`totalStubsCount` were fetched for.
+    /// When the signed-in user changes (sign out + sign in as someone
+    /// else), we clear the cache so the new account's data shows up.
+    @State private var cachedForUserID: UUID? = nil
     /// The month currently being viewed. Stored as plain (year, month) ints
     /// rather than a Date so arithmetic never drifts across timezones — the
     /// previous Date-based version mixed `Calendar.current` adds with a
@@ -207,12 +211,30 @@ public struct StubsScreen: View {
 
         guard let userID else {
             if !Task.isCancelled, requested == displayedYM {
-                monthDays = SpoolData.aprilWatched
+                // Only populate the April fixture when the user is actually
+                // browsing April 2026 — otherwise a preview-mode user
+                // scrolling to May/March sees fake "April watched" days
+                // sprinkled into the wrong month. Filter instead of
+                // unconditionally assigning the whole fixture.
+                if requested == Self.aprilFixtureYM {
+                    monthDays = SpoolData.aprilWatched
+                } else {
+                    monthDays = []
+                }
                 monthTierCounts = Self.bucketTiers(monthDays)
                 lastStub = nil
                 totalStubsCount = 0
+                cachedForUserID = nil
             }
             return
+        }
+
+        // Account switch → wipe the cache so the new user sees their
+        // own "last watched" card, not the previous account's.
+        if cachedForUserID != userID {
+            lastStub = nil
+            totalStubsCount = 0
+            cachedForUserID = userID
         }
 
         do {
@@ -301,6 +323,12 @@ public struct StubsScreen: View {
         let m = month >= 1 && month <= 12 ? months[month] : "—"
         return "\(m) · \(String(format: "%02d", day)) · \(parts[0])"
     }
+
+    /// The year/month the `SpoolData.aprilWatched` fixture represents.
+    /// Keep in sync with the fixture content in `SpoolData.swift`. The
+    /// preview-mode guard compares against this before surfacing fixture
+    /// days so browsing past/future months doesn't show April tiles.
+    private static let aprilFixtureYM = YearMonth(year: 2026, month: 4)
 
     private static func stubNumber(_ count: Int) -> String {
         "#" + String(format: "%04d", max(count, 0))

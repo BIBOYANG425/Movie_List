@@ -63,7 +63,7 @@ public actor AuthService {
 
         do {
             let session = try await client.auth.signIn(email: trimmed, password: password)
-            NSLog("[AuthService] signIn OK: user=\(session.user.id.uuidString)")
+            NSLog("[AuthService] signIn OK: user=\(Self.redactUUID(session.user.id))")
             await flushOnboardingQueue()
             return .success(session.user.id)
         } catch {
@@ -82,7 +82,7 @@ public actor AuthService {
 
         do {
             let response = try await client.auth.signUp(email: trimmed, password: password)
-            NSLog("[AuthService] signUp OK: user=\(response.user.id.uuidString) session=\(response.session != nil)")
+            NSLog("[AuthService] signUp OK: user=\(Self.redactUUID(response.user.id)) session=\(response.session != nil)")
             // signUp can return a user with no session when email confirmation
             // is enabled on the project. Treat that as "check your email".
             if response.session == nil {
@@ -136,7 +136,7 @@ public actor AuthService {
                 // across accounts — matches how the web app treats OAuth.
                 authSession.prefersEphemeralWebBrowserSession = true
             }
-            NSLog("[AuthService] signInWithGoogle OK: user=\(session.user.id.uuidString)")
+            NSLog("[AuthService] signInWithGoogle OK: user=\(Self.redactUUID(session.user.id))")
             await flushOnboardingQueue()
             return .success(session.user.id)
         } catch {
@@ -178,6 +178,17 @@ public actor AuthService {
 
     public func currentUserID() async -> UUID? {
         await SpoolClient.currentUserID()
+    }
+
+    // MARK: diagnostics
+
+    /// Stable identifiers (even inside debug logs) are a privacy risk —
+    /// they're the same string on every machine and let downstream log
+    /// aggregation correlate sessions across installs. Keep an 8-char
+    /// prefix for debugging repros ("did my sign-in land?") without
+    /// handing out the full user ID.
+    private static func redactUUID(_ id: UUID) -> String {
+        "\(id.uuidString.prefix(8))…"
     }
 
     // MARK: classify

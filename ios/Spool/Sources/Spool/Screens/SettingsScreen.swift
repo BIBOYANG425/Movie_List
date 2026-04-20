@@ -123,10 +123,22 @@ public struct SettingsScreen: View {
                     divider(t: t)
                     linkRow(title: "edit profile", t: t) { editing = true }
                 }
-            } else if email != nil {
-                row(title: email ?? "—", subtitle: "profile not loaded yet", t: t)
+            } else if hasSession {
+                // Signed in, but neither profile fetch nor auth-session
+                // email hydrated (transient network, RLS glitch). Show
+                // something honest — the sign-out path elsewhere in the
+                // sheet still works because it keys off `hasSession`.
+                row(
+                    title: email ?? "signed in",
+                    subtitle: email == nil
+                        ? "profile not loaded yet — pull to retry"
+                        : "profile not loaded yet",
+                    t: t
+                )
             } else {
-                row(title: "preview mode", subtitle: "sign in from the home screen to save your rankings", t: t)
+                row(title: "preview mode",
+                    subtitle: "sign in from the home screen to save your rankings",
+                    t: t)
             }
         }
     }

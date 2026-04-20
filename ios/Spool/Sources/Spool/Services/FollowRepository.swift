@@ -132,12 +132,11 @@ public actor FollowRepository {
     /// Follow `targetID` as the signed-in user, plus a best-effort
     /// `new_follower` notification insert.
     ///
-    /// **Duplicate follows short-circuit:** the `friend_follows` table has a
-    /// unique constraint on (follower_id, following_id), so re-following
-    /// somebody throws a constraint-violation error. This function catches
-    /// that, returns `false`, and does NOT attempt to write a notification.
-    /// Callers that want an idempotent "make sure I follow X" path should
-    /// check follow state first or await a feature-flagged upsert variant.
+    /// **Duplicate handling is explicit now:** we only treat the Postgres
+    /// `unique_violation` error (code 23505) as "already following, no-op,
+    /// return false without a notification". Any other error (network,
+    /// RLS rejection, timeout) is re-thrown so transient failures don't
+    /// get silently swallowed as "already following".
     @discardableResult
     public func follow(targetID: UUID) async throws -> Bool {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
@@ -147,12 +146,19 @@ public actor FollowRepository {
         do {
             _ = try await client.from("friend_follows").insert(payload).execute()
         } catch {
-            NSLog("[FollowRepository] follow failed (likely duplicate): \(error)")
-            return false
+            if Self.isUniqueViolation(error) {
+                // Already following this user — idempotent no-op; skip the
+                // notification so we don't spam them on every re-tap.
+                NSLog("[FollowRepository] follow: already follows (ignored)")
+                return false
+            }
+            // Genuine failure: let the caller see it and decide whether to
+            // retry or toast. Don't masquerade as "already following".
+            NSLog("[FollowRepository] follow FAILED: \(error)")
+            throw error
         }
 
-        // Happy path only — duplicate-follow errors short-circuited above,
-        // so reaching here means we wrote a new edge and should notify.
+        // New edge — notify.
         let notif = NotificationInsertPayload(
             user_id: targetID,
             type: "new_follower",
@@ -163,9 +169,23 @@ public actor FollowRepository {
         do {
             _ = try await client.from("notifications").insert(notif).execute()
         } catch {
+            // Notification is best-effort — don't fail the follow just
+            // because the notification insert hiccupped.
             NSLog("[FollowRepository] follow notification insert failed: \(error)")
         }
         return true
+    }
+
+    /// Detect Postgres unique_violation (SQLSTATE 23505) surfaced through
+    /// PostgREST. Supabase-swift exposes the error code via a couple of
+    /// different shapes depending on the call site; string-matching the
+    /// rendered description is a deliberate fallback for the cases where
+    /// the typed Error doesn't carry a code we can pattern-match on.
+    private static func isUniqueViolation(_ error: Error) -> Bool {
+        let s = "\(error)"
+        return s.contains("23505")
+            || s.lowercased().contains("duplicate key")
+            || s.lowercased().contains("unique constraint")
     }
 
     @discardableResult

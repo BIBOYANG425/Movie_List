@@ -134,6 +134,7 @@ public struct OnboardingFlow: View {
         if signedIn, SpoolClient.shared != nil {
             persisting = true
             Task {
+                var failures: [QueuedRanking] = []
                 for r in rankings {
                     do {
                         let insert = RankingInsert(
@@ -150,9 +151,22 @@ public struct OnboardingFlow: View {
                         )
                         _ = try await RankingRepository.shared.insertRanking(insert)
                     } catch {
-                        // Toast is deferred to Task 4 — log for now so the
-                        // failure isn't silent during development.
-                        print("[OnboardingFlow] insertRanking failed: \(error)")
+                        NSLog("[OnboardingFlow] insertRanking failed for \(r.tmdbId): \(error)")
+                        failures.append(r)
+                    }
+                }
+                // Don't swallow failures — push them to the OnboardingQueue
+                // so the next flush cycle (triggered by a subsequent sign-in
+                // or an explicit retry) can replay them. Toast tells the
+                // user their picks didn't fully land.
+                if !failures.isEmpty {
+                    await MainActor.run {
+                        for row in failures { OnboardingQueue.append(row) }
+                        ToastCenter.shared.show(
+                            "saved \(rankings.count - failures.count) of \(rankings.count) picks — we'll retry on next sign-in",
+                            level: .error,
+                            duration: 5
+                        )
                     }
                 }
                 await MainActor.run {

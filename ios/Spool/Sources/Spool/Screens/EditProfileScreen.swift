@@ -211,20 +211,34 @@ public struct EditProfileScreen: View {
         }
     }
 
-    /// Only enable save when the user actually changed something.
+    /// Trimmed display-name value; the canonical comparison input for both
+    /// the dirty-check and the network call.
+    private var cleanedDisplayName: String {
+        displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// Trimmed bio value; same rationale as cleanedDisplayName.
+    private var cleanedBio: String {
+        bio.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Only enable save when the user actually changed something. Compare
+    /// trimmed values on both sides so leading/trailing whitespace the user
+    /// might have typed doesn't look like a change.
     private var dirty: Bool {
-        let cleanName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanBio = bio.trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleanName != (initial.display_name ?? "")
-            || cleanBio != (initial.bio ?? "")
+        let initialName = (initial.display_name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let initialBio = (initial.bio ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleanedDisplayName != initialName || cleanedBio != initialBio
     }
 
     private func save() {
         guard !working else { return }
         working = true
         errorMessage = nil
-        let name = displayName
-        let newBio = bio
+        // Use the same trimmed values that `dirty` already computed — that
+        // way the button's enabled state and the network payload agree on
+        // what "the current edit" is.
+        let name = cleanedDisplayName
+        let newBio = cleanedBio
         Task { @MainActor in
             // Single `defer` on the main actor ensures `working` is always
             // cleared, no matter which branch we take. Saves duplicating

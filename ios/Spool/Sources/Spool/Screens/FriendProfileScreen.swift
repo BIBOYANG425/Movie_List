@@ -215,7 +215,10 @@ public struct FriendProfileScreen: View {
     private var topFourSection: some View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 0) {
-                Text("THEIR TOP 4 · ALL TIME")
+                // Data actually comes from getTopTier(..., tier: .S, ...) —
+                // so the label says "S-tier" rather than implying all tiers
+                // are summed.
+                Text("THEIR TOP 4 · S-TIER")
                     .font(SpoolFonts.mono(10))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)
@@ -277,7 +280,10 @@ public struct FriendProfileScreen: View {
     private var recentSection: some View {
         SpoolThemeReader { t, mode in
             VStack(alignment: .leading, spacing: 0) {
-                Text("RECENT STUBS · \(Self.currentMonthAbbrev())")
+                // Derive the month from the newest stub the user actually
+                // has (they may not have watched anything this month).
+                // `recent` is sorted newest-first by getAllStubs.
+                Text("RECENT STUBS · \(recentMonthAbbrev)")
                     .font(SpoolFonts.mono(10))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)
@@ -456,6 +462,21 @@ public struct FriendProfileScreen: View {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "MMM"
         return f.string(from: Date()).uppercased()
+    }
+
+    /// Month abbreviation derived from the most recent stub's `watched_date`.
+    /// Falls back to the current month when `recent` is empty so the header
+    /// never reads blank. Uses the static months table directly to avoid
+    /// pulling a DateFormatter into a hot computed property.
+    private var recentMonthAbbrev: String {
+        guard let newest = recent.first else { return Self.currentMonthAbbrev() }
+        let parts = newest.watched_date.split(separator: "-")
+        guard parts.count >= 2, let m = Int(parts[1]), (1...12).contains(m) else {
+            return Self.currentMonthAbbrev()
+        }
+        let months = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+        return months[m]
     }
 }
 

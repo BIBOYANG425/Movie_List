@@ -28,9 +28,11 @@ public actor TasteRepository {
 
     // MARK: single-pair
 
-    /// Full compatibility breakdown. Returns `nil` only when reads fail;
-    /// a pair with zero shared movies returns a populated object with
-    /// `score = 0` and empty arrays.
+    /// Full compatibility breakdown. Read failures are thrown (the signature
+    /// already requires `throws`) — this method never returns nil. A pair
+    /// with zero shared movies returns a populated `TasteCompatibility`
+    /// with `score = 0` and empty arrays, so callers can render a
+    /// "no overlap yet" state without nil-handling the result itself.
     public func getTasteCompatibility(viewerID: UUID, targetID: UUID) async throws -> TasteCompatibility {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
 
@@ -196,11 +198,12 @@ public actor TasteRepository {
             let tScore = tierScore[t.tier] ?? 3
             let distance = abs(vScore - tScore)
 
+            let s = distanceScore(distance)
+            scores.append(s)
             switch distance {
-            case 0: agreements += 1; scores.append(100)
-            case 1: nearAgreements += 1; scores.append(60)
-            case 2: disagreements += 1; scores.append(20)
-            default: disagreements += 1; scores.append(0)
+            case 0:  agreements += 1
+            case 1:  nearAgreements += 1
+            default: disagreements += 1
             }
 
             let viewerTier = Tier(rawValue: v.tier) ?? .B
@@ -262,19 +265,24 @@ public actor TasteRepository {
             guard let tTier = target[id] else { continue }
             let v = tierScore[vTier] ?? 3
             let t = tierScore[tTier] ?? 3
-            let distance = abs(v - t)
-            let s: Int
-            switch distance {
-            case 0: s = 100
-            case 1: s = 60
-            case 2: s = 20
-            default: s = 0
-            }
-            total += s
+            total += distanceScore(abs(v - t))
             count += 1
         }
         guard count > 0 else { return 0 }
         return Int((Double(total) / Double(count)).rounded())
+    }
+
+    /// Tier-distance → 0-100 compatibility weight. Same mapping used by
+    /// both `overallScore` (batch path) and `compute` (full-breakdown
+    /// path) — lifted out so the two can't drift. Mirrors web's
+    /// distance weighting in `tasteService.ts`.
+    private static func distanceScore(_ distance: Int) -> Int {
+        switch distance {
+        case 0:  return 100   // tier match
+        case 1:  return 60    // one tier apart
+        case 2:  return 20    // two tiers apart
+        default: return 0     // tiers or more apart
+        }
     }
 }
 

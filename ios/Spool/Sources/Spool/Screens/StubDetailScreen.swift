@@ -42,7 +42,12 @@ public struct StubDetailScreen: View {
                             // back to the day-only label for legacy fixtures
                             // that don't carry full date info.
                             date: Self.formatDate(day: stub.day, month: stub.month, year: stub.year),
-                            stubNo: "#\(String(format: "%04d", max(stub.day, 0)))"
+                            // Day-of-month alone collapses to the same ID
+                            // for different stubs, so encode the full date
+                            // as YYYYMMDD when it's available. Fixture
+                            // rows without year/month still get a stable
+                            // day-only number so the label isn't blank.
+                            stubNo: Self.stubNumber(day: stub.day, month: stub.month, year: stub.year)
                         )
                         .rotationEffect(.degrees(-1.2))
 
@@ -80,6 +85,15 @@ public struct StubDetailScreen: View {
 }
 
 extension StubDetailScreen {
+    /// `#YYYYMMDD` when we have the full date, `#DD` when we only have a
+    /// day (fixtures). Guarantees different-day stubs get different IDs.
+    static func stubNumber(day: Int, month: Int?, year: Int?) -> String {
+        guard let month, let year else {
+            return "#\(String(format: "%02d", max(day, 0)))"
+        }
+        return "#\(String(format: "%04d%02d%02d", year, month, max(day, 0)))"
+    }
+
     /// "APR · 18 · 2026" style format. If year or month are missing (fixture
     /// rows), returns a day-only fallback so we don't render a misleading
     /// full date with placeholder values.

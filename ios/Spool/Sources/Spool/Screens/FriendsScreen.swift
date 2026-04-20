@@ -6,7 +6,9 @@ public struct FriendsScreen: View {
 
     @State private var state: LoadState = .loading
     @State private var friends: [Friend] = []
-    @State private var hasSession: Bool = false
+    // Session presence is already captured by `state` (.fallback means no
+    // session, everything else means signed-in), so a separate hasSession
+    // flag would just duplicate that signal.
 
     public init(onOpenTwin: @escaping (Friend) -> Void = { _ in },
                 onOpenProfile: @escaping (Friend) -> Void = { _ in }) {
@@ -14,7 +16,12 @@ public struct FriendsScreen: View {
         self.onOpenProfile = onOpenProfile
     }
 
-    enum LoadState { case loading, loaded, fallback, empty }
+    /// - loading: first fetch in flight
+    /// - loaded:  signed-in, has followed profiles
+    /// - fallback: preview mode, showing SpoolData.friends
+    /// - empty:   signed-in but follows zero profiles
+    /// - error:   fetch failed; distinct from "empty" so users can retry
+    enum LoadState { case loading, loaded, fallback, empty, error }
 
     public var body: some View {
         SpoolScreen {
@@ -42,6 +49,8 @@ public struct FriendsScreen: View {
             Color.clear.frame(height: 1)
         case .empty:
             signedInEmptyState
+        case .error:
+            errorState
         case .loaded, .fallback:
             VStack(alignment: .leading, spacing: 8) {
                 sectionHeader
@@ -53,6 +62,22 @@ public struct FriendsScreen: View {
                     )
                 }
             }
+        }
+    }
+
+    private var errorState: some View {
+        SpoolThemeReader { t, _ in
+            VStack(spacing: 10) {
+                Text("COULDN'T LOAD FRIENDS")
+                    .font(SpoolFonts.mono(11))
+                    .tracking(2)
+                    .foregroundStyle(t.inkSoft)
+                Text("pull to retry.")
+                    .font(SpoolFonts.hand(14))
+                    .foregroundStyle(t.ink)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
         }
     }
 
@@ -86,8 +111,7 @@ public struct FriendsScreen: View {
 
     private func reload() async {
         let userID = await SpoolClient.currentUserID()
-        hasSession = userID != nil
-        NSLog("[FriendsScreen] reload: userID=\(userID?.uuidString ?? "nil")")
+        NSLog("[FriendsScreen] reload: hasSession=\(userID != nil)")
 
         guard let userID else {
             friends = SpoolData.friends
@@ -125,9 +149,13 @@ public struct FriendsScreen: View {
             }
             state = .loaded
         } catch {
+            // Network/RLS failure — distinct from "signed-in but follows
+            // zero profiles". `.error` surfaces a retry prompt; keep
+            // `friends` empty so we don't show stale rows next to an
+            // error header.
             NSLog("[FriendsScreen] getFollowing FAIL: \(error)")
             friends = []
-            state = .empty
+            state = .error
         }
     }
 }
@@ -139,56 +167,63 @@ struct FriendRow: View {
 
     var body: some View {
         SpoolThemeReader { t, _ in
-            // Outer button → taste twin (primary, keeps existing behavior).
-            // Inner button on the handle text → read-only profile. Nesting
-            // a button inside a button stays legible because SwiftUI hit-tests
-            // the innermost tappable view first — tapping the handle opens
-            // the profile, tapping anywhere else (avatar, twin %, card body)
-            // still opens TwinScreen.
-            Button(action: action) {
-                HStack(spacing: 12) {
-                    StripedAvatar(size: 42)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Button(action: onOpenProfile) {
-                            HStack(spacing: 4) {
-                                Text(friend.handle)
-                                    .font(SpoolFonts.serif(18))
-                                    .foregroundStyle(t.ink)
-                                Text("→")
-                                    .font(SpoolFonts.mono(10))
-                                    .foregroundStyle(t.inkSoft)
-                            }
+            // Two tappable regions sharing one visual card. Using a plain
+            // container + `.contentShape` + `.onTapGesture` for the card
+            // body and an actual Button only for the handle avoids nesting
+            // a Button inside a Button (which hides the inner one from
+            // VoiceOver and causes odd focus rings).
+            HStack(spacing: 12) {
+                StripedAvatar(size: 42)
+                VStack(alignment: .leading, spacing: 4) {
+                    // Handle → read-only friend profile. Separate tappable
+                    // so VoiceOver exposes it independently of the card body.
+                    Button(action: onOpenProfile) {
+                        HStack(spacing: 4) {
+                            Text(friend.handle)
+                                .font(SpoolFonts.serif(18))
+                                .foregroundStyle(t.ink)
+                            Text("→")
+                                .font(SpoolFonts.mono(10))
+                                .foregroundStyle(t.inkSoft)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("View \(friend.handle) profile")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("View \(friend.handle) profile")
+                    .accessibilityAddTraits(.isButton)
 
-                        HStack(spacing: 2) {
-                            Text("last watched")
-                            Text("Past Lives").italic()
-                            Text("· S")
-                        }
-                        .font(SpoolFonts.hand(12))
-                        .foregroundStyle(t.inkSoft)
+                    HStack(spacing: 2) {
+                        Text("last watched")
+                        Text("Past Lives").italic()
+                        Text("· S")
                     }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text("\(friend.twin)%")
-                            .font(SpoolFonts.serif(22))
-                            .foregroundStyle(t.accent)
-                        Text("TWIN")
-                            .font(SpoolFonts.mono(9))
-                            .tracking(1)
-                            .foregroundStyle(t.inkSoft)
-                    }
+                    .font(SpoolFonts.hand(12))
+                    .foregroundStyle(t.inkSoft)
                 }
-                .padding(12)
-                .background(t.cream)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(t.rule, lineWidth: 1.5)
-                )
+                Spacer()
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("\(friend.twin)%")
+                        .font(SpoolFonts.serif(22))
+                        .foregroundStyle(t.accent)
+                    Text("TWIN")
+                        .font(SpoolFonts.mono(9))
+                        .tracking(1)
+                        .foregroundStyle(t.inkSoft)
+                }
             }
-            .buttonStyle(.plain)
+            .padding(12)
+            .background(t.cream)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(t.rule, lineWidth: 1.5)
+            )
+            // Card body → taste twin (primary). `contentShape` ensures the
+            // full card (including Spacer regions) is tappable, not just
+            // the text glyphs.
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Open taste twin with \(friend.handle), \(friend.twin)% match")
+            .accessibilityAddTraits(.isButton)
         }
     }
 }

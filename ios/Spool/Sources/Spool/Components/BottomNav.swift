@@ -63,9 +63,13 @@ public struct BottomNav: View {
         .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
     }
 
-    /// The floating + sits centered horizontally on top of the capsule. Its
-    /// vertical center aligns with the capsule's top edge so half the circle
-    /// sticks up above the nav — classic "raised FAB" look without clipping.
+    /// The floating + sits centered horizontally on top of the capsule.
+    /// With a 54pt-diameter button and `.offset(y: -22)`, the button's
+    /// center sits 5pt below the capsule's top edge — 22pt of the circle
+    /// extends above the capsule, the other 32pt overlaps. That's the
+    /// intentional asymmetry: a true half-in-half-out circle (offset
+    /// -27) reads as floating and detached, whereas this slight overlap
+    /// keeps it visually anchored to the nav.
     @ViewBuilder
     private func plusOverlay(t: SpoolPalette) -> some View {
         Button { onTab(.rank) } label: {
@@ -79,9 +83,8 @@ public struct BottomNav: View {
                 .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 2)
         }
         .buttonStyle(.plain)
-        // Shift up so the button is half above / half overlapping the capsule.
-        // 54-height / 2 = 27 → offset -22 keeps most of the button above the
-        // pill while still overlapping enough to feel attached, not orphaned.
+        // 22pt above the capsule edge, 32pt overlaps. Tweaking to -27
+        // would true-center on the capsule top.
         .offset(y: -22)
         .accessibilityLabel("Rank a new movie")
     }

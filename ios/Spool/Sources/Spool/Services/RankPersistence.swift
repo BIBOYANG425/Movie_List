@@ -28,6 +28,17 @@ public enum RankPersistence {
         moods: [String] = [],
         line: String = ""
     ) async {
+        // Not-configured path: no Supabase client at all. Skip entirely so
+        // we don't stash rows in the preview queue for an app that can
+        // never flush them (e.g. a bundle without SUPABASE_URL). Previously
+        // this fell through to the preview-mode branch, which would flip
+        // `spool.show_signin_sheet` for an app that literally has no
+        // sign-in — confusing and pointless.
+        guard SpoolClient.shared != nil else {
+            NSLog("[RankPersistence] save skipped: SpoolClient not configured")
+            return
+        }
+
         let genres = movie.genres.isEmpty ? ["Drama"] : movie.genres
         let director = movie.director.isEmpty ? nil : movie.director
         let year = normalizedYear(movie.year)

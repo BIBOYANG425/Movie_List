@@ -39,11 +39,17 @@ public struct TwinScreen: View {
                             .foregroundStyle(SpoolTokens.paper.inkSoft)
                             .padding(.top, 22)
 
+                        // Fixture counts (24/19/38) are only valid as preview
+                        // decoration — exposing them for a real friend would
+                        // be lying about how many films you share. For real
+                        // friends before `compat` loads, show zeros so the
+                        // chart reads as "pending" rather than confidently
+                        // wrong.
                         VennChart(
                             friendHandle: friend.handle,
-                            viewerOnly: compat?.viewerOnlyCount ?? 24,
-                            targetOnly: compat?.targetOnlyCount ?? 19,
-                            shared: compat?.sharedCount ?? 38
+                            viewerOnly: compat?.viewerOnlyCount ?? (isPreviewFriend ? 24 : 0),
+                            targetOnly: compat?.targetOnlyCount ?? (isPreviewFriend ? 19 : 0),
+                            shared: compat?.sharedCount ?? (isPreviewFriend ? 38 : 0)
                         )
                         .frame(height: 200)
                         .padding(.top, 6)
@@ -143,15 +149,23 @@ public struct TwinScreen: View {
         compat?.score ?? friend.twin
     }
 
+    /// True for the hardcoded `SpoolData.friends` seed rows which have no
+    /// real Supabase user attached. Drives whether it's safe to use the
+    /// decorative fixture numbers (24/19/38) or we should render zeros
+    /// and wait for `compat` to land.
+    private var isPreviewFriend: Bool { friend.userID == nil }
+
     /// Three hand-scripted lines that summarize the taste relationship.
-    /// Built from real data when available, falls back to generic placeholders
-    /// when we don't have enough signal.
+    /// Built from real data when available, falls back to generic — and
+    /// intentionally non-pronouned — placeholders when we don't have
+    /// enough signal. The previous fallback used "she/her" which
+    /// misgendered a majority of users.
     private var twinSummaryLines: [Text] {
         guard let compat, compat.sharedCount > 0 else {
             return [
-                Text("you both love ") + markText("a24 heartbreak") + Text("."),
-                Text("she's into ") + markText("body horror") + Text(", you aren't."),
-                Text("you're a ") + markText("wong kar-wai") + Text(" head, she's new.")
+                Text("no shared films yet."),
+                Text("rank a few more and the taste map fills in."),
+                Text("then come back — we'll do the math.")
             ]
         }
 
@@ -188,8 +202,18 @@ public struct TwinScreen: View {
                 Text(" and argue about ") + markText("\(compat.disagreements)") + Text(".")
             )
         }
-        while lines.count < 3 {
-            lines.append(Text("shared \(compat.sharedCount) films so far."))
+        // Pad with distinct neutral lines rather than repeating the same
+        // "shared N films" sentence — the UI renders them stacked and a
+        // duplicated line reads like a bug.
+        let fillers: [Text] = [
+            Text("shared \(compat.sharedCount) films so far."),
+            Text("plenty more to compare."),
+            Text("rank a few more to see the shape.")
+        ]
+        var fillerIndex = 0
+        while lines.count < 3, fillerIndex < fillers.count {
+            lines.append(fillers[fillerIndex])
+            fillerIndex += 1
         }
         return Array(lines.prefix(3))
     }
