@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// User-visible ephemeral messages. Surfaces persistence failures and other
 /// per-action feedback that previously got swallowed by `try?`. Latest-wins
@@ -62,11 +65,17 @@ public final class ToastCenter: ObservableObject {
 
     /// Show a toast. Replaces any current toast (latest wins) and cancels
     /// any in-flight auto-dismiss so the new message gets its own full
-    /// `duration` window.
+    /// `duration` window. Error-level toasts also post an accessibility
+    /// announcement so VoiceOver users hear the message.
     public func show(_ text: String, level: ToastLevel = .info, duration: TimeInterval = 3) {
         pendingDismiss?.cancel()
         let message = ToastMessage(text: text, level: level)
         current = message
+        #if canImport(UIKit)
+        if level == .error {
+            UIAccessibility.post(notification: .announcement, argument: text)
+        }
+        #endif
         pendingDismiss = Task { [weak self, sleeper] in
             await sleeper(duration)
             guard !Task.isCancelled else { return }
@@ -85,6 +94,14 @@ public final class ToastCenter: ObservableObject {
         pendingDismiss?.cancel()
         pendingDismiss = nil
         current = nil
+    }
+
+    /// Test hook: await the current pending dismiss task (if any) so tests
+    /// can deterministically observe the post-auto-dismiss state without
+    /// spinning a `Task.yield()` loop. No-op in production — nothing calls
+    /// this outside tests.
+    internal func waitForPendingDismiss() async {
+        await pendingDismiss?.value
     }
 }
 

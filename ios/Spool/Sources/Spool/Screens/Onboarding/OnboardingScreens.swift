@@ -137,9 +137,11 @@ struct OnbColdOpen: View {
 
 public enum SignInResult { case signedIn, skipped }
 
-/// Step 1 of onboarding. Framing copy + progress dots + skip link live here;
-/// the email/password form itself is the shared `SignInFormBody` used by
-/// `SignInSheet` so the two surfaces stay in lockstep.
+/// Step 7 of onboarding (moved from step 1 — users now experience the full
+/// product before being asked to commit). Framing copy + progress dots +
+/// skip link live here; the email/password form AND Google OAuth button
+/// are the shared `SignInFormBody` used by `SignInSheet` so the two
+/// surfaces stay in lockstep.
 struct OnbSignInScreen: View {
     var onDone: (SignInResult) -> Void
 
@@ -149,7 +151,7 @@ struct OnbSignInScreen: View {
                 t.cream.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        OnbDots(step: 1)
+                        OnbDots(step: 7)
 
                         Text("— RESERVE YOUR SEAT —")
                             .font(SpoolFonts.mono(10))
@@ -200,7 +202,7 @@ struct OnbManifesto: View {
             ZStack(alignment: .top) {
                 t.cream.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 0) {
-                    OnbDots(step: 2)
+                    OnbDots(step: 1)
 
                     Text("— THE RULES —")
                         .font(SpoolFonts.mono(10))
@@ -290,7 +292,7 @@ struct OnbGrid: View {
                 t.cream.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        OnbDots(step: 3)
+                        OnbDots(step: 2)
 
                         Text("seen it? tier it.")
                             .font(SpoolFonts.serif(26))
@@ -437,16 +439,27 @@ struct OnbGrid: View {
 
 extension TMDBMovie {
     /// Local fallback when TMDB is unreachable — posterUrl nil so PosterBlock's
-    /// synthetic palette kicks in.
+    /// synthetic palette kicks in. `tmdbId` is a deterministic FNV-1a hash of
+    /// the string id, negated to stay out of real TMDB id space and to remain
+    /// stable across app launches (String.hashValue is randomized per-run,
+    /// which would corrupt queued rankings and poster seeds).
     static func fixture(id: String, title: String, year: Int, seed: Int) -> TMDBMovie {
         TMDBMovie(
-            id: id, tmdbId: -abs(id.hashValue), title: title,
+            id: id, tmdbId: stableFixtureId(id), title: title,
             year: String(year), posterUrl: nil, genres: [],
             overview: "", voteAverage: nil
         )
-        // seed is derived from tmdbId in gridItem; for fixtures we use the provided
-        // seed via a second hashing but the simple negative-id stands in fine.
-        // (seed arg kept for readability / future switch.)
+    }
+
+    /// FNV-1a 32-bit over the UTF-8 bytes, negated. Deterministic across
+    /// launches and distinct from any real (positive) TMDB id.
+    private static func stableFixtureId(_ s: String) -> Int {
+        var hash: UInt32 = 0x811c9dc5
+        for byte in s.utf8 {
+            hash ^= UInt32(byte)
+            hash = hash &* 0x01000193
+        }
+        return -Int(hash)
     }
 }
 
@@ -483,7 +496,7 @@ struct OnbH2H: View {
             ZStack(alignment: .top) {
                 t.cream.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    OnbDots(step: 4)
+                    OnbDots(step: 3)
 
                     Text("— HEAD TO HEAD · MATCH \(currentMatch + 1) OF \(totalMatches) —")
                         .font(SpoolFonts.mono(10))
@@ -572,9 +585,12 @@ struct OnbH2H: View {
         let next = challengerIdx + 1
         if next >= contenders.count {
             // All matchups done — hand back the final champion + eliminated
-            // contenders in the order they fell.
+            // contenders. Reverse the losers list so the RUNNER-UP (last to
+            // fall) comes first; that's the order callers use to assign
+            // rank_position 2..N in the contender tier, with the runner-up
+            // directly below the winner rather than the earliest knockout.
             let winner = contenders[championIdx]
-            onNext(winner, losers)
+            onNext(winner, Array(losers.reversed()))
         } else {
             challengerIdx = next
             self.picked = nil
@@ -635,7 +651,7 @@ struct OnbPrint: View {
             ZStack(alignment: .top) {
                 t.cream.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    OnbDots(step: 5)
+                    OnbDots(step: 4)
 
                     Text(stage < 2 ? "printing…" : "your first stub.")
                         .font(SpoolFonts.script(28))
@@ -768,7 +784,7 @@ struct OnbIdentity: View {
                 t.cream.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        OnbDots(step: 6)
+                        OnbDots(step: 5)
 
                         Text("— WHO SHALL WE SEAT? —")
                             .font(SpoolFonts.mono(10))
@@ -852,140 +868,11 @@ struct OnbIdentity: View {
     }
 }
 
-// MARK: - 07 Twins
-
-struct OnbTwins: View {
-    var onNext: () -> Void
-
-    private let twins: [(name: String, handle: String, twin: Int)] = [
-        ("jay patel", "jpatel", 64),
-        ("ana ruiz", "anaruiz", 58),
-        ("theo lin", "theolin", 41),
-    ]
-
-    var body: some View {
-        SpoolThemeReader { t, _ in
-            ZStack(alignment: .top) {
-                t.cream.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        OnbDots(step: 7)
-
-                        Text("— SCORED FROM YOUR TIERS —")
-                            .font(SpoolFonts.mono(10))
-                            .tracking(3)
-                            .foregroundStyle(t.inkSoft)
-                            .padding(.top, 30)
-
-                        Text("your taste twins.")
-                            .font(SpoolFonts.serif(36))
-                            .tracking(-1)
-                            .foregroundStyle(t.ink)
-                            .padding(.top, 8)
-
-                        Text("people who'd fight you on the same films.")
-                            .font(SpoolFonts.hand(13))
-                            .foregroundStyle(t.inkSoft)
-                            .padding(.top, 6)
-
-                        ZStack(alignment: .topTrailing) {
-                            featuredCard(t: t)
-                            Text("#1 TWIN")
-                                .font(SpoolFonts.mono(10))
-                                .tracking(2)
-                                .foregroundStyle(t.cream)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(t.accent)
-                                .clipShape(RoundedCorners(tl: 0, tr: 0, bl: 8, br: 0))
-                        }
-                        .padding(.top, 20)
-
-                        VStack(spacing: 6) {
-                            ForEach(twins, id: \.handle) { c in
-                                twinRow(name: c.name, handle: c.handle, score: c.twin, t: t)
-                            }
-                        }
-                        .padding(.top, 12)
-
-                        Spacer(minLength: 140)
-                    }
-                    .padding(.horizontal, 22)
-                    .padding(.top, 50)
-                }
-            }
-            .overlay(alignment: .bottom) {
-                OnbFoot(label: "follow all →", onNext: onNext, onSkip: onNext)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func featuredCard(t: SpoolPalette) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 14) {
-                Circle()
-                    .fill(LinearGradient(colors: [t.cream, Color(hex: 0xE5D3A8)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 64, height: 64)
-                    .overlay(Circle().stroke(t.ink, lineWidth: 1.5))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("mei chen").font(SpoolFonts.serif(22)).foregroundStyle(t.ink)
-                    Text("@meichen")
-                        .font(SpoolFonts.mono(11))
-                        .tracking(0.8)
-                        .foregroundStyle(t.inkSoft)
-                }
-                Spacer()
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("72").font(SpoolFonts.serif(56)).foregroundStyle(t.accent)
-                Text("% twin score").font(SpoolFonts.hand(18)).foregroundStyle(t.ink)
-            }
-            .padding(.top, 12)
-
-            Text("you both S-tier'd Past Lives and ITMFL.\nyou disagree on Aftersun (she thinks it's C).")
-                .font(SpoolFonts.hand(13))
-                .lineSpacing(3)
-                .foregroundStyle(t.inkSoft)
-                .padding(.top, 6)
-        }
-        .padding(16)
-        .background(t.cream2)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(t.ink, lineWidth: 1.5))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    @ViewBuilder
-    private func twinRow(name: String, handle: String, score: Int, t: SpoolPalette) -> some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(t.cream2)
-                .frame(width: 30, height: 30)
-                .overlay(Circle().stroke(t.ink, lineWidth: 1))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name).font(SpoolFonts.hand(13)).bold().foregroundStyle(t.ink)
-                Text("@\(handle)").font(SpoolFonts.mono(9)).foregroundStyle(t.inkSoft)
-            }
-            Spacer()
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("\(score)").font(SpoolFonts.serif(22)).foregroundStyle(t.accent)
-                Text("%").font(SpoolFonts.mono(12)).foregroundStyle(t.inkSoft)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(t.cream)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(t.rule, lineWidth: 1))
-    }
-}
-
-// MARK: - 08 Season
+// MARK: - 07 Season
 
 struct OnbSeason: View {
     var handle: String
-    var onFinish: () -> Void
+    var onNext: () -> Void
 
     var body: some View {
         ZStack {
@@ -1055,7 +942,7 @@ struct OnbSeason: View {
 
                 Spacer()
 
-                Button(action: onFinish) {
+                Button(action: onNext) {
                     Text("start spooling ▸")
                         .font(SpoolFonts.serif(22))
                         .tracking(0.8)

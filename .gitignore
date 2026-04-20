@@ -35,3 +35,7 @@ ios/SpoolApp/build/
 ios/Spool/.build/
 ios/SpoolApp/SpoolApp.xcodeproj/xcuserdata/
 ios/SpoolApp/SpoolApp.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Xcode user-specific (IDE window state, scheme ordering)
+**/xcuserdata/
+**/UserInterfaceState.xcuserstate
