@@ -61,7 +61,11 @@ public struct RankEntryScreen: View {
                     director: "",
                     seed: stableSeed(from: m.title),
                     genres: m.genres,
-                    posterUrl: m.posterUrl
+                    posterUrl: m.posterUrl,
+                    // Forward TMDB's 0-10 rating so the ranking engine has
+                    // the `globalScore` signal it needs — matches web's
+                    // RankingFlowModal path.
+                    voteAverage: m.voteAverage
                 )
                 MovieRow(movie: asMovie, highlight: false) { onPick(asMovie) }
                     .padding(.top, 8)

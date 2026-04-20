@@ -258,7 +258,13 @@ public struct RankH2HScreen: View {
             id: movie.id, title: movie.title, year: movie.year,
             director: movie.director, genres: genres,
             tier: tier, rank: 0, bracket: bracket,
-            globalScore: nil, seed: movie.seed,
+            // TMDB vote_average (0-10) becomes the engine's globalScore.
+            // Web's RankingFlowModal does the same. Weight 0.35 inside
+            // predictScore, and the sole signal for new users below
+            // NEW_USER_THRESHOLD — iOS was dropping it (always nil)
+            // which meant every new iOS user's prediction landed at
+            // tier midpoint.
+            globalScore: movie.voteAverage, seed: movie.seed,
             posterUrl: movie.posterUrl
         )
 
@@ -292,7 +298,11 @@ public struct RankH2HScreen: View {
 
         let signals = SpoolPrediction.computePredictionSignals(
             allItems: all, primaryGenre: genres[0],
-            bracket: bracket, globalScore: nil, tier: tier
+            bracket: bracket,
+            // Carry vote_average through to the engine's prediction so
+            // new-user ranking lands near the TMDB consensus instead of
+            // defaulting to tier midpoint. See RankedItem.globalScore above.
+            globalScore: movie.voteAverage, tier: tier
         )
         let result = engine.start(
             newMovie: newItem, tier: tier,

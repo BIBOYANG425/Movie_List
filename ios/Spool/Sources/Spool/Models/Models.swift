@@ -34,10 +34,17 @@ public struct Movie: Identifiable, Hashable, Sendable {
     public var rec: Bool
     public var genres: [String]
     public var posterUrl: String?
+    /// TMDB `vote_average` on a 0-10 scale. Feeds the ranking engine's
+    /// prediction signal (weight 0.35) and is the ONLY signal used for
+    /// new users below NEW_USER_THRESHOLD — web carries it end-to-end;
+    /// iOS was dropping it until this field existed, which meant the
+    /// predicted score defaulted to the tier midpoint for every new
+    /// user on iOS.
+    public var voteAverage: Double?
 
     public init(id: String, title: String, year: Int, director: String,
                 seed: Int = 0, rec: Bool = false, genres: [String] = [],
-                posterUrl: String? = nil) {
+                posterUrl: String? = nil, voteAverage: Double? = nil) {
         self.id = id
         self.title = title
         self.year = year
@@ -46,6 +53,7 @@ public struct Movie: Identifiable, Hashable, Sendable {
         self.rec = rec
         self.genres = genres
         self.posterUrl = posterUrl
+        self.voteAverage = voteAverage
     }
 }
 
