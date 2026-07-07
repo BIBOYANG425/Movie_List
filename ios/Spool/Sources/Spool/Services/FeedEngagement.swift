@@ -194,25 +194,37 @@ public enum FeedPipelineComments {
         return trimmed
     }
 
-    /// 1-level reply nesting over one asc-ordered `comments(for:)` page:
-    /// comments with `parent_comment_id == nil` are parents; each carries
-    /// its replies in flat (asc) order. A reply whose parent is NOT a
-    /// top-level comment in this page — parent beyond the 100-row limit,
-    /// or chained onto another reply — surfaces top-level in its
-    /// chronological slot with no replies of its own. (Web drops such
-    /// orphans on the floor; the plan says never lose a comment.)
+    /// 1-level reply nesting over one asc-ordered `comments(for:)` page —
+    /// an exact mirror of web's `listFeedComments` render pass
+    /// (feedService.ts L553–571 on fix/c1-feed-web-blocking): comments with
+    /// `parent_comment_id == nil` are the top-level threads; every other
+    /// comment goes into a parent-keyed reply map, and the fill pass
+    /// (web L567–568) reads that map ONLY for top-level ids. Consequences,
+    /// mirrored precisely so the same rows render the same on both
+    /// platforms:
+    ///  - a reply whose parent is absent from the page (e.g. beyond the
+    ///    100-row limit) is DROPPED;
+    ///  - a reply-to-a-reply is dropped too: its parent renders as a
+    ///    reply, is never visited by web's fill loop, so its `replies`
+    ///    stay the `[]` they were initialized with (web L549) and the
+    ///    grandchild never surfaces.
+    ///
+    /// ⚠️ Candidate SHARED fix (both platforms in one cycle — ledger
+    /// item): the drop is arguably a bug — a reply whose parent is missing
+    /// from the fetched page silently vanishes. Until web and iOS change
+    /// together, web is the reference and iOS mirrors the drop.
     public static func nest(_ flat: [FeedComment]) -> [(FeedComment, [FeedComment])] {
-        let topLevelIDs = Set(flat.lazy.filter { $0.parent_comment_id == nil }.map(\.id))
-
-        var threads: [FeedComment] = []
-        var replies: [UUID: [FeedComment]] = [:]
+        var topLevel: [FeedComment] = []
+        var replies: [UUID: [FeedComment]] = [:]  // web's replyMap — keyed by parent id, unconditionally
         for comment in flat {
-            if let parent = comment.parent_comment_id, topLevelIDs.contains(parent) {
+            if let parent = comment.parent_comment_id {
                 replies[parent, default: []].append(comment)
             } else {
-                threads.append(comment)  // true top-level OR orphan
+                topLevel.append(comment)
             }
         }
-        return threads.map { ($0, replies[$0.id] ?? []) }
+        // Web L567–568: only top-level ids are read back out of the map;
+        // entries keyed by absent or reply-level parents are dropped here.
+        return topLevel.map { ($0, replies[$0.id] ?? []) }
     }
 }

@@ -12,8 +12,11 @@ import XCTest
 ///  - comment body: trimmed, 1...500 (DB CHECK `length(btrim(body)) BETWEEN
 ///    1 AND 500`) — iOS throws `CommentError` instead of web's silent
 ///    `body.slice(0, 500)` (L583) so over-length text is never corrupted;
-///  - 1-level nesting = `listFeedComments` (L553–571), EXCEPT orphaned
-///    replies surface top-level per the plan (web drops them).
+///  - 1-level nesting = `listFeedComments` (L553–571) mirrored EXACTLY:
+///    only top-level ids are read back out of the reply map (L567–568),
+///    so replies with an absent parent — and replies-to-replies — are
+///    dropped, same as web renders. (Candidate SHARED fix, see
+///    `FeedPipelineComments.nest`.)
 /// Source: docs/plans/2026-07-08-c1-ios-feed-data-plan.md (Global Constraints + Task 3).
 final class FeedEngagementTests: XCTestCase {
 
@@ -109,34 +112,36 @@ final class FeedEngagementTests: XCTestCase {
         XCTAssertEqual(nested[1].1.map(\.id), [r2a.id])
     }
 
-    func testNestOrphanedReplySurfacesTopLevel() {
-        // Parent beyond the 100-row page (or otherwise absent): web drops
-        // the reply (feedService.ts L567–568 only fills topLevel's ids);
-        // the plan says surface it top-level instead — never lose a comment.
+    func testNestOrphanedReplyIsDropped() {
+        // Parent beyond the 100-row page (or otherwise absent): web's fill
+        // pass (feedService.ts L567–568) only reads the reply map for
+        // topLevel ids, so the orphan never renders. Mirror the drop —
+        // same rows must render the same on both platforms. (Candidate
+        // SHARED fix; see the nest doc comment.)
         let p = comment(body: "p", createdAt: "2026-07-07T10:00:00+00:00")
         let orphan = comment(body: "orphan", parent: UUID(), createdAt: "2026-07-07T10:01:00+00:00")
         let later = comment(body: "later", createdAt: "2026-07-07T10:02:00+00:00")
 
         let nested = FeedPipelineComments.nest([p, orphan, later])
 
-        XCTAssertEqual(nested.map { $0.0.id }, [p.id, orphan.id, later.id],
-                       "orphan surfaces top-level in its chronological slot")
-        XCTAssertTrue(nested[1].1.isEmpty)
+        XCTAssertEqual(nested.map { $0.0.id }, [p.id, later.id],
+                       "orphan is dropped, not surfaced")
+        XCTAssertTrue(nested.allSatisfy { $0.1.isEmpty })
     }
 
-    func testNestReplyToReplySurfacesTopLevel() {
-        // 1-level contract: only comments with parent_comment_id == nil are
-        // parents. A reply chained onto another reply has no top-level
-        // parent in the page, so it surfaces top-level like any orphan.
+    func testNestReplyToReplyDropsTheGrandchild() {
+        // Web trace for a ← b ← c: b lands in replyMap[a] and renders under
+        // a (L558–561, L567–568); c lands in replyMap[b.id], but b is not
+        // in topLevel so the fill pass never visits it — b's replies stay
+        // the [] they were initialized with (L549) and c is dropped.
         let a = comment(body: "a", createdAt: "2026-07-07T10:00:00+00:00")
         let b = comment(body: "b", parent: a.id, createdAt: "2026-07-07T10:01:00+00:00")
         let c = comment(body: "c", parent: b.id, createdAt: "2026-07-07T10:02:00+00:00")
 
         let nested = FeedPipelineComments.nest([a, b, c])
 
-        XCTAssertEqual(nested.map { $0.0.id }, [a.id, c.id])
-        XCTAssertEqual(nested[0].1.map(\.id), [b.id])
-        XCTAssertTrue(nested[1].1.isEmpty)
+        XCTAssertEqual(nested.map { $0.0.id }, [a.id])
+        XCTAssertEqual(nested[0].1.map(\.id), [b.id], "b still renders under a")
     }
 
     func testNestEmptyInputYieldsEmpty() {
