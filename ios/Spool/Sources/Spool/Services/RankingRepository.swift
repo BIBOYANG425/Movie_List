@@ -1,9 +1,11 @@
 import Foundation
 import Supabase
 
-/// End-to-end ranking writes: `user_rankings` + `activity_events` + `movie_stubs`.
-/// Actor so state (the client reference) stays isolated. Reads/writes all go
-/// through supabase-swift, RLS enforces scoping at the DB layer.
+/// End-to-end ranking writes: `user_rankings` + `activity_events`.
+/// (`movie_stubs` writes live in `StubWriter`; the read side keeps `StubRow`
+/// defined below.) Actor so state (the client reference) stays isolated.
+/// Reads/writes all go through supabase-swift, RLS enforces scoping at the
+/// DB layer.
 ///
 /// When `SpoolClient.shared` is nil (no credentials configured) every method
 /// throws `.notConfigured` and the caller is expected to fall back to fixtures.
@@ -140,34 +142,6 @@ public actor RankingRepository {
 
         return inserted
     }
-
-    public func insertStub(_ stub: StubInsert) async throws -> StubRow {
-        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
-        guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
-
-        let payload = StubPayload(
-            user_id: userID,
-            media_type: stub.mediaType,
-            tmdb_id: stub.tmdbId,
-            title: stub.title,
-            poster_path: stub.posterPath,
-            tier: stub.tier.rawValue,
-            watched_date: ISODate.yyyyMMdd.string(from: stub.watchedDate),
-            mood_tags: stub.moodTags,
-            stub_line: stub.stubLine,
-            palette: stub.palette,
-            template_id: stub.templateID
-        )
-
-        let inserted: StubRow = try await client
-            .from("movie_stubs")
-            .insert(payload)
-            .select()
-            .single()
-            .execute()
-            .value
-        return inserted
-    }
 }
 
 // MARK: - DTOs (wire format, snake_case to match Postgres)
@@ -197,35 +171,6 @@ public struct RankingInsert: Sendable {
         self.tier = tier
         self.rankPosition = rankPosition
         self.notes = notes
-    }
-}
-
-public struct StubInsert: Sendable {
-    public let mediaType: String       // "movie" | "tv_season"
-    public let tmdbId: String
-    public let title: String
-    public let posterPath: String?
-    public let tier: Tier
-    public let watchedDate: Date
-    public let moodTags: [String]
-    public let stubLine: String?
-    public let palette: [String]
-    public let templateID: String
-
-    public init(mediaType: String = "movie", tmdbId: String, title: String,
-                posterPath: String? = nil, tier: Tier, watchedDate: Date = Date(),
-                moodTags: [String] = [], stubLine: String? = nil,
-                palette: [String] = [], templateID: String = "default") {
-        self.mediaType = mediaType
-        self.tmdbId = tmdbId
-        self.title = title
-        self.posterPath = posterPath
-        self.tier = tier
-        self.watchedDate = watchedDate
-        self.moodTags = moodTags
-        self.stubLine = stubLine
-        self.palette = palette
-        self.templateID = templateID
     }
 }
 
@@ -294,31 +239,4 @@ private struct ActivityEventPayload: Encodable {
     let media_title: String?
     let media_tier: String?
     let media_poster_url: String?
-}
-
-private struct StubPayload: Encodable {
-    let user_id: UUID
-    let media_type: String
-    let tmdb_id: String
-    let title: String
-    let poster_path: String?
-    let tier: String
-    let watched_date: String
-    let mood_tags: [String]
-    let stub_line: String?
-    let palette: [String]
-    let template_id: String
-}
-
-// MARK: - Date helper
-
-private enum ISODate {
-    static let yyyyMMdd: DateFormatter = {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .iso8601)
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(secondsFromGMT: 0)
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
 }

@@ -2,7 +2,7 @@ import Foundation
 import Supabase
 
 /// Reads against `movie_stubs` and the ranking tables that Profile / Stubs
-/// tabs need. Complements `RankingRepository.insertStub` (the write side)
+/// tabs need. Complements `StubWriter` (the write side)
 /// and `RankingRepository.getTierItems` (the S-tier top-4 helper).
 ///
 ///  - `getStubsForMonth(userID:year:month:)` — Stubs tab month grid
@@ -10,10 +10,10 @@ import Supabase
 ///  - `getTopTier(userID:tier:limit:)` — Profile "MY TOP 4" row
 ///  - `countStubs(userID:)` — Profile stats count
 ///
-/// Shape of `StubRow` is defined in `RankingRepository.swift` alongside
-/// `StubInsert` — no duplicate types.
+/// Shape of `StubRow` is defined in `RankingRepository.swift`; the write
+/// payloads live in `StubWriteContract` — no duplicate types.
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-07-07
 public actor StubRepository {
 
     public static let shared = StubRepository()

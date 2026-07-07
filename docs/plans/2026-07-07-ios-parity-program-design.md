@@ -17,7 +17,7 @@ Every cycle runs five steps.
 2. **Blocking fixes.** Findings classified blocking land as a small web PR. Owner merges; Vercel deploys.
 3. **Spec and plan.** The iOS feature gets a short design (brainstormed only if open questions remain) and a detailed implementation plan via writing-plans.
 4. **Build.** Subagent-driven execution on a feature branch. Per-task reviewer gates, final whole-branch review, engine-parity CI green.
-5. **Verify and merge.** Contract doc updated for any payload both clients write. Owner smoke-tests on device, acks any behavior notes, merges. Ledger updated with cycle status and deferred findings.
+5. **Verify and merge.** Contract doc updated for any payload both clients write. Owner smoke-tests on device, acks any behavior notes, merges. Ledger updated with cycle status and deferred findings. Owner directive 2026-07-07: when task reviews, the final whole-branch review, and CI are all clean, the controller auto-merges; device-level smoke is noted as owed in the PR body instead of gating the merge.
 
 ## Cycles
 
