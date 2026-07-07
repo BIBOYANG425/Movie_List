@@ -140,6 +140,18 @@ describe('RankingSession — engine flow', () => {
     expect(r.finalRank).toBeGreaterThanOrEqual(0);
   });
 
+  it('after engine-path done, submit throws the session error, not the engine error', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
+    let r = s.start();
+    let guard = 0;
+    while (r.type === 'comparison' && guard < 30) {
+      r = s.submit('new');
+      guard++;
+    }
+    if (r.type !== 'done') throw new Error('engine did not converge');
+    expect(() => s.submit('existing')).toThrow('RankingSession.submit: no active comparison');
+  });
+
   it('skip on engine path finalizes at tentative score', () => {
     const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
     s.start();

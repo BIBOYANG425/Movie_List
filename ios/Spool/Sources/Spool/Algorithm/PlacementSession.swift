@@ -22,6 +22,14 @@ public final class PlacementSession {
     public init() {}
 
     public func start(newItem: RankedItem, tier: Tier, allItems: [RankedItem]) -> EngineResult {
+        // Reset all session state so re-entrant start() calls never leak an
+        // active strategy from a previous run (mirrors the web facade's
+        // dd00e7b hardening).
+        engine = nil
+        small = nil
+        current = nil
+        tierItems = []
+
         self.newItem = newItem
         self.tier = tier
         self.tierItems = allItems

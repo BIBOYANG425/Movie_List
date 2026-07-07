@@ -4,9 +4,11 @@ import Foundation
 /// Signal-based score prediction (genre + global + bracket).
 public enum SpoolPrediction {
 
-    private static let weightGenreAffinity:   Double = 0.45
-    private static let weightGlobalScore:     Double = 0.35
-    private static let weightBracketAffinity: Double = 0.20
+    // Internal (not private) so @testable parity tests can assert these
+    // against fixtures/engine-parity.json predictionWeights.
+    static let weightGenreAffinity:   Double = 0.45
+    static let weightGlobalScore:     Double = 0.35
+    static let weightBracketAffinity: Double = 0.20
 
     public static func computePredictionSignals(
         allItems: [RankedItem],
@@ -69,7 +71,6 @@ public enum SpoolPrediction {
                 tierMin: tierRange.min, tierMax: tierRange.max
             )
         }
-        guard !scores.isEmpty else { return nil }
         return scores.reduce(0, +) / Double(scores.count)
     }
 }

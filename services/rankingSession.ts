@@ -120,7 +120,9 @@ export class RankingSession {
   submit(choice: SessionChoice): SessionResult {
     if (this.small) return this.submitSmall(choice);
     if (this.engine) return this.submitEngine(choice);
-    throw new Error('RankingSession.submit called before start() or after done');
+    // Reached before start() or after done — either way there is no active
+    // comparison to resolve.
+    throw new Error('RankingSession.submit: no active comparison');
   }
 
   undo(): SessionResult | null {
@@ -144,17 +146,14 @@ export class RankingSession {
 
   private submitSmall(choice: SessionChoice): SessionResult {
     const st = this.small!;
-    if (choice === 'too_tough' || choice === 'skip') {
-      // Snapshot the comparison being finalized so undo() restores it,
-      // not the one from a step earlier.
-      if (this.current) {
-        this.smallHistory.push({ state: st, comparison: this.current });
-      }
-      this.small = null;
-      return { type: 'done', finalRank: st.mid, finalScore: null };
-    }
+    // Snapshot the comparison being resolved (or finalized by too_tough/skip)
+    // so undo() restores it, not the one from a step earlier.
     if (this.current) {
       this.smallHistory.push({ state: st, comparison: this.current });
+    }
+    if (choice === 'too_tough' || choice === 'skip') {
+      this.small = null;
+      return { type: 'done', finalRank: st.mid, finalScore: null };
     }
     const step = advanceSmallTier(st, choice);
     if (step.type === 'done') {
@@ -196,6 +195,10 @@ export class RankingSession {
 
   private mapEngineResult(r: EngineResult): SessionResult {
     if (r.type === 'done') {
+      // Clear the strategy so a stray post-done submit() fails with this
+      // session's own error instead of leaking into the finished engine.
+      this.engine = null;
+      this.current = null;
       return { type: 'done', finalRank: r.finalRank!, finalScore: r.finalScore! };
     }
     this.current = r.comparison!;

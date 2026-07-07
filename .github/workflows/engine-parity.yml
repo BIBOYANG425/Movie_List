@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "services/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
       - "constants.ts"
       - "types.ts"
       - "ios/Spool/**"

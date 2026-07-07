@@ -16,6 +16,7 @@ final class EngineParityTests: XCTestCase {
     struct Constants: Decodable {
         let tierScoreRanges: [String: Range]
         let newUserThreshold: Int
+        let predictionWeights: [String: Double]
     }
     struct Range: Decodable { let min: Double; let max: Double }
     struct Case: Decodable {
@@ -69,6 +70,13 @@ final class EngineParityTests: XCTestCase {
             XCTAssertEqual(t.scoreRange.min, range.min, accuracy: 0.0001, "\(raw).min")
             XCTAssertEqual(t.scoreRange.max, range.max, accuracy: 0.0001, "\(raw).max")
         }
+        let weights = corpus.constants.predictionWeights
+        XCTAssertEqual(try XCTUnwrap(weights["genreAffinity"]),
+                       SpoolPrediction.weightGenreAffinity, accuracy: 0.0001, "predictionWeights.genreAffinity")
+        XCTAssertEqual(try XCTUnwrap(weights["globalScore"]),
+                       SpoolPrediction.weightGlobalScore, accuracy: 0.0001, "predictionWeights.globalScore")
+        XCTAssertEqual(try XCTUnwrap(weights["bracketAffinity"]),
+                       SpoolPrediction.weightBracketAffinity, accuracy: 0.0001, "predictionWeights.bracketAffinity")
     }
 
     func testReplayAllCases() throws {

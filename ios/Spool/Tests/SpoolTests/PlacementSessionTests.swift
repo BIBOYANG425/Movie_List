@@ -59,6 +59,34 @@ final class PlacementSessionTests: XCTestCase {
         XCTAssertGreaterThan(score, 0)
     }
 
+    func testStartReentrancyResetsStaleEngineState() {
+        let session = PlacementSession()
+
+        // First run: 25 items → engine mode; consume one comparison.
+        let first = session.start(newItem: newItem, tier: .A, allItems: mkTier(.A, 25))
+        guard case .comparison = first else { return XCTFail("expected engine comparison") }
+        guard session.submit(winnerId: newItem.id) != nil else {
+            return XCTFail("engine rejected a valid submit")
+        }
+
+        // Re-start the SAME session with 3 items → compare-all mode.
+        let restart = session.start(newItem: newItem, tier: .A, allItems: mkTier(.A, 3))
+        guard case .comparison(let c0) = restart else { return XCTFail("expected comparison") }
+        XCTAssertEqual(c0.movieB.id, "m0")
+        XCTAssertEqual(c0.phase, .binarySearch)
+        XCTAssertEqual(c0.round, 1)
+
+        // Finish the small walk — the stale engine must not interfere.
+        guard case .comparison(let c1)? = session.submit(winnerId: "m0") else {
+            return XCTFail("expected next comparison")
+        }
+        XCTAssertEqual(c1.movieB.id, "m1")
+        guard case .done(let rank, _)? = session.submit(winnerId: newItem.id) else {
+            return XCTFail("expected done")
+        }
+        XCTAssertEqual(rank, 1)
+    }
+
     func testSkipInSmallTierInsertsAtCursor() {
         let session = PlacementSession()
         _ = session.start(newItem: newItem, tier: .A, allItems: mkTier(.A, 3))

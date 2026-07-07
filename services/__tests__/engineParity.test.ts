@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { RankingSession, SessionChoice } from '../rankingSession';
+import { WEIGHTS } from '../spoolPrediction';
 import { Tier, RankedItem } from '../../types';
 import { TIER_SCORE_RANGES, NEW_USER_THRESHOLD } from '../../constants';
 
@@ -15,6 +16,7 @@ describe('engine parity corpus — constants', () => {
   it('constants match the fixture', () => {
     expect(corpus.constants.tierScoreRanges).toEqual(TIER_SCORE_RANGES);
     expect(corpus.constants.newUserThreshold).toBe(NEW_USER_THRESHOLD);
+    expect(corpus.constants.predictionWeights).toEqual(WEIGHTS);
   });
 });
 
@@ -30,6 +32,7 @@ describe('engine parity corpus — replay', () => {
       const steps: any[] = [];
       while (result.type === 'comparison') {
         steps.push({ round: result.comparison.round, phase: result.comparison.phase, movieBId: result.comparison.movieB.id });
+        if (i >= c.choices.length) throw new Error(`${c.name}: ran out of choices at step ${i}`);
         result = session.submit(c.choices[i++] as SessionChoice);
       }
 

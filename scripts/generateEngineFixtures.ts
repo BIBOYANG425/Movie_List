@@ -11,6 +11,7 @@
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { RankingSession, SessionChoice } from '../services/rankingSession';
+import { WEIGHTS } from '../services/spoolPrediction';
 import { Tier, RankedItem } from '../types';
 import { TIER_SCORE_RANGES, NEW_USER_THRESHOLD } from '../constants';
 
@@ -101,7 +102,9 @@ const out = {
   constants: {
     tierScoreRanges: TIER_SCORE_RANGES,
     newUserThreshold: NEW_USER_THRESHOLD,
-    predictionWeights: { genreAffinity: 0.45, globalScore: 0.35, bracketAffinity: 0.2 },
+    // Sourced from the implementation (key order genreAffinity, globalScore,
+    // bracketAffinity keeps regeneration byte-identical).
+    predictionWeights: WEIGHTS,
   },
   cases: specs.map(runCase),
 };
