@@ -45,7 +45,7 @@ public enum FeedTicketPresenter {
     /// Tier stamp caption. With a score → `"S · 9.4"`; without → `"S"`.
     /// Score renders like web's `card.mediaScore.toFixed(1)`
     /// (FeedRankingCard.tsx L92 / FeedReviewCard.tsx L98): exactly one decimal,
-    /// trailing zero kept, half-up rounding.
+    /// trailing zero kept.
     public static func stampText(tier: Tier, score: Double?) -> String {
         guard let score else { return tier.rawValue }
         return "\(tier.rawValue) · \(toFixed1(score))"
@@ -54,6 +54,9 @@ public enum FeedTicketPresenter {
     /// `Number.toFixed(1)` equivalent: one fractional digit, trailing zero
     /// retained. Uses a locale-independent formatter so `9.0` never becomes
     /// `9,0` in a comma-decimal locale.
+    /// Accepted divergence (Task 6 ledgers it): `%.1f` rounds exact .x5 ties
+    /// half-even (8.25 → "8.2") where JS toFixed rounds half-up ("8.3");
+    /// non-tie values agree.
     static func toFixed1(_ value: Double) -> String {
         String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value)
     }
@@ -78,13 +81,22 @@ public enum FeedTicketPresenter {
 
     /// List card summary — `listTitle` + `listItemCount`
     /// (feedService.ts L417–420). Missing title → `"untitled list"`; missing
-    /// count → 0. Count accepts a JSON double (PostgREST may hand a whole
-    /// number back as a float).
-    public static func listSummary(from metadata: JSONObject?) -> (title: String, count: Int) {
+    /// or malformed count → nil and the view hides the row, mirroring web's
+    /// `card.listItemCount != null &&` gate (FeedListCard.tsx L92). A whole
+    /// number arriving as a JSON double is coerced via `Int(exactly:)`, which
+    /// also degrades NaN / ±inf / out-of-range / non-integral values to nil
+    /// instead of trapping.
+    public static func listSummary(from metadata: JSONObject?) -> (title: String, count: Int?) {
         let title = trimmedNonEmpty(metadata?["listTitle"]?.stringValue) ?? "untitled list"
         let raw = metadata?["listItemCount"]
-        let count = raw?.intValue ?? raw?.doubleValue.map { Int($0) } ?? 0
+        let count = raw?.intValue ?? raw?.doubleValue.flatMap { Int(exactly: $0) }
         return (title, count)
+    }
+
+    /// List count row — web-exact wording `{count} movies`, ALWAYS plural even
+    /// for 1 (FeedListCard.tsx L94); nil count → nil (row hidden).
+    public static func listCountLine(count: Int?) -> String? {
+        count.map { "\($0) movies" }
     }
 
     /// Milestone summary — `badgeIcon` + `milestoneDescription`
@@ -102,14 +114,42 @@ public enum FeedTicketPresenter {
     /// `@` so we never render `@@`.
     public static func admitLine(username: String?, relativeTime: String) -> String {
         let time = relativeTime.uppercased()
-        guard let handle = trimmedNonEmpty(username) else {
+        guard let bare = bareHandle(username) else {
             return "ADMIT ONE · \(time)"
         }
-        let bare = handle.hasPrefix("@") ? String(handle.dropFirst()) : handle
         return "ADMIT ONE · @\(bare.uppercased()) · \(time)"
     }
 
+    /// Context-menu label — `"<action> @<handle>"` with the same `@` dedup as
+    /// `admitLine`; missing/blank username → `"<action> <fallback>"`.
+    /// Lowercase, matching the app's menu copy voice.
+    public static func menuLabel(action: String, username: String?, fallback: String) -> String {
+        guard let bare = bareHandle(username) else {
+            return "\(action) \(fallback)"
+        }
+        return "\(action) @\(bare)"
+    }
+
+    /// Media title with the shared fallback — trimmed, `"untitled"` when
+    /// missing or blank.
+    public static func displayTitle(_ title: String?) -> String {
+        trimmedNonEmpty(title) ?? "untitled"
+    }
+
+    /// VoiceOver label for the tier-stamp cluster: `"tier S, score 9.4"`,
+    /// score segment omitted when absent.
+    public static func stampAccessibilityLabel(tier: Tier, score: Double?) -> String {
+        guard let score else { return "tier \(tier.rawValue)" }
+        return "tier \(tier.rawValue), score \(toFixed1(score))"
+    }
+
     // MARK: helpers
+
+    /// Trimmed username minus any leading `@`; nil when missing/blank.
+    private static func bareHandle(_ username: String?) -> String? {
+        guard let handle = trimmedNonEmpty(username) else { return nil }
+        return handle.hasPrefix("@") ? String(handle.dropFirst()) : handle
+    }
 
     private static func trimmedNonEmpty(_ s: String?) -> String? {
         guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else {
@@ -163,12 +203,24 @@ public struct FeedTicket: View {
             .shadow(color: .black.opacity(0.1), radius: 0, x: 0, y: 1)
             .contentShape(Rectangle())
             .onTapGesture { onFlip() }
+            // The whole front is the flip tap surface — surface it as a
+            // button to VoiceOver, with the header line as its label.
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(FeedTicketPresenter.admitLine(
+                username: card.actorUsername,
+                relativeTime: FeedCards.relativeTime(from: card.createdAt, now: Date())
+            ))
+            .accessibilityHint("flips the ticket to reactions and comments")
             .contextMenu {
                 Button { onOpenActor() } label: {
-                    Label("open @\(card.actorUsername ?? "profile")", systemImage: "person.crop.circle")
+                    Label(FeedTicketPresenter.menuLabel(action: "open", username: card.actorUsername,
+                                                        fallback: "profile"),
+                          systemImage: "person.crop.circle")
                 }
                 Button(role: .destructive) { onMuteUser() } label: {
-                    Label("mute @\(card.actorUsername ?? "user")", systemImage: "speaker.slash")
+                    Label(FeedTicketPresenter.menuLabel(action: "mute", username: card.actorUsername,
+                                                        fallback: "user"),
+                          systemImage: "speaker.slash")
                 }
                 // Media mute only makes sense when the event carries a title.
                 if card.mediaTmdbID != nil {
@@ -250,9 +302,15 @@ public struct FeedTicket: View {
             }
             .frame(width: 20, height: 20)
             .clipShape(Circle())
+            .accessibilityLabel(avatarAccessibilityLabel)
         } else {
             placeholder
+                .accessibilityLabel(avatarAccessibilityLabel)
         }
+    }
+
+    private var avatarAccessibilityLabel: String {
+        card.actorUsername.map { "avatar of @\($0)" } ?? "avatar"
     }
 
     // MARK: variant bodies
@@ -329,11 +387,15 @@ public struct FeedTicket: View {
             .foregroundStyle(t.ink)
             .padding(.top, 4)
             .fixedSize(horizontal: false, vertical: true)
-        Text("\(summary.count) \(summary.count == 1 ? "title" : "titles")")
-            .font(SpoolFonts.mono(10))
-            .tracking(1)
-            .foregroundStyle(t.inkSoft)
-            .padding(.top, 4)
+        // Row hidden when the count is absent/malformed — web parity
+        // (FeedListCard.tsx L92); wording via the tested presenter helper.
+        if let countLine = FeedTicketPresenter.listCountLine(count: summary.count) {
+            Text(countLine)
+                .font(SpoolFonts.mono(10))
+                .tracking(1)
+                .foregroundStyle(t.inkSoft)
+                .padding(.top, 4)
+        }
     }
 
     @ViewBuilder
@@ -361,7 +423,7 @@ public struct FeedTicket: View {
     /// Media title line, shared by ranking + review variants.
     @ViewBuilder
     private func titleLine(t: SpoolPalette) -> some View {
-        Text(card.title ?? "untitled")
+        Text(FeedTicketPresenter.displayTitle(card.title))
             .font(SpoolFonts.serif(26))
             .tracking(-0.3)
             .lineLimit(2)
@@ -379,7 +441,7 @@ public struct FeedTicket: View {
             // poster fall through to the stamp column alone.
             if card.mediaTmdbID != nil || card.posterURL != nil {
                 PosterBlock(
-                    title: card.title ?? "untitled",
+                    title: FeedTicketPresenter.displayTitle(card.title),
                     seed: Self.stableSeed(card.mediaTmdbID ?? card.id.uuidString),
                     cornerRadius: 3,
                     posterUrl: card.posterURL
@@ -403,6 +465,10 @@ public struct FeedTicket: View {
                 .padding(6)
                 .background(Circle().stroke(t.cream.opacity(0.5), lineWidth: 1))
                 .rotationEffect(.degrees(-8))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(FeedTicketPresenter.stampAccessibilityLabel(
+                    tier: tier, score: card.score
+                ))
             }
 
             Text("SPOOL · 2026")

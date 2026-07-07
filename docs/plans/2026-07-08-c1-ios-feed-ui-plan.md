@@ -79,6 +79,7 @@ public actor FeedPageAssembler {
 
 **Files:** Create `ios/Spool/Sources/Spool/Components/FeedTicket.swift`, `ios/Spool/Sources/Spool/Components/FeedTicketFlip.swift`; Test `ios/Spool/Tests/SpoolTests/FeedTicketLogicTests.swift` (pure presentation helpers only).
 **Interfaces — Produces:** `FeedTicket(card: FeedCard, onFlip: () -> Void, onMuteUser:, onMuteMedia:, onOpenActor:)` (front face; variants per spec §FeedTicket: ranking/review/list/milestone; perforated header `ADMIT ONE · @HANDLE · <relativeTime>`; rotated tier stamp with score when present; review chip + spoiler shield honoring `metadata["containsSpoilers"]`; long-press context menu). `FeedTicketFlip(card:, isFlipped:, front:, back:)` — 3D Y-rotation spring flip per spec §2.
+- **Correction (build, Task 3):** `FeedTicketFlip` shipped WITHOUT the redundant `card:` param — actual signature `FeedTicketFlip(isFlipped: Binding<Bool>, front: () -> Front, back: () -> Back)` (generic container; the card flows through the `front:`/`back:` closures). Task 5 wires it with this signature.
 - Presentation-pure helpers extracted + tested: variant selection from `FeedCardKind`, spoiler flag extraction from `JSONObject`, notes-line extraction (`metadata["notes"]`), stamp text (`"S · 9.4"` composition, score-less fallback `"S"`).
 - Visual details: follow the spec + existing `AdmitStub.swift`/`TierStamp`/`SpoolTokens` idioms (read them first). SwiftUI previews for all four variants + flipped state.
 - Build gate: `swift build --package-path ios/Spool` + full test suite.
