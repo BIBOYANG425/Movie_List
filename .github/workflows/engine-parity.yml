@@ -1,0 +1,46 @@
+name: engine-parity
+
+on:
+  pull_request:
+    paths:
+      - "services/**"
+      - "constants.ts"
+      - "types.ts"
+      - "ios/Spool/**"
+      - "fixtures/**"
+      - "components/media/RankingFlowModal.tsx"
+      - "components/media/AddMediaModal.tsx"
+      - "components/media/AddTVSeasonModal.tsx"
+      - "pages/MovieOnboardingPage.tsx"
+      - ".github/workflows/engine-parity.yml"
+  push:
+    branches: [main]
+
+jobs:
+  parity:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install web deps
+        run: npm ci
+
+      - name: Web tests
+        run: npx vitest run
+
+      - name: Fixture freshness (TS is the reference)
+        run: |
+          npm run fixtures:engine
+          git diff --exit-code fixtures/engine-parity.json || {
+            echo "::error::fixtures/engine-parity.json is stale. Run 'npm run fixtures:engine' and commit the diff.";
+            exit 1;
+          }
+
+      - name: iOS tests (includes EngineParityTests replay)
+        run: swift test --package-path ios/Spool
