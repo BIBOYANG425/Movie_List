@@ -30,12 +30,15 @@ final class TicketEngagementModelTests: XCTestCase {
 
     private struct FakeError: Error {}
 
+    /// Contract reaction set (EngagementReducer.reactionTypes / phase-5 DB
+    /// CHECK): fire, agree, disagree, want_to_watch, love.
     private func counts(
-        love: Int = 0, fire: Int = 0, laugh: Int = 0, sad: Int = 0, mind: Int = 0,
+        love: Int = 0, fire: Int = 0, agree: Int = 0, disagree: Int = 0, want: Int = 0,
         comments: Int = 0, mine: Set<String> = []
     ) -> EngagementCounts {
         EngagementCounts(
-            reactions: ["love": love, "fire": fire, "laugh": laugh, "sad": sad, "mind_blown": mind],
+            reactions: ["fire": fire, "agree": agree, "disagree": disagree,
+                        "want_to_watch": want, "love": love],
             comments: comments,
             myReactions: mine
         )

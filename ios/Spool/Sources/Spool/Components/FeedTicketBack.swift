@@ -10,8 +10,8 @@ import SwiftUI
 /// All engagement STATE + LOGIC lives in `TicketEngagementModel` (the
 /// `@MainActor` `ObservableObject`, XCTest-covered): optimistic toggle +
 /// revert, comment validation, thread mutation. This view is a thin renderer
-/// over that model plus the reaction-stamp presentation table (`ReactionStamp`)
-/// which is a pure spec decision, not a data-layer one. No UIKit.
+/// over that model plus the reaction-stamp presentation table (`ReactionStamp`,
+/// mirroring web's ReactionPicker over the shared contract set). No UIKit.
 ///
 /// Own-comment delete: `currentUserID` scopes the swipe/long-press delete
 /// affordance to the viewer's own rows (Task 5 passes the resolved session id;
@@ -22,31 +22,45 @@ import SwiftUI
 /// Contract: docs/plans/2026-07-08-c1-ios-feed-ui-plan.md (Task 4), spec
 /// docs/plans/2026-07-08-c1-ios-feed-ui-design.md §2.
 
-// MARK: - Reaction stamp table (spec §2 — a presentation decision)
+// MARK: - Reaction stamp table (shared contract set, web-mirrored)
 
-/// The five reaction stamps in display order with their glyphs (spec §2:
-/// `love 🖤, fire 🔥, laugh 😂, sad 😢, mind_blown 🤯`). The `type` string is
-/// the wire value passed to `TicketEngagementModel.toggle(reaction:)`.
+/// The five reaction stamps in web's display order with web's glyphs — an
+/// exact mirror of `components/feed/ReactionPicker.tsx` REACTIONS (main,
+/// L11–16): fire 🔥, agree 🤝, disagree 😬, want_to_watch 👀, love ❤️.
+/// The `type` strings are the shared-contract wire values (`ReactionType`
+/// union, types.ts L539; DB CHECK in supabase_phase5_social_feed.sql L16–17;
+/// `EngagementReducer.reactionTypes` — a drift-guard test pins the match).
+/// Web renders emoji-only chips (no text labels), so the stamp treatment
+/// keeps just the glyph + count. (Correction: the spec §2
+/// laugh/sad/mind_blown set was an authoring error from the mockup — see
+/// ledger.)
 public struct ReactionStamp: Identifiable, Sendable, Equatable {
     public let type: String
     public let glyph: String
     public var id: String { type }
 
-    /// Fixed order — matches the spec's stamp row left-to-right.
+    /// Fixed order — web's REACTIONS array left-to-right (ReactionPicker.tsx
+    /// L12–16).
     public static let all: [ReactionStamp] = [
-        ReactionStamp(type: "love", glyph: "🖤"),
-        ReactionStamp(type: "fire", glyph: "🔥"),
-        ReactionStamp(type: "laugh", glyph: "😂"),
-        ReactionStamp(type: "sad", glyph: "😢"),
-        ReactionStamp(type: "mind_blown", glyph: "🤯"),
+        ReactionStamp(type: "fire", glyph: "\u{1F525}"),          // 🔥
+        ReactionStamp(type: "agree", glyph: "\u{1F91D}"),         // 🤝
+        ReactionStamp(type: "disagree", glyph: "\u{1F62C}"),      // 😬
+        ReactionStamp(type: "want_to_watch", glyph: "\u{1F440}"), // 👀
+        ReactionStamp(type: "love", glyph: "\u{2764}\u{FE0F}"),   // ❤️
     ]
+
+    /// Spoken name — the wire type with underscores humanized to spaces
+    /// (`want_to_watch` → `"want to watch"`), lowercase voice.
+    public var spokenName: String {
+        type.replacingOccurrences(of: "_", with: " ")
+    }
 
     /// VoiceOver label — `"love, 4 reactions, reacted"` (plan Task 4 pattern).
     /// Count segment pluralizes; the trailing `, reacted` appears only for the
     /// viewer's own stamps.
     public func accessibilityLabel(count: Int, mine: Bool) -> String {
         let unit = count == 1 ? "reaction" : "reactions"
-        let base = "\(type), \(count) \(unit)"
+        let base = "\(spokenName), \(count) \(unit)"
         return mine ? base + ", reacted" : base
     }
 }
@@ -424,9 +438,9 @@ private struct BackPreviewHost: View {
     let reply = previewComment("RIGHT. couldn't speak after.", mine: true, parent: top.id)
     return BackPreviewHost(model: .preview(
         counts: EngagementCounts(
-            reactions: ["love": 4, "fire": 2, "laugh": 0, "sad": 7, "mind_blown": 1],
+            reactions: ["fire": 2, "agree": 7, "disagree": 0, "want_to_watch": 1, "love": 4],
             comments: 2,
-            myReactions: ["love", "sad"]
+            myReactions: ["love", "agree"]
         ),
         thread: [top, reply]
     ))
@@ -435,7 +449,7 @@ private struct BackPreviewHost: View {
 #Preview("back · empty thread") {
     BackPreviewHost(model: .preview(
         counts: EngagementCounts(
-            reactions: ["love": 0, "fire": 0, "laugh": 0, "sad": 0, "mind_blown": 0],
+            reactions: ["fire": 0, "agree": 0, "disagree": 0, "want_to_watch": 0, "love": 0],
             comments: 0, myReactions: []
         ),
         thread: []
@@ -456,8 +470,8 @@ private struct BackPreviewHost: View {
         card: .preview(kind: .review, title: "sinners"),
         model: .preview(
             counts: EngagementCounts(
-                reactions: ["love": 9, "fire": 12, "laugh": 1, "sad": 0, "mind_blown": 5],
-                comments: 1, myReactions: ["fire", "mind_blown"]
+                reactions: ["fire": 12, "agree": 1, "disagree": 0, "want_to_watch": 5, "love": 9],
+                comments: 1, myReactions: ["fire", "want_to_watch"]
             ),
             thread: [top]
         ),

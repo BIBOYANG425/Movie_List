@@ -199,6 +199,43 @@ final class FeedTicketLogicTests: XCTestCase {
                        "open profile")
     }
 
+    // MARK: reaction stamp table (ticket back)
+
+    func testReactionStampsMatchTheContractSetExactly() {
+        // Drift guard: the UI stamp table must carry EXACTLY the shared
+        // contract reaction types (EngagementReducer.reactionTypes — the
+        // phase-5 DB CHECK set). The spec §2 laugh/sad/mind_blown list was an
+        // authoring error (corrected in the plan + design docs).
+        XCTAssertEqual(Set(ReactionStamp.all.map(\.type)), EngagementReducer.reactionTypes)
+        XCTAssertEqual(ReactionStamp.all.count, 5)
+    }
+
+    func testReactionStampsMirrorWebOrderAndGlyphs() {
+        // Web's REACTIONS array (components/feed/ReactionPicker.tsx L11–16 on
+        // main): fire 🔥, agree 🤝, disagree 😬, want_to_watch 👀, love ❤️.
+        XCTAssertEqual(ReactionStamp.all.map(\.type),
+                       ["fire", "agree", "disagree", "want_to_watch", "love"])
+        XCTAssertEqual(ReactionStamp.all.map(\.glyph),
+                       ["\u{1F525}", "\u{1F91D}", "\u{1F62C}", "\u{1F440}", "\u{2764}\u{FE0F}"])
+    }
+
+    func testReactionStampAccessibilityLabelPattern() {
+        let love = ReactionStamp.all.first { $0.type == "love" }!
+        XCTAssertEqual(love.accessibilityLabel(count: 4, mine: true),
+                       "love, 4 reactions, reacted")
+        XCTAssertEqual(love.accessibilityLabel(count: 4, mine: false),
+                       "love, 4 reactions")
+        XCTAssertEqual(love.accessibilityLabel(count: 1, mine: false),
+                       "love, 1 reaction")   // singular
+    }
+
+    func testReactionStampSpokenNameHumanizesUnderscores() {
+        let want = ReactionStamp.all.first { $0.type == "want_to_watch" }!
+        XCTAssertEqual(want.spokenName, "want to watch")
+        XCTAssertEqual(want.accessibilityLabel(count: 2, mine: true),
+                       "want to watch, 2 reactions, reacted")
+    }
+
     // MARK: avatar accessibility label
 
     func testAvatarLabelComposesHandle() {
