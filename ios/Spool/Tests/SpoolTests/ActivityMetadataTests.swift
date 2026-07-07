@@ -47,6 +47,17 @@ final class ActivityMetadataTests: XCTestCase {
         XCTAssertEqual(obj["year"] as? String, "2024")
     }
 
+    // MARK: whitespace-only is KEPT — omission is web truthiness, not trimming
+
+    func testWhitespaceOnlyNotesAreKeptVerbatim() throws {
+        // Web gates the key on JS truthiness ("  " is truthy) and never
+        // trims, so a whitespace-only note ships as-is. iOS's isEmpty check
+        // mirrors that boundary exactly: only "" drops the key.
+        let obj = try jsonObject(ActivityMetadata(notes: "  ", year: nil, watchedWithUserIds: nil))
+        XCTAssertEqual(Set(obj.keys), ["notes"], "\"  \" is truthy — key must survive")
+        XCTAssertEqual(obj["notes"] as? String, "  ", "value must be untrimmed")
+    }
+
     // MARK: uuid array → lowercase strings (web parity; Swift's UUID uppercases)
 
     func testWatchedWithEncodesLowercaseUUIDStrings() throws {

@@ -7,7 +7,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | Cycle | Feature | Status | Audit doc | Web-fix PR | iOS PR |
 |---|---|---|---|---|---|
 | C0 | Stub write fix | iOS build in final review | audits/2026-07-07-c0-stub-web-audit.md | #30 | (PR opens after final review) |
-| C1 | Feed + notifications | web fixes in review → PR pending | audits/2026-07-07-c1-feed-web-audit.md | (PR pending, branch fix/c1-feed-web-blocking) | — |
+| C1 | Feed + notifications | web fixes MERGED (#32, migrations applied + probes passed 2026-07-08); iOS data layer in PR #34; UI plan pending owner design input | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 |
 | C2 | Journal + AI agent | pending | — | — | — |
 | C3 | Watchlist + Discover | pending | — | — | — |
 | C4 | Ranking management | pending | — | — | — |
@@ -54,3 +54,27 @@ Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
 - Style: MARK casing (SpoolRankingEngineTests), 2-space indent block (rankingAlgorithm.ts), dead `Bracket` import (RankingFlowModal)
 - `sessionRef` not nulled on start-done paths in the 4 web surfaces (unreachable; fold into W1.3)
 - Session-level self-comparison filter (`id !== newItem.id`) with test (upstream-guarded today)
+
+### C1-iOS notes
+
+Data layer built on `feat/ios-parity-c1-feed-data` per `2026-07-08-c1-ios-feed-data-plan.md`; final contract re-verification (Task 5) found zero DTO/payload mismatches against the Global Constraints quotes.
+
+**(a) Plan-authoring corrections adjudicated during build (web = reference):**
+
+- Milestone throttle: plan said "per actor per LOCAL calendar day"; web's actual post-#32 logic is GLOBAL across actors, keyed by the event's UTC date (`created_at.slice(0, 10)`). Adjudicated to web; iOS `FeedPipeline.throttleMilestones` mirrors it byte-for-byte (10-char prefix key, cap 3, per resume-session).
+- Reply nesting: plan said "orphans surface as top-level"; web's render pass DROPS a reply whose parent is absent from the fetched page, and drops grandchildren (replies to replies) too. Adjudicated to web render parity; iOS `FeedPipelineComments.nest` mirrors the drop. Web's drop behavior is a candidate SHARED fix — if it changes, both platforms change in the same cycle.
+
+**(b) Accepted platform differences (wire contract identical):**
+
+- Over-length comments: iOS throws `CommentError.tooLong`; web silently `slice(0, 500)`s. The shared ≤500-after-trim contract is identical — the DB CHECK `length(btrim(body)) BETWEEN 1 AND 500` backstops both; iOS refuses rather than corrupts.
+- Duplicate mute: iOS throws on the UNIQUE-triple 23505; web has no conflict handling either (`addMute` logs and returns false). Contrast reactions, where 23505-on-insert = success on BOTH platforms by contract (D7).
+
+**(c) Part-B (UI plan) caller contract:**
+
+- Pipeline stage order = web's: mutes/type filters BEFORE the milestone throttle; throttle runs LAST over the surviving rows.
+- A throttle "session" = one page-assembly call sequence: the caller owns the counts dict, passes the SAME dict across pages of one session, and starts a fresh dict per new session.
+- Repository reads THROW; screens catch to empty state (web fails soft inside the service instead — iOS moved the soft-fail to the screen layer so bugs stay loud in the data layer).
+- Notification avatar is the raw `avatar_path` storage path; the UI layer builds the public URL (no `avatar_url` fallback chain).
+- `rankingScores` callers catch to empty map — a missing score means "hide the badge", never an error state.
+
+**(d) 500-boundary unit note:** Swift `String.count` counts grapheme clusters, Postgres `length()` counts code points, web `.slice(0, 500)` counts UTF-16 units. The three agree on plain text; for exotic input (ZWJ emoji sequences, combining marks) a body that passes iOS's 500 check can still exceed the DB's 500, and the insert surfaces the raw Postgres CHECK error, not `CommentError.tooLong`. The DB CHECK is the backstop; no client fix planned.
