@@ -528,6 +528,120 @@ export async function getJournalStats(userId: string): Promise<JournalStats> {
 }
 
 // ── Photos ──────────────────────────────────────────────────────────────────
+// Audit B4: the journal-photos bucket is PRIVATE (see
+// supabase/migrations/20260708_journal_photos_private.sql). Contract:
+//   * journal_entries.photo_paths stores storage object PATHS
+//     ({userId}/{entryId}/{index}.{ext}) — never URLs, public or signed.
+//   * Rendering goes through getJournalPhotoUrl(s), which mints signed URLs
+//     (30-day TTL) fresh on every render/mount — nothing persists them, so
+//     expiry never strands a stored link.
+//   * Legacy defense: if a full URL ever landed in photo_paths (old builds /
+//     manual data), extractJournalPhotoPath converts it back to a path before
+//     signing, so those rows keep rendering after the bucket flip.
+
+/** Adjudicated signed-URL lifetime (C2 plan Global Constraints): 30 days. */
+export const JOURNAL_PHOTO_SIGNED_URL_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+/**
+ * Every URL shape the Supabase storage API serves objects under:
+ *   /storage/v1/object/public/journal-photos/…        (legacy public links)
+ *   /storage/v1/object/sign/journal-photos/…?token=…  (expired signed links)
+ *   /storage/v1/object/authenticated/journal-photos/… (authenticated reads)
+ *   /storage/v1/object/journal-photos/…               (older SDK downloads)
+ *   /storage/v1/render/image/public/journal-photos/…  (image transformations)
+ */
+const JOURNAL_PHOTO_URL_MARKER =
+  /\/storage\/v1\/(?:object|render\/image)\/(?:public\/|sign\/|authenticated\/)?journal-photos\//;
+
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+/**
+ * Pure. Normalize a photo_paths value to a signable storage path.
+ *   - plain storage path → returned as-is (trimmed, leading slashes stripped);
+ *   - full URL pointing into the journal-photos bucket (any of the shapes
+ *     above) → the object path after the bucket segment, query/hash stripped,
+ *     percent-decoded;
+ *   - anything else (other buckets, foreign URLs, empty) → null (unsignable).
+ */
+export function extractJournalPhotoPath(pathOrLegacyUrl: string): string | null {
+  const trimmed = (pathOrLegacyUrl ?? '').trim();
+  if (!trimmed) return null;
+
+  const marker = trimmed.match(JOURNAL_PHOTO_URL_MARKER);
+  if (marker && marker.index !== undefined) {
+    let rest = trimmed.slice(marker.index + marker[0].length);
+    rest = rest.split(/[?#]/)[0];
+    if (!rest) return null;
+    try {
+      rest = rest.split('/').map(decodeURIComponent).join('/');
+    } catch {
+      // Malformed percent-encoding — keep the raw remainder.
+    }
+    return rest;
+  }
+
+  // No bucket marker: a URL we cannot map to this bucket is unsignable.
+  if (URL_SCHEME.test(trimmed) || trimmed.startsWith('//')) return null;
+
+  const path = trimmed.replace(/^\/+/, '');
+  return path || null;
+}
+
+/**
+ * Signed URL for one journal photo (30-day TTL, minted fresh on render).
+ * Accepts a storage path or a legacy stored URL. Null on unsignable input or
+ * storage error — callers render a placeholder, never a broken public link.
+ */
+export async function getJournalPhotoUrl(pathOrLegacyUrl: string): Promise<string | null> {
+  const path = extractJournalPhotoPath(pathOrLegacyUrl);
+  if (!path) return null;
+
+  const { data, error } = await supabase.storage
+    .from(JOURNAL_PHOTO_BUCKET)
+    .createSignedUrl(path, JOURNAL_PHOTO_SIGNED_URL_TTL_SECONDS);
+
+  if (error || !data?.signedUrl) {
+    console.error('Failed to sign journal photo URL:', error);
+    return null;
+  }
+  return data.signedUrl;
+}
+
+/**
+ * Batch variant for views that render several photos at once (the composer's
+ * photo grid): ONE createSignedUrls round-trip for the lot. Returns a map
+ * keyed by the ORIGINAL input strings (path or legacy URL), so callers look
+ * up by exactly what they stored; unsignable inputs and per-item signing
+ * failures are simply absent.
+ */
+export async function getJournalPhotoUrls(
+  pathsOrLegacyUrls: string[],
+): Promise<Map<string, string>> {
+  const signable = pathsOrLegacyUrls
+    .map((original) => ({ original, path: extractJournalPhotoPath(original) }))
+    .filter((e): e is { original: string; path: string } => e.path !== null);
+  if (signable.length === 0) return new Map();
+
+  const { data, error } = await supabase.storage
+    .from(JOURNAL_PHOTO_BUCKET)
+    .createSignedUrls(signable.map((e) => e.path), JOURNAL_PHOTO_SIGNED_URL_TTL_SECONDS);
+
+  if (error || !data) {
+    console.error('Failed to batch-sign journal photo URLs:', error);
+    return new Map();
+  }
+
+  // Results come back in input order — align by index, not by returned path
+  // (the SDK nulls `path` on per-item errors).
+  const map = new Map<string, string>();
+  data.forEach((entry, i) => {
+    const input = signable[i];
+    if (input && !entry.error && entry.signedUrl) {
+      map.set(input.original, entry.signedUrl);
+    }
+  });
+  return map;
+}
 
 export async function uploadJournalPhoto(
   userId: string,

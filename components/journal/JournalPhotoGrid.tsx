@@ -1,7 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { JOURNAL_PHOTO_BUCKET, JOURNAL_PHOTO_MAX_BYTES } from '../../constants';
+import { JOURNAL_PHOTO_MAX_BYTES } from '../../constants';
+import { getJournalPhotoUrls } from '../../services/journalService';
 
 interface JournalPhotoGridProps {
   photoPaths: string[];
@@ -10,13 +10,27 @@ interface JournalPhotoGridProps {
   maxPhotos: number;
 }
 
-function getPublicUrl(path: string): string {
-  const { data } = supabase.storage.from(JOURNAL_PHOTO_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
-}
-
 export const JournalPhotoGrid: React.FC<JournalPhotoGridProps> = ({ photoPaths, onAdd, onRemove, maxPhotos }) => {
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Audit B4: the journal-photos bucket is private — render via signed URLs
+  // (30-day TTL), batch-minted fresh on every mount / photo-set change and
+  // never persisted. Keyed by the stored value (path, or legacy URL via
+  // extractJournalPhotoPath inside the service).
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const photoKey = photoPaths.join('\n');
+  useEffect(() => {
+    let cancelled = false;
+    if (photoPaths.length === 0) {
+      setSignedUrls({});
+      return;
+    }
+    getJournalPhotoUrls(photoPaths).then((map) => {
+      if (!cancelled) setSignedUrls(Object.fromEntries(map));
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- photoKey stands in for photoPaths' contents
+  }, [photoKey]);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -37,11 +51,15 @@ export const JournalPhotoGrid: React.FC<JournalPhotoGridProps> = ({ photoPaths, 
         <div key={i} className="aspect-square rounded-lg overflow-hidden relative">
           {path ? (
             <>
-              <img
-                src={getPublicUrl(path)}
-                alt={`Photo ${i + 1}`}
-                className="w-full h-full object-cover"
-              />
+              {signedUrls[path] ? (
+                <img
+                  src={signedUrls[path]}
+                  alt={`Photo ${i + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-background animate-pulse" />
+              )}
               <button
                 type="button"
                 onClick={() => onRemove(path)}
