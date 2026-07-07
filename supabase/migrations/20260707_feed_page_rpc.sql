@@ -11,54 +11,25 @@
 -- Adjudicated decision Q3 (controller, 2026-07-07, do not relitigate): the
 -- 2-hour review boost is KEPT, implemented as an expression keyset here.
 --
--- ── Ordering key: boosted_ts ────────────────────────────────────────────────
+-- ── Ordering key: boosted_ts (WINDOWLESS) ───────────────────────────────────
 --
---   boosted_ts = case
---     when event_type = 'review'
---      and created_at > session_ts - interval '2 hours'
---     then created_at + interval '2 hours'
---     else created_at
---   end
+--   boosted_ts = created_at + interval '2 hours' * (event_type = 'review')::int
 --
--- i.e. reviews younger than 2 hours (relative to the pagination session's
--- frozen reference time) float above up-to-2h-newer cards; everything else
--- sorts by plain recency.
+-- i.e. every review row sorts as created_at + 2h, permanently — reviews float
+-- above up-to-2h-newer cards at any age. This matches the legacy client's
+-- applyReviewBoost EXACTLY (plan-owner decision, 2026-07-07 review): the old
+-- code boosted reviews unconditionally, with no window and no fetch-time
+-- anchor, so visible ordering is preserved bit-for-bit. An earlier revision
+-- of this migration used a 2h WINDOW anchored to a per-session timestamp
+-- (session_ts parameter); the window came from a plan-authoring error in the
+-- Task 3 test pins and was removed. (The plan's cited "audit §2b" sketch does
+-- not exist in the audit file; the authoritative sketch is audit B4's
+-- additive form, used verbatim above.)
 --
--- Provenance note: the plan defers to "audit §2b" for this expression, but
--- the audit file contains no §2b. The expression above is reconstructed from
--- the two sketches that DO exist, per the plan's intent:
---   * audit B4 fix design: additive form
---     `sort_ts = created_at + interval '2 hours' * (event_type='review')::int`
---   * plan Task 3 sketch region: the 2-hour window condition
---     `... and created_at > now() - interval '2 hours' ...`
--- The additive-inside-a-window form is chosen over the plan sketch's
--- `greatest(created_at, ... then now() end)` form because greatest() would
--- collapse every in-window review onto the same key (session_ts), reducing
--- their relative order to uuid order; the additive form preserves recency
--- order among boosted reviews, matching the client's old applyReviewBoost
--- within the window.
---
--- Known, intended divergence from the old client sort: applyReviewBoost
--- boosted reviews of ANY age by +2h; here a review older than 2h loses the
--- boost and sorts by plain created_at. This is required for keyset stability
--- and is pinned by services/__tests__/feedPagination.test.ts (a review at
--- 2h01m must NOT outrank a ranking_add at 30m).
---
--- ── session_ts: the boost freeze ────────────────────────────────────────────
---
--- boosted_ts must be IMMUTABLE for the duration of a pagination session: if
--- the window were evaluated against a live now(), a review crossing the 2h
--- boundary between page N and page N+1 would drop ~2h down the ordering —
--- rows behind the cursor reappear (duplicates) and rows ahead of it fall
--- behind (skips), the exact bug class B4 describes. The caller therefore
--- passes the FIRST page's timestamp as session_ts and reuses it verbatim for
--- every subsequent page of that session. A fresh session (page 1) starts a
--- fresh session_ts. session_ts is required (no default): the client must
--- know the exact value to recompute boosted_ts for the last row of each page
--- when building the cursor (the function returns plain activity_events rows,
--- which do not carry boosted_ts). The TS mirror of this expression lives in
--- services/feedService.ts (computeBoostedTs), pinned by
--- services/__tests__/feedPagination.test.ts.
+-- Because boosted_ts is a pure function of the row (no now(), no session
+-- anchor), the ordering is deterministic forever: no per-session freeze
+-- parameter is needed, cursors never expire, and an expression index can
+-- serve the ORDER BY (see index note below).
 --
 -- ── Cursor contract ─────────────────────────────────────────────────────────
 --
@@ -67,6 +38,13 @@
 -- client consumed; the keyset predicate (boosted_ts, id) < (cursor_rank,
 -- cursor_id) resumes strictly after it. Passing exactly one of the pair is a
 -- malformed cursor and raises.
+--
+-- The function returns boosted_ts AS A COLUMN alongside the event row, so
+-- the client builds the next cursor from the server-computed value verbatim
+-- (byte-exact, Postgres µs precision preserved) and NEVER recomputes the
+-- ordering key — eliminating the ms/µs precision mismatch class entirely.
+-- The TS side (services/feedService.ts cursorFromFeedRow) just copies
+-- (boosted_ts, id) off the last consumed row.
 --
 -- ── Modes ───────────────────────────────────────────────────────────────────
 --
@@ -85,22 +63,68 @@
 -- every raw row to advance the cursor deterministically, and it refills
 -- short pages by fetching the next raw page with the advanced cursor.
 --
--- Performance note: boosted_ts is a per-call expression (it depends on
--- session_ts), so no index can serve the ORDER BY — each page sorts the
--- RLS-visible row set. Fine at MVP scale; if activity_events grows large,
--- revisit with a "recent boosted reviews UNION rest by created_at" split
--- that can use an index on (created_at desc, id desc).
+-- ── Index / IMMUTABLE note ──────────────────────────────────────────────────
 --
--- Rollback: drop function public.get_feed_page(text, timestamptz, uuid, int, timestamptz);
+-- The ORDER BY is index-serveable, but NOT by indexing the raw expression:
+-- `timestamptz + interval` (timestamptz_pl_interval) is marked STABLE in the
+-- catalog — its result can depend on the TimeZone GUC when the interval has
+-- day/month components — so
+--   create index on activity_events
+--     ((created_at + interval '2 hours' * (event_type = 'review')::int) desc, id desc)
+-- fails with "functions in index expression must be marked IMMUTABLE".
+-- Wrapping the same arithmetic in a CASE does not help (the STABLE operator
+-- is still inside either branch). The fix is the feed_boosted_ts wrapper
+-- below, declared IMMUTABLE — a sound assertion for THIS expression because
+-- a pure hours-only interval is an exact 7200-second instant shift,
+-- independent of timezone/DST (only day/month interval components are
+-- timezone-sensitive). The RPC's predicate and ORDER BY call the same
+-- wrapper so the planner can match the index.
+--
+-- Rollback:
+--   drop function public.get_feed_page(text, timestamptz, uuid, int);
+--   drop index public.idx_activity_events_boosted_ts_id;
+--   drop function public.feed_boosted_ts(text, timestamptz);
+
+-- Defensive: an earlier (never-applied) revision of this migration declared a
+-- 5-parameter signature with session_ts; drop it if it ever landed so the
+-- 4-parameter function below cannot end up as an ambiguous overload.
+drop function if exists public.get_feed_page(text, timestamptz, uuid, int, timestamptz);
+
+-- The boosted ordering key as an IMMUTABLE function, so an expression index
+-- can serve the keyset ORDER BY (see header note on why the raw expression
+-- cannot be indexed directly).
+create or replace function public.feed_boosted_ts(event_type text, created_at timestamptz)
+returns timestamptz
+language sql
+immutable
+as $$
+  select created_at + interval '2 hours' * (event_type = 'review')::int
+$$;
+
+grant execute on function public.feed_boosted_ts(text, timestamptz) to authenticated;
+
+create index if not exists idx_activity_events_boosted_ts_id
+  on public.activity_events (public.feed_boosted_ts(event_type, created_at) desc, id desc);
 
 create or replace function public.get_feed_page(
   mode text,
   cursor_rank timestamptz,
   cursor_id uuid,
-  page_size int,
-  session_ts timestamptz
+  page_size int
 )
-returns setof public.activity_events
+returns table (
+  id uuid,
+  actor_id uuid,
+  event_type text,
+  target_user_id uuid,
+  media_tmdb_id text,
+  media_title text,
+  media_tier text,
+  media_poster_url text,
+  metadata jsonb,
+  created_at timestamptz,
+  boosted_ts timestamptz
+)
 language plpgsql
 stable
 security invoker
@@ -110,11 +134,6 @@ begin
   if mode is null or mode not in ('friends', 'explore') then
     raise exception 'get_feed_page: unknown mode % (expected ''friends'' or ''explore'')', coalesce(quote_literal(mode), 'NULL')
       using errcode = '22023';
-  end if;
-
-  if session_ts is null then
-    raise exception 'get_feed_page: session_ts is required — pass the first page''s timestamp and reuse it for every page of the session'
-      using errcode = '22004';
   end if;
 
   if (cursor_rank is null) <> (cursor_id is null) then
@@ -127,17 +146,23 @@ begin
       using errcode = '22023';
   end if;
 
+  -- All row references below are table-qualified: the RETURNS TABLE column
+  -- names (id, event_type, ...) are plpgsql OUT variables, and unqualified
+  -- use inside the query would be ambiguous.
   return query
-  select e.*
+  select
+    e.id,
+    e.actor_id,
+    e.event_type,
+    e.target_user_id,
+    e.media_tmdb_id,
+    e.media_title,
+    e.media_tier,
+    e.media_poster_url,
+    e.metadata,
+    e.created_at,
+    public.feed_boosted_ts(e.event_type, e.created_at) as boosted_ts
   from public.activity_events e
-  cross join lateral (
-    select case
-             when e.event_type = 'review'
-              and e.created_at > session_ts - interval '2 hours'
-             then e.created_at + interval '2 hours'
-             else e.created_at
-           end as boosted_ts
-  ) b
   where
     (
       mode = 'explore'
@@ -152,10 +177,11 @@ begin
           and public.friend_follows.following_id = e.actor_id
       )
     )
-    and (cursor_rank is null or (b.boosted_ts, e.id) < (cursor_rank, cursor_id))
-  order by b.boosted_ts desc, e.id desc
+    and (cursor_rank is null
+         or (public.feed_boosted_ts(e.event_type, e.created_at), e.id) < (cursor_rank, cursor_id))
+  order by public.feed_boosted_ts(e.event_type, e.created_at) desc, e.id desc
   limit page_size;
 end;
 $$;
 
-grant execute on function public.get_feed_page(text, timestamptz, uuid, int, timestamptz) to authenticated;
+grant execute on function public.get_feed_page(text, timestamptz, uuid, int) to authenticated;

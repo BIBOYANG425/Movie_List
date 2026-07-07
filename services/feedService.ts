@@ -127,49 +127,31 @@ function timeRangeCutoffMs(timeRange?: string): number | null {
 
 // ── Keyset Pagination (get_feed_page RPC) ───────────────────────────────────
 
-const FEED_BOOST_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
-
 /** Keyset cursor into the boosted feed ordering: last consumed row's (boosted_ts, id). */
 export interface FeedCursor {
   boostedTs: string;
   id: string;
 }
 
+/** activity_events row + the server-computed ordering key, as returned by get_feed_page. */
+interface FeedPageRow extends EventRow {
+  boosted_ts: string;
+}
+
 /**
- * Pure TS mirror of the SQL `boosted_ts` ordering expression in
- * supabase/migrations/20260707_feed_page_rpc.sql:
+ * Build the keyset cursor from a get_feed_page row. The ordering key —
+ * the windowless review boost, see supabase/migrations/20260707_feed_page_rpc.sql:
  *
- *   case when event_type = 'review'
- *         and created_at > session_ts - interval '2 hours'
- *        then created_at + interval '2 hours'
- *        else created_at end
+ *   boosted_ts = created_at + interval '2 hours' * (event_type = 'review')::int
  *
- * The RPC returns plain activity_events rows (no boosted_ts column), so the
- * client recomputes the ordering key of the last row on a page to build the
- * next cursor. `sessionTs` is the pagination session's frozen reference time
- * — the exact value passed as session_ts to every get_feed_page call of the
- * session — so client and SQL agree on the boost window and the ordering is
- * stable across pages even as wall-clock time advances.
- *
- * Non-boosted timestamps pass through VERBATIM to keep Postgres's microsecond
- * precision in the cursor; boosted ones are recomputed at JS millisecond
- * precision (two in-window reviews inside the same millisecond could in
- * principle straddle a page boundary — accepted, reviews never land that
- * dense). Pinned by services/__tests__/feedPagination.test.ts.
+ * — is computed SERVER-side and returned as the boosted_ts column, so the
+ * cursor copies it VERBATIM (byte-exact, Postgres µs precision preserved)
+ * and the client never recomputes the ordering key. Deterministic per row:
+ * no now(), no session anchor, cursors never expire. Pinned by
+ * services/__tests__/feedPagination.test.ts.
  */
-export function computeBoostedTs(
-  eventType: string,
-  createdAt: string,
-  sessionTs: string,
-): string {
-  if (eventType !== 'review') return createdAt;
-  const createdMs = Date.parse(createdAt);
-  const sessionMs = Date.parse(sessionTs);
-  if (!Number.isFinite(createdMs) || !Number.isFinite(sessionMs)) return createdAt;
-  if (createdMs > sessionMs - FEED_BOOST_WINDOW_MS) {
-    return new Date(createdMs + FEED_BOOST_WINDOW_MS).toISOString();
-  }
-  return createdAt;
+export function cursorFromFeedRow(row: { id: string; boosted_ts: string }): FeedCursor {
+  return { boostedTs: row.boosted_ts, id: row.id };
 }
 
 /** Serialize a cursor (session storage / iOS-shared wire format). */
@@ -202,16 +184,15 @@ export function decodeFeedCursor(encoded: string): FeedCursor | null {
 /**
  * SocialFeedView pages by offset (offset = cards.length, PAGE_SIZE = 20)
  * while the RPC pages by keyset cursor; this module-level session bridges
- * the two. A call with offset 0 starts a fresh session (fresh frozen
- * sessionTs, cursor at the top); a call at exactly the offset the session
- * expects resumes from the stored cursor; any other offset (stale component
- * state, remount) falls back to walking forward from the top of the stream.
+ * the two. A call with offset 0 starts a fresh session (cursor at the top);
+ * a call at exactly the offset the session expects resumes from the stored
+ * cursor; any other offset (stale component state, remount) falls back to
+ * walking forward from the top of the stream.
  */
 interface FeedPageSession {
   key: string;
   nextOffset: number;
   cursor: string | null; // encodeFeedCursor form; null = top of stream
-  sessionTs: string; // frozen boost reference, reused for every page (see migration)
   exhausted: boolean;
 }
 
@@ -256,7 +237,6 @@ export async function getFeedCards(
 
   // Resolve the pagination session (offset -> cursor bridge)
   let cursor: FeedCursor | null = null;
-  let sessionTs: string;
   let exhausted = false;
   let skipCount = 0; // already-delivered cards to skip when walking from the top
 
@@ -268,13 +248,12 @@ export async function getFeedCards(
 
   if (resumable && feedPageSession) {
     cursor = feedPageSession.cursor ? decodeFeedCursor(feedPageSession.cursor) : null;
-    sessionTs = feedPageSession.sessionTs;
     exhausted = feedPageSession.exhausted;
   } else {
     // Fresh session (page 1) or cold resume at an unexpected offset: restart
-    // from the top of the stream with a fresh frozen session_ts and skip the
-    // first `offset` post-filter cards.
-    sessionTs = new Date().toISOString();
+    // from the top of the stream and skip the first `offset` post-filter
+    // cards. (The ordering key is deterministic per row, so restarting is
+    // always safe — there is no per-session anchor to lose.)
     skipCount = offset;
   }
 
@@ -287,7 +266,12 @@ export async function getFeedCards(
   const keptRows: EventRow[] = [];
   const keptCursors: FeedCursor[] = [];
   const wanted = skipCount + limit;
-  const milestoneCounts = new Map<string, number>(); // UTC date -> count (3/day cap, per call as before)
+  // Milestone 3/day cap, counted over the rows this call consumes. NOTE: this
+  // is a (deliberate) change from the legacy prefix semantics — the old code
+  // re-fetched the whole feed prefix every page and counted milestones across
+  // it, so later pages saw prefix-inflated counts; here each resumed call
+  // counts from its cursor onward.
+  const milestoneCounts = new Map<string, number>(); // UTC date -> count
   const maxRpcPages = MAX_FEED_RPC_PAGES + Math.ceil(skipCount / limit);
   let rpcPages = 0;
 
@@ -298,7 +282,6 @@ export async function getFeedCards(
       cursor_rank: cursor?.boostedTs ?? null,
       cursor_id: cursor?.id ?? null,
       page_size: limit,
-      session_ts: sessionTs,
     });
 
     if (error) {
@@ -306,17 +289,14 @@ export async function getFeedCards(
       break;
     }
 
-    const raw = (data ?? []) as EventRow[];
+    const raw = (data ?? []) as FeedPageRow[];
     const hasMore = raw.length === limit; // short raw page = end of stream
     if (!hasMore) exhausted = true;
 
     for (const row of raw) {
       if (keptRows.length >= wanted) break; // unconsumed tail is re-fetched next call
 
-      const rowCursor: FeedCursor = {
-        boostedTs: computeBoostedTs(row.event_type, row.created_at, sessionTs),
-        id: row.id,
-      };
+      const rowCursor = cursorFromFeedRow(row); // server-computed boosted_ts, verbatim
 
       // Time range: the boost only ever lifts rows, so once the ordered
       // stream sinks below the cutoff nothing later can pass — stop paging.
@@ -359,7 +339,6 @@ export async function getFeedCards(
     key: sessionKey,
     nextOffset: offset + rows.length,
     cursor: lastReturnedCursor ? encodeFeedCursor(lastReturnedCursor) : null,
-    sessionTs,
     exhausted,
   };
 
