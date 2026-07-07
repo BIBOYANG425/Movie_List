@@ -67,14 +67,24 @@ Data layer built on `feat/ios-parity-c1-feed-data` per `2026-07-08-c1-ios-feed-d
 **(b) Accepted platform differences (wire contract identical):**
 
 - Over-length comments: iOS throws `CommentError.tooLong`; web silently `slice(0, 500)`s. The shared ≤500-after-trim contract is identical — the DB CHECK `length(btrim(body)) BETWEEN 1 AND 500` backstops both; iOS refuses rather than corrupts.
-- Duplicate mute: iOS throws on the UNIQUE-triple 23505; web has no conflict handling either (`addMute` logs and returns false). Contrast reactions, where 23505-on-insert = success on BOTH platforms by contract (D7).
+- Duplicate mute: iOS throws on the UNIQUE-triple 23505; web has no conflict handling either (`addMute` logs and returns false). Contrast reactions: "23505-on-insert = success" is D7's TARGET behavior — iOS implements it first; web's shipped toggle still returns false on any insert error, web fix deferred.
 
 **(c) Part-B (UI plan) caller contract:**
 
 - Pipeline stage order = web's: mutes/type filters BEFORE the milestone throttle; throttle runs LAST over the surviving rows.
-- A throttle "session" = one page-assembly call sequence: the caller owns the counts dict, passes the SAME dict across pages of one session, and starts a fresh dict per new session.
+- A throttle "session" = ONE page-assembly CALL: the caller owns the counts dict, passes the SAME dict across the refill pages consumed within that call, and resets it on every new call (web resets per `getFeedCards` call). Do NOT carry the dict across a whole scroll session — that would over-throttle vs web.
+- Refill loop: `hasMore` = raw page row count == `page_size` (web L293-294); the refill loop is bounded at MAX 10 RPC pages per assembly call (web L213); time-range early exhaustion — stop paging once `boosted_ts` sinks below the range cutoff (web L303-306).
 - Repository reads THROW; screens catch to empty state (web fails soft inside the service instead — iOS moved the soft-fail to the screen layer so bugs stay loud in the data layer).
 - Notification avatar is the raw `avatar_path` storage path; the UI layer builds the public URL (no `avatar_url` fallback chain).
 - `rankingScores` callers catch to empty map — a missing score means "hide the badge", never an error state.
 
 **(d) 500-boundary unit note:** Swift `String.count` counts grapheme clusters, Postgres `length()` counts code points, web `.slice(0, 500)` counts UTF-16 units. The three agree on plain text; for exotic input (ZWJ emoji sequences, combining marks) a body that passes iOS's 500 check can still exceed the DB's 500, and the insert surfaces the raw Postgres CHECK error, not `CommentError.tooLong`. The DB CHECK is the backstop; no client fix planned.
+
+#### Deferred to the UI plan (Part B)
+
+The plan's Task 2 "mapping" mandate was narrowed to the Interfaces block during build — the following web `getFeedCards` stages are NOT in the data layer and ship with Part B, where the `FeedCard` model gets the owner's design input:
+
+- Card mapping, including `toFeedCardType`'s unknown-type → `'ranking'` coercion and the S–D tier guard.
+- Profile hydration with the 3-step avatar fallback chain (`avatar_url` → storage public URL from `avatar_path` → dicebear). `ProfileRepository.getProfilesByIds` already returns the needed columns.
+- Tier and time-range filter helpers.
+- Score-pair collection rule: pairs are collected ONLY for ranking/review cards that have a `media_tmdb_id` (web feedService L357-363).
