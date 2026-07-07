@@ -23,6 +23,12 @@ jobs:
   parity:
     runs-on: macos-14
     timeout-minutes: 20
+    env:
+      # Dummy values so lib/supabase.ts can construct its client at import
+      # time (fuzzySearch/correctionService tests import it transitively).
+      # No test in this suite performs network I/O against Supabase.
+      VITE_SUPABASE_URL: "http://localhost:54321"
+      VITE_SUPABASE_ANON_KEY: "ci-dummy-anon-key"
     steps:
       - uses: actions/checkout@v4
 
