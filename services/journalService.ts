@@ -29,7 +29,9 @@ interface JournalRow {
   watched_platform: string | null;
   is_rewatch: boolean;
   rewatch_note: string | null;
-  personal_takeaway: string | null;
+  // Optional: the search RPC no longer returns personal_takeaway (audit B5 —
+  // owner-only field); direct table selects for the owner still include it.
+  personal_takeaway?: string | null;
   photo_paths: string[];
   visibility_override: string | null;
   like_count: number;
@@ -283,15 +285,27 @@ export async function listJournalEntries(
   });
 }
 
+/**
+ * RPC argument shape for search_journal_entries. The wire signature is
+ * unchanged for API compat (audit B1 fix), but target_user_id is now a
+ * FILTER, not a trust boundary: the rewritten RPC is security invoker, so
+ * journal_entries RLS decides which of that user's rows the caller may see.
+ */
+export function buildSearchRpcArgs(
+  targetUserId: string,
+  query: string,
+): { search_query: string; target_user_id: string } {
+  return { search_query: query, target_user_id: targetUserId };
+}
+
 export async function searchJournalEntries(
   userId: string,
   query: string,
 ): Promise<JournalEntry[]> {
+  // Rows come back without personal_takeaway (owner-only per audit B5) —
+  // mapRow yields personalTakeaway: undefined, which no search consumer renders.
   const { data, error } = await supabase
-    .rpc('search_journal_entries', {
-      search_query: query,
-      target_user_id: userId,
-    });
+    .rpc('search_journal_entries', buildSearchRpcArgs(userId, query));
 
   if (error) {
     console.error('Failed to search journal entries:', error);
@@ -415,6 +429,34 @@ export async function deleteJournalPhoto(
 }
 
 // ── Likes ───────────────────────────────────────────────────────────────────
+// Audit B3: likes are backed by the journal_entry_likes table (unique
+// (entry_id, user_id), RLS: own-row insert/delete, entry-visible select).
+// journal_entries.like_count is trigger-maintained from actual rows — the
+// increment/decrement RPCs are dropped and must never be called again.
+// See supabase/migrations/20260708_journal_search_likes_hardening.sql.
+
+/** Payload shape for a journal_entry_likes insert (snake_case table columns). */
+export function buildLikeInsertPayload(
+  entryId: string,
+  userId: string,
+): { entry_id: string; user_id: string } {
+  return { entry_id: entryId, user_id: userId };
+}
+
+export interface LikeToggleState {
+  liked: boolean;
+  likeCount: number;
+}
+
+/**
+ * Pure optimistic-toggle reducer for the like button. Clamps at 0 so a
+ * historically drifted server count (audit B3) can never render negative.
+ */
+export function applyLikeToggle(state: LikeToggleState): LikeToggleState {
+  return state.liked
+    ? { liked: false, likeCount: Math.max(0, state.likeCount - 1) }
+    : { liked: true, likeCount: state.likeCount + 1 };
+}
 
 export async function toggleJournalLike(
   userId: string,
@@ -422,17 +464,21 @@ export async function toggleJournalLike(
   shouldLike: boolean,
 ): Promise<boolean> {
   if (shouldLike) {
+    // ignoreDuplicates → INSERT ... ON CONFLICT DO NOTHING: idempotent, and a
+    // repeat like can no longer inflate the count (trigger derives it from rows).
     const { error } = await supabase
-      .from('journal_likes')
-      .upsert({ entry_id: entryId, user_id: userId }, { onConflict: 'entry_id,user_id' });
+      .from('journal_entry_likes')
+      .upsert(buildLikeInsertPayload(entryId, userId), {
+        onConflict: 'entry_id,user_id',
+        ignoreDuplicates: true,
+      });
     if (error) {
       console.error('Failed to like journal entry:', error);
       return false;
     }
-    await supabase.rpc('increment_journal_likes', { entry_id_param: entryId });
   } else {
     const { error } = await supabase
-      .from('journal_likes')
+      .from('journal_entry_likes')
       .delete()
       .eq('entry_id', entryId)
       .eq('user_id', userId);
@@ -440,7 +486,29 @@ export async function toggleJournalLike(
       console.error('Failed to unlike journal entry:', error);
       return false;
     }
-    await supabase.rpc('decrement_journal_likes', { entry_id_param: entryId });
   }
   return true;
+}
+
+/**
+ * Batch liked-state load for the viewer (audit B3: cards previously never
+ * loaded initial like state, so re-likes double-incremented across sessions).
+ */
+export async function getLikedEntryIds(
+  viewerId: string,
+  entryIds: string[],
+): Promise<Set<string>> {
+  if (!viewerId || entryIds.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from('journal_entry_likes')
+    .select('entry_id')
+    .eq('user_id', viewerId)
+    .in('entry_id', entryIds);
+
+  if (error) {
+    console.error('Failed to load journal like state:', error);
+    return new Set();
+  }
+  return new Set((data ?? []).map((r: { entry_id: string }) => r.entry_id));
 }

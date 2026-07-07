@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Heart, Edit3, Camera, Sparkles, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { JournalEntryCard as JournalEntryCardType } from '../../types';
 import { TIER_COLORS, MOOD_TAGS } from '../../constants';
-import { toggleJournalLike } from '../../services/journalService';
+import { applyLikeToggle, getLikedEntryIds, toggleJournalLike } from '../../services/journalService';
 import { getProfilesByIds } from '../../services/friendsService';
 
 interface JournalEntryCardProps {
@@ -37,6 +37,17 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
   const [expanded, setExpanded] = useState(false);
   const [watchedWithNames, setWatchedWithNames] = useState<string[]>([]);
 
+  // Load the viewer's real liked state (audit B3: the card previously always
+  // started unliked, so re-liking across sessions double-incremented counts).
+  useEffect(() => {
+    if (!currentUserId) return;
+    let cancelled = false;
+    getLikedEntryIds(currentUserId, [entry.id]).then((ids) => {
+      if (!cancelled) setLiked(ids.has(entry.id));
+    });
+    return () => { cancelled = true; };
+  }, [currentUserId, entry.id]);
+
   // Resolve watched-with UUIDs to usernames
   useEffect(() => {
     if (!entry.watchedWithUserIds?.length) {
@@ -56,10 +67,16 @@ export const JournalEntryCard: React.FC<JournalEntryCardProps> = ({
   }, [entry.watchedWithUserIds?.join(',')]);
 
   const handleLike = async () => {
-    const newLiked = !liked;
-    setLiked(newLiked);
-    setLikeCount((c) => c + (newLiked ? 1 : -1));
-    await toggleJournalLike(currentUserId, entry.id, newLiked);
+    const prev = { liked, likeCount };
+    const next = applyLikeToggle(prev);
+    setLiked(next.liked);
+    setLikeCount(next.likeCount);
+    const ok = await toggleJournalLike(currentUserId, entry.id, next.liked);
+    if (!ok) {
+      // Roll back the optimistic toggle — the insert/delete did not persist.
+      setLiked(prev.liked);
+      setLikeCount(prev.likeCount);
+    }
   };
 
   const tierColorClass = entry.ratingTier ? TIER_COLORS[entry.ratingTier]?.split(' ')[0] : 'text-muted-foreground';
