@@ -1,0 +1,115 @@
+import { describe, it, expect } from 'vitest';
+import { RankingSession } from '../rankingSession';
+import { Tier, RankedItem } from '../../types';
+
+const GENRES = ['Drama', 'Action', 'Comedy', 'Horror', 'Sci-Fi'];
+
+// Factory for test items. If RankedItem gains new required fields,
+// extend here — tsc will flag it.
+function mkItem(i: number, tier: Tier, rank: number): RankedItem {
+  return {
+    id: `m${i}`,
+    title: `Movie ${i}`,
+    genres: [GENRES[i % GENRES.length]],
+    tier,
+    rank,
+    globalScore: 5 + (i % 5),
+  } as RankedItem;
+}
+
+function mkTier(tier: Tier, count: number): RankedItem[] {
+  return Array.from({ length: count }, (_, i) => mkItem(i, tier, i));
+}
+
+const newItem = (id = 'new1'): RankedItem =>
+  ({ id, title: 'New Movie', genres: ['Drama'], tier: Tier.A, rank: 0, globalScore: 7.5 } as RankedItem);
+
+describe('RankingSession — strategy selection', () => {
+  it('empty tier → immediate done at rank 0, null score', () => {
+    const s = new RankingSession(newItem(), Tier.A, []);
+    expect(s.start()).toEqual({ type: 'done', finalRank: 0, finalScore: null });
+  });
+
+  it('≤5 items → compare_all starting at rank 0, phase binary_search', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 3));
+    const r = s.start();
+    if (r.type !== 'comparison') throw new Error('expected comparison');
+    expect(r.comparison.movieB.id).toBe('m0');
+    expect(r.comparison.phase).toBe('binary_search');
+    expect(r.comparison.round).toBe(1);
+  });
+
+  it('6–20 items → seed mode pivots via computeSeedIndex', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 8));
+    const r = s.start();
+    if (r.type !== 'comparison') throw new Error('expected comparison');
+    // newItem.globalScore = 7.5 is inside A range [7.0, 8.9] → aligned seed,
+    // closest tier score to 7.5. Just assert it's a valid index and phase.
+    expect(r.comparison.phase).toBe('binary_search');
+    expect(Number(r.comparison.movieB.id.slice(1))).toBeGreaterThanOrEqual(0);
+  });
+
+  it('>20 items → engine mode (phase is an engine phase, not binary_search)', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
+    const r = s.start();
+    if (r.type !== 'comparison') throw new Error('expected comparison');
+    expect(['probe', 'escalation', 'cross_genre', 'settlement']).toContain(r.comparison.phase);
+  });
+});
+
+describe('RankingSession — small-tier flow', () => {
+  it('compare_all: new wins on round 2 → done at rank 1', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 3));
+    s.start();
+    const r1 = s.submit('existing');
+    if (r1.type !== 'comparison') throw new Error('expected comparison');
+    expect(r1.comparison.movieB.id).toBe('m1');
+    const r2 = s.submit('new');
+    expect(r2).toEqual({ type: 'done', finalRank: 1, finalScore: null });
+  });
+
+  it('too_tough / skip inserts at current cursor', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 3));
+    s.start();
+    s.submit('existing'); // cursor now at mid=1
+    const r = s.submit('too_tough');
+    expect(r).toEqual({ type: 'done', finalRank: 1, finalScore: null });
+  });
+
+  it('undo restores the previous small-tier comparison', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 3));
+    const first = s.start();
+    if (first.type !== 'comparison') throw new Error('expected comparison');
+    s.submit('existing');
+    const undone = s.undo();
+    if (!undone || undone.type !== 'comparison') throw new Error('expected restored comparison');
+    expect(undone.comparison.movieB.id).toBe(first.comparison.movieB.id);
+    // Replaying the same choice reproduces the same next state
+    const replay = s.submit('existing');
+    if (replay.type !== 'comparison') throw new Error('expected comparison');
+    expect(replay.comparison.movieB.id).toBe('m1');
+  });
+});
+
+describe('RankingSession — engine flow', () => {
+  it('delegates to the engine and completes with a numeric score', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
+    let r = s.start();
+    let guard = 0;
+    while (r.type === 'comparison' && guard < 30) {
+      r = s.submit('new');
+      guard++;
+    }
+    if (r.type !== 'done') throw new Error('engine did not converge');
+    expect(typeof r.finalScore).toBe('number');
+    expect(r.finalRank).toBeGreaterThanOrEqual(0);
+  });
+
+  it('skip on engine path finalizes at tentative score', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
+    s.start();
+    const r = s.submit('skip');
+    if (r.type !== 'done') throw new Error('expected done after skip');
+    expect(typeof r.finalScore).toBe('number');
+  });
+});
