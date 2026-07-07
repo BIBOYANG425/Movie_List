@@ -30,6 +30,18 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
+/**
+ * Format a Date as yyyy-MM-dd in the runtime's LOCAL timezone.
+ * Never use UTC methods / toISOString here — watched_date is a plain
+ * calendar date in the user's local terms (see C0 audit finding B2).
+ */
+export function localDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // ── Palette Extraction ─────────────────────────────────────────────
 
 export async function extractPalette(posterUrl: string): Promise<string[]> {
@@ -71,33 +83,96 @@ export interface CreateStubInput {
   watchedDate?: string;
 }
 
-export async function createStub(
+/**
+ * Build the movie_stubs INSERT payload (fresh stub creation).
+ *
+ * Contract (C0 audit, §1.1/§1.2 write contract):
+ * - `palette` must NOT appear: fresh inserts get the DB default `'{}'`
+ *   (20260325_movie_stubs.sql:28), and keeping it out of every write path
+ *   means a conflict can never clobber an extracted palette (finding B1).
+ * - `watched_date` is always sent as the user's LOCAL calendar day (or the
+ *   caller-provided date). Relying on DB DEFAULT CURRENT_DATE used the UTC
+ *   date, landing evening ranks on tomorrow (finding B2).
+ */
+export function buildStubInsertPayload(
   userId: string,
   input: CreateStubInput,
-): Promise<MovieStub | null> {
-  const templateId = input.tier === 'S' ? 's_tier_gold' : 'default';
-
-  const payload: Record<string, unknown> = {
+  now: Date = new Date(),
+): Record<string, unknown> {
+  return {
     user_id: userId,
     media_type: input.mediaType,
     tmdb_id: input.tmdbId,
     title: input.title,
     poster_path: input.posterPath ?? null,
     tier: input.tier,
-    palette: [],
-    template_id: templateId,
-    updated_at: new Date().toISOString(),
+    template_id: input.tier === 'S' ? 's_tier_gold' : 'default',
+    updated_at: now.toISOString(),
+    watched_date: input.watchedDate ?? localDateString(now),
   };
-  // Only include watched_date when explicitly provided; new inserts use DB DEFAULT CURRENT_DATE
-  if (input.watchedDate) {
-    payload.watched_date = input.watchedDate;
-  }
+}
 
-  const { data, error } = await supabase
+/**
+ * Build the UPDATE payload used when the insert hits the
+ * UNIQUE(user_id, media_type, tmdb_id) constraint (re-rank / tier
+ * migration). Per the audit's reference semantics (§1.2), a conflict
+ * REFRESHES tier, template_id, title, poster_path, updated_at and
+ * PRESERVES watched_date, palette, mood_tags, stub_line — so none of
+ * those preserved columns may appear here.
+ */
+export function buildStubConflictUpdatePayload(
+  input: CreateStubInput,
+  now: Date = new Date(),
+): Record<string, unknown> {
+  return {
+    title: input.title,
+    poster_path: input.posterPath ?? null,
+    tier: input.tier,
+    template_id: input.tier === 'S' ? 's_tier_gold' : 'default',
+    updated_at: now.toISOString(),
+  };
+}
+
+interface StubWriteResult {
+  data: Record<string, unknown> | null;
+  error: { code?: string; message?: string } | null;
+}
+
+/**
+ * Insert-first, update-on-conflict dispatcher. Tries a plain INSERT; if it
+ * fails with Postgres unique violation 23505, falls back to an UPDATE keyed
+ * on (user_id, media_type, tmdb_id) that only refreshes the re-rankable
+ * columns. Never throws — resolves to a { data, error } result.
+ */
+export async function insertStubOrUpdateOnConflict(
+  userId: string,
+  input: CreateStubInput,
+  now: Date = new Date(),
+): Promise<StubWriteResult> {
+  const insertRes: StubWriteResult = await supabase
     .from('movie_stubs')
-    .upsert(payload, { onConflict: 'user_id,media_type,tmdb_id', ignoreDuplicates: false })
+    .insert(buildStubInsertPayload(userId, input, now))
     .select()
     .single();
+
+  if (!insertRes.error) return insertRes;
+  if (insertRes.error.code !== '23505') return { data: null, error: insertRes.error };
+
+  return await supabase
+    .from('movie_stubs')
+    .update(buildStubConflictUpdatePayload(input, now))
+    .eq('user_id', userId)
+    .eq('media_type', input.mediaType)
+    .eq('tmdb_id', input.tmdbId)
+    .select()
+    .single();
+}
+
+export async function createStub(
+  userId: string,
+  input: CreateStubInput,
+): Promise<MovieStub | null> {
+  const { data, error } = await insertStubOrUpdateOnConflict(userId, input);
 
   if (error || !data) {
     console.error('Failed to create stub:', error);
@@ -233,7 +308,9 @@ export async function backfillStubs(
         title: r.title,
         posterPath: r.poster_url ?? undefined,
         tier: r.tier as Tier,
-        watchedDate: r.created_at ? r.created_at.split('T')[0] : undefined,
+        // created_at is a timestamptz — convert to the user's LOCAL calendar
+        // day; splitting the ISO string would take the UTC date (audit B2)
+        watchedDate: r.created_at ? localDateString(new Date(r.created_at)) : undefined,
       });
     }
   }
@@ -247,7 +324,9 @@ export async function backfillStubs(
         title: r.title,
         posterPath: r.poster_url ?? undefined,
         tier: r.tier as Tier,
-        watchedDate: r.created_at ? r.created_at.split('T')[0] : undefined,
+        // created_at is a timestamptz — convert to the user's LOCAL calendar
+        // day; splitting the ISO string would take the UTC date (audit B2)
+        watchedDate: r.created_at ? localDateString(new Date(r.created_at)) : undefined,
       });
     }
   }
