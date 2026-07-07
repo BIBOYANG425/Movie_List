@@ -6,7 +6,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 
 | Cycle | Feature | Status | Audit doc | Web-fix PR | iOS PR |
 |---|---|---|---|---|---|
-| C0 | Stub write fix | in progress (spec/plan) | — | — | — |
+| C0 | Stub write fix | web fixes in PR #30; iOS build next | audits/2026-07-07-c0-stub-web-audit.md | #30 | — |
 | C1 | Feed + notifications | pending | — | — | — |
 | C2 | Journal + AI agent | pending | — | — | — |
 | C3 | Watchlist + Discover | pending | — | — | — |
@@ -17,7 +17,12 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 
 ## Audit findings
 
-None yet. Format per entry: `[cycle] [blocking|deferred] file:line — finding — disposition`.
+Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
+
+- [C0] [blocking] stubService upsert clobbered `palette` on every re-rank — fixed in PR #30 (a44ae3f)
+- [C0] [blocking] stub `watched_date` UTC (evening ranks land on tomorrow), live + backfill paths — fixed in PR #30 (a44ae3f, 8fbcaac); forward-only, historical rows keep UTC dates
+- [C0] [deferred] 6 findings logged in audits/2026-07-07-c0-stub-web-audit.md (rewatches unrepresentable in one-stub-per-item model; backfill date is a proxy; and 4 more, see doc)
+- [C0] [deferred, review] pin `process.env.TZ` in stubService date tests so a UTC-methods regression fails on UTC CI; defensive try/catch in `insertStubOrUpdateOnConflict`; fold both into the iOS C0 cycle or W1.x
 
 ## Behavior notes awaiting owner ack
 
