@@ -84,18 +84,17 @@ export interface CreateStubInput {
 }
 
 /**
- * Build the movie_stubs upsert payload.
+ * Build the movie_stubs INSERT payload (fresh stub creation).
  *
- * Contract (C0 audit, §1.1 write contract):
- * - `palette` must NOT appear here: on conflict, PostgREST merge-duplicates
- *   updates every column present, so including `palette: []` wiped an
- *   existing stub's palette on every re-rank (finding B1). Fresh inserts
- *   get the DB default `'{}'` (20260325_movie_stubs.sql:28).
+ * Contract (C0 audit, §1.1/§1.2 write contract):
+ * - `palette` must NOT appear: fresh inserts get the DB default `'{}'`
+ *   (20260325_movie_stubs.sql:28), and keeping it out of every write path
+ *   means a conflict can never clobber an extracted palette (finding B1).
  * - `watched_date` is always sent as the user's LOCAL calendar day (or the
  *   caller-provided date). Relying on DB DEFAULT CURRENT_DATE used the UTC
  *   date, landing evening ranks on tomorrow (finding B2).
  */
-export function buildStubUpsertPayload(
+export function buildStubInsertPayload(
   userId: string,
   input: CreateStubInput,
   now: Date = new Date(),
@@ -113,17 +112,67 @@ export function buildStubUpsertPayload(
   };
 }
 
+/**
+ * Build the UPDATE payload used when the insert hits the
+ * UNIQUE(user_id, media_type, tmdb_id) constraint (re-rank / tier
+ * migration). Per the audit's reference semantics (§1.2), a conflict
+ * REFRESHES tier, template_id, title, poster_path, updated_at and
+ * PRESERVES watched_date, palette, mood_tags, stub_line — so none of
+ * those preserved columns may appear here.
+ */
+export function buildStubConflictUpdatePayload(
+  input: CreateStubInput,
+  now: Date = new Date(),
+): Record<string, unknown> {
+  return {
+    title: input.title,
+    poster_path: input.posterPath ?? null,
+    tier: input.tier,
+    template_id: input.tier === 'S' ? 's_tier_gold' : 'default',
+    updated_at: now.toISOString(),
+  };
+}
+
+interface StubWriteResult {
+  data: Record<string, unknown> | null;
+  error: { code?: string; message?: string } | null;
+}
+
+/**
+ * Insert-first, update-on-conflict dispatcher. Tries a plain INSERT; if it
+ * fails with Postgres unique violation 23505, falls back to an UPDATE keyed
+ * on (user_id, media_type, tmdb_id) that only refreshes the re-rankable
+ * columns. Never throws — resolves to a { data, error } result.
+ */
+export async function insertStubOrUpdateOnConflict(
+  userId: string,
+  input: CreateStubInput,
+  now: Date = new Date(),
+): Promise<StubWriteResult> {
+  const insertRes: StubWriteResult = await supabase
+    .from('movie_stubs')
+    .insert(buildStubInsertPayload(userId, input, now))
+    .select()
+    .single();
+
+  if (!insertRes.error) return insertRes;
+  if (insertRes.error.code !== '23505') return { data: null, error: insertRes.error };
+
+  return await supabase
+    .from('movie_stubs')
+    .update(buildStubConflictUpdatePayload(input, now))
+    .eq('user_id', userId)
+    .eq('media_type', input.mediaType)
+    .eq('tmdb_id', input.tmdbId)
+    .select()
+    .single();
+}
+
 export async function createStub(
   userId: string,
   input: CreateStubInput,
 ): Promise<MovieStub | null> {
-  const payload = buildStubUpsertPayload(userId, input);
-
-  const { data, error } = await supabase
-    .from('movie_stubs')
-    .upsert(payload, { onConflict: 'user_id,media_type,tmdb_id', ignoreDuplicates: false })
-    .select()
-    .single();
+  const { data, error } = await insertStubOrUpdateOnConflict(userId, input);
 
   if (error || !data) {
     console.error('Failed to create stub:', error);
