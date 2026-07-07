@@ -2,12 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import FocusTrap from 'focus-trap-react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry, ComparisonRequest } from '../../types';
-import { TIER_SCORE_RANGES } from '../../constants';
 import { searchMovies, searchPeople, getPersonFilmography, getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../../services/tmdbService';
 import { fuzzyFilterLocal, getBestCorrectedQuery, mergeAndDedupSearchResults } from '../../services/fuzzySearch';
-import { classifyBracket, computeSeedIndex, computeTierScore } from '../../services/rankingAlgorithm';
-import { SpoolRankingEngine } from '../../services/spoolRankingEngine';
-import { computePredictionSignals } from '../../services/spoolPrediction';
+import { classifyBracket } from '../../services/rankingAlgorithm';
+import { RankingSession } from '../../services/rankingSession';
 import { useAuth } from '../../contexts/AuthContext';
 import { SkeletonList } from '../shared/SkeletonCard';
 import { TierPicker } from '../shared/TierPicker';
@@ -58,14 +56,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [watchedWithUserIds, setWatchedWithUserIds] = useState<string[]>([]);
 
   // Spool ranking engine state
-  const engineRef = useRef<SpoolRankingEngine | null>(null);
+  const sessionRef = useRef<RankingSession | null>(null);
   const isProcessingRef = useRef(false);
-  const smallTierRef = useRef<{
-    mode: 'compare_all' | 'seed' | 'quartile';
-    tierItems: RankedItem[];
-    low: number; high: number; mid: number;
-    round: number; seedIdx: number;
-  } | null>(null);
   const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
 
@@ -153,7 +145,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       setNotes('');
       setWatchedWithUserIds([]);
       setCorrectedQuery(null);
-      engineRef.current = null;
+      sessionRef.current = null;
       setCurrentComparison(null);
       setSessionId(crypto.randomUUID());
 
@@ -180,29 +172,22 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         if (existingWatchedWith?.length) setWatchedWithUserIds(existingWatchedWith);
         setStep('tier');
       } else if (preselectedItem && preselectedTier) {
-        // Tier migration
+        // Tier migration — start comparison immediately
         const asRankedItem = preselectedItem as RankedItem;
         setSelectedItem(asRankedItem);
         if (asRankedItem.notes) setNotes(asRankedItem.notes);
         if (asRankedItem.watchedWithUserIds?.length) setWatchedWithUserIds(asRankedItem.watchedWithUserIds);
         setSelectedTier(preselectedTier);
 
-        const engine = new SpoolRankingEngine();
-        const signals = computePredictionSignals(
-          currentItems,
-          asRankedItem.genres[0] ?? '',
-          asRankedItem.bracket ?? classifyBracket(asRankedItem.genres),
-          asRankedItem.globalScore,
-          preselectedTier,
-        );
-        const result = engine.start(asRankedItem, preselectedTier, currentItems, signals);
-        engineRef.current = engine;
+        const session = new RankingSession(asRankedItem, preselectedTier, currentItems);
+        sessionRef.current = session;
+        const result = session.start();
 
         if (result.type === 'done') {
-          onAdd({ ...asRankedItem, tier: preselectedTier, rank: result.finalRank! });
+          onAdd({ ...asRankedItem, tier: preselectedTier, rank: result.finalRank });
           onClose();
         } else {
-          setCurrentComparison(result.comparison!);
+          setCurrentComparison(result.comparison);
           setStep('compare');
         }
       } else {
@@ -362,40 +347,18 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       // Empty tier — insert at 0
       onAdd({ ...item, tier: selectedTier!, rank: 0, notes: finalNotes, watchedWithUserIds: finalWatchedWith });
       onClose();
-    } else if (tierItems.length <= 5) {
-      // 1-5 items — compare against every item (top to bottom)
-      smallTierRef.current = { mode: 'compare_all', tierItems, low: 0, high: tierItems.length, mid: 0, round: 1, seedIdx: 0 };
-      engineRef.current = null;
-      setCurrentComparison({ movieA: item, movieB: tierItems[0], question: 'Which do you prefer?', round: 1, phase: 'binary_search' });
-      setStep('compare');
-    } else if (tierItems.length <= 20) {
-      // 6-20 items — seed pivot then quartile narrowing
-      const range = TIER_SCORE_RANGES[selectedTier!];
-      const tierScores = tierItems.map((_, idx) => computeTierScore(idx, tierItems.length, range.min, range.max));
-      const seedIdx = computeSeedIndex(tierScores, range.min, range.max, item.globalScore);
-      smallTierRef.current = { mode: 'seed', tierItems, low: 0, high: tierItems.length, mid: seedIdx, round: 1, seedIdx };
-      engineRef.current = null;
-      setCurrentComparison({ movieA: item, movieB: tierItems[seedIdx], question: 'Which do you prefer?', round: 1, phase: 'binary_search' });
-      setStep('compare');
-    } else {
-      // Large tier — use genre-anchored SpoolRankingEngine
-      const engine = new SpoolRankingEngine();
-      const signals = computePredictionSignals(
-        currentItems,
-        item.genres[0] ?? '',
-        item.bracket ?? classifyBracket(item.genres),
-        item.globalScore,
-        selectedTier!,
-      );
-      const result = engine.start(item, selectedTier!, currentItems, signals);
-      engineRef.current = engine;
+      return;
+    }
 
-      if (result.type === 'done') {
-        handleInsertAt(result.finalRank!);
-      } else {
-        setCurrentComparison(result.comparison!);
-        setStep('compare');
-      }
+    const session = new RankingSession(item, selectedTier!, currentItems);
+    sessionRef.current = session;
+    const result = session.start();
+
+    if (result.type === 'done') {
+      handleInsertAt(result.finalRank);
+    } else {
+      setCurrentComparison(result.comparison);
+      setStep('compare');
     }
   };
 
@@ -418,7 +381,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const handleCompareChoice = (choice: 'new' | 'existing' | 'too_tough' | 'skip') => {
     if (!currentComparison) return;
-    if (!engineRef.current && !smallTierRef.current) return;
+    const session = sessionRef.current;
+    if (!session) return;
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
 
@@ -436,72 +400,12 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         });
       }
 
-      // Small tier path (≤ 20 items)
-      if (smallTierRef.current) {
-        const st = smallTierRef.current;
-        const movieA = currentComparison.movieA;
-
-        if (choice === 'too_tough' || choice === 'skip') {
-          smallTierRef.current = null;
-          handleInsertAt(st.mid);
-          return;
-        }
-
-        const pick = choice === 'new' ? 'new' as const : 'existing' as const;
-        const nextRound = st.round + 1;
-        const setNext = (mid: number, mode?: typeof st.mode, low?: number, high?: number) => {
-          smallTierRef.current = { ...st, mode: mode ?? st.mode, low: low ?? st.low, high: high ?? st.high, mid, round: nextRound };
-          setCurrentComparison({ movieA, movieB: st.tierItems[mid], question: 'Which do you prefer?', round: nextRound, phase: 'binary_search' });
-        };
-        const done = (rank: number) => { smallTierRef.current = null; handleInsertAt(rank); };
-
-        if (st.mode === 'compare_all') {
-          if (pick === 'new') { done(st.mid); }
-          else if (st.mid + 1 >= st.tierItems.length) { done(st.tierItems.length); }
-          else { setNext(st.mid + 1); }
-        } else if (st.mode === 'seed') {
-          if (pick === 'new') {
-            if (st.mid === 0) { done(0); }
-            else { setNext(0, 'quartile', 0, st.mid); }
-          } else {
-            const newLow = st.mid + 1;
-            if (newLow >= st.tierItems.length) { done(st.tierItems.length); }
-            else {
-              const newHigh = st.tierItems.length;
-              const nextMid = Math.min(newLow + Math.floor((newHigh - newLow) * 0.75), newHigh - 1);
-              setNext(nextMid, 'quartile', newLow, newHigh);
-            }
-          }
-        } else {
-          // quartile narrowing
-          const newLow = pick === 'new' ? st.low : st.mid + 1;
-          const newHigh = pick === 'new' ? st.mid : st.high;
-          if (newLow >= newHigh) { done(newLow); }
-          else {
-            const ratio = pick === 'new' ? 0.25 : 0.75;
-            const nextMid = Math.max(newLow, Math.min(newLow + Math.floor((newHigh - newLow) * ratio), newHigh - 1));
-            setNext(nextMid, 'quartile', newLow, newHigh);
-          }
-        }
-        return;
-      }
-
-      // SpoolRankingEngine path (large tiers > 20)
-      if (!engineRef.current) return;
-
-      if (choice === 'too_tough' || choice === 'skip') {
-        const result = engineRef.current.skip();
-        handleInsertAt(result.finalRank!);
-        return;
-      }
-
-      const winnerId = choice === 'new' ? selectedItem!.id : currentComparison.movieB.id;
-      const result = engineRef.current.submitChoice(winnerId);
-
+      const result = session.submit(choice);
       if (result.type === 'done') {
-        handleInsertAt(result.finalRank!);
+        sessionRef.current = null;
+        handleInsertAt(result.finalRank);
       } else {
-        setCurrentComparison(result.comparison!);
+        setCurrentComparison(result.comparison);
       }
     } finally {
       isProcessingRef.current = false;
@@ -509,9 +413,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   };
 
   const handleUndo = () => {
-    if (!engineRef.current) return;
-    const result = engineRef.current.undo();
-    if (result && result.comparison) {
+    const result = sessionRef.current?.undo();
+    if (result && result.type === 'comparison') {
       setCurrentComparison(result.comparison);
     }
   };
