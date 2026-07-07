@@ -71,6 +71,41 @@ final class StubWriteContractTests: XCTestCase {
         XCTAssertEqual(p.template_id, "default")
     }
 
+    // MARK: explicit null poster_path — web sends `posterPath ?? null` on
+    // both payloads, so a poster that disappears clears the stored value on
+    // conflict-update. Synthesized Encodable would OMIT the key instead.
+
+    private var movieWithoutPoster: Movie {
+        Movie(id: "603", title: "The Matrix", year: 1999, director: "Lana Wachowski",
+              posterUrl: nil)
+    }
+
+    private func jsonObject<T: Encodable>(_ payload: T) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(payload)
+        return try JSONSerialization.jsonObject(with: data) as! [String: Any]
+    }
+
+    func testInsertPayloadEncodesNilPosterAsExplicitNull() throws {
+        let p = StubWriteContract.insertPayload(
+            userID: uid, movie: movieWithoutPoster, tier: .S,
+            now: eveningUTC, calendar: calendar("America/Los_Angeles")
+        )
+        let obj = try jsonObject(p)
+        XCTAssertTrue(obj.keys.contains("poster_path"),
+                      "poster_path key must exist even when the poster is missing")
+        XCTAssertTrue(obj["poster_path"] is NSNull,
+                      "nil poster must encode as explicit JSON null (web parity)")
+    }
+
+    func testConflictUpdatePayloadEncodesNilPosterAsExplicitNull() throws {
+        let p = StubWriteContract.conflictUpdatePayload(movie: movieWithoutPoster, tier: .B, now: eveningUTC)
+        let obj = try jsonObject(p)
+        XCTAssertTrue(obj.keys.contains("poster_path"),
+                      "poster_path key must exist even when the poster is missing")
+        XCTAssertTrue(obj["poster_path"] is NSNull,
+                      "nil poster must encode as explicit JSON null so conflict-update clears a vanished poster")
+    }
+
     // MARK: shared unique-violation classifier
 
     func testIsUniqueViolationMatchesSQLState() {

@@ -9,12 +9,16 @@ import SwiftUI
 /// `user_rankings` row behind — exactly the "aborting still saves" bug.
 ///
 /// Three paths, keyed on session state:
-///  - signed-in: write directly to `user_rankings` via RankingRepository
+///  - signed-in: write to `user_rankings` via RankingRepository, then chain
+///    the `movie_stubs` write via `StubWriter.writeStub` (fire-and-forget —
+///    a stub failure never fails the rank save; a failed rank insert never
+///    proceeds to the stub write, matching web where stub creation only
+///    follows a successful rank upsert)
 ///  - preview mode: append to `OnboardingQueue` + flip AppStorage
 ///    `spool.show_signin_sheet` so SpoolAppRoot presents the sign-in sheet
 ///  - not configured: no-op (the sign-in sheet itself is disabled upstream)
 ///
-/// Header last reviewed: 2026-04-20
+/// Header last reviewed: 2026-07-07
 public enum RankPersistence {
 
     /// Persist the movie into the user's shelf. Fire-and-forget from the
@@ -66,10 +70,12 @@ public enum RankPersistence {
                         level: .error
                     )
                 }
+                return
             }
-            // TODO: when stub insertion is wired (moods + line → movie_stubs
-            // via RankingRepository.insertStub), chain it here so we have
-            // a single atomic finish path.
+            // Stub write mirrors web createStub (PR #30 contract). Fire-and-
+            // forget inside StubWriter: a stub failure never fails the rank
+            // save, and palette extraction runs detached.
+            await StubWriter.writeStub(movie: movie, tier: tier)
             return
         }
 
