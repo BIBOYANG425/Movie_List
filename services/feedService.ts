@@ -8,8 +8,6 @@ import {
   ReactionType,
   Tier,
 } from '../types';
-import { TIER_SCORE_RANGES } from '../constants';
-import { computeTierScore } from './rankingAlgorithm';
 
 const REACTION_TYPES: ReactionType[] = ['fire', 'agree', 'disagree', 'want_to_watch', 'love'];
 
@@ -78,7 +76,11 @@ async function getProfilesByIds(
 }
 
 /**
- * Batch-fetch live scores for ranking cards by looking up user_rankings.
+ * Batch-fetch live scores for ranking cards via the `get_feed_ranking_scores`
+ * RPC (supabase/migrations/20260707_feed_ranking_scores_rpc.sql) — one round
+ * trip instead of the old ~100-query per-user/per-tier loop. The RPC runs
+ * `security invoker`, so ranking-table RLS still decides which scores the
+ * viewer can see; pairs with no visible ranking simply return no row.
  * Returns a map keyed by `${userId}:${tmdbId}` → computed score.
  */
 async function getRankingScores(
@@ -87,51 +89,27 @@ async function getRankingScores(
   const scoreMap = new Map<string, number>();
   if (pairs.length === 0) return scoreMap;
 
-  // Group by userId for efficient queries
-  const byUser = new Map<string, string[]>();
+  // Dedupe pairs so the payload stays minimal
+  const seen = new Set<string>();
+  const rpcPairs: { user_id: string; tmdb_id: string }[] = [];
   for (const { userId, tmdbId } of pairs) {
-    const list = byUser.get(userId) ?? [];
-    list.push(tmdbId);
-    byUser.set(userId, list);
+    const key = `${userId}:${tmdbId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rpcPairs.push({ user_id: userId, tmdb_id: tmdbId });
   }
 
-  for (const [uid, tmdbIds] of byUser) {
-    // Fetch from user_rankings, tv_rankings, and book_rankings
-    const [movieRes, tvRes, bookRes] = await Promise.all([
-      supabase.from('user_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
-      supabase.from('tv_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
-      supabase.from('book_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
-    ]);
+  const { data, error } = await supabase.rpc('get_feed_ranking_scores', {
+    pairs: rpcPairs,
+  });
 
-    // Process each table separately (tier counts are per-table)
-    for (const { data, table } of [
-      { data: movieRes.data, table: 'user_rankings' as const },
-      { data: tvRes.data, table: 'tv_rankings' as const },
-      { data: bookRes.data, table: 'book_rankings' as const },
-    ]) {
-      if (!data || data.length === 0) continue;
+  if (error) {
+    console.error('Failed to load ranking scores:', error);
+    return scoreMap;
+  }
 
-      const tiers = new Set(data.map((r: any) => r.tier as string));
-      const tierCounts = new Map<string, number>();
-
-      for (const tier of tiers) {
-        const { count } = await supabase
-          .from(table)
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', uid)
-          .eq('tier', tier);
-        tierCounts.set(tier, count ?? 1);
-      }
-
-      for (const row of data as { tmdb_id: string; tier: string; rank_position: number }[]) {
-        const t = row.tier as Tier;
-        const range = TIER_SCORE_RANGES[t];
-        if (!range) continue;
-        const total = tierCounts.get(row.tier) ?? 1;
-        const score = computeTierScore(row.rank_position, total, range.min, range.max);
-        scoreMap.set(`${uid}:${row.tmdb_id}`, Number(score.toFixed(1)));
-      }
-    }
+  for (const row of (data ?? []) as { user_id: string; tmdb_id: string; score: number }[]) {
+    scoreMap.set(`${row.user_id}:${row.tmdb_id}`, Number(row.score));
   }
 
   return scoreMap;
