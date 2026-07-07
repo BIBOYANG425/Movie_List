@@ -1,0 +1,2756 @@
+{
+  "constants": {
+    "tierScoreRanges": {
+      "S": {
+        "min": 9,
+        "max": 10
+      },
+      "A": {
+        "min": 7,
+        "max": 8.9
+      },
+      "B": {
+        "min": 5,
+        "max": 6.9
+      },
+      "C": {
+        "min": 3,
+        "max": 4.9
+      },
+      "D": {
+        "min": 0.1,
+        "max": 2.9
+      }
+    },
+    "newUserThreshold": 15,
+    "predictionWeights": {
+      "genreAffinity": 0.45,
+      "globalScore": 0.35,
+      "bracketAffinity": 0.2
+    }
+  },
+  "cases": [
+    {
+      "name": "small-3-compare-all-always-new",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        }
+      ],
+      "choices": [
+        "new"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "binary_search",
+          "movieBId": "m0"
+        }
+      ],
+      "expectedFinalRank": 0,
+      "expectedFinalScore": null
+    },
+    {
+      "name": "small-3-compare-all-always-existing",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        }
+      ],
+      "choices": [
+        "existing",
+        "existing",
+        "existing"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "binary_search",
+          "movieBId": "m0"
+        },
+        {
+          "round": 2,
+          "phase": "binary_search",
+          "movieBId": "m1"
+        },
+        {
+          "round": 3,
+          "phase": "binary_search",
+          "movieBId": "m2"
+        }
+      ],
+      "expectedFinalRank": 3,
+      "expectedFinalScore": null
+    },
+    {
+      "name": "small-3-skip-after-one",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        }
+      ],
+      "choices": [
+        "existing",
+        "skip"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "binary_search",
+          "movieBId": "m0"
+        },
+        {
+          "round": 2,
+          "phase": "binary_search",
+          "movieBId": "m1"
+        }
+      ],
+      "expectedFinalRank": 1,
+      "expectedFinalScore": null
+    },
+    {
+      "name": "small-8-seed-always-new",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        }
+      ],
+      "choices": [
+        "new",
+        "new"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "binary_search",
+          "movieBId": "m5"
+        },
+        {
+          "round": 2,
+          "phase": "binary_search",
+          "movieBId": "m0"
+        }
+      ],
+      "expectedFinalRank": 0,
+      "expectedFinalScore": null
+    },
+    {
+      "name": "small-8-seed-always-existing",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        }
+      ],
+      "choices": [
+        "existing",
+        "existing"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "binary_search",
+          "movieBId": "m5"
+        },
+        {
+          "round": 2,
+          "phase": "binary_search",
+          "movieBId": "m7"
+        }
+      ],
+      "expectedFinalRank": 8,
+      "expectedFinalScore": null
+    },
+    {
+      "name": "small-8-seed-alternating",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        }
+      ],
+      "choices": [
+        "new",
+        "existing",
+        "new",
+        "existing",
+        "new",
+        "existing"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "binary_search",
+          "movieBId": "m5"
+        },
+        {
+          "round": 2,
+          "phase": "binary_search",
+          "movieBId": "m0"
+        },
+        {
+          "round": 3,
+          "phase": "binary_search",
+          "movieBId": "m4"
+        },
+        {
+          "round": 4,
+          "phase": "binary_search",
+          "movieBId": "m1"
+        },
+        {
+          "round": 5,
+          "phase": "binary_search",
+          "movieBId": "m3"
+        },
+        {
+          "round": 6,
+          "phase": "binary_search",
+          "movieBId": "m2"
+        }
+      ],
+      "expectedFinalRank": 3,
+      "expectedFinalScore": null
+    },
+    {
+      "name": "small-20-seed-alternating",
+      "tier": "B",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Action"
+        ],
+        "globalScore": 6
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 7,
+          "globalScore": 7
+        },
+        {
+          "id": "m8",
+          "title": "Movie 8",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 8,
+          "globalScore": 8
+        },
+        {
+          "id": "m9",
+          "title": "Movie 9",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 9,
+          "globalScore": 9
+        },
+        {
+          "id": "m10",
+          "title": "Movie 10",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 10,
+          "globalScore": 5
+        },
+        {
+          "id": "m11",
+          "title": "Movie 11",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 11,
+          "globalScore": 6
+        },
+        {
+          "id": "m12",
+          "title": "Movie 12",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 12,
+          "globalScore": 7
+        },
+        {
+          "id": "m13",
+          "title": "Movie 13",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 13,
+          "globalScore": 8
+        },
+        {
+          "id": "m14",
+          "title": "Movie 14",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 14,
+          "globalScore": 9
+        },
+        {
+          "id": "m15",
+          "title": "Movie 15",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 15,
+          "globalScore": 5
+        },
+        {
+          "id": "m16",
+          "title": "Movie 16",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 16,
+          "globalScore": 6
+        },
+        {
+          "id": "m17",
+          "title": "Movie 17",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 17,
+          "globalScore": 7
+        },
+        {
+          "id": "m18",
+          "title": "Movie 18",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 18,
+          "globalScore": 8
+        },
+        {
+          "id": "m19",
+          "title": "Movie 19",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 19,
+          "globalScore": 9
+        }
+      ],
+      "choices": [
+        "new",
+        "existing",
+        "new",
+        "existing",
+        "new",
+        "existing",
+        "new",
+        "existing"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "binary_search",
+          "movieBId": "m9"
+        },
+        {
+          "round": 2,
+          "phase": "binary_search",
+          "movieBId": "m0"
+        },
+        {
+          "round": 3,
+          "phase": "binary_search",
+          "movieBId": "m7"
+        },
+        {
+          "round": 4,
+          "phase": "binary_search",
+          "movieBId": "m2"
+        },
+        {
+          "round": 5,
+          "phase": "binary_search",
+          "movieBId": "m6"
+        },
+        {
+          "round": 6,
+          "phase": "binary_search",
+          "movieBId": "m3"
+        },
+        {
+          "round": 7,
+          "phase": "binary_search",
+          "movieBId": "m5"
+        },
+        {
+          "round": 8,
+          "phase": "binary_search",
+          "movieBId": "m4"
+        }
+      ],
+      "expectedFinalRank": 5,
+      "expectedFinalScore": null
+    },
+    {
+      "name": "engine-25-always-new",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        },
+        {
+          "id": "m8",
+          "title": "Movie 8",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 8,
+          "globalScore": 8
+        },
+        {
+          "id": "m9",
+          "title": "Movie 9",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 9,
+          "globalScore": 9
+        },
+        {
+          "id": "m10",
+          "title": "Movie 10",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 10,
+          "globalScore": 5
+        },
+        {
+          "id": "m11",
+          "title": "Movie 11",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 11,
+          "globalScore": 6
+        },
+        {
+          "id": "m12",
+          "title": "Movie 12",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 12,
+          "globalScore": 7
+        },
+        {
+          "id": "m13",
+          "title": "Movie 13",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 13,
+          "globalScore": 8
+        },
+        {
+          "id": "m14",
+          "title": "Movie 14",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 14,
+          "globalScore": 9
+        },
+        {
+          "id": "m15",
+          "title": "Movie 15",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 15,
+          "globalScore": 5
+        },
+        {
+          "id": "m16",
+          "title": "Movie 16",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 16,
+          "globalScore": 6
+        },
+        {
+          "id": "m17",
+          "title": "Movie 17",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 17,
+          "globalScore": 7
+        },
+        {
+          "id": "m18",
+          "title": "Movie 18",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 18,
+          "globalScore": 8
+        },
+        {
+          "id": "m19",
+          "title": "Movie 19",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 19,
+          "globalScore": 9
+        },
+        {
+          "id": "m20",
+          "title": "Movie 20",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 20,
+          "globalScore": 5
+        },
+        {
+          "id": "m21",
+          "title": "Movie 21",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 21,
+          "globalScore": 6
+        },
+        {
+          "id": "m22",
+          "title": "Movie 22",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 22,
+          "globalScore": 7
+        },
+        {
+          "id": "m23",
+          "title": "Movie 23",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 23,
+          "globalScore": 8
+        },
+        {
+          "id": "m24",
+          "title": "Movie 24",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 24,
+          "globalScore": 9
+        }
+      ],
+      "choices": [
+        "new",
+        "new",
+        "new",
+        "new",
+        "new",
+        "new"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "probe",
+          "movieBId": "m15"
+        },
+        {
+          "round": 2,
+          "phase": "escalation",
+          "movieBId": "m0"
+        },
+        {
+          "round": 3,
+          "phase": "escalation",
+          "movieBId": "m5"
+        },
+        {
+          "round": 4,
+          "phase": "escalation",
+          "movieBId": "m10"
+        },
+        {
+          "round": 5,
+          "phase": "escalation",
+          "movieBId": "m20"
+        },
+        {
+          "round": 6,
+          "phase": "cross_genre",
+          "movieBId": "m1"
+        }
+      ],
+      "expectedFinalRank": 0,
+      "expectedFinalScore": 8.9
+    },
+    {
+      "name": "engine-25-always-existing",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        },
+        {
+          "id": "m8",
+          "title": "Movie 8",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 8,
+          "globalScore": 8
+        },
+        {
+          "id": "m9",
+          "title": "Movie 9",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 9,
+          "globalScore": 9
+        },
+        {
+          "id": "m10",
+          "title": "Movie 10",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 10,
+          "globalScore": 5
+        },
+        {
+          "id": "m11",
+          "title": "Movie 11",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 11,
+          "globalScore": 6
+        },
+        {
+          "id": "m12",
+          "title": "Movie 12",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 12,
+          "globalScore": 7
+        },
+        {
+          "id": "m13",
+          "title": "Movie 13",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 13,
+          "globalScore": 8
+        },
+        {
+          "id": "m14",
+          "title": "Movie 14",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 14,
+          "globalScore": 9
+        },
+        {
+          "id": "m15",
+          "title": "Movie 15",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 15,
+          "globalScore": 5
+        },
+        {
+          "id": "m16",
+          "title": "Movie 16",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 16,
+          "globalScore": 6
+        },
+        {
+          "id": "m17",
+          "title": "Movie 17",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 17,
+          "globalScore": 7
+        },
+        {
+          "id": "m18",
+          "title": "Movie 18",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 18,
+          "globalScore": 8
+        },
+        {
+          "id": "m19",
+          "title": "Movie 19",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 19,
+          "globalScore": 9
+        },
+        {
+          "id": "m20",
+          "title": "Movie 20",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 20,
+          "globalScore": 5
+        },
+        {
+          "id": "m21",
+          "title": "Movie 21",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 21,
+          "globalScore": 6
+        },
+        {
+          "id": "m22",
+          "title": "Movie 22",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 22,
+          "globalScore": 7
+        },
+        {
+          "id": "m23",
+          "title": "Movie 23",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 23,
+          "globalScore": 8
+        },
+        {
+          "id": "m24",
+          "title": "Movie 24",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 24,
+          "globalScore": 9
+        }
+      ],
+      "choices": [
+        "existing",
+        "existing"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "probe",
+          "movieBId": "m15"
+        },
+        {
+          "round": 2,
+          "phase": "settlement",
+          "movieBId": "m20"
+        }
+      ],
+      "expectedFinalRank": 21,
+      "expectedFinalScore": 7.25
+    },
+    {
+      "name": "engine-25-alternating",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        },
+        {
+          "id": "m8",
+          "title": "Movie 8",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 8,
+          "globalScore": 8
+        },
+        {
+          "id": "m9",
+          "title": "Movie 9",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 9,
+          "globalScore": 9
+        },
+        {
+          "id": "m10",
+          "title": "Movie 10",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 10,
+          "globalScore": 5
+        },
+        {
+          "id": "m11",
+          "title": "Movie 11",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 11,
+          "globalScore": 6
+        },
+        {
+          "id": "m12",
+          "title": "Movie 12",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 12,
+          "globalScore": 7
+        },
+        {
+          "id": "m13",
+          "title": "Movie 13",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 13,
+          "globalScore": 8
+        },
+        {
+          "id": "m14",
+          "title": "Movie 14",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 14,
+          "globalScore": 9
+        },
+        {
+          "id": "m15",
+          "title": "Movie 15",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 15,
+          "globalScore": 5
+        },
+        {
+          "id": "m16",
+          "title": "Movie 16",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 16,
+          "globalScore": 6
+        },
+        {
+          "id": "m17",
+          "title": "Movie 17",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 17,
+          "globalScore": 7
+        },
+        {
+          "id": "m18",
+          "title": "Movie 18",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 18,
+          "globalScore": 8
+        },
+        {
+          "id": "m19",
+          "title": "Movie 19",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 19,
+          "globalScore": 9
+        },
+        {
+          "id": "m20",
+          "title": "Movie 20",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 20,
+          "globalScore": 5
+        },
+        {
+          "id": "m21",
+          "title": "Movie 21",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 21,
+          "globalScore": 6
+        },
+        {
+          "id": "m22",
+          "title": "Movie 22",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 22,
+          "globalScore": 7
+        },
+        {
+          "id": "m23",
+          "title": "Movie 23",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 23,
+          "globalScore": 8
+        },
+        {
+          "id": "m24",
+          "title": "Movie 24",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 24,
+          "globalScore": 9
+        }
+      ],
+      "choices": [
+        "new",
+        "existing",
+        "new",
+        "existing"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "probe",
+          "movieBId": "m15"
+        },
+        {
+          "round": 2,
+          "phase": "escalation",
+          "movieBId": "m0"
+        },
+        {
+          "round": 3,
+          "phase": "cross_genre",
+          "movieBId": "m1"
+        },
+        {
+          "round": 4,
+          "phase": "settlement",
+          "movieBId": "m5"
+        }
+      ],
+      "expectedFinalRank": 6,
+      "expectedFinalScore": 8.45
+    },
+    {
+      "name": "engine-25-skip-after-two",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        },
+        {
+          "id": "m8",
+          "title": "Movie 8",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 8,
+          "globalScore": 8
+        },
+        {
+          "id": "m9",
+          "title": "Movie 9",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 9,
+          "globalScore": 9
+        },
+        {
+          "id": "m10",
+          "title": "Movie 10",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 10,
+          "globalScore": 5
+        },
+        {
+          "id": "m11",
+          "title": "Movie 11",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 11,
+          "globalScore": 6
+        },
+        {
+          "id": "m12",
+          "title": "Movie 12",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 12,
+          "globalScore": 7
+        },
+        {
+          "id": "m13",
+          "title": "Movie 13",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 13,
+          "globalScore": 8
+        },
+        {
+          "id": "m14",
+          "title": "Movie 14",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 14,
+          "globalScore": 9
+        },
+        {
+          "id": "m15",
+          "title": "Movie 15",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 15,
+          "globalScore": 5
+        },
+        {
+          "id": "m16",
+          "title": "Movie 16",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 16,
+          "globalScore": 6
+        },
+        {
+          "id": "m17",
+          "title": "Movie 17",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 17,
+          "globalScore": 7
+        },
+        {
+          "id": "m18",
+          "title": "Movie 18",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 18,
+          "globalScore": 8
+        },
+        {
+          "id": "m19",
+          "title": "Movie 19",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 19,
+          "globalScore": 9
+        },
+        {
+          "id": "m20",
+          "title": "Movie 20",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 20,
+          "globalScore": 5
+        },
+        {
+          "id": "m21",
+          "title": "Movie 21",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 21,
+          "globalScore": 6
+        },
+        {
+          "id": "m22",
+          "title": "Movie 22",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 22,
+          "globalScore": 7
+        },
+        {
+          "id": "m23",
+          "title": "Movie 23",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 23,
+          "globalScore": 8
+        },
+        {
+          "id": "m24",
+          "title": "Movie 24",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 24,
+          "globalScore": 9
+        }
+      ],
+      "choices": [
+        "new",
+        "existing",
+        "skip"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "probe",
+          "movieBId": "m15"
+        },
+        {
+          "round": 2,
+          "phase": "escalation",
+          "movieBId": "m0"
+        },
+        {
+          "round": 3,
+          "phase": "cross_genre",
+          "movieBId": "m1"
+        }
+      ],
+      "expectedFinalRank": 1,
+      "expectedFinalScore": 8.8
+    },
+    {
+      "name": "engine-25-offgenre-item",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Horror"
+        ],
+        "globalScore": 8.2
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        },
+        {
+          "id": "m8",
+          "title": "Movie 8",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 8,
+          "globalScore": 8
+        },
+        {
+          "id": "m9",
+          "title": "Movie 9",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 9,
+          "globalScore": 9
+        },
+        {
+          "id": "m10",
+          "title": "Movie 10",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 10,
+          "globalScore": 5
+        },
+        {
+          "id": "m11",
+          "title": "Movie 11",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 11,
+          "globalScore": 6
+        },
+        {
+          "id": "m12",
+          "title": "Movie 12",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 12,
+          "globalScore": 7
+        },
+        {
+          "id": "m13",
+          "title": "Movie 13",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 13,
+          "globalScore": 8
+        },
+        {
+          "id": "m14",
+          "title": "Movie 14",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 14,
+          "globalScore": 9
+        },
+        {
+          "id": "m15",
+          "title": "Movie 15",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 15,
+          "globalScore": 5
+        },
+        {
+          "id": "m16",
+          "title": "Movie 16",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 16,
+          "globalScore": 6
+        },
+        {
+          "id": "m17",
+          "title": "Movie 17",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 17,
+          "globalScore": 7
+        },
+        {
+          "id": "m18",
+          "title": "Movie 18",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 18,
+          "globalScore": 8
+        },
+        {
+          "id": "m19",
+          "title": "Movie 19",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 19,
+          "globalScore": 9
+        },
+        {
+          "id": "m20",
+          "title": "Movie 20",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 20,
+          "globalScore": 5
+        },
+        {
+          "id": "m21",
+          "title": "Movie 21",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 21,
+          "globalScore": 6
+        },
+        {
+          "id": "m22",
+          "title": "Movie 22",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 22,
+          "globalScore": 7
+        },
+        {
+          "id": "m23",
+          "title": "Movie 23",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 23,
+          "globalScore": 8
+        },
+        {
+          "id": "m24",
+          "title": "Movie 24",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 24,
+          "globalScore": 9
+        }
+      ],
+      "choices": [
+        "new",
+        "existing",
+        "new",
+        "existing"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "probe",
+          "movieBId": "m13"
+        },
+        {
+          "round": 2,
+          "phase": "escalation",
+          "movieBId": "m3"
+        },
+        {
+          "round": 3,
+          "phase": "cross_genre",
+          "movieBId": "m4"
+        },
+        {
+          "round": 4,
+          "phase": "settlement",
+          "movieBId": "m8"
+        }
+      ],
+      "expectedFinalRank": 9,
+      "expectedFinalScore": 8.25
+    },
+    {
+      "name": "engine-40-cross-tiers",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        },
+        {
+          "id": "m8",
+          "title": "Movie 8",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 8,
+          "globalScore": 8
+        },
+        {
+          "id": "m9",
+          "title": "Movie 9",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 9,
+          "globalScore": 9
+        },
+        {
+          "id": "m10",
+          "title": "Movie 10",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 10,
+          "globalScore": 5
+        },
+        {
+          "id": "m11",
+          "title": "Movie 11",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 11,
+          "globalScore": 6
+        },
+        {
+          "id": "m12",
+          "title": "Movie 12",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 12,
+          "globalScore": 7
+        },
+        {
+          "id": "m13",
+          "title": "Movie 13",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 13,
+          "globalScore": 8
+        },
+        {
+          "id": "m14",
+          "title": "Movie 14",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 14,
+          "globalScore": 9
+        },
+        {
+          "id": "m15",
+          "title": "Movie 15",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 15,
+          "globalScore": 5
+        },
+        {
+          "id": "m16",
+          "title": "Movie 16",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 16,
+          "globalScore": 6
+        },
+        {
+          "id": "m17",
+          "title": "Movie 17",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 17,
+          "globalScore": 7
+        },
+        {
+          "id": "m18",
+          "title": "Movie 18",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 18,
+          "globalScore": 8
+        },
+        {
+          "id": "m19",
+          "title": "Movie 19",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 19,
+          "globalScore": 9
+        },
+        {
+          "id": "m20",
+          "title": "Movie 20",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 20,
+          "globalScore": 5
+        },
+        {
+          "id": "m21",
+          "title": "Movie 21",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 21,
+          "globalScore": 6
+        },
+        {
+          "id": "m22",
+          "title": "Movie 22",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 22,
+          "globalScore": 7
+        },
+        {
+          "id": "m23",
+          "title": "Movie 23",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 23,
+          "globalScore": 8
+        },
+        {
+          "id": "m24",
+          "title": "Movie 24",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 24,
+          "globalScore": 9
+        },
+        {
+          "id": "b0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "b1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "b2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "b3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "b4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "b5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "b6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "b7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 7,
+          "globalScore": 7
+        },
+        {
+          "id": "b8",
+          "title": "Movie 8",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 8,
+          "globalScore": 8
+        },
+        {
+          "id": "b9",
+          "title": "Movie 9",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 9,
+          "globalScore": 9
+        },
+        {
+          "id": "b10",
+          "title": "Movie 10",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 10,
+          "globalScore": 5
+        },
+        {
+          "id": "b11",
+          "title": "Movie 11",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 11,
+          "globalScore": 6
+        },
+        {
+          "id": "b12",
+          "title": "Movie 12",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 12,
+          "globalScore": 7
+        },
+        {
+          "id": "b13",
+          "title": "Movie 13",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 13,
+          "globalScore": 8
+        },
+        {
+          "id": "b14",
+          "title": "Movie 14",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 14,
+          "globalScore": 9
+        }
+      ],
+      "choices": [
+        "new",
+        "existing",
+        "new",
+        "existing"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "probe",
+          "movieBId": "m20"
+        },
+        {
+          "round": 2,
+          "phase": "escalation",
+          "movieBId": "m0"
+        },
+        {
+          "round": 3,
+          "phase": "cross_genre",
+          "movieBId": "m1"
+        },
+        {
+          "round": 4,
+          "phase": "settlement",
+          "movieBId": "m5"
+        }
+      ],
+      "expectedFinalRank": 6,
+      "expectedFinalScore": 8.45
+    }
+  ]
+}

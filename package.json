@@ -7,7 +7,8 @@
     "build": "vite build",
     "start": "node server.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "fixtures:engine": "tsx scripts/generateEngineFixtures.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",
@@ -29,6 +30,7 @@
     "@types/react": "^18.2.61",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.1",
+    "tsx": "^4.23.0",
     "typescript": "^5.3.3",
     "vite": "^5.1.4",
     "vitest": "^4.0.18"
