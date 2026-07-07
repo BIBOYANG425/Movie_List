@@ -282,8 +282,19 @@ GRANT ALL ON journal_likes TO service_role;
 --          a counting view would force rewriting all of them in this change;
 --      (b) list reads stay O(1) on the hot path (no join/GROUP BY per page);
 --      (c) with the definer RPCs dropped (§8), this trigger is the ONLY
---          writer of like_count, and it RECOUNTS rows instead of doing
---          arithmetic, so the counter can neither drift nor be manipulated.
+--          writer of like_count, and it LOCKS-THEN-RECOUNTS: it first takes
+--          a row lock on the entry (PERFORM ... FOR UPDATE), then recomputes
+--          count(*) from journal_entry_likes rows. A bare recount would be
+--          manipulation-proof but not race-proof under READ COMMITTED: two
+--          concurrent likes on the same entry could each recount before the
+--          other's row is visible — EvalPlanQual re-checks the UPDATE's
+--          target row on lock conflict but does NOT refresh the recount
+--          subquery's snapshot — persisting a stale count (2 rows, count=1)
+--          until the next like/unlike. Serializing on the entry row FIRST
+--          closes that: plpgsql takes a fresh snapshot per statement, so the
+--          post-lock recount sees every committed like row. The counter is
+--          therefore both manipulation-proof (no caller-controlled
+--          arithmetic) and race-proof (lock-then-recount).
 --
 --    SECURITY DEFINER justification (required comment per plan global
 --    constraint): the liker is generally NOT the entry owner, and the
@@ -303,6 +314,10 @@ DECLARE
   target_entry uuid;
 BEGIN
   target_entry := COALESCE(NEW.entry_id, OLD.entry_id);
+  -- Serialize concurrent recounts on this entry BEFORE counting: once the
+  -- lock is granted, the next statement runs in a fresh snapshot and sees
+  -- all committed like rows (see the race note in the section header).
+  PERFORM 1 FROM journal_entries WHERE id = target_entry FOR UPDATE;
   UPDATE journal_entries
   SET like_count = (
     SELECT count(*) FROM journal_entry_likes
@@ -313,7 +328,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
+-- Belt-and-braces: Postgres already refuses direct invocation of
+-- trigger-returning functions, but Supabase's default privileges typically
+-- re-grant EXECUTE on new functions to anon/authenticated — revoke explicitly.
 REVOKE EXECUTE ON FUNCTION sync_journal_entry_like_count() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION sync_journal_entry_like_count() FROM anon, authenticated;
 
 CREATE TRIGGER journal_entry_likes_sync_count
   AFTER INSERT OR DELETE ON journal_entry_likes
