@@ -136,6 +136,15 @@ public enum FeedTicketPresenter {
         trimmedNonEmpty(title) ?? "untitled"
     }
 
+    /// VoiceOver label for the actor avatar — `"avatar of @<handle>"` with the
+    /// same `@` dedup + blank collapse as `admitLine`/`menuLabel`; missing or
+    /// blank username → plain `"avatar"`. Routes through `bareHandle` so a
+    /// username already carrying `@` never renders `@@`.
+    public static func avatarAccessibilityLabel(username: String?) -> String {
+        guard let bare = bareHandle(username) else { return "avatar" }
+        return "avatar of @\(bare)"
+    }
+
     /// VoiceOver label for the tier-stamp cluster: `"tier S, score 9.4"`,
     /// score segment omitted when absent.
     public static func stampAccessibilityLabel(tier: Tier, score: Double?) -> String {
@@ -310,7 +319,7 @@ public struct FeedTicket: View {
     }
 
     private var avatarAccessibilityLabel: String {
-        card.actorUsername.map { "avatar of @\($0)" } ?? "avatar"
+        FeedTicketPresenter.avatarAccessibilityLabel(username: card.actorUsername)
     }
 
     // MARK: variant bodies

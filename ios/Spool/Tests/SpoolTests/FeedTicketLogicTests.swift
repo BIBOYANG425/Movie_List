@@ -199,6 +199,24 @@ final class FeedTicketLogicTests: XCTestCase {
                        "open profile")
     }
 
+    // MARK: avatar accessibility label
+
+    func testAvatarLabelComposesHandle() {
+        XCTAssertEqual(FeedTicketPresenter.avatarAccessibilityLabel(username: "yurui"),
+                       "avatar of @yurui")
+    }
+
+    func testAvatarLabelDedupsAtSign() {
+        // Same @ dedup as admitLine/menuLabel — never render @@.
+        XCTAssertEqual(FeedTicketPresenter.avatarAccessibilityLabel(username: "@yurui"),
+                       "avatar of @yurui")
+    }
+
+    func testAvatarLabelMissingUsernameFallsBack() {
+        XCTAssertEqual(FeedTicketPresenter.avatarAccessibilityLabel(username: nil), "avatar")
+        XCTAssertEqual(FeedTicketPresenter.avatarAccessibilityLabel(username: "  "), "avatar")
+    }
+
     // MARK: display title
 
     func testDisplayTitlePassesThroughAndFallsBack() {
