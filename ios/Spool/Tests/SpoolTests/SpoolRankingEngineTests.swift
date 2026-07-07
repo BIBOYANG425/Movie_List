@@ -570,4 +570,25 @@ final class SpoolRankingEngineTests: XCTestCase {
             XCTAssertEqual(c2b.round, 2)
         }
     }
+
+    // MARK: tier score
+
+    /// Single-item tiers get the tier midpoint rounded to 1 decimal place.
+    /// Pins behavior before simplifying the obfuscated expression in
+    /// computeTierScore's totalInTier <= 1 branch.
+    func testSingleItemTierScoreIsRoundedMidpoint() {
+        // (min + max) / 2, rounded to 1 place, per tier:
+        // S: (9.0+10.0)/2 = 9.5   A: (7.0+8.9)/2 = 7.95 -> 8.0
+        // B: (5.0+6.9)/2 = 5.95 -> 6.0   C: (3.0+4.9)/2 = 3.95 -> 4.0
+        // D: (0.1+2.9)/2 = 1.5
+        let expected: [Tier: Double] = [.S: 9.5, .A: 8.0, .B: 6.0, .C: 4.0, .D: 1.5]
+        for (tier, want) in expected {
+            let range = SpoolConstants.tierScoreRanges[tier]!
+            let got = RankingAlgorithm.computeTierScore(
+                position: 0, totalInTier: 1,
+                tierMin: range.min, tierMax: range.max
+            )
+            XCTAssertEqual(got, want, accuracy: 0.0001, "tier \(tier)")
+        }
+    }
 }

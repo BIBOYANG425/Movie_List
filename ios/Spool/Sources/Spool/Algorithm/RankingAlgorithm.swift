@@ -190,9 +190,7 @@ public enum RankingAlgorithm {
         position: Int, totalInTier: Int, tierMin: Double, tierMax: Double
     ) -> Double {
         if totalInTier <= 1 {
-            return (tierMin + tierMax).rounded(toPlaces: 1) / 2.0.rounded(toPlaces: 1) == 0
-                ? 0
-                : ((tierMin + tierMax) / 2.0).rounded(toPlaces: 1)
+            return ((tierMin + tierMax) / 2.0).rounded(toPlaces: 1)
         }
         let ratio = Double(totalInTier - 1 - position) / Double(totalInTier - 1)
         let score = tierMin + (tierMax - tierMin) * ratio
