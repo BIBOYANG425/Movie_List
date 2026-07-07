@@ -14,7 +14,7 @@ import Supabase
 /// in `followUser` — the existing RLS policy on `notifications` handles the
 /// permission check; we just fire-and-forget the insert.
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-07-07
 public actor FollowRepository {
 
     public static let shared = FollowRepository()
@@ -177,15 +177,11 @@ public actor FollowRepository {
     }
 
     /// Detect Postgres unique_violation (SQLSTATE 23505) surfaced through
-    /// PostgREST. Supabase-swift exposes the error code via a couple of
-    /// different shapes depending on the call site; string-matching the
-    /// rendered description is a deliberate fallback for the cases where
-    /// the typed Error doesn't carry a code we can pattern-match on.
+    /// PostgREST. Delegates to the shared `PostgresErrors` classifier
+    /// (extracted from this file's original check) so every repository
+    /// detects unique violations the same way.
     private static func isUniqueViolation(_ error: Error) -> Bool {
-        let s = "\(error)"
-        return s.contains("23505")
-            || s.lowercased().contains("duplicate key")
-            || s.lowercased().contains("unique constraint")
+        PostgresErrors.isUniqueViolation(error)
     }
 
     @discardableResult
