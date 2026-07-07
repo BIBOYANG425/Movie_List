@@ -165,3 +165,185 @@ design for now (audit D6; long-term fix is trigger/RPC writes).
   resurrects on the next poll (known quirk, audit D5).
 - Unknown/unwritten types render with the `new_follower` icon
   (`NotificationBell.tsx:127`).
+
+## journal_entries (since C2 web fixes, branch `fix/c2-journal-web-blocking`)
+
+One entry per `(user_id, tmdb_id)` — `UNIQUE(user_id, tmdb_id)`; the journal
+is per-movie, not per-watch (rewatch = `is_rewatch` + `rewatch_note` on the
+same row). Reference implementation: `services/journalService.ts`; SQL:
+`supabase/migrations/20260708_journal_visibility_model.sql`,
+`20260708_journal_search_likes_hardening.sql`,
+`20260708_journal_photos_private.sql` (owner-applied per the C2 runbook in
+`docs/plans/2026-07-07-ios-parity-ledger.md`). Enforcement labels used below:
+**[server]** = RLS/trigger/RPC enforces it, clients cannot break it;
+**[client]** = each client MUST implement it — the DB will not stop a wrong
+write/read.
+
+### Write shape — full replace [client]
+
+`upsertJournalEntry(userId, tmdbId, data)` writes EVERY column below with
+`?? null` / `?? []` / `?? false` defaults, `onConflict: 'user_id,tmdb_id'`.
+**There is no partial-update path: any caller that omits a field wipes it.**
+Before editing an existing entry a client must load the owner's FULL row
+(web: `getJournalEntry`, the only `select('*')` path) and round-trip every
+field. Web funnels this through the pure seam `pickEntryForEdit(probed,
+passed)` — the freshly probed owner row always wins over a row passed in from
+a cross-user list/search read (those omit `personal_takeaway`; populating a
+form from one and saving would silently null the takeaway). iOS must mirror
+this probe-before-edit rule.
+
+Client-written columns (exactly these, always all of them):
+`user_id, tmdb_id, title, poster_url, rating_tier, review_text,
+contains_spoilers, mood_tags, vibe_tags, favorite_moments,
+standout_performances, watched_date, watched_location,
+watched_with_user_ids, watched_platform, is_rewatch, rewatch_note,
+personal_takeaway, photo_paths, visibility_override`.
+
+Server-owned, never client-written: `id`, `created_at`, `updated_at`
+(trigger), `like_count` (trigger, see Likes), `search_vector` (generated
+column: title=A, review_text=B, favorite_moments=C — `personal_takeaway` is
+NOT indexed since C2).
+
+Column semantics (beyond the obvious):
+- `rating_tier` [client]: NEVER taken from the form — looked up from
+  `user_rankings.tier` for `(user_id, tmdb_id)` at every upsert; null if the
+  item isn't ranked. Stale if the ranking later moves (no sync-back).
+- `review_text` / other optional texts [client]: empty string coerced to null.
+- `mood_tags`: ids from `MOOD_TAGS` (23 ids, constants.ts) — not
+  DB-validated. `vibe_tags`: ids from `VIBE_TAGS` (11 ids).
+  `watched_platform`: id from `PLATFORM_OPTIONS` (14 ids).
+  `favorite_moments`: free text, max `JOURNAL_MAX_MOMENTS` = 5.
+- `standout_performances`: jsonb array of
+  `{personId: number, name: string, character?: string}`.
+- `watched_date` [client]: the user's LOCAL calendar day `yyyy-MM-dd` — see
+  Local dates below.
+- `photo_paths`: storage object PATHS, never URLs — see Photos below.
+- `visibility_override`: `'public' | 'friends' | 'private' | NULL` (CHECK).
+  NULL = "Default" in the UI = inherit the author's
+  `profiles.profile_visibility` — see Visibility below.
+
+Upsert side effects, in order (both platforms must match):
+1. [client] `review` activity event — ONLY when `review_text` is non-empty
+   AND resolved visibility = `'public'` (`shouldEmitReviewEvent`). The
+   author's `profile_visibility` is fetched at emission time only when the
+   override is NULL; a failed fetch resolves to `'friends'` → gate closed
+   (fail-closed). The old `!== 'private'` gate leaked friends-only review
+   bodies into explore — do not regress.
+2. [client] one `journal_tag` notification per tagged friend (body = first
+   100 chars of review). Known deferred flaw: fires regardless of visibility
+   and re-fires on every save (audit D2) — mirror as-is until D2 is fixed.
+
+### Visibility — resolved model [server]
+
+RLS on `journal_entries` (20260708_journal_visibility_model.sql), mirrored
+1:1 by the pure `resolveVisibility(override, profileVisibility)`:
+`RESOLVED = COALESCE(visibility_override, profiles.profile_visibility)`.
+
+| override | profile_visibility | resolved | readable by |
+|---|---|---|---|
+| 'public' | any | public | owner + all authenticated |
+| 'friends' | any | friends | owner + followers of the author |
+| 'private' | any | private | owner only |
+| NULL | 'public' | public | owner + all authenticated |
+| NULL | 'friends' | friends | owner + followers of the author |
+| NULL | 'private' | private | owner only |
+
+"Friends" = viewer FOLLOWS author (one-way `friend_follows`, same relation
+as the C1 feed). Anon reads nothing. Fail-closed edges: invalid override →
+'private' (TS) / matches-no-branch (SQL); unknown profile visibility →
+'friends' in TS, never 'public'. INSERT/UPDATE/DELETE stay owner-only.
+Row filtering is server-enforced; clients never re-implement it for reads —
+they simply see the rows RLS admits.
+
+### personal_takeaway — owner-only (split enforcement)
+
+- [server] excluded from the `search_vector` weights and from the search
+  RPC's return table — no search can match or return it.
+- [client] every cross-user read selects
+  `JOURNAL_ENTRY_SHARED_COLUMN_LIST` (23 columns — exactly the search RPC's
+  return set; asserted equal by test) instead of `*`. Owner-scoped reads
+  (`getJournalEntry`) keep `select('*')`.
+- **Residual (ledger open item):** RLS is row-level, so a hand-rolled API
+  select can still read `personal_takeaway` on rows already visible to the
+  caller. The real fix is a split-table redesign; until then the UI's
+  "(private)" label is an unmet promise. iOS MUST NOT select or render
+  another user's `personal_takeaway` regardless.
+
+### Search RPC [server]
+
+`search_journal_entries(search_query text, target_user_id uuid)` —
+`SECURITY INVOKER`, `LANGUAGE sql STABLE`, `search_path` pinned. Returns a
+23-column TABLE (all contract columns EXCEPT `personal_takeaway` and
+`search_vector`). `target_user_id` is a narrowing FILTER, never a trust
+boundary: the caller's RLS decides which rows come back (by construction —
+the body is a plain select under invoker rights). `plainto_tsquery('english')`,
+`ts_rank` desc, LIMIT 50. Wire shape helper: `buildSearchRpcArgs`.
+
+### Likes — `journal_entry_likes` + trigger-maintained count
+
+- Table: `journal_entry_likes(entry_id, user_id, created_at)`,
+  PK `(entry_id, user_id)`. [server] RLS: INSERT own row AND the entry is
+  visible to the liker; DELETE own row unconditional (a like can always be
+  withdrawn); SELECT gated on entry visibility (no liker enumeration on
+  invisible entries).
+- [server] `journal_entries.like_count` is maintained ONLY by the
+  lock-then-recount trigger on likes INSERT/DELETE (`SECURITY DEFINER`,
+  EXECUTE revoked; manipulation- and race-proof). The old
+  `increment_journal_likes` / `decrement_journal_likes` RPCs are DROPPED —
+  never call them, never write `like_count` from a client.
+- [client] toggle = INSERT `{entry_id, user_id}` with
+  `ON CONFLICT DO NOTHING` (idempotent) / DELETE own row
+  (`buildLikeInsertPayload`, `toggleJournalLike`). Read `like_count` from the
+  entry row; optimistic UI via the pure `applyLikeToggle` (clamps at 0).
+- [client] initial liked-state must be loaded (`getLikedEntryIds(viewerId,
+  entryIds)` batch read) — cards defaulting to "not liked" caused the
+  historical double-increment drift. Web currently calls it per-card
+  (known N+1, ledger open item); iOS should batch at list level from day one.
+- Side effect: any like/unlike bumps the entry's `updated_at` via the
+  pre-existing BEFORE UPDATE trigger — do NOT treat `updated_at` as
+  "content edited" (web renders `created_at` only).
+
+### Photos — private bucket + signed URLs
+
+- [client] `photo_paths` stores storage object PATHS
+  (`{userId}/{entryId}/{index}.{ext}`, bucket `journal-photos`,
+  max `JOURNAL_MAX_PHOTOS` = 6) — never URLs, public or signed.
+- [server] the bucket is PRIVATE (20260708_journal_photos_private.sql);
+  storage policies are owner-only on the `{userId}/` prefix for
+  SELECT/INSERT/UPDATE/DELETE.
+- [client] rendering mints signed URLs fresh on every render/mount —
+  `createSignedUrl(s)` with `JOURNAL_PHOTO_SIGNED_URL_TTL_SECONDS` =
+  2,592,000 (30 days) — and NEVER persists them, so expiry cannot strand a
+  stored link. Legacy defense: `extractJournalPhotoPath` converts any
+  full-URL value found in `photo_paths` back to a path before signing
+  (unsignable input → placeholder, never a broken public link).
+- **Cross-user photo rendering does not exist on web** (cards show a camera
+  indicator only; the composer grid is owner-only), so owner-only SELECT
+  fails closed. If iOS ships cross-user photo rendering, the storage SELECT
+  policy MUST first be extended with the resolved-visibility EXISTS
+  documented in `20260708_journal_photos_private.sql` §4 — without it,
+  viewers cannot mint signed URLs for other users' photos. Do not ship the
+  iOS surface before that policy extension is applied.
+
+### Local dates + streaks [client]
+
+- Any written calendar day (`watched_date` default, composer date pre-fill)
+  uses `localDateString(new Date())` from `services/stubService.ts` — local
+  date components, no UTC methods, `yyyy-MM-dd`. An explicitly provided
+  `watchedDate` passes through verbatim.
+- Streaks: pure `computeStreaks(watchedDates, todayLocal)` — deliberately
+  Swift-transliterable; port the helper, not the old inline block. Semantics:
+  dedupe + drop nulls + sort (ISO strings sort chronologically); day ordinal
+  = `Date.UTC(y, m-1, d) / 86_400_000` (pure integer calendar arithmetic —
+  no wall-clock instant is converted, so this does not violate the no-UTC
+  rule); consecutive = ordinal difference exactly 1 (month/year/leap safe);
+  `longestStreak` = longest consecutive run; the trailing run is
+  `currentStreak` iff `ordinal(todayLocal) − ordinal(lastDate) ≤ 1` —
+  negative differences included, so legacy future-dated rows (old UTC
+  "tomorrow" stamps) never zero an active streak. `todayLocal` must come
+  from `localDateString(new Date())`.
+
+Tests: `services/__tests__/journalService.test.ts` (visibility truth table,
+event gate, column lists, edit seam), `journalLikes.test.ts` (toggle/payload),
+`journalPhotos.test.ts` (path extraction/signing), `journalDates.test.ts`
+(streak truth table + named-timezone fixtures).
