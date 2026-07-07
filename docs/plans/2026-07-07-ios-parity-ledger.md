@@ -7,8 +7,8 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | Cycle | Feature | Status | Audit doc | Web-fix PR | iOS PR |
 |---|---|---|---|---|---|
 | C0 | Stub write fix | iOS build in final review | audits/2026-07-07-c0-stub-web-audit.md | #30 | (PR opens after final review) |
-| C1 | Feed + notifications | web fixes MERGED (#32, migrations applied + probes passed 2026-07-08); iOS data layer in PR #34; UI plan pending owner design input | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 |
-| C2 | Journal + AI agent | pending | — | — | — |
+| C1 | Feed + notifications | web fixes MERGED (#32, migrations applied + probes passed 2026-07-08); iOS data layer #34 MERGED; UI plan pending owner design input | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
+| C2 | Journal + AI agent | web fixes: migrations 1-2 APPLIED to prod + probes passed 2026-07-08; photos migration pending (applies immediately before merge); PR #33 rebasing | audits/2026-07-08-c2-journal-web-audit.md | #33 | — |
 | C3 | Watchlist + Discover | pending | — | — | — |
 | C4 | Ranking management | pending | — | — | — |
 | C5 | TV seasons + books | pending | — | — | — |
@@ -32,6 +32,14 @@ Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
 - [C1] [note] milestone-throttle resume semantics changed with keyset pagination: the 3/day cap now counts per-call from the resumed cursor onward (was prefix-wide, because the legacy code re-fetched the whole feed prefix every page) — accepted (`services/feedService.ts:269-274`)
 - [C1] [note] D-tier score rounding: for D-tier populations ≥ 57 the RPC's numeric half-away-from-zero rounding can sit +0.1 above the legacy client's float result — accepted divergence, documented in `supabase/migrations/20260707_feed_ranking_scores_rpc.sql` (701a0ff)
 - [C1] [note] audit §1.7 claimed the notifications type CHECK "was never pruned" of party/poll/group types — stale: `20260325_drop_parties_polls_groups.sql:17-25` pruned it to the 6 live types; the contract doc records the pruned CHECK
+- [C2] [blocking] B1 `search_journal_entries` SECURITY DEFINER + caller-trusted `target_user_id` leaked any user's private entries to any authenticated user — fixed on `fix/c2-journal-web-blocking` (ba8d5c9, follow-up 0279401): SECURITY INVOKER rewrite, RLS decides rows by construction, `personal_takeaway`/`search_vector` out of the return set
+- [C2] [blocking] B2 `visibility_override IS NULL` ("Default") was world-readable, `profiles.profile_visibility` never consulted — fixed (57823ab, follow-up 978afb0): resolved-visibility RLS, `COALESCE(visibility_override, profile_visibility)`
+- [C2] [blocking] B3 like-count RPCs manipulable by anyone + web toggle drifted counts in normal use — fixed (ba8d5c9, follow-up 0279401): `journal_entry_likes` table, lock-then-recount trigger owns `like_count`, counter RPCs dropped, cards load initial liked state
+- [C2] [blocking] B4 `journal-photos` bucket public with unconditional read — fixed (78cc7f1): private bucket, owner-only prefix policies, 30-day signed URLs re-signed on render
+- [C2] [blocking] B5 `personal_takeaway` labeled "(private)" but served to every viewer + full-text indexed — fixed (57823ab/978afb0 client selects + edit-seam; ba8d5c9 search half); RESIDUAL remains, see C2 open item (a)
+- [C2] [blocking] B6 'friends'-visibility review bodies emitted into `activity_events` (explore-readable) — fixed (57823ab): emission gated on RESOLVED visibility = 'public', fail-closed profile fetch at emission time
+- [C2] [blocking] B7 UTC-derived `watched_date` + mixed-timezone streak math — fixed (b001e2f): `localDateString` defaults (service + composer), pure `computeStreaks` in whole local calendar days
+- [C2] [deferred] 16 findings D1–D16 logged in audits/2026-07-08-c2-journal-web-audit.md (feed-card re-emission on every save, tag-notification visibility leak, agent persistence races D3/D7/D8, provenance mislabels, consent auto-grant D11, open LLM proxy D12, spoiler render gap, perf; see doc)
 
 ## C1 adjudications (controller, 2026-07-07 — recorded verbatim, do not relitigate)
 
@@ -41,6 +49,25 @@ Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
 - Q4: `ranking_move` ported as-is (no dedupe/collapse of consecutive moves)
 - Q5: reaction/comment notifications out of scope for C1 (ledgered follow-up)
 - D1: `metadata.bracket` stays unwritten (dead read left in place for W0.3)
+
+## C2 adjudications (controller 2026-07-08 — ALL owner-review-pending)
+
+- `visibility_override IS NULL` ("Default") resolves to the author's `profiles.profile_visibility`, NOT world-readable; 'public' means all *authenticated* (anon reads nothing) — owner review pending
+- `personal_takeaway` is owner-only everywhere: cross-user selects, search index/RPC, agent context for other users — owner review pending
+- Journal photos: private bucket + signed URLs, 30-day expiry, re-signed on every render, never persisted — owner review pending (signed links are bearer tokens for their TTL; accepted trade-off)
+- Likes: `journal_entry_likes` table (unique `(entry_id, user_id)`), `like_count` derived from rows by trigger, counter RPCs dropped; the apply-time reconcile zeroes legacy `movie_reviews`-era counts that have no attributable like rows (documented loss) — owner review pending
+- Review activity events emitted only when RESOLVED visibility = 'public' (was `!== 'private'`) — owner review pending; public-profile authors' feed presence unchanged, friends-only authors stop appearing in explore
+
+## C2 explicit open items
+
+- (a) **B5 residual:** `personal_takeaway` is still readable via a hand-rolled API select on rows already visible to the caller — enforcement is client-side column lists + search exclusion; RLS stays row-level. The split-table redesign is the real fix; until then the UI's "(private)" label is an unmet promise.
+- (b) **Probe-error-vs-no-row fallback in `pickEntryForEdit`:** a transient failure of the owner probe (error, not row-absence) falls back to the takeaway-less passed row, so a save in that window can still wipe the takeaway (rare, documented on the helper; strictly no worse than pre-fix).
+- (c) **Letterboxd import UTC date fallback** (`services/letterboxdImportService.ts:498`): rows with no CSV watched date get `new Date().toISOString().split('T')[0]` — same B7 bug class; one-line follow-up (import `localDateString`).
+- (d) **Per-card liked-state N+1:** `JournalEntryCard` calls `getLikedEntryIds` per card on mount; batch once at list level (`JournalHomeView`) — iOS should batch from day one.
+- (e) **Migration filename order is wrong for tooling:** `20260708_journal_photos_private.sql` sorts FIRST among the C2 files while the runbook requires it LAST (and the visibility file, which must apply first, sorts last) — `supabase db push`/filename-ordered tooling would violate the runbook twice over; owner-manual apply only.
+- (f) **Full-replace upsert semantics are the shared root cause** (audit §1.1): any partial caller silently clobbers fields — (a) and (b) are both symptoms. A read-modify-write path or partial-update RPC is the durable fix, and gates the audit §4 ceremony quick-entry recommendation.
+- (g) **`JournalEntrySheet` dead code** (audit D15) still carries auto-save-on-dismiss and the old UTC date pattern; delete under roadmap item W0.3 before it is ever re-mounted. iOS ports `JournalConversation` semantics only.
+- (h) **Likes bump `journal_entries.updated_at`** via the pre-existing BEFORE UPDATE trigger (no web reader renders `updated_at`; contract doc flags it) — accepted side effect; revisit if `updated_at` ever comes to mean "content edited".
 
 ## Behavior notes awaiting owner ack
 
@@ -88,3 +115,135 @@ The plan's Task 2 "mapping" mandate was narrowed to the Interfaces block during 
 - Profile hydration with the 3-step avatar fallback chain (`avatar_url` → storage public URL from `avatar_path` → dicebear). `ProfileRepository.getProfilesByIds` already returns the needed columns.
 - Tier and time-range filter helpers.
 - Score-pair collection rule: pairs are collected ONLY for ranking/review cards that have a `media_tmdb_id` (web feedService L357-363).
+
+## C2 migration runbook (owner applies)
+
+Same precedent as the C1 runbook in PR #32: agent prod-DDL is
+permission-gated, so the OWNER runs these files in the Supabase SQL editor
+(project `emulyralduiitxuigboj`) in EXACTLY this order.
+⚠️ **Filename-ordered tooling (`supabase db push` etc.) would sort them
+photos → hardening → visibility — wrong twice over** (the photos file must be
+LAST and the visibility file FIRST). Apply manually in the stated sequence;
+each file's header documents its own ordering dependency.
+
+**1. `supabase/migrations/20260708_journal_visibility_model.sql`** —
+**DONE — applied to prod 2026-07-08.**
+resolved-visibility SELECT RLS on `journal_entries` (B2). Its §4 compat-view
+drop is a guarded no-op on this first pass (the view doesn't exist yet); it
+is deliberately re-run as step 6. If the `DROP POLICY` fails, prod has
+drifted from the migration files: stop.
+
+**2. `supabase/migrations/20260708_journal_search_likes_hardening.sql`** —
+**DONE — applied to prod 2026-07-08.**
+invoker search RPC (B1), takeaway-free `search_vector` rebuild (B5 search
+half), `journal_entry_likes` + lock-then-recount trigger + backfill/reconcile
++ counter-RPC drops (B3), transitional `journal_likes` compat view. Its
+policies EXISTS-reference `journal_entries` and are only correct under
+step 1's policy — hence the order.
+
+**3. Verification probes** — **DONE — all probes passed 2026-07-08.** (C1 style: every data probe wrapped in
+`begin; … rollback;`, run in the SQL editor which may `SET ROLE`). Fixtures:
+`<OWNER>` = an account with `profiles.profile_visibility = 'friends'`, ≥1
+entry with `visibility_override IS NULL` + `review_text` + a distinctive
+`personal_takeaway`-only word, and ≥1 entry with
+`visibility_override = 'private'` (id = `<HIDDEN_ENTRY_ID>`); `<VIEWER>` = an
+authenticated user who does NOT follow `<OWNER>`; `<VISIBLE_ENTRY_ID>` = any
+entry whose resolved visibility is 'public' for `<VIEWER>`.
+
+Probe 1 — stranger reads a friends-resolved journal → **0 rows** (pre-fix:
+every NULL-override row came back):
+
+```sql
+begin;
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"<VIEWER>"}';
+select id, review_text, personal_takeaway
+from journal_entries where user_id = '<OWNER>';
+rollback;
+```
+
+Probe 2 — owner reads their own rows, private entry included, takeaway
+present → **all of `<OWNER>`'s rows, `personal_takeaway` populated** (the
+column exclusion is client-side — open item (a)):
+
+```sql
+begin;
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"<OWNER>"}';
+select id, visibility_override, personal_takeaway
+from journal_entries where user_id = '<OWNER>';
+rollback;
+```
+
+Probe 3 — search as stranger → **0 rows**, and the result set structurally
+has NO `personal_takeaway` column (23-column RETURNS TABLE):
+
+```sql
+begin;
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"<VIEWER>"}';
+select * from search_journal_entries('<word from OWNER review_text>', '<OWNER>');
+rollback;
+```
+
+Probe 4 — takeaway text is no longer search-indexed: as `<OWNER>`
+(`set local request.jwt.claims to '{"sub":"<OWNER>"}'`), search a word that
+appears ONLY in a `personal_takeaway` → **0 rows** (pre-fix: weight-D match).
+
+Probe 5 — like-insert on a visible entry succeeds; on an invisible one fails:
+
+```sql
+begin;
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"<VIEWER>"}';
+insert into journal_entry_likes (entry_id, user_id)
+values ('<VISIBLE_ENTRY_ID>', '<VIEWER>');   -- expected: INSERT 0 1
+rollback;
+
+begin;
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"<VIEWER>"}';
+insert into journal_entry_likes (entry_id, user_id)
+values ('<HIDDEN_ENTRY_ID>', '<VIEWER>');    -- expected: 42501 RLS violation
+rollback;
+```
+
+Probe 6 — recount sanity (no role switch, RLS bypassed) → **drifted = 0**
+(legacy `movie_reviews`-era counts are zeroed by design; see adjudications):
+
+```sql
+select count(*) as drifted
+from journal_entries je
+where je.like_count is distinct from
+      (select count(*) from journal_entry_likes jel
+       where jel.entry_id = je.id);
+```
+
+**4. `supabase/migrations/20260708_journal_photos_private.sql` — LAST,
+immediately before step 5.** **PENDING — applies immediately before merge.**
+The ONLY non-apply-then-merge-compatible file in
+the set: the moment `public = false` lands, the currently DEPLOYED bundle's
+photo grid breaks (its `getPublicUrl` links 400) and stays broken until the
+Vercel deploy of the new build — **this photo outage window lasts until step
+5's deploy is live; keep it to minutes.** (Bounded tail: CDN edge caches may
+serve already-fetched objects for up to their cacheControl=3600 lifetime.)
+
+**5. Merge the PR** → Vercel deploys the new bundle (signed-URL rendering,
+`journal_entry_likes` reads). Verify the deploy is live and photos render
+again — the outage window closes here.
+
+**6. Post-deploy (PENDING): re-run the §4 guarded compat-view drop** from
+`20260708_journal_visibility_model.sql` (it no-oped in step 1 and, run now,
+retires the `journal_likes` view that only pre-deploy bundles still read).
+Exact statement, verbatim from the migration:
+
+```sql
+DO $drop_compat$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_views
+             WHERE schemaname = 'public' AND viewname = 'journal_likes')
+  THEN
+    EXECUTE 'DROP VIEW public.journal_likes';
+  END IF;
+END $drop_compat$;
+```
