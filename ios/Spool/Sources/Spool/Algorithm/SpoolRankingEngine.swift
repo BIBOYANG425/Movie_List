@@ -71,9 +71,7 @@ public final class SpoolRankingEngine {
         self.comparedIds = []
         self.comparisonCount = 0
 
-        guard let range = SpoolConstants.tierScoreRanges[tier] else {
-            return .done(finalRank: 0, finalScore: 0)
-        }
+        let range = tier.scoreRange
         self.primaryGenre = newMovie.genres.first ?? ""
 
         // Build tier items sorted by rank with computed scores
@@ -168,9 +166,7 @@ public final class SpoolRankingEngine {
     // MARK: phase handlers
 
     private func handleProbeResult(newMovieWins: Bool) -> EngineResult {
-        guard let range = SpoolConstants.tierScoreRanges[tier] else {
-            return .done(finalRank: 0, finalScore: 0)
-        }
+        let range = tier.scoreRange
 
         if newMovieWins {
             let probeTarget = sameGenreItems[probeIndex]
@@ -209,9 +205,7 @@ public final class SpoolRankingEngine {
     }
 
     private func handleEscalationResult(newMovieWins: Bool) -> EngineResult {
-        guard let range = SpoolConstants.tierScoreRanges[tier] else {
-            return .done(finalRank: 0, finalScore: 0)
-        }
+        let range = tier.scoreRange
 
         if newMovieWins {
             let target = sameGenreItems[escalationIndex]
@@ -235,9 +229,7 @@ public final class SpoolRankingEngine {
     }
 
     private func handleCrossGenreResult(newMovieWins: Bool) -> EngineResult {
-        guard let range = SpoolConstants.tierScoreRanges[tier] else {
-            return .done(finalRank: 0, finalScore: 0)
-        }
+        let range = tier.scoreRange
         if !newMovieWins {
             crossGenreAdjustment = -0.3
             tentativeScore = max(range.min, tentativeScore - 0.3)
@@ -247,9 +239,7 @@ public final class SpoolRankingEngine {
     }
 
     private func handleSettlementResult(newMovieWins: Bool) -> EngineResult {
-        guard let range = SpoolConstants.tierScoreRanges[tier] else {
-            return .done(finalRank: 0, finalScore: 0)
-        }
+        let range = tier.scoreRange
         if let comparison = currentComparison {
             let targetScored = tierItems.first(where: { $0.item.id == comparison.movieB.id })
             if let target = targetScored {
@@ -360,9 +350,7 @@ public final class SpoolRankingEngine {
     }
 
     private func computeFinalPlacement() -> EngineResult {
-        guard let range = SpoolConstants.tierScoreRanges[tier] else {
-            return .done(finalRank: 0, finalScore: 0)
-        }
+        let range = tier.scoreRange
         let clamped = max(range.min, min(range.max, tentativeScore))
         let finalScore = (clamped * 100).rounded() / 100
 

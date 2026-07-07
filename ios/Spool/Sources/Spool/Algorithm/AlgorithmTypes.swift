@@ -89,14 +89,23 @@ public enum EngineResult: Sendable, Equatable {
 
 // MARK: Constants (mirror `constants.ts`)
 
+public extension Tier {
+    /// Total function — the compiler guarantees every tier has a range,
+    /// unlike the dictionary lookup this replaces.
+    var scoreRange: ScoreRange {
+        switch self {
+        case .S: return ScoreRange(min: 9.0, max: 10.0)
+        case .A: return ScoreRange(min: 7.0, max: 8.9)
+        case .B: return ScoreRange(min: 5.0, max: 6.9)
+        case .C: return ScoreRange(min: 3.0, max: 4.9)
+        case .D: return ScoreRange(min: 0.1, max: 2.9)
+        }
+    }
+}
+
 public enum SpoolConstants {
-    public static let tierScoreRanges: [Tier: ScoreRange] = [
-        .S: .init(min: 9.0, max: 10.0),
-        .A: .init(min: 7.0, max: 8.9),
-        .B: .init(min: 5.0, max: 6.9),
-        .C: .init(min: 3.0, max: 4.9),
-        .D: .init(min: 0.1, max: 2.9),
-    ]
+    public static let tierScoreRanges: [Tier: ScoreRange] =
+        Dictionary(uniqueKeysWithValues: Tier.allCases.map { ($0, $0.scoreRange) })
 
     public static let newUserThreshold: Int = 15
 

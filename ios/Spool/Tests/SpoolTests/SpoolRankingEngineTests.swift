@@ -591,4 +591,11 @@ final class SpoolRankingEngineTests: XCTestCase {
             XCTAssertEqual(got, want, accuracy: 0.0001, "tier \(tier)")
         }
     }
+
+    /// Tier.scoreRange must be total and agree with the legacy dictionary.
+    func testTierScoreRangeIsTotalAndMatchesDictionary() {
+        for tier in Tier.allCases {
+            XCTAssertEqual(tier.scoreRange, SpoolConstants.tierScoreRanges[tier])
+        }
+    }
 }

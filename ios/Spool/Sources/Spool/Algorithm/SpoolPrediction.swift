@@ -15,9 +15,7 @@ public enum SpoolPrediction {
         globalScore: Double?,
         tier: Tier
     ) -> PredictionSignals {
-        guard let range = SpoolConstants.tierScoreRanges[tier] else {
-            return PredictionSignals(totalRanked: allItems.count)
-        }
+        let range = tier.scoreRange
 
         // Genre affinity: average score of items with same primary genre
         let genreItems = allItems.filter { !$0.genres.isEmpty && $0.genres[0] == primaryGenre }
@@ -39,7 +37,7 @@ public enum SpoolPrediction {
     }
 
     public static func predictScore(signals: PredictionSignals, tier: Tier) -> Double {
-        guard let range = SpoolConstants.tierScoreRanges[tier] else { return 0 }
+        let range = tier.scoreRange
         let midpoint = (range.min + range.max) / 2
 
         if signals.totalRanked < SpoolConstants.newUserThreshold {
@@ -62,8 +60,8 @@ public enum SpoolPrediction {
 
     private static func averageScore(for items: [RankedItem], in allItems: [RankedItem]) -> Double? {
         guard !items.isEmpty else { return nil }
-        let scores: [Double] = items.compactMap { item in
-            guard let tierRange = SpoolConstants.tierScoreRanges[item.tier] else { return nil }
+        let scores: [Double] = items.map { item in
+            let tierRange = item.tier.scoreRange
             let tierPeers = allItems.filter { $0.tier == item.tier }.sorted { $0.rank < $1.rank }
             let positionInTier = tierPeers.firstIndex(where: { $0.id == item.id }) ?? 0
             return RankingAlgorithm.computeTierScore(

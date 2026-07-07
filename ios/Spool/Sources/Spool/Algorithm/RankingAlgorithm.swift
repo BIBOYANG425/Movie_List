@@ -204,7 +204,7 @@ public enum RankingAlgorithm {
     ) -> [String: Double] {
         var scoreMap: [String: Double] = [:]
         for tier in Tier.allCases {
-            guard let range = SpoolConstants.tierScoreRanges[tier] else { continue }
+            let range = tier.scoreRange
             let tierItems = items
                 .filter { $0.tier == tier }
                 .sorted { $0.rank < $1.rank }
@@ -222,7 +222,7 @@ public enum RankingAlgorithm {
 
     public static func getNaturalTier(score: Double) -> Tier {
         for tier in Tier.allCases {
-            guard let range = SpoolConstants.tierScoreRanges[tier] else { continue }
+            let range = tier.scoreRange
             if score >= range.min { return tier }
         }
         return .D
