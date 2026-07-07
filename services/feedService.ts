@@ -8,8 +8,6 @@ import {
   ReactionType,
   Tier,
 } from '../types';
-import { TIER_SCORE_RANGES } from '../constants';
-import { computeTierScore } from './rankingAlgorithm';
 
 const REACTION_TYPES: ReactionType[] = ['fire', 'agree', 'disagree', 'want_to_watch', 'love'];
 
@@ -33,19 +31,6 @@ interface ProfileInfo {
   username: string;
   displayName?: string;
   avatarUrl?: string;
-}
-
-async function getFollowingIds(userId: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('friend_follows')
-    .select('following_id')
-    .eq('follower_id', userId);
-
-  if (error) {
-    console.error('Failed to load following IDs:', error);
-    return [];
-  }
-  return (data ?? []).map((row: { following_id: string }) => row.following_id);
 }
 
 async function getProfilesByIds(
@@ -78,7 +63,11 @@ async function getProfilesByIds(
 }
 
 /**
- * Batch-fetch live scores for ranking cards by looking up user_rankings.
+ * Batch-fetch live scores for ranking cards via the `get_feed_ranking_scores`
+ * RPC (supabase/migrations/20260707_feed_ranking_scores_rpc.sql) — one round
+ * trip instead of the old ~100-query per-user/per-tier loop. The RPC runs
+ * `security invoker`, so ranking-table RLS still decides which scores the
+ * viewer can see; pairs with no visible ranking simply return no row.
  * Returns a map keyed by `${userId}:${tmdbId}` → computed score.
  */
 async function getRankingScores(
@@ -87,51 +76,27 @@ async function getRankingScores(
   const scoreMap = new Map<string, number>();
   if (pairs.length === 0) return scoreMap;
 
-  // Group by userId for efficient queries
-  const byUser = new Map<string, string[]>();
+  // Dedupe pairs so the payload stays minimal
+  const seen = new Set<string>();
+  const rpcPairs: { user_id: string; tmdb_id: string }[] = [];
   for (const { userId, tmdbId } of pairs) {
-    const list = byUser.get(userId) ?? [];
-    list.push(tmdbId);
-    byUser.set(userId, list);
+    const key = `${userId}:${tmdbId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rpcPairs.push({ user_id: userId, tmdb_id: tmdbId });
   }
 
-  for (const [uid, tmdbIds] of byUser) {
-    // Fetch from user_rankings, tv_rankings, and book_rankings
-    const [movieRes, tvRes, bookRes] = await Promise.all([
-      supabase.from('user_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
-      supabase.from('tv_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
-      supabase.from('book_rankings').select('tmdb_id, tier, rank_position').eq('user_id', uid).in('tmdb_id', tmdbIds),
-    ]);
+  const { data, error } = await supabase.rpc('get_feed_ranking_scores', {
+    pairs: rpcPairs,
+  });
 
-    // Process each table separately (tier counts are per-table)
-    for (const { data, table } of [
-      { data: movieRes.data, table: 'user_rankings' as const },
-      { data: tvRes.data, table: 'tv_rankings' as const },
-      { data: bookRes.data, table: 'book_rankings' as const },
-    ]) {
-      if (!data || data.length === 0) continue;
+  if (error) {
+    console.error('Failed to load ranking scores:', error);
+    return scoreMap;
+  }
 
-      const tiers = new Set(data.map((r: any) => r.tier as string));
-      const tierCounts = new Map<string, number>();
-
-      for (const tier of tiers) {
-        const { count } = await supabase
-          .from(table)
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', uid)
-          .eq('tier', tier);
-        tierCounts.set(tier, count ?? 1);
-      }
-
-      for (const row of data as { tmdb_id: string; tier: string; rank_position: number }[]) {
-        const t = row.tier as Tier;
-        const range = TIER_SCORE_RANGES[t];
-        if (!range) continue;
-        const total = tierCounts.get(row.tier) ?? 1;
-        const score = computeTierScore(row.rank_position, total, range.min, range.max);
-        scoreMap.set(`${uid}:${row.tmdb_id}`, Number(score.toFixed(1)));
-      }
-    }
+  for (const row of (data ?? []) as { user_id: string; tmdb_id: string; score: number }[]) {
+    scoreMap.set(`${row.user_id}:${row.tmdb_id}`, Number(row.score));
   }
 
   return scoreMap;
@@ -150,18 +115,102 @@ function toTier(value?: string | null): Tier | undefined {
   return undefined;
 }
 
-function applyTimeFilter(query: any, timeRange?: string) {
-  if (!timeRange || timeRange === 'all') return query;
-
-  const now = new Date();
-  let cutoff: Date;
-  if (timeRange === '24h') cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  else if (timeRange === '7d') cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  else if (timeRange === '30d') cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  else return query;
-
-  return query.gte('created_at', cutoff.toISOString());
+/** Epoch-ms lower bound for a time-range filter, from the client clock (as before). */
+function timeRangeCutoffMs(timeRange?: string): number | null {
+  if (!timeRange || timeRange === 'all') return null;
+  const now = Date.now();
+  if (timeRange === '24h') return now - 24 * 60 * 60 * 1000;
+  if (timeRange === '7d') return now - 7 * 24 * 60 * 60 * 1000;
+  if (timeRange === '30d') return now - 30 * 24 * 60 * 60 * 1000;
+  return null;
 }
+
+// ── Keyset Pagination (get_feed_page RPC) ───────────────────────────────────
+
+/** Keyset cursor into the boosted feed ordering: last consumed row's (boosted_ts, id). */
+export interface FeedCursor {
+  boostedTs: string;
+  id: string;
+}
+
+/** activity_events row + the server-computed ordering key, as returned by get_feed_page. */
+interface FeedPageRow extends EventRow {
+  boosted_ts: string;
+}
+
+/**
+ * Build the keyset cursor from a get_feed_page row. The ordering key —
+ * the windowless review boost, see supabase/migrations/20260707_feed_page_rpc.sql:
+ *
+ *   boosted_ts = created_at + interval '2 hours' * (event_type = 'review')::int
+ *
+ * — is computed SERVER-side and returned as the boosted_ts column, so the
+ * cursor copies it VERBATIM (byte-exact, Postgres µs precision preserved)
+ * and the client never recomputes the ordering key. Deterministic per row:
+ * no now(), no session anchor, cursors never expire. Pinned by
+ * services/__tests__/feedPagination.test.ts.
+ */
+export function cursorFromFeedRow(row: { id: string; boosted_ts: string }): FeedCursor {
+  return { boostedTs: row.boosted_ts, id: row.id };
+}
+
+/** Serialize a cursor (session storage / iOS-shared wire format). */
+export function encodeFeedCursor(cursor: FeedCursor): string {
+  return JSON.stringify({ boostedTs: cursor.boostedTs, id: cursor.id });
+}
+
+/** Parse an encoded cursor; malformed input yields null (restart from the top). */
+export function decodeFeedCursor(encoded: string): FeedCursor | null {
+  try {
+    const parsed: unknown = JSON.parse(encoded);
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { boostedTs?: unknown }).boostedTs === 'string' &&
+      (parsed as { boostedTs: string }).boostedTs.length > 0 &&
+      typeof (parsed as { id?: unknown }).id === 'string' &&
+      (parsed as { id: string }).id.length > 0
+    ) {
+      const { boostedTs, id } = parsed as { boostedTs: string; id: string };
+      return { boostedTs, id };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * SocialFeedView pages by offset (offset = cards.length, PAGE_SIZE = 20)
+ * while the RPC pages by keyset cursor; this module-level session bridges
+ * the two. A call with offset 0 starts a fresh session (cursor at the top);
+ * a call at exactly the offset the session expects resumes from the stored
+ * cursor; any other offset (stale component state, remount) falls back to
+ * walking forward from the top of the stream.
+ */
+interface FeedPageSession {
+  key: string;
+  nextOffset: number;
+  cursor: string | null; // encodeFeedCursor form; null = top of stream
+  exhausted: boolean;
+}
+
+let feedPageSession: FeedPageSession | null = null;
+
+function feedSessionKey(userId: string, filters: FeedFilters): string {
+  return [
+    userId,
+    filters.tab,
+    filters.cardType ?? 'all',
+    filters.tier ?? 'all',
+    filters.timeRange ?? 'all',
+    filters.bracket ?? 'all',
+  ].join('|');
+}
+
+/** Raw get_feed_page calls allowed per getFeedCards call (refill bound). */
+const MAX_FEED_RPC_PAGES = 10;
 
 // ── Core Feed Functions ─────────────────────────────────────────────────────
 
@@ -171,83 +220,127 @@ export async function getFeedCards(
   offset: number = 0,
   limit: number = 20,
 ): Promise<FeedCard[]> {
-  const isFriendsFeed = filters.tab === 'friends';
+  const mode = filters.tab === 'friends' ? 'friends' : 'explore';
+  const sessionKey = feedSessionKey(userId, filters);
 
-  // Determine which actor IDs to query
-  let actorIds: string[] | null = null;
-  if (isFriendsFeed) {
-    actorIds = await getFollowingIds(userId);
-    if (actorIds.length === 0) return [];
-  }
-
-  // Load mutes to filter out
+  // Load mutes to filter out. User mutes are applied client-side in BOTH
+  // modes now: actor scoping moved into the get_feed_page RPC (friends =
+  // follower EXISTS, explore = RLS), so there is no actor-id list to
+  // pre-shrink anymore. Same visible result as before.
   const mutes = await getMutes(userId);
   const mutedUserIds = new Set(mutes.filter(m => m.muteType === 'user').map(m => m.targetId));
   const mutedMovieIds = new Set(mutes.filter(m => m.muteType === 'movie').map(m => m.targetId));
 
-  // Filter actor IDs by mutes
-  if (actorIds) {
-    actorIds = actorIds.filter(id => !mutedUserIds.has(id));
-    if (actorIds.length === 0) return [];
+  // Client-side row filters (the RPC pages the raw event stream unfiltered)
+  const eventTypes = new Set(getEventTypesForFilter(filters.cardType));
+  const cutoffMs = timeRangeCutoffMs(filters.timeRange);
+
+  // Resolve the pagination session (offset -> cursor bridge)
+  let cursor: FeedCursor | null = null;
+  let exhausted = false;
+  let skipCount = 0; // already-delivered cards to skip when walking from the top
+
+  const resumable =
+    offset > 0 &&
+    feedPageSession !== null &&
+    feedPageSession.key === sessionKey &&
+    feedPageSession.nextOffset === offset;
+
+  if (resumable && feedPageSession) {
+    cursor = feedPageSession.cursor ? decodeFeedCursor(feedPageSession.cursor) : null;
+    exhausted = feedPageSession.exhausted;
+  } else {
+    // Fresh session (page 1) or cold resume at an unexpected offset: restart
+    // from the top of the stream and skip the first `offset` post-filter
+    // cards. (The ordering key is deterministic per row, so restarting is
+    // always safe — there is no per-session anchor to lose.)
+    skipCount = offset;
   }
 
-  // Determine event types to query
-  const eventTypes = getEventTypesForFilter(filters.cardType);
+  // Fetch raw keyset pages and refill until the requested page is full or the
+  // stream ends. Client-side filters (event types, tier, time range, mutes,
+  // bracket, milestone throttle) shorten raw pages; because the cursor
+  // advances over every CONSUMED raw row — kept or dropped — refilling never
+  // duplicates or skips cards, and a heavily-filtered page no longer ends the
+  // feed prematurely (audit B4c).
+  const keptRows: EventRow[] = [];
+  const keptCursors: FeedCursor[] = [];
+  const wanted = skipCount + limit;
+  // Milestone 3/day cap, counted over the rows this call consumes. NOTE: this
+  // is a (deliberate) change from the legacy prefix semantics — the old code
+  // re-fetched the whole feed prefix every page and counted milestones across
+  // it, so later pages saw prefix-inflated counts; here each resumed call
+  // counts from its cursor onward.
+  const milestoneCounts = new Map<string, number>(); // UTC date -> count
+  const maxRpcPages = MAX_FEED_RPC_PAGES + Math.ceil(skipCount / limit);
+  let rpcPages = 0;
 
-  // Build query
-  let query = supabase
-    .from('activity_events')
-    .select('id, actor_id, event_type, media_tmdb_id, media_title, media_tier, media_poster_url, metadata, created_at')
-    .in('event_type', eventTypes)
-    .order('created_at', { ascending: false });
-
-  if (actorIds) {
-    query = query.in('actor_id', actorIds);
-  }
-
-  // Apply tier filter
-  if (filters.tier && filters.tier !== 'all') {
-    query = query.eq('media_tier', filters.tier);
-  }
-
-  query = applyTimeFilter(query, filters.timeRange);
-
-  // Fetch more than needed to account for mutes and throttling
-  const fetchLimit = limit + offset + 20;
-  query = query.limit(fetchLimit);
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('Failed to load feed events:', error);
-    return [];
-  }
-
-  let rows = (data ?? []) as EventRow[];
-
-  // Apply mutes: filter out muted movies
-  rows = rows.filter(row => {
-    if (row.media_tmdb_id && mutedMovieIds.has(row.media_tmdb_id)) return false;
-    if (!actorIds && mutedUserIds.has(row.actor_id)) return false;
-    return true;
-  });
-
-  // Apply bracket filter client-side (bracket stored in metadata)
-  if (filters.bracket && filters.bracket !== 'all') {
-    rows = rows.filter(row => {
-      const bracket = row.metadata?.bracket as string | undefined;
-      return bracket === filters.bracket;
+  while (!exhausted && keptRows.length < wanted && rpcPages < maxRpcPages) {
+    rpcPages += 1;
+    const { data, error } = await supabase.rpc('get_feed_page', {
+      mode,
+      cursor_rank: cursor?.boostedTs ?? null,
+      cursor_id: cursor?.id ?? null,
+      page_size: limit,
     });
+
+    if (error) {
+      console.error('Failed to load feed page:', error);
+      break;
+    }
+
+    const raw = (data ?? []) as FeedPageRow[];
+    const hasMore = raw.length === limit; // short raw page = end of stream
+    if (!hasMore) exhausted = true;
+
+    for (const row of raw) {
+      if (keptRows.length >= wanted) break; // unconsumed tail is re-fetched next call
+
+      const rowCursor = cursorFromFeedRow(row); // server-computed boosted_ts, verbatim
+
+      // Time range: the boost only ever lifts rows, so once the ordered
+      // stream sinks below the cutoff nothing later can pass — stop paging.
+      if (cutoffMs !== null && Date.parse(rowCursor.boostedTs) < cutoffMs) {
+        exhausted = true;
+        break;
+      }
+
+      cursor = rowCursor; // row consumed (kept or dropped) — advance the keyset
+
+      if (!eventTypes.has(row.event_type)) continue;
+      if (filters.tier && filters.tier !== 'all' && row.media_tier !== filters.tier) continue;
+      if (cutoffMs !== null && Date.parse(row.created_at) < cutoffMs) continue; // boosted review older than cutoff
+      if (row.media_tmdb_id && mutedMovieIds.has(row.media_tmdb_id)) continue;
+      if (mutedUserIds.has(row.actor_id)) continue;
+      if (filters.bracket && filters.bracket !== 'all') {
+        const bracket = row.metadata?.bracket as string | undefined;
+        if (bracket !== filters.bracket) continue;
+      }
+      // Throttle milestones to max 3/day across all friends
+      if (row.event_type === 'milestone') {
+        const dateKey = row.created_at.slice(0, 10);
+        const count = milestoneCounts.get(dateKey) ?? 0;
+        if (count >= 3) continue;
+        milestoneCounts.set(dateKey, count + 1);
+      }
+
+      keptRows.push(row);
+      keptCursors.push(rowCursor);
+    }
   }
 
-  // Throttle milestones to max 3/day across all friends
-  rows = throttleMilestones(rows);
+  const rows = keptRows.slice(skipCount, wanted);
 
-  // Apply review boost for prioritization
-  rows = applyReviewBoost(rows);
-
-  // Paginate
-  rows = rows.slice(offset, offset + limit);
+  // Persist the session so the next sequential call resumes from the last
+  // RETURNED card's cursor (rows dropped after it are re-fetched and
+  // re-dropped deterministically).
+  const lastReturnedCursor = rows.length > 0 ? keptCursors[skipCount + rows.length - 1] : cursor;
+  feedPageSession = {
+    key: sessionKey,
+    nextOffset: offset + rows.length,
+    cursor: lastReturnedCursor ? encodeFeedCursor(lastReturnedCursor) : null,
+    exhausted,
+  };
 
   if (rows.length === 0) return [];
 
@@ -337,32 +430,6 @@ function getEventTypesForFilter(cardType?: FeedCardType | 'all'): string[] {
   if (cardType === 'milestone') return ['milestone'];
   if (cardType === 'list') return ['list_create'];
   return ['ranking_add', 'ranking_move', 'review', 'list_create', 'milestone'];
-}
-
-function throttleMilestones(rows: EventRow[]): EventRow[] {
-  const milestoneCounts = new Map<string, number>(); // date -> count
-  return rows.filter(row => {
-    if (row.event_type !== 'milestone') return true;
-    const dateKey = row.created_at.slice(0, 10);
-    const count = milestoneCounts.get(dateKey) ?? 0;
-    if (count >= 3) return false;
-    milestoneCounts.set(dateKey, count + 1);
-    return true;
-  });
-}
-
-function applyReviewBoost(rows: EventRow[]): EventRow[] {
-  const BOOST_MS = 2 * 60 * 60 * 1000; // 2 hours
-
-  return rows
-    .map(row => ({
-      row,
-      sortTime: row.event_type === 'review'
-        ? new Date(row.created_at).getTime() + BOOST_MS
-        : new Date(row.created_at).getTime(),
-    }))
-    .sort((a, b) => b.sortTime - a.sortTime)
-    .map(entry => entry.row);
 }
 
 // ── Reactions ───────────────────────────────────────────────────────────────
