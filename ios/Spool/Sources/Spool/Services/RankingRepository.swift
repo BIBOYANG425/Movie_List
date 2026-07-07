@@ -129,7 +129,12 @@ public actor RankingRepository {
             media_tmdb_id: ranking.tmdbId,
             media_title: ranking.title,
             media_tier: ranking.tier.rawValue,
-            media_poster_url: ranking.posterURL
+            media_poster_url: ranking.posterURL,
+            metadata: ActivityMetadata(
+                notes: ranking.notes,
+                year: ranking.year,
+                watchedWithUserIds: ranking.watchedWithUserIds
+            )
         )
         // Fire-and-forget telemetry — the ranking itself already landed, so
         // we don't want a feed-insert hiccup to surface a user-facing toast.
@@ -157,10 +162,14 @@ public struct RankingInsert: Sendable {
     public let tier: Tier
     public let rankPosition: Int
     public let notes: String?
+    /// Ceremony friends for the activity-event metadata. Defaults nil —
+    /// no caller wires this yet (C-later plumbs the picker through).
+    public let watchedWithUserIds: [UUID]?
 
     public init(tmdbId: String, title: String, year: String?, posterURL: String?,
                 type: String = "movie", genres: [String] = [], director: String? = nil,
-                tier: Tier, rankPosition: Int, notes: String? = nil) {
+                tier: Tier, rankPosition: Int, notes: String? = nil,
+                watchedWithUserIds: [UUID]? = nil) {
         self.tmdbId = tmdbId
         self.title = title
         self.year = year
@@ -171,6 +180,7 @@ public struct RankingInsert: Sendable {
         self.tier = tier
         self.rankPosition = rankPosition
         self.notes = notes
+        self.watchedWithUserIds = watchedWithUserIds
     }
 }
 
@@ -239,4 +249,44 @@ private struct ActivityEventPayload: Encodable {
     let media_title: String?
     let media_tier: String?
     let media_poster_url: String?
+    let metadata: ActivityMetadata
+}
+
+/// `activity_events.metadata` for `ranking_add` — contract object
+/// `{ notes?, year?, watched_with_user_ids? }`. Every key is OMITTED
+/// entirely when its member is nil/empty (never null-valued, never an
+/// empty string/array); an all-falsy value encodes `{}`. Synthesized
+/// Encodable can't omit-empty, hence the custom `encode(to:)`. UUIDs
+/// encode as lowercase strings (web parity; Swift's UUID uppercases).
+public struct ActivityMetadata: Encodable, Equatable {
+    public let notes: String?
+    public let year: String?
+    public let watchedWithUserIds: [UUID]?
+
+    public init(notes: String? = nil, year: String? = nil,
+                watchedWithUserIds: [UUID]? = nil) {
+        self.notes = notes
+        self.year = year
+        self.watchedWithUserIds = watchedWithUserIds
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notes
+        case year
+        case watchedWithUserIds = "watched_with_user_ids"
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let notes, !notes.isEmpty {
+            try container.encode(notes, forKey: .notes)
+        }
+        if let year, !year.isEmpty {
+            try container.encode(year, forKey: .year)
+        }
+        if let ids = watchedWithUserIds, !ids.isEmpty {
+            try container.encode(ids.map { $0.uuidString.lowercased() },
+                                 forKey: .watchedWithUserIds)
+        }
+    }
 }
