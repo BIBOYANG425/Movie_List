@@ -53,6 +53,8 @@
 
 ### Task 3: `get_feed_page` keyset pagination RPC + adoption (fixes B4)
 
+(Correction: the §2b citation was erroneous; boost semantics were adjudicated windowless to match the legacy client — see ledger.)
+
 **Files:**
 - Create: `supabase/migrations/20260707_feed_page_rpc.sql`
 - Modify: `services/feedService.ts` (`getFeedCards` fetch/sort/slice core — audit §1.1 lines; replace offset+refetch+client-resort with cursor calls; keep card assembly, mutes, and score enrichment untouched)
