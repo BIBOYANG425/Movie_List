@@ -5,7 +5,16 @@ import {
   getFollowingIdSet,
   toTier,
 } from './profileService';
-import { upsertJournalEntry } from './journalService';
+import { upsertJournalEntry, getLikedEntryIds } from './journalService';
+
+/**
+ * Explicit journal_entries column list for review reads (audit B5): these
+ * queries traverse OTHER users' entries, so owner-only personal_takeaway must
+ * never ride along (the old select('*') shipped it to every viewer of the
+ * row). Exactly the columns the MovieReview mapping consumes.
+ */
+export const REVIEW_ENTRY_COLUMNS =
+  'id, user_id, tmdb_id, title, review_text, rating_tier, contains_spoilers, like_count, created_at, updated_at';
 
 export interface ReviewRow {
   id: string;
@@ -74,7 +83,7 @@ export async function getReviewsForMovie(
   // Query from journal_entries instead of movie_reviews
   const { data, error } = await supabase
     .from('journal_entries')
-    .select('*')
+    .select(REVIEW_ENTRY_COLUMNS)
     .eq('tmdb_id', tmdbId)
     .not('review_text', 'is', null)
     .order('created_at', { ascending: false })
@@ -89,17 +98,9 @@ export async function getReviewsForMovie(
   const userIds = [...new Set(rows.map(r => r.user_id))];
   const profileMap = await getProfilesByIds(userIds);
 
-  // Get likes by current user
-  const entryIds = rows.map(r => r.id);
-  const likedSet = new Set<string>();
-  if (entryIds.length > 0) {
-    const { data: likes } = await supabase
-      .from('journal_likes')
-      .select('entry_id')
-      .eq('user_id', currentUserId)
-      .in('entry_id', entryIds);
-    (likes ?? []).forEach((l: { entry_id: string }) => likedSet.add(l.entry_id));
-  }
+  // Viewer's liked-state, self-scoped read of journal_entry_likes (the
+  // transitional journal_likes compat view is dropped — audit B3 follow-up).
+  const likedSet = await getLikedEntryIds(currentUserId, rows.map(r => r.id));
 
   // Sort: friends first
   const followingSet = await getFollowingIdSet(currentUserId);
@@ -141,7 +142,7 @@ export async function getReviewsByUser(
   // Query from journal_entries instead of movie_reviews
   const { data, error } = await supabase
     .from('journal_entries')
-    .select('*')
+    .select(REVIEW_ENTRY_COLUMNS)
     .eq('user_id', targetUserId)
     .not('review_text', 'is', null)
     .order('created_at', { ascending: false })
@@ -156,16 +157,9 @@ export async function getReviewsByUser(
   const profileMap = await getProfilesByIds([targetUserId]);
   const profile = profileMap.get(targetUserId);
 
-  const entryIds = rows.map(r => r.id);
-  const likedSet = new Set<string>();
-  if (entryIds.length > 0) {
-    const { data: likes } = await supabase
-      .from('journal_likes')
-      .select('entry_id')
-      .eq('user_id', currentUserId)
-      .in('entry_id', entryIds);
-    (likes ?? []).forEach((l: { entry_id: string }) => likedSet.add(l.entry_id));
-  }
+  // Viewer's liked-state, self-scoped read of journal_entry_likes (the
+  // transitional journal_likes compat view is dropped — audit B3 follow-up).
+  const likedSet = await getLikedEntryIds(currentUserId, rows.map(r => r.id));
 
   return rows.map((row) => ({
     id: row.id,

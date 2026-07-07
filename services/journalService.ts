@@ -10,6 +10,94 @@ function toTier(val: string | null | undefined): Tier | undefined {
   return undefined;
 }
 
+// ── Visibility resolution (audit B2/B6) ──────────────────────────────────────
+
+export type ResolvedJournalVisibility = 'public' | 'friends' | 'private';
+
+/**
+ * Resolve an entry's effective visibility — the adjudicated C2 model, and the
+ * exact TS mirror of the RLS policy in
+ * supabase/migrations/20260708_journal_visibility_model.sql
+ * (`COALESCE(visibility_override, profiles.profile_visibility)`):
+ *
+ *   - explicit override ('public' | 'friends' | 'private') always wins;
+ *   - NULL/undefined override ("Default" in the UI) inherits the author's
+ *     profiles.profile_visibility (B2: this was world-readable before);
+ *   - unknown/missing profile visibility fails closed to 'friends' (the DB
+ *     default; profiles.profile_visibility is NOT NULL) — never 'public';
+ *   - an invalid explicit override fails closed to 'private' (mirrors the SQL
+ *     policy, where a value matching neither branch grants nothing).
+ */
+export function resolveVisibility(
+  override: string | null | undefined,
+  profileVisibility: string | null | undefined,
+): ResolvedJournalVisibility {
+  if (override === 'public' || override === 'friends' || override === 'private') {
+    return override;
+  }
+  if (override != null) return 'private';
+  if (
+    profileVisibility === 'public'
+    || profileVisibility === 'friends'
+    || profileVisibility === 'private'
+  ) {
+    return profileVisibility;
+  }
+  return 'friends';
+}
+
+/**
+ * B6 gate: a `review` activity event may be emitted only when the entry's
+ * RESOLVED visibility is 'public'. activity_events rows escape the journal's
+ * own RLS — the C1 explore policy shows them to ALL authenticated users when
+ * the author's profile is public — so the previous `!== 'private'` gate leaked
+ * 'friends'-only review bodies into explore.
+ */
+export function shouldEmitReviewEvent(
+  reviewText: string | null | undefined,
+  override: string | null | undefined,
+  profileVisibility: string | null | undefined,
+): boolean {
+  return !!reviewText && resolveVisibility(override, profileVisibility) === 'public';
+}
+
+// ── Column lists (audit B5) ──────────────────────────────────────────────────
+
+/**
+ * Every journal_entries contract column EXCEPT owner-only personal_takeaway
+ * (and the internal search_vector). Matches the Task 1 search RPC's return
+ * set exactly (20260708_journal_search_likes_hardening.sql §3). Use this for
+ * any read that can serve another user's entries; owner-scoped reads keep
+ * select('*') so the composer can round-trip the takeaway.
+ */
+export const JOURNAL_ENTRY_SHARED_COLUMN_LIST = [
+  'id',
+  'user_id',
+  'tmdb_id',
+  'title',
+  'poster_url',
+  'rating_tier',
+  'review_text',
+  'contains_spoilers',
+  'mood_tags',
+  'vibe_tags',
+  'favorite_moments',
+  'standout_performances',
+  'watched_date',
+  'watched_location',
+  'watched_with_user_ids',
+  'watched_platform',
+  'is_rewatch',
+  'rewatch_note',
+  'photo_paths',
+  'visibility_override',
+  'like_count',
+  'created_at',
+  'updated_at',
+] as const;
+
+export const JOURNAL_ENTRY_SHARED_COLUMNS: string = JOURNAL_ENTRY_SHARED_COLUMN_LIST.join(', ');
+
 interface JournalRow {
   id: string;
   user_id: string;
@@ -29,8 +117,9 @@ interface JournalRow {
   watched_platform: string | null;
   is_rewatch: boolean;
   rewatch_note: string | null;
-  // Optional: the search RPC no longer returns personal_takeaway (audit B5 —
-  // owner-only field); direct table selects for the owner still include it.
+  // Optional: cross-user reads (search RPC, JOURNAL_ENTRY_SHARED_COLUMNS
+  // selects) omit personal_takeaway (audit B5 — owner-only field); only
+  // owner-scoped select('*') paths include it.
   personal_takeaway?: string | null;
   photo_paths: string[];
   visibility_override: string | null;
@@ -139,19 +228,36 @@ export async function upsertJournalEntry(
 
   const entry = mapRow(row as JournalRow);
 
-  // Log review activity event if review text is present and visibility allows
-  if (data.reviewText && data.visibilityOverride !== 'private') {
-    try {
-      await logReviewActivityEvent(userId, {
-        tmdbId,
-        title: data.title,
-        posterUrl: data.posterUrl,
-        tier: toTier(ratingTier),
-        body: data.reviewText,
-        containsSpoilers: data.containsSpoilers ?? false,
-      });
-    } catch (err) {
-      console.error('Failed to log journal review activity:', err);
+  // B6: emit the review activity event only when the entry's RESOLVED
+  // visibility is 'public' (was `!== 'private'`, which leaked 'friends'-only
+  // review bodies into explore via activity_events). Resolution needs the
+  // author's profiles.profile_visibility only when there is no explicit
+  // override — fetched here, at emission time, so no caller can forget it;
+  // a failed lookup resolves to the DB default ('friends') and fails closed.
+  if (data.reviewText) {
+    const override = data.visibilityOverride ?? null;
+    let profileVisibility: string | null = null;
+    if (override === null) {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('profile_visibility')
+        .eq('id', userId)
+        .maybeSingle();
+      profileVisibility = prof?.profile_visibility ?? null;
+    }
+    if (shouldEmitReviewEvent(data.reviewText, override, profileVisibility)) {
+      try {
+        await logReviewActivityEvent(userId, {
+          tmdbId,
+          title: data.title,
+          posterUrl: data.posterUrl,
+          tier: toTier(ratingTier),
+          body: data.reviewText,
+          containsSpoilers: data.containsSpoilers ?? false,
+        });
+      } catch (err) {
+        console.error('Failed to log journal review activity:', err);
+      }
     }
   }
 
@@ -175,6 +281,11 @@ export async function upsertJournalEntry(
   return entry;
 }
 
+/**
+ * OWNER path: every caller passes the signed-in user's own id (composer
+ * edit/probe, isOwnProfile-guarded StubDetailModal), so the full row —
+ * including owner-only personal_takeaway — is kept (select '*', audit B5).
+ */
 export async function getJournalEntry(
   userId: string,
   tmdbId: string,
@@ -190,17 +301,22 @@ export async function getJournalEntry(
   return mapRow(data as JournalRow);
 }
 
+/**
+ * Id-addressed fetch with no owner scoping — cross-user capable, so it reads
+ * the shared column list (no personal_takeaway, audit B5). Owner flows that
+ * need the takeaway use getJournalEntry.
+ */
 export async function getJournalEntryById(
   entryId: string,
 ): Promise<JournalEntry | null> {
   const { data, error } = await supabase
     .from('journal_entries')
-    .select('*')
+    .select(JOURNAL_ENTRY_SHARED_COLUMNS)
     .eq('id', entryId)
     .maybeSingle();
 
   if (error || !data) return null;
-  return mapRow(data as JournalRow);
+  return mapRow(data as unknown as JournalRow);
 }
 
 export async function deleteJournalEntry(
@@ -240,9 +356,13 @@ export async function listJournalEntries(
   offset = 0,
   limit = 20,
 ): Promise<JournalEntryCard[]> {
+  // Serves other users' journal tabs as well as the owner's — cross-user
+  // read, so personal_takeaway stays out of the select (audit B5). No list
+  // consumer renders it (JournalEntryCard never did); owner detail/edit paths
+  // go through getJournalEntry, which keeps it.
   let query = supabase
     .from('journal_entries')
-    .select('*, profiles!journal_entries_user_id_fkey(username, display_name, avatar_url, avatar_path)')
+    .select(`${JOURNAL_ENTRY_SHARED_COLUMNS}, profiles!journal_entries_user_id_fkey(username, display_name, avatar_url, avatar_path)`)
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -273,7 +393,10 @@ export async function listJournalEntries(
     return [];
   }
 
-  return (data ?? []).map((row: Record<string, unknown>) => {
+  // The select string is built at runtime (shared column list + join), so
+  // supabase-js cannot infer the row type — cast to the known shape.
+  const rows = (data ?? []) as unknown as Record<string, unknown>[];
+  return rows.map((row) => {
     const profile = row.profiles as { username: string; display_name?: string; avatar_url?: string; avatar_path?: string } | null;
     const entry = mapRow(row as unknown as JournalRow);
     return {
