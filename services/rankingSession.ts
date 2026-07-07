@@ -57,6 +57,13 @@ export class RankingSession {
   }
 
   start(): SessionResult {
+    // Reset all session state so re-entrant start() calls never leak
+    // history or an active strategy from a previous run.
+    this.engine = null;
+    this.small = null;
+    this.smallHistory = [];
+    this.current = null;
+
     this.tierItems = this.allItems
       .filter((i) => i.tier === this.tier)
       .sort((a, b) => a.rank - b.rank);
@@ -138,6 +145,11 @@ export class RankingSession {
   private submitSmall(choice: SessionChoice): SessionResult {
     const st = this.small!;
     if (choice === 'too_tough' || choice === 'skip') {
+      // Snapshot the comparison being finalized so undo() restores it,
+      // not the one from a step earlier.
+      if (this.current) {
+        this.smallHistory.push({ state: st, comparison: this.current });
+      }
       this.small = null;
       return { type: 'done', finalRank: st.mid, finalScore: null };
     }
@@ -173,8 +185,12 @@ export class RankingSession {
     if (choice === 'too_tough' || choice === 'skip') {
       return this.mapEngineResult(engine.skip());
     }
-    const winnerId =
-      choice === 'new' ? this.newItem.id : this.current?.movieB.id ?? '';
+    if (!this.current) {
+      // An empty-string winnerId would silently mean "movieB wins" —
+      // surface the programming error instead.
+      throw new Error('RankingSession.submit: no active comparison');
+    }
+    const winnerId = choice === 'new' ? this.newItem.id : this.current.movieB.id;
     return this.mapEngineResult(engine.submitChoice(winnerId));
   }
 

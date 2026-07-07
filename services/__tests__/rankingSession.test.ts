@@ -76,6 +76,20 @@ describe('RankingSession — small-tier flow', () => {
     expect(r).toEqual({ type: 'done', finalRank: 1, finalScore: null });
   });
 
+  it('undo after too_tough finalization restores the comparison that was finalized', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 3));
+    s.start();
+    s.submit('existing'); // cursor now at mid=1
+    const done = s.submit('too_tough');
+    expect(done).toEqual({ type: 'done', finalRank: 1, finalScore: null });
+    const undone = s.undo();
+    if (!undone || undone.type !== 'comparison') throw new Error('expected restored comparison');
+    expect(undone.comparison.movieB.id).toBe('m1');
+    // Replaying resolves the same comparison the user was actually shown
+    const replay = s.submit('new');
+    expect(replay).toEqual({ type: 'done', finalRank: 1, finalScore: null });
+  });
+
   it('undo restores the previous small-tier comparison', () => {
     const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 3));
     const first = s.start();
@@ -91,7 +105,28 @@ describe('RankingSession — small-tier flow', () => {
   });
 });
 
+describe('RankingSession — start() re-entrancy', () => {
+  it('restarting a session clears stale history — undo returns null', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 3));
+    s.start();
+    s.submit('existing'); // pushes one small-tier history snapshot
+    const restarted = s.start();
+    if (restarted.type !== 'comparison') throw new Error('expected comparison');
+    expect(restarted.comparison.movieB.id).toBe('m0');
+    expect(s.undo()).toBeNull();
+  });
+});
+
 describe('RankingSession — engine flow', () => {
+  it('throws if a winner choice arrives with no active comparison', () => {
+    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
+    s.start();
+    // Force the invariant violation: engine active but no current comparison.
+    // An empty-string winnerId would silently mean "movieB wins" — must throw.
+    (s as unknown as { current: null }).current = null;
+    expect(() => s.submit('existing')).toThrow('no active comparison');
+  });
+
   it('delegates to the engine and completes with a numeric score', () => {
     const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
     let r = s.start();
