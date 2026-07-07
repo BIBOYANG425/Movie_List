@@ -204,3 +204,76 @@ export function getNaturalTier(score: number): Tier {
     }
     return Tier.D;
 }
+
+// ── Small-Tier State Machine ────────────────────────────────────────────────
+// Direct port of ios/Spool RankingAlgorithm.advanceSmallTier — the pure
+// formalization of the inline smallTierRef logic previously copy-pasted
+// across RankingFlowModal / AddMediaModal / AddTVSeasonModal /
+// MovieOnboardingPage. tierCount is the size of the target tier (the new
+// item is NOT counted).
+
+export type SmallTierMode = 'compare_all' | 'seed' | 'quartile';
+
+export interface SmallTierState {
+  mode: SmallTierMode;
+  tierCount: number;
+  low: number;
+  high: number;
+  mid: number;
+  round: number;
+  seedIdx: number;
+}
+
+export type SmallTierStep =
+  | { type: 'done'; rank: number }
+  | { type: 'next'; state: SmallTierState };
+
+export function advanceSmallTier(
+  state: SmallTierState,
+  pick: 'new' | 'existing',
+): SmallTierStep {
+  const nextRound = state.round + 1;
+
+  switch (state.mode) {
+    case 'compare_all': {
+      if (pick === 'new') return { type: 'done', rank: state.mid };
+      if (state.mid + 1 >= state.tierCount) {
+        return { type: 'done', rank: state.tierCount };
+      }
+      return { type: 'next', state: { ...state, mid: state.mid + 1, round: nextRound } };
+    }
+
+    case 'seed': {
+      if (pick === 'new') {
+        if (state.mid === 0) return { type: 'done', rank: 0 };
+        return {
+          type: 'next',
+          state: { ...state, mode: 'quartile', low: 0, high: state.mid, mid: 0, round: nextRound },
+        };
+      }
+      const newLow = state.mid + 1;
+      if (newLow >= state.tierCount) return { type: 'done', rank: state.tierCount };
+      const newHigh = state.tierCount;
+      const nextMid = Math.min(newLow + Math.floor((newHigh - newLow) * 0.75), newHigh - 1);
+      return {
+        type: 'next',
+        state: { ...state, mode: 'quartile', low: newLow, high: newHigh, mid: nextMid, round: nextRound },
+      };
+    }
+
+    case 'quartile': {
+      const newLow = pick === 'new' ? state.low : state.mid + 1;
+      const newHigh = pick === 'new' ? state.mid : state.high;
+      if (newLow >= newHigh) return { type: 'done', rank: newLow };
+      const ratio = pick === 'new' ? 0.25 : 0.75;
+      const nextMid = Math.max(
+        newLow,
+        Math.min(newLow + Math.floor((newHigh - newLow) * ratio), newHigh - 1),
+      );
+      return {
+        type: 'next',
+        state: { ...state, low: newLow, high: newHigh, mid: nextMid, round: nextRound },
+      };
+    }
+  }
+}

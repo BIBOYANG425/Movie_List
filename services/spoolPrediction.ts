@@ -2,7 +2,7 @@ import { Tier, Bracket, RankedItem, PredictionSignals } from '../types';
 import { TIER_SCORE_RANGES, NEW_USER_THRESHOLD } from '../constants';
 import { computeTierScore } from './rankingAlgorithm';
 
-const WEIGHTS = {
+export const WEIGHTS = {
   genreAffinity: 0.45,
   globalScore: 0.35,
   bracketAffinity: 0.20,

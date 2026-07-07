@@ -1,0 +1,58 @@
+name: engine-parity
+
+on:
+  pull_request:
+    paths:
+      - "services/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "constants.ts"
+      - "types.ts"
+      - "ios/Spool/**"
+      - "fixtures/**"
+      - "components/media/RankingFlowModal.tsx"
+      - "components/media/AddMediaModal.tsx"
+      - "components/media/AddTVSeasonModal.tsx"
+      - "pages/MovieOnboardingPage.tsx"
+      - ".github/workflows/engine-parity.yml"
+  push:
+    branches: [main]
+
+jobs:
+  parity:
+    # macos-26 defaults to Xcode 26.x (Swift 6.2) — matches the local
+    # toolchain; macos-14's older Swift rejects pre-existing Screens
+    # concurrency code that 6.2 accepts.
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      # Dummy values so lib/supabase.ts can construct its client at import
+      # time (fuzzySearch/correctionService tests import it transitively).
+      # No test in this suite performs network I/O against Supabase.
+      VITE_SUPABASE_URL: "http://localhost:54321"
+      VITE_SUPABASE_ANON_KEY: "ci-dummy-anon-key"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install web deps
+        run: npm ci
+
+      - name: Web tests
+        run: npx vitest run
+
+      - name: Fixture freshness (TS is the reference)
+        run: |
+          npm run fixtures:engine
+          git diff --exit-code fixtures/engine-parity.json || {
+            echo "::error::fixtures/engine-parity.json is stale. Run 'npm run fixtures:engine' and commit the diff.";
+            exit 1;
+          }
+
+      - name: iOS tests (includes EngineParityTests replay)
+        run: swift test --package-path ios/Spool

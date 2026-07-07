@@ -32,7 +32,6 @@ interface EngineSnapshot {
   tentativeScore: number;
   probeIndex: number;
   escalationIndex: number;
-  crossGenreAdjustment: number;
   comparisonResult: ComparisonRequest;
   comparedIds: Set<string>;
   comparisonCount: number;
@@ -62,7 +61,6 @@ export class SpoolRankingEngine {
 
   // Score tracking
   private tentativeScore = 0;
-  private crossGenreAdjustment = 0;
 
   // Phase cursors
   private probeIndex = -1;       // index into sameGenreItems for probe target
@@ -102,7 +100,6 @@ export class SpoolRankingEngine {
     this.started = true;
     this.phase = 'prediction';
     this.history = [];
-    this.crossGenreAdjustment = 0;
     this.currentComparison = null;
     this.comparedIds = new Set();
     this.comparisonCount = 0;
@@ -212,7 +209,6 @@ export class SpoolRankingEngine {
     this.tentativeScore = snapshot.tentativeScore;
     this.probeIndex = snapshot.probeIndex;
     this.escalationIndex = snapshot.escalationIndex;
-    this.crossGenreAdjustment = snapshot.crossGenreAdjustment;
     this.currentComparison = snapshot.comparisonResult;
     this.comparedIds = snapshot.comparedIds;
     this.comparisonCount = snapshot.comparisonCount;
@@ -320,7 +316,6 @@ export class SpoolRankingEngine {
   private handleCrossGenreResult(newMovieWins: boolean): EngineResult {
     if (!newMovieWins) {
       // Contradiction: new movie lost to a cross-genre peer -> adjust down
-      this.crossGenreAdjustment = -0.3;
       this.tentativeScore = Math.max(
         TIER_SCORE_RANGES[this.tier].min,
         this.tentativeScore - 0.3,
@@ -543,7 +538,6 @@ export class SpoolRankingEngine {
       tentativeScore: this.tentativeScore,
       probeIndex: this.probeIndex,
       escalationIndex: this.escalationIndex,
-      crossGenreAdjustment: this.crossGenreAdjustment,
       comparisonResult: { ...this.currentComparison },
       comparedIds: new Set(this.comparedIds),
       comparisonCount: this.comparisonCount,

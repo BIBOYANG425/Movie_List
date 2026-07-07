@@ -190,9 +190,7 @@ public enum RankingAlgorithm {
         position: Int, totalInTier: Int, tierMin: Double, tierMax: Double
     ) -> Double {
         if totalInTier <= 1 {
-            return (tierMin + tierMax).rounded(toPlaces: 1) / 2.0.rounded(toPlaces: 1) == 0
-                ? 0
-                : ((tierMin + tierMax) / 2.0).rounded(toPlaces: 1)
+            return ((tierMin + tierMax) / 2.0).rounded(toPlaces: 1)
         }
         let ratio = Double(totalInTier - 1 - position) / Double(totalInTier - 1)
         let score = tierMin + (tierMax - tierMin) * ratio
@@ -206,7 +204,7 @@ public enum RankingAlgorithm {
     ) -> [String: Double] {
         var scoreMap: [String: Double] = [:]
         for tier in Tier.allCases {
-            guard let range = SpoolConstants.tierScoreRanges[tier] else { continue }
+            let range = tier.scoreRange
             let tierItems = items
                 .filter { $0.tier == tier }
                 .sorted { $0.rank < $1.rank }
@@ -224,7 +222,7 @@ public enum RankingAlgorithm {
 
     public static func getNaturalTier(score: Double) -> Tier {
         for tier in Tier.allCases {
-            guard let range = SpoolConstants.tierScoreRanges[tier] else { continue }
+            let range = tier.scoreRange
             if score >= range.min { return tier }
         }
         return .D
