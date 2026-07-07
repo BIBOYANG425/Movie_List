@@ -3,6 +3,7 @@ import { X, ChevronDown, ChevronUp, Eye, EyeOff, Users, AlertTriangle, Calendar,
 import { RankedItem, JournalEntry, StandoutPerformance, JournalVisibility } from '../../types';
 import { TIER_COLORS, JOURNAL_REVIEW_PROMPTS, JOURNAL_TAKEAWAY_PROMPTS, JOURNAL_MAX_PHOTOS, JOURNAL_MAX_MOMENTS, PLATFORM_OPTIONS } from '../../constants';
 import { upsertJournalEntry, getJournalEntry, pickEntryForEdit, uploadJournalPhoto, deleteJournalPhoto, getJournalStats, UpsertJournalData } from '../../services/journalService';
+import { localDateString } from '../../services/stubService';
 import { createSession, sendAgentMessage, requestReviewGeneration, endSession, AgentContext } from '../../services/agentService';
 import { supabase } from '../../lib/supabase';
 import { recordAllCorrections } from '../../services/correctionService';
@@ -46,7 +47,9 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
   const [vibeTags, setVibeTags] = useState<string[]>([]);
   const [favoriteMoments, setFavoriteMoments] = useState<string[]>([]);
   const [standoutPerformances, setStandoutPerformances] = useState<StandoutPerformance[]>([]);
-  const [watchedDate, setWatchedDate] = useState(new Date().toISOString().split('T')[0]);
+  // B7: user-LOCAL calendar day — the old toISOString() default pre-filled
+  // tomorrow's date for evening users west of UTC.
+  const [watchedDate, setWatchedDate] = useState(localDateString(new Date()));
   const [watchedLocation, setWatchedLocation] = useState('');
   const [watchedWithUserIds, setWatchedWithUserIds] = useState<string[]>([]);
   const [watchedPlatform, setWatchedPlatform] = useState('');
@@ -127,7 +130,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
     setVibeTags(entry.vibeTags);
     setFavoriteMoments(entry.favoriteMoments);
     setStandoutPerformances(entry.standoutPerformances);
-    setWatchedDate(entry.watchedDate ?? new Date().toISOString().split('T')[0]);
+    setWatchedDate(entry.watchedDate ?? localDateString(new Date())); // B7: local day
     setWatchedLocation(entry.watchedLocation ?? '');
     setWatchedWithUserIds(entry.watchedWithUserIds);
     setWatchedPlatform(entry.watchedPlatform ?? '');

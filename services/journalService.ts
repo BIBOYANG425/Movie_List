@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { JournalEntry, JournalEntryCard, JournalFilters, JournalStats, Tier } from '../types';
 import { JOURNAL_PHOTO_BUCKET } from '../constants';
 import { logReviewActivityEvent } from './feedService';
+import { localDateString } from './stubService';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -208,7 +209,10 @@ export async function upsertJournalEntry(
       vibe_tags: data.vibeTags ?? [],
       favorite_moments: data.favoriteMoments ?? [],
       standout_performances: data.standoutPerformances ?? [],
-      watched_date: data.watchedDate ?? new Date().toISOString().split('T')[0],
+      // B7: default to the user-LOCAL calendar day (C0's localDateString) —
+      // the old toISOString() derivation stamped evening entries with
+      // tomorrow's date for every user west of UTC.
+      watched_date: data.watchedDate ?? localDateString(new Date()),
       watched_location: data.watchedLocation ?? null,
       watched_with_user_ids: data.watchedWithUserIds ?? [],
       watched_platform: data.watchedPlatform ?? null,
@@ -457,6 +461,58 @@ export async function searchJournalEntries(
 
 // ── Stats ───────────────────────────────────────────────────────────────────
 
+export interface JournalStreaks {
+  currentStreak: number;
+  longestStreak: number;
+}
+
+/**
+ * Ordinal day number for a plain `yyyy-MM-dd` calendar date. Date.UTC here is
+ * pure integer calendar arithmetic — no wall-clock instant is ever converted,
+ * so it is timezone- and DST-free (this does NOT violate the no-UTC-derivation
+ * rule from C0/B7, which is about deriving calendar days from local instants).
+ */
+function calendarDayNumber(isoDate: string): number {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / 86_400_000;
+}
+
+/**
+ * Pure streak math over `watched_date` strings in whole LOCAL calendar days
+ * (audit B7). The old code parsed dates as UTC midnight and compared against
+ * local midnight, so a yesterday-entry gave daysSinceLast ≈ 1.3 in UTC-7 and
+ * currentStreak was systematically 0 west of UTC.
+ *
+ *   - duplicates/nulls collapse; input order is irrelevant;
+ *   - consecutive = exactly 1 calendar day apart (month/year/leap safe);
+ *   - the trailing run is "current" while the last entry is today or
+ *     yesterday relative to todayLocal — future-dated legacy rows (old
+ *     UTC-stamped "tomorrow" writes) also count as current, never zero an
+ *     active streak.
+ *
+ * `todayLocal` must come from localDateString(new Date()).
+ */
+export function computeStreaks(
+  watchedDates: ReadonlyArray<string | null | undefined>,
+  todayLocal: string,
+): JournalStreaks {
+  const uniqueDays = [...new Set(watchedDates.filter((d): d is string => !!d))].sort();
+  if (uniqueDays.length === 0) return { currentStreak: 0, longestStreak: 0 };
+
+  let longestStreak = 0;
+  let run = 0;
+  for (let i = 0; i < uniqueDays.length; i++) {
+    const consecutive = i > 0
+      && calendarDayNumber(uniqueDays[i]) - calendarDayNumber(uniqueDays[i - 1]) === 1;
+    run = consecutive ? run + 1 : 1;
+    if (run > longestStreak) longestStreak = run;
+  }
+
+  const daysSinceLast =
+    calendarDayNumber(todayLocal) - calendarDayNumber(uniqueDays[uniqueDays.length - 1]);
+  return { currentStreak: daysSinceLast <= 1 ? run : 0, longestStreak };
+}
+
 export async function getJournalStats(userId: string): Promise<JournalStats> {
   const { data, error } = await supabase
     .from('journal_entries')
@@ -489,33 +545,11 @@ export async function getJournalStats(userId: string): Promise<JournalStats> {
   }
   const mostTaggedFriendId = Object.entries(friendCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
 
-  // Streak calculation (consecutive days with an entry)
-  const uniqueDates = [...new Set(data.map((r) => r.watched_date).filter(Boolean))].sort();
-  let currentStreak = 0;
-  let longestStreak = 0;
-  let streak = 0;
-
-  for (let i = 0; i < uniqueDates.length; i++) {
-    if (i === 0) {
-      streak = 1;
-    } else {
-      const prev = new Date(uniqueDates[i - 1]);
-      const curr = new Date(uniqueDates[i]);
-      const diffDays = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
-      streak = diffDays === 1 ? streak + 1 : 1;
-    }
-    longestStreak = Math.max(longestStreak, streak);
-  }
-
-  // Check if current streak is active (last entry was today or yesterday)
-  if (uniqueDates.length > 0) {
-    const lastDate = new Date(uniqueDates[uniqueDates.length - 1]);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    lastDate.setHours(0, 0, 0, 0);
-    const daysSinceLast = (today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-    currentStreak = daysSinceLast <= 1 ? streak : 0;
-  }
+  // Streak calculation — entirely in local calendar days (audit B7).
+  const { currentStreak, longestStreak } = computeStreaks(
+    data.map((r) => r.watched_date),
+    localDateString(new Date()),
+  );
 
   return {
     totalEntries,
