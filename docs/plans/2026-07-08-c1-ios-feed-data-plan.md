@@ -18,7 +18,7 @@
   - Reactions: `activity_reactions(event_id, user_id, reaction)` PK-triple; toggle = insert / delete own row; duplicate-key (23505) on insert = treat as success. Comments: `activity_comments`, list asc limit 100, 1-level reply nesting via `parent_comment_id`, body trimmed ≤ 500, delete own only.
   - Mutes: `feed_mutes` CRUD (user-mutes and movie-mutes), applied client-side at read time.
   - Notifications: row `{id, user_id, type, title, body?, actor_id?, reference_id?, is_read, created_at}`; badge = head-count of `is_read=false` (15 s poll); open = fetch newest 30 with actor profiles batch-joined (avatar from `avatar_path` only), then bulk mark exactly the fetched unread ids read. Types: `new_follower, review_like, list_like, badge_unlock, ranking_comment, journal_tag`; unknown types render with the `new_follower` fallback. Titles are baked English strings — iOS writes identical strings. `new_follower` write on follow ALREADY exists on iOS (`FollowRepository.follow` — verify, do not duplicate).
-- Milestone throttle: max 3 milestone cards per actor per LOCAL calendar day within the consumed page-stream (web post-#32 semantics: counted per resume-session from the cursor onward — mirror THAT, not the old prefix semantics).
+- Milestone throttle: max 3 milestone cards per actor per LOCAL calendar day within the consumed page-stream (web post-#32 semantics: counted per resume-session from the cursor onward — mirror THAT, not the old prefix semantics). (Correction: web reference is global per event-UTC-date — plan's per-actor/local-day wording was an authoring error; see ledger.)
 - Event-type filter parity: explore/friends card sets exclude `ranking_remove` (web `getEventTypesForFilter`).
 - All repositories follow the existing actor + `SpoolClient.shared` guard pattern; errors log with a `[FeedRepository]`/`[NotificationRepository]` prefix; reads fail soft to empty (screens render empty states), writes surface errors to callers.
 - No UIKit. Test command: `swift test --package-path ios/Spool`; suite currently 84 tests — all stay green; every pure helper below ships RED-first tests.
@@ -64,14 +64,15 @@ public enum FeedPipeline {  // pure, Swift mirror of web's post-#32 client logic
     public static func cursor(fromLastConsumed row: FeedEventRow) -> FeedCursor          // verbatim echo
     public static func applyMutes(_ rows: [FeedEventRow], mutedUsers: Set<UUID>, mutedMedia: Set<String>) -> [FeedEventRow]
     public static func applyTypeFilter(_ rows: [FeedEventRow], allowed: Set<String>) -> [FeedEventRow]
-    public static func throttleMilestones(_ rows: [FeedEventRow], counts: inout [String: Int], calendar: Calendar) -> [FeedEventRow]
-        // key "actorId|yyyy-MM-dd(local)", cap 3 — per-resume counts, caller owns the dict per session
+    public static func throttleMilestones(_ rows: [FeedEventRow], counts: inout [String: Int]) -> [FeedEventRow]
+        // key = created_at 10-char UTC-date prefix (web's slice(0,10)), GLOBAL across actors, cap 3 — per-resume counts, caller owns the dict per session
+        // (Correction: web reference is global per event-UTC-date — plan's per-actor/local-day wording was an authoring error; see ledger.)
     public static func defaultEventTypes(explore: Bool) -> Set<String>   // both exclude ranking_remove
 }
 ```
 - `JSONObject` = the minimal `Codable` jsonb wrapper — check whether supabase-swift's `AnyJSON` is already available and idiomatic in this package; use it if so (verify, document choice).
 - `fetchPage` decodes the RPC result; on the raise-classified errors (22023 etc.) rethrows; cursor params `cursor_rank`/`cursor_id` null on first page. NOTE in the actor's header: callable only once PR #32's migrations exist in prod; unit tests cover the pure layer only.
-- Tests (RED first): cursor echo is byte-verbatim (µs string preserved); mute filtering (user + media, media key from `media_tmdb_id`); type filter excludes `ranking_remove` in both defaults; milestone throttle truth table (3 cap, per-actor, per-local-day via named-timezone calendars, counts carry across pages within a session, reset with a fresh dict); score-map key format `"\(uid):\(tmdb)"`.
+- Tests (RED first): cursor echo is byte-verbatim (µs string preserved); mute filtering (user + media, media key from `media_tmdb_id`); type filter excludes `ranking_remove` in both defaults; milestone throttle truth table (3 cap, global across actors, per event-UTC-date with UTC-midnight split, counts carry across pages within a session, reset with a fresh dict); score-map key format `"\(uid):\(tmdb)"`.
 - Commit `feat(ios): FeedRepository pagination + scores with pure feed pipeline`.
 
 ### Task 3: Engagement — reactions + comments

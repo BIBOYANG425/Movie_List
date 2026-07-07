@@ -6,9 +6,10 @@ import XCTest
 ///    recomputed, never re-parsed-and-reformatted (String end-to-end);
 ///  - mute filtering (user via `actor_id`, media via `media_tmdb_id`);
 ///  - event-type filter — both mode defaults exclude `ranking_remove`;
-///  - milestone throttle: cap 3 per actor per LOCAL calendar day, counted
-///    per resume-session in a caller-owned dict (carries across pages,
-///    resets with a fresh dict);
+///  - milestone throttle: cap 3 per event-UTC-date key (`created_at`
+///    10-char prefix — web's `created_at.slice(0, 10)`), GLOBAL across
+///    actors, counted per resume-session in a caller-owned dict (carries
+///    across pages, resets with a fresh dict);
 ///  - score-map key `"<lowercase uuid>:<tmdbId>"` — byte-identical to web's
 ///    `${userId}:${tmdbId}` (DB uuids are lowercase strings).
 /// Source: docs/plans/2026-07-08-c1-ios-feed-data-plan.md (Global Constraints + Task 2).
@@ -37,12 +38,6 @@ final class FeedPipelineTests: XCTestCase {
             created_at: createdAt,
             boosted_ts: boostedTs
         )
-    }
-
-    private func calendar(_ tz: String) -> Calendar {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: tz)!
-        return cal
     }
 
     // MARK: - Cursor: verbatim echo, String end-to-end
@@ -137,25 +132,30 @@ final class FeedPipelineTests: XCTestCase {
         XCTAssertTrue(FeedPipeline.applyTypeFilter(removal, allowed: FeedPipeline.defaultEventTypes(explore: false)).isEmpty)
     }
 
-    // MARK: - Milestone throttle (cap 3, per actor, per LOCAL day, session dict)
+    // MARK: - Milestone throttle (cap 3 per event-UTC-date, GLOBAL across actors, session dict)
+    // Web reference (post-#32 getFeedCards): `const dateKey = row.created_at.slice(0, 10)`
+    // — the EVENT's UTC calendar date, no actor in the key, no viewer timezone.
 
-    func testThrottleCapsAtThreeMilestonesPerActorPerDay() {
+    func testThrottleCapsAtThreeMilestonesPerUTCDate() {
         let rows = (0..<5).map { _ in makeRow(actor: actorA, type: "milestone") }
         var counts: [String: Int] = [:]
 
-        let kept = FeedPipeline.throttleMilestones(rows, counts: &counts, calendar: calendar("UTC"))
+        let kept = FeedPipeline.throttleMilestones(rows, counts: &counts)
 
         XCTAssertEqual(kept.map(\.id), Array(rows.prefix(3)).map(\.id), "first 3 kept, in order")
     }
 
-    func testThrottleIsPerActor() {
-        let rows = (0..<3).map { _ in makeRow(actor: actorA, type: "milestone") }
-            + (0..<3).map { _ in makeRow(actor: actorB, type: "milestone") }
+    func testThrottleCapIsGlobalAcrossActors() {
+        // Web parity: the day cap is shared by ALL actors — 2 from A + 2
+        // from B on the same UTC date still only yield 3 cards.
+        let rows = (0..<2).map { _ in makeRow(actor: actorA, type: "milestone") }
+            + (0..<2).map { _ in makeRow(actor: actorB, type: "milestone") }
         var counts: [String: Int] = [:]
 
-        let kept = FeedPipeline.throttleMilestones(rows, counts: &counts, calendar: calendar("UTC"))
+        let kept = FeedPipeline.throttleMilestones(rows, counts: &counts)
 
-        XCTAssertEqual(kept.count, 6, "3-per-actor caps are independent")
+        XCTAssertEqual(kept.map(\.id), [rows[0].id, rows[1].id, rows[2].id],
+                       "cap 3 shared across actors — B's second milestone dropped")
     }
 
     func testThrottleIgnoresNonMilestoneRows() {
@@ -163,72 +163,54 @@ final class FeedPipelineTests: XCTestCase {
             + [makeRow(actor: actorA, type: "review"), makeRow(actor: actorA, type: "ranking_add")]
         var counts: [String: Int] = [:]
 
-        let kept = FeedPipeline.throttleMilestones(rows, counts: &counts, calendar: calendar("UTC"))
+        let kept = FeedPipeline.throttleMilestones(rows, counts: &counts)
 
         XCTAssertEqual(kept.map(\.event_type), ["milestone", "milestone", "milestone", "review", "ranking_add"],
                        "non-milestones pass through and never count against the cap")
     }
 
-    func testThrottleBucketsByLocalCalendarDay() {
-        // 06:59Z on Jul 7 is Jul 6 in Los Angeles (UTC-7 in July); 08:00Z is Jul 7.
-        // µs-precision created_at included on purpose — timestamp parsing must
-        // handle Postgres 6-digit fractions.
-        let lateNightLA = ["2026-07-07T06:00:00+00:00",
-                           "2026-07-07T06:30:00+00:00",
-                           "2026-07-07T06:59:59.999999+00:00"]
-        let morningLA = ["2026-07-07T08:00:00+00:00",
-                         "2026-07-07T09:00:00+00:00"]
-        let rows = (lateNightLA + morningLA).map {
-            makeRow(actor: actorA, type: "milestone", createdAt: $0)
-        }
-
-        var utcCounts: [String: Int] = [:]
-        let utcKept = FeedPipeline.throttleMilestones(rows, counts: &utcCounts, calendar: calendar("UTC"))
-        XCTAssertEqual(utcKept.count, 3, "UTC: all five share one day — cap bites")
-
-        var laCounts: [String: Int] = [:]
-        let laKept = FeedPipeline.throttleMilestones(rows, counts: &laCounts, calendar: calendar("America/Los_Angeles"))
-        XCTAssertEqual(laKept.count, 5, "LA: 3 on local Jul 6 + 2 on local Jul 7 — no bucket exceeds the cap")
-    }
-
-    func testThrottleLocalDaySplitInTokyo() {
-        // 14:30Z is 23:30 Jul 7 in Tokyo (UTC+9); 15:30Z is 00:30 Jul 8.
-        let times = ["2026-07-07T14:30:00+00:00", "2026-07-07T14:40:00+00:00",
-                     "2026-07-07T14:50:00+00:00", "2026-07-07T15:30:00+00:00"]
+    func testThrottleSplitsAtUTCMidnightRegardlessOfViewerTimezone() {
+        // The key is the EVENT's UTC date prefix — there is no viewer
+        // timezone input at all. 5 rows straddling UTC midnight (µs-fraction
+        // included; the 10-char prefix ignores everything after the date):
+        // 3 on Jul 7 + 2 on Jul 8 → separate keys, all 5 kept.
+        let times = ["2026-07-07T23:00:00+00:00",
+                     "2026-07-07T23:30:00+00:00",
+                     "2026-07-07T23:59:59.999999+00:00",
+                     "2026-07-08T00:00:01+00:00",
+                     "2026-07-08T00:30:00+00:00"]
         let rows = times.map { makeRow(actor: actorA, type: "milestone", createdAt: $0) }
+        var counts: [String: Int] = [:]
 
-        var utcCounts: [String: Int] = [:]
-        XCTAssertEqual(FeedPipeline.throttleMilestones(rows, counts: &utcCounts, calendar: calendar("UTC")).count,
-                       3, "UTC: one day, fourth dropped")
+        let kept = FeedPipeline.throttleMilestones(rows, counts: &counts)
 
-        var tokyoCounts: [String: Int] = [:]
-        XCTAssertEqual(FeedPipeline.throttleMilestones(rows, counts: &tokyoCounts, calendar: calendar("Asia/Tokyo")).count,
-                       4, "Tokyo: the 15:30Z row lands on the next local day")
+        XCTAssertEqual(kept.count, 5, "UTC-midnight split: 3 + 2, neither day bucket exceeds the cap")
+        XCTAssertEqual(counts, ["2026-07-07": 3, "2026-07-08": 2])
     }
 
     func testThrottleCountsCarryAcrossPagesWithinASession() {
         let page1 = (0..<2).map { _ in makeRow(actor: actorA, type: "milestone") }
-        let page2 = (0..<2).map { _ in makeRow(actor: actorA, type: "milestone") }
+        let page2 = (0..<2).map { _ in makeRow(actor: actorB, type: "milestone") }
         var counts: [String: Int] = [:] // one session = one dict, owned by the caller
 
-        let kept1 = FeedPipeline.throttleMilestones(page1, counts: &counts, calendar: calendar("UTC"))
-        let kept2 = FeedPipeline.throttleMilestones(page2, counts: &counts, calendar: calendar("UTC"))
+        let kept1 = FeedPipeline.throttleMilestones(page1, counts: &counts)
+        let kept2 = FeedPipeline.throttleMilestones(page2, counts: &counts)
 
         XCTAssertEqual(kept1.count, 2)
-        XCTAssertEqual(kept2.count, 1, "session dict carries: 2 + 1 = cap 3, 4th dropped")
+        XCTAssertEqual(kept2.count, 1, "session dict carries (and across actors): 2 + 1 = cap 3, 4th dropped")
 
         var fresh: [String: Int] = [:] // new resume-session → counter resets
-        XCTAssertEqual(FeedPipeline.throttleMilestones(page2, counts: &fresh, calendar: calendar("UTC")).count, 2)
+        XCTAssertEqual(FeedPipeline.throttleMilestones(page2, counts: &fresh).count, 2)
     }
 
-    func testThrottleCountKeyFormatIsActorPipeLocalDay() {
+    func testThrottleCountKeyIsEventUTCDatePrefix() {
         var counts: [String: Int] = [:]
         let row = makeRow(actor: actorA, type: "milestone", createdAt: "2026-07-07T12:00:00+00:00")
 
-        _ = FeedPipeline.throttleMilestones([row], counts: &counts, calendar: calendar("UTC"))
+        _ = FeedPipeline.throttleMilestones([row], counts: &counts)
 
-        XCTAssertEqual(counts, ["aaaaaaaa-1111-2222-3333-444444444444|2026-07-07": 1],
-                       "key = lowercase actor uuid | yyyy-MM-dd in the calendar's zone")
+        XCTAssertEqual(counts, ["2026-07-07": 1],
+                       "key = created_at 10-char prefix, byte-mirror of web's slice(0, 10) — no actor component")
     }
 
     // MARK: - Score-map key (web `${userId}:${tmdbId}` parity)
