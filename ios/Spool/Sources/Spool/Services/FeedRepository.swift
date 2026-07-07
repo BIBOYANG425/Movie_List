@@ -1,31 +1,38 @@
 import Foundation
 import Supabase
 
-/// Network half of the C1 feed data layer: the two feed RPCs.
+/// Network half of the C1 feed data layer: the two feed RPCs plus the
+/// engagement tables (`activity_reactions` / `activity_comments`).
 ///
 ///  - `fetchPage(mode:cursor:pageSize:)` — `get_feed_page` keyset pagination
 ///  - `rankingScores(pairs:)` — `get_feed_ranking_scores` batch score lookup
+///  - `engagement(for:)` — batched reaction/comment counts per page
+///  - `toggleReaction` / `comments(for:)` / `addComment` / `deleteComment`
 ///
-/// ⚠️ NOT CALLABLE IN PROD YET: both RPCs ship with web PR #32's migrations
-/// (`20260707_feed_page_rpc.sql`, `20260707_feed_ranking_scores_rpc.sql`).
-/// Until #32 merges and those migrations are applied, every call here fails
-/// server-side. Unit tests therefore cover the pure layer only
-/// (FeedPipeline / FeedPipelineTests); this actor's paths are exercised
-/// against a real backend once #32 lands.
+/// ⚠️ THE TWO RPCs ARE NOT CALLABLE IN PROD YET: they ship with web PR #32's
+/// migrations (`20260707_feed_page_rpc.sql`,
+/// `20260707_feed_ranking_scores_rpc.sql`). Until #32 merges and those
+/// migrations are applied, `fetchPage`/`rankingScores` fail server-side.
+/// (The engagement tables exist since phase 2/5, but their event ids come
+/// from `fetchPage`, so the whole surface goes live together.) Unit tests
+/// therefore cover the pure layer only (FeedPipeline / FeedEngagement);
+/// this actor's paths are exercised against a real backend once #32 lands.
 ///
-/// All client-side feed logic (mutes, type filter, milestone throttle,
-/// cursor construction) lives in `FeedPipeline` — this actor only moves
-/// bytes. Follows the existing repository pattern: actor + `SpoolClient.shared`
-/// guard, `[FeedRepository]`-prefixed logs, errors rethrown to callers
-/// (`fetchPage` propagates the RPC's raise-classified errors, e.g. 22023
-/// for bad mode/cursor/page_size, so bugs fail loud instead of rendering
-/// an empty feed).
+/// All client-side feed logic lives in pure helpers — this actor only moves
+/// bytes: mutes/type filter/throttle/cursor in `FeedPipeline`, the
+/// engagement reducer, comment validation, and reply nesting in
+/// `FeedEngagement.swift`. Follows the existing repository pattern: actor +
+/// `SpoolClient.shared` guard, `[FeedRepository]`-prefixed logs, errors
+/// rethrown to callers (`fetchPage` propagates the RPC's raise-classified
+/// errors, e.g. 22023 for bad mode/cursor/page_size, so bugs fail loud
+/// instead of rendering an empty feed).
 public actor FeedRepository {
 
     public static let shared = FeedRepository()
 
     public enum RepoError: Error {
         case notConfigured
+        case notAuthenticated
     }
 
     // MARK: - get_feed_page
@@ -100,6 +107,169 @@ public actor FeedRepository {
     }
 }
 
+// MARK: - Engagement: reactions + comments (web feedService.ts sections
+// "Reactions"/"Comments" on fix/c1-feed-web-blocking)
+
+extension FeedRepository {
+
+    // MARK: engagement batch
+
+    /// Batched engagement lookup for one rendered page — web's
+    /// `getReactionsForEvents`: two concurrent queries over the page's id
+    /// set (`activity_reactions` → `event_id, user_id, reaction`;
+    /// `activity_comments` → `event_id` only), reduced by the pure
+    /// `EngagementReducer.aggregate`. Every requested id gets an entry;
+    /// no session just means `myReactions` stays empty (reads don't
+    /// require auth).
+    public func engagement(for eventIDs: [UUID]) async throws -> [UUID: EngagementCounts] {
+        guard !eventIDs.isEmpty else { return [:] }
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+
+        let idStrings = eventIDs.map { $0.uuidString.lowercased() }
+        do {
+            async let reactionRows: [EngagementReducer.ReactionRow] = client
+                .from("activity_reactions")
+                .select("event_id, user_id, reaction")
+                .in("event_id", values: idStrings)
+                .execute()
+                .value
+            async let commentRows: [CommentEventRow] = client
+                .from("activity_comments")
+                .select("event_id")
+                .in("event_id", values: idStrings)
+                .execute()
+                .value
+
+            let (reactions, comments) = try await (reactionRows, commentRows)
+            let me = await SpoolClient.currentUserID()
+            return EngagementReducer.aggregate(
+                rows: EngagementReducer.Rows(eventIDs: eventIDs,
+                                             reactions: reactions,
+                                             commentEventIDs: comments.map(\.event_id)),
+                myUserID: me
+            )
+        } catch {
+            NSLog("[FeedRepository] engagement batch failed: \(error)")
+            throw error
+        }
+    }
+
+    // MARK: reactions
+
+    /// Toggle the signed-in user's `reaction` on an event and return the
+    /// new state (true = reaction is now mine). `currentlyMine == false` →
+    /// INSERT own row; `true` → DELETE own row (PK triple
+    /// `(event_id, user_id, reaction)`). Outcome resolution — including
+    /// D7's "23505 on insert = success" — is the pure
+    /// `EngagementReducer.resolvedToggleState`; any other error throws.
+    public func toggleReaction(eventID: UUID, reaction: String, currentlyMine: Bool) async throws -> Bool {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let me = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+
+        var writeError: Error?
+        do {
+            if currentlyMine {
+                _ = try await client
+                    .from("activity_reactions")
+                    .delete()
+                    .eq("event_id", value: eventID.uuidString.lowercased())
+                    .eq("user_id", value: me.uuidString.lowercased())
+                    .eq("reaction", value: reaction)
+                    .execute()
+            } else {
+                let payload = ReactionWritePayload(event_id: eventID, user_id: me, reaction: reaction)
+                _ = try await client
+                    .from("activity_reactions")
+                    .insert(payload)
+                    .execute()
+            }
+        } catch {
+            writeError = error
+        }
+
+        do {
+            return try EngagementReducer.resolvedToggleState(currentlyMine: currentlyMine,
+                                                             writeError: writeError)
+        } catch {
+            NSLog("[FeedRepository] toggleReaction(\(reaction)) failed: \(error)")
+            throw error
+        }
+    }
+
+    // MARK: comments
+
+    /// Flat comment page for one event — web's `listFeedComments` query:
+    /// ascending `created_at`, limit 100. Returns the FLAT list; reply
+    /// nesting is the caller's pure `FeedPipelineComments.nest` pass.
+    public func comments(for eventID: UUID) async throws -> [FeedComment] {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+
+        do {
+            return try await client
+                .from("activity_comments")
+                .select("id, event_id, user_id, body, parent_comment_id, created_at")
+                .eq("event_id", value: eventID.uuidString.lowercased())
+                .order("created_at", ascending: true)
+                .limit(100)
+                .execute()
+                .value
+        } catch {
+            NSLog("[FeedRepository] comments(for:) failed: \(error)")
+            throw error
+        }
+    }
+
+    /// Insert a comment (optionally a 1-level reply) and return the stored
+    /// row. Body is trimmed and validated FIRST — `CommentError.empty` /
+    /// `.tooLong` throw before any I/O (the DB CHECK
+    /// `length(btrim(body)) BETWEEN 1 AND 500` would reject them anyway;
+    /// web silently `slice(0, 500)`s instead — iOS refuses rather than
+    /// corrupts). `parent_comment_id` is omitted from the payload when nil,
+    /// same as web's conditional key.
+    public func addComment(eventID: UUID, body: String, parentID: UUID?) async throws -> FeedComment {
+        let trimmed = try FeedPipelineComments.validatedBody(body)
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let me = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+
+        let payload = CommentInsertPayload(event_id: eventID,
+                                           user_id: me,
+                                           body: trimmed,
+                                           parent_comment_id: parentID)
+        do {
+            return try await client
+                .from("activity_comments")
+                .insert(payload)
+                .select()
+                .single()
+                .execute()
+                .value
+        } catch {
+            NSLog("[FeedRepository] addComment failed: \(error)")
+            throw error
+        }
+    }
+
+    /// Delete OWN comment only — the `user_id` filter scopes the delete to
+    /// the signed-in user client-side (web parity) on top of RLS; deleting
+    /// someone else's comment id is a silent no-op, not an error.
+    public func deleteComment(id: UUID) async throws {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let me = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+
+        do {
+            _ = try await client
+                .from("activity_comments")
+                .delete()
+                .eq("id", value: id.uuidString.lowercased())
+                .eq("user_id", value: me.uuidString.lowercased())
+                .execute()
+        } catch {
+            NSLog("[FeedRepository] deleteComment failed: \(error)")
+            throw error
+        }
+    }
+}
+
 // MARK: - Wire payloads (snake_case = wire format)
 
 private struct ScoresParams: Encodable {
@@ -116,4 +286,27 @@ private struct ScoreRow: Decodable {
     let user_id: UUID
     let tmdb_id: String
     let score: Double
+}
+
+/// `activity_reactions` insert — the PK triple, nothing else
+/// (`created_at` is server-defaulted).
+private struct ReactionWritePayload: Encodable {
+    let event_id: UUID
+    let user_id: UUID
+    let reaction: String
+}
+
+/// `activity_comments` insert. `parent_comment_id` is optional so the
+/// synthesized encoder OMITS the key when nil (web only sets the key for
+/// replies); `id`/`created_at` are server-generated.
+private struct CommentInsertPayload: Encodable {
+    let event_id: UUID
+    let user_id: UUID
+    let body: String
+    let parent_comment_id: UUID?
+}
+
+/// Comment-count probe row — the batch query selects `event_id` only.
+private struct CommentEventRow: Decodable {
+    let event_id: UUID
 }
