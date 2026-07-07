@@ -83,6 +83,65 @@ public enum SpoolData {
         ),
     ]
 
+    /// Demo `get_feed_page` rows for the ticket-wall preview/fixture path
+    /// (no session). Mapped through `FeedCards.card` so preview mode exercises
+    /// the exact same card pipeline the live feed uses — one row per variant.
+    /// `boosted_ts` mirrors `created_at` (no boost in fixtures); metadata
+    /// carries the notes/review/list/milestone fields the ticket front reads.
+    public static let feedEventRows: [FeedEventRow] = [
+        FeedEventRow(
+            id: UUID(uuidString: "F0000000-0000-0000-0000-000000000001")!,
+            actor_id: UUID(uuidString: "A0000000-0000-0000-0000-0000000000A1")!,
+            event_type: "ranking_add",
+            media_tmdb_id: "tmdb_0", media_title: "Past Lives", media_tier: "S",
+            media_poster_url: nil,
+            metadata: ["notes": .string("cried on the 6 train.")],
+            created_at: "2026-07-07T14:00:00+00:00",
+            boosted_ts: "2026-07-07T14:00:00+00:00"
+        ),
+        FeedEventRow(
+            id: UUID(uuidString: "F0000000-0000-0000-0000-000000000002")!,
+            actor_id: UUID(uuidString: "A0000000-0000-0000-0000-0000000000B2")!,
+            event_type: "review",
+            media_tmdb_id: "tmdb_5", media_title: "Challengers", media_tier: "A",
+            media_poster_url: nil,
+            metadata: ["reviewBody": .string("the grunts. the GRUNTS."),
+                       "containsSpoilers": .bool(false)],
+            created_at: "2026-07-06T14:00:00+00:00",
+            boosted_ts: "2026-07-06T14:00:00+00:00"
+        ),
+        FeedEventRow(
+            id: UUID(uuidString: "F0000000-0000-0000-0000-000000000003")!,
+            actor_id: UUID(uuidString: "A0000000-0000-0000-0000-0000000000C3")!,
+            event_type: "list_create",
+            media_tmdb_id: nil, media_title: nil, media_tier: nil,
+            media_poster_url: nil,
+            metadata: ["listTitle": .string("comfort rewatches"), "listItemCount": .integer(12)],
+            created_at: "2026-07-05T14:00:00+00:00",
+            boosted_ts: "2026-07-05T14:00:00+00:00"
+        ),
+        FeedEventRow(
+            id: UUID(uuidString: "F0000000-0000-0000-0000-000000000004")!,
+            actor_id: UUID(uuidString: "A0000000-0000-0000-0000-0000000000D4")!,
+            event_type: "milestone",
+            media_tmdb_id: nil, media_title: nil, media_tier: nil,
+            media_poster_url: nil,
+            metadata: ["badgeIcon": .string("🏆"),
+                       "milestoneDescription": .string("100 films ranked")],
+            created_at: "2026-07-04T14:00:00+00:00",
+            boosted_ts: "2026-07-04T14:00:00+00:00"
+        ),
+    ]
+
+    /// Usernames for the fixture actor ids above — the preview card path
+    /// hydrates handles from this map (no network in preview mode).
+    public static let feedFixtureUsernames: [UUID: String] = [
+        UUID(uuidString: "A0000000-0000-0000-0000-0000000000A1")!: "mei",
+        UUID(uuidString: "A0000000-0000-0000-0000-0000000000B2")!: "theo",
+        UUID(uuidString: "A0000000-0000-0000-0000-0000000000C3")!: "ana",
+        UUID(uuidString: "A0000000-0000-0000-0000-0000000000D4")!: "jay",
+    ]
+
     public static let aprilWatched: [WatchedDay] = [
         .init(day: 2,  tier: .A, title: "La Chimera"),
         .init(day: 5,  tier: .B, title: "Zone of Interest"),

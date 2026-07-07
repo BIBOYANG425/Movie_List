@@ -348,4 +348,108 @@ final class TicketEngagementModelTests: XCTestCase {
         // Failed delete leaves the row in place (revert / no-op).
         XCTAssertEqual(model.thread.count, 1)
     }
+
+    // MARK: - re-entrancy guard (Task 5: double-tap protection)
+
+    /// Actor-isolated call counter so the gated closures can tally invocations
+    /// without a data race.
+    private actor CallCounter {
+        private(set) var count = 0
+        func bump() { count += 1 }
+    }
+
+    func testAddCommentReentrancyGuardBlocksSecondSend() async {
+        // First send parks inside the write closure; while it is in flight a
+        // second addComment() must be rejected by the `guard !sending`.
+        let counter = CallCounter()
+        let gate = AsyncGate()
+        let stored = comment(body: "once", user: me)
+        let model = makeModel(
+            loadCounts: { self.counts() },
+            add: { _ in
+                await counter.bump()
+                await gate.wait()   // hold the first send open
+                return stored
+            }
+        )
+        await model.load()
+        model.draft = "once"
+
+        // Kick off the first (parked) send; wait until it is actually sending.
+        let first = Task { await model.addComment() }
+        while !model.sending { await Task.yield() }
+
+        // Second send while the first is in flight — blocked by the guard.
+        await model.addComment()
+
+        gate.open()
+        await first.value
+
+        let calls = await counter.count
+        XCTAssertEqual(calls, 1, "second send must not reach the write closure")
+        XCTAssertEqual(model.thread.count, 1)
+        XCTAssertEqual(model.draft, "")
+    }
+
+    func testToggleReentrancyGuardBlocksSecondTap() async {
+        // A stamp double-tap: the first toggle parks in the write closure, the
+        // second is dropped by the `guard !sending`, so the count moves by one
+        // step, not two.
+        let counter = CallCounter()
+        let gate = AsyncGate()
+        let model = makeModel(
+            loadCounts: { self.counts(love: 4) },
+            toggle: { _, mine in
+                await counter.bump()
+                await gate.wait()
+                return !mine
+            }
+        )
+        await model.load()
+
+        let first = Task { await model.toggle(reaction: "love") }
+        while !model.sending { await Task.yield() }
+
+        await model.toggle(reaction: "love")   // blocked
+
+        gate.open()
+        await first.value
+
+        let calls = await counter.count
+        XCTAssertEqual(calls, 1, "second tap must not fire a second write")
+        // One optimistic add only: 4 → 5, mine set.
+        XCTAssertEqual(model.counts?.reactions["love"], 5)
+        XCTAssertTrue(model.counts?.myReactions.contains("love") ?? false)
+    }
+}
+
+/// One-shot async gate for the re-entrancy tests: `wait()` suspends until
+/// `open()` is called (idempotent). Lets a test hold an injected IO closure
+/// open while it drives a second, concurrent call.
+private final class AsyncGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var opened = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if opened {
+                lock.unlock()
+                cont.resume()
+            } else {
+                waiters.append(cont)
+                lock.unlock()
+            }
+        }
+    }
+
+    func open() {
+        lock.lock()
+        opened = true
+        let pending = waiters
+        waiters.removeAll()
+        lock.unlock()
+        pending.forEach { $0.resume() }
+    }
 }

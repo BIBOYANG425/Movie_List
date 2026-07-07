@@ -120,12 +120,19 @@ public final class TicketEngagementModel: ObservableObject {
     /// state is authoritative — a `23505`-as-success passthrough (already
     /// resolved in the repository) simply confirms the optimistic add.
     public func toggle(reaction: String) async {
+        // Re-entrancy guard (Task 5): a stamp button double-tap must not fire
+        // two overlapping writes — the second would race the first's revert.
+        // `sending` gates both the composer send and the stamp toggles so
+        // only one engagement write is ever in flight per ticket.
+        guard !sending else { return }
         guard let before = counts else { return }
         let wasMine = before.myReactions.contains(reaction)
 
         // Optimistic apply.
         counts = Self.applyToggle(before, reaction: reaction, nowMine: !wasMine)
 
+        sending = true
+        defer { sending = false }
         do {
             let confirmed = try await toggleReaction(reaction, wasMine)
             // Reconcile if the server's truth differs from the optimistic
@@ -165,6 +172,11 @@ public final class TicketEngagementModel: ObservableObject {
     /// thread and the draft clears; on a send failure the draft is preserved so
     /// the user can retry.
     public func addComment() async {
+        // Re-entrancy guard (Task 5): once wired to the send button a double-
+        // tap is genuine; a second send while the first is in flight would
+        // post the draft twice and clear it out from under the retry. One
+        // send per ticket at a time — `sending` also gates reaction toggles.
+        guard !sending else { return }
         inlineError = nil
 
         // Local validation FIRST — same trim/1...500 the repository enforces.

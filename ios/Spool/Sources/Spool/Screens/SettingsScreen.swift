@@ -5,13 +5,15 @@ import SwiftUI
 /// Scoped to actions we can reliably perform today:
 ///  - Sign out (AuthService)
 ///  - Theme toggle (paper / dark) — pass-through binding from SpoolAppRoot
+///  - Profile visibility (public/friends/private) — the explore opt-in loop's
+///    other half, backed by `profiles.profile_visibility` (signed-in only)
 ///  - App version / build info
 ///  - Placeholder rows for Privacy / Terms (non-destructive, easy to wire later)
 ///
 /// Destructive actions (delete account) are intentionally absent until we have
 /// a proper server-side cascade + confirmation flow.
 ///
-/// Header last reviewed: 2026-04-20
+/// Header last reviewed: 2026-07-07
 public struct SettingsScreen: View {
     public var onClose: () -> Void
     public var onSignedOut: () -> Void
@@ -34,6 +36,13 @@ public struct SettingsScreen: View {
     /// so a transient profile-fetch failure stranded signed-in users
     /// without a way to sign out.
     @State private var hasSession: Bool = false
+    /// Current `profiles.profile_visibility` — `public`/`friends`/`private`.
+    /// Defaults to `public` until the read resolves; the picker writes back
+    /// via `ProfileRepository.updateVisibility`.
+    @State private var visibility: String = "public"
+    /// A visibility write is in flight — disables the picker so a rapid
+    /// re-tap can't race the round-trip.
+    @State private var visibilityBusy: Bool = false
 
     public init(preference: Binding<ThemePreference>,
                 effectiveMode: SpoolMode,
@@ -52,6 +61,9 @@ public struct SettingsScreen: View {
                 ScrollView {
                     VStack(spacing: 22) {
                         accountSection
+                        if hasSession {
+                            visibilitySection
+                        }
                         preferencesSection
                         aboutSection
                         if hasSession {
@@ -156,6 +168,58 @@ public struct SettingsScreen: View {
         }
     }
 
+    // MARK: profile visibility (explore opt-in)
+
+    /// Lowercase copy per spec: `profile visibility` with a public/friends/
+    /// private picker and the footnote that closes the explore opt-in loop.
+    private var visibilitySection: some View {
+        section(title: "PRIVACY") { t in
+            VStack(alignment: .leading, spacing: 8) {
+                Text("profile visibility")
+                    .font(SpoolFonts.serif(16))
+                    .foregroundStyle(t.ink)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 4)
+                HStack(spacing: 8) {
+                    ForEach(Self.visibilityOptions, id: \.self) { option in
+                        VisibilityChip(
+                            label: option,
+                            selected: visibility == option,
+                            disabled: visibilityBusy
+                        ) {
+                            setVisibility(option)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                Text("public shows your activity in explore")
+                    .font(SpoolFonts.hand(12))
+                    .foregroundStyle(t.inkSoft)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 4)
+            }
+        }
+    }
+
+    static let visibilityOptions = ["public", "friends", "private"]
+
+    private func setVisibility(_ value: String) {
+        guard value != visibility, !visibilityBusy else { return }
+        let previous = visibility
+        visibility = value          // optimistic
+        visibilityBusy = true
+        Task {
+            do {
+                try await ProfileRepository.shared.updateVisibility(value)
+            } catch {
+                // Revert on failure — the write didn't take.
+                await MainActor.run { visibility = previous }
+            }
+            await MainActor.run { visibilityBusy = false }
+        }
+    }
+
     // MARK: about
 
     private var aboutSection: some View {
@@ -218,6 +282,10 @@ public struct SettingsScreen: View {
         hasSession = await SpoolClient.currentUserID() != nil
         email = await SpoolClient.currentUserEmail()
         profile = (try? await ProfileRepository.shared.getMyProfile()) ?? nil
+        // Read the current visibility (fails soft to the `public` default).
+        if hasSession, let current = await ProfileRepository.shared.currentVisibility() {
+            visibility = current
+        }
     }
 
     private static var versionLabel: String {
@@ -316,6 +384,37 @@ private struct ThemeChip: View {
                     )
             }
             .buttonStyle(.plain)
+        }
+    }
+}
+
+/// Visibility picker chip — same paper-capsule idiom as `ThemeChip`, with a
+/// disabled state while a write is in flight.
+private struct VisibilityChip: View {
+    let label: String
+    let selected: Bool
+    let disabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            Button(action: action) {
+                Text(label)
+                    .font(SpoolFonts.mono(11))
+                    .tracking(1.5)
+                    .foregroundStyle(selected ? t.cream : t.ink)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(selected ? t.ink : t.cream2)
+                            .overlay(Capsule().stroke(t.ink, lineWidth: 1.2))
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(disabled)
+            .opacity(disabled && !selected ? 0.5 : 1)
+            .accessibilityLabel("\(label) visibility")
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         }
     }
 }

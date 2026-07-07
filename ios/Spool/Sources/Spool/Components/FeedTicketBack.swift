@@ -225,7 +225,10 @@ public struct FeedTicketBack: View {
             }
         }
         .contentShape(Rectangle())
-        // Own comment: long-press to delete (works on macOS + iOS).
+        // Own comment: long-press to delete (works on macOS + iOS). The
+        // thread lives in a ScrollView, not a List, so `.swipeActions` would
+        // be inert here — long-press is the single, honest delete affordance
+        // (design §FeedTicketBack; Task 5 swipe decision).
         .contextMenu {
             if isMine {
                 Button(role: .destructive) {
@@ -235,10 +238,6 @@ public struct FeedTicketBack: View {
                 }
             }
         }
-        // Own comment: swipe-to-delete on iOS list-like gesture parity.
-        .modifier(SwipeDeleteModifier(enabled: isMine) {
-            Task { await model.deleteComment(id: comment.id) }
-        })
         .accessibilityElement(children: .combine)
         .accessibilityLabel(indent == 1 ? "reply: \(comment.body)" : comment.body)
         .accessibilityHint(isMine ? "your comment, long-press to delete" : "")
@@ -343,33 +342,6 @@ public struct FeedTicketBack: View {
     static func counterText(count: Int) -> String? {
         guard count >= FeedPipelineComments.maxBodyLength - 60 else { return nil }
         return "\(count)/\(FeedPipelineComments.maxBodyLength)"
-    }
-}
-
-// MARK: - Swipe-to-delete (own comments only)
-
-/// Wraps a row in a `.swipeActions` delete on iOS when `enabled`; a no-op
-/// elsewhere. `.swipeActions` needs a `List` context on some platforms, so
-/// this degrades to the context-menu path (always present) when swipe isn't
-/// available — the delete is never the ONLY affordance.
-private struct SwipeDeleteModifier: ViewModifier {
-    let enabled: Bool
-    let action: () -> Void
-
-    func body(content: Content) -> some View {
-        #if os(iOS)
-        if enabled {
-            content.swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button(role: .destructive, action: action) {
-                    Label("delete", systemImage: "trash")
-                }
-            }
-        } else {
-            content
-        }
-        #else
-        content
-        #endif
     }
 }
 
