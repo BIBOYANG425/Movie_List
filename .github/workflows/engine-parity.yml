@@ -21,7 +21,10 @@ on:
 
 jobs:
   parity:
-    runs-on: macos-14
+    # macos-26 defaults to Xcode 26.x (Swift 6.2) — matches the local
+    # toolchain; macos-14's older Swift rejects pre-existing Screens
+    # concurrency code that 6.2 accepts.
+    runs-on: macos-26
     timeout-minutes: 20
     env:
       # Dummy values so lib/supabase.ts can construct its client at import
