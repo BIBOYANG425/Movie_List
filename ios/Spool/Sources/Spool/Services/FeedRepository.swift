@@ -2,12 +2,14 @@ import Foundation
 import Supabase
 
 /// Network half of the C1 feed data layer: the two feed RPCs plus the
-/// engagement tables (`activity_reactions` / `activity_comments`).
+/// engagement tables (`activity_reactions` / `activity_comments`) and the
+/// `feed_mutes` CRUD.
 ///
 ///  - `fetchPage(mode:cursor:pageSize:)` — `get_feed_page` keyset pagination
 ///  - `rankingScores(pairs:)` — `get_feed_ranking_scores` batch score lookup
 ///  - `engagement(for:)` — batched reaction/comment counts per page
 ///  - `toggleReaction` / `comments(for:)` / `addComment` / `deleteComment`
+///  - `mutes()` / `muteUser` / `unmuteUser` / `muteMedia` / `unmuteMedia`
 ///
 /// ⚠️ THE TWO RPCs ARE NOT CALLABLE IN PROD YET: they ship with web PR #32's
 /// migrations (`20260707_feed_page_rpc.sql`,
@@ -265,6 +267,170 @@ extension FeedRepository {
                 .execute()
         } catch {
             NSLog("[FeedRepository] deleteComment failed: \(error)")
+            throw error
+        }
+    }
+}
+
+// MARK: - Mutes (web feedService.ts section "Mutes" on
+// fix/c1-feed-web-blocking, L611–658; table: phase-5 migration
+// `feed_mutes(user_id, mute_type ∈ {'user','movie'}, target_id text,
+// UNIQUE(user_id, mute_type, target_id))`)
+
+/// One `feed_mutes` row as the read selects it (`mute_type, target_id`).
+/// `target_id` is TEXT for both kinds: a lowercase uuid string for user
+/// mutes, a tmdb id for movie mutes.
+public struct FeedMuteRow: Codable, Sendable, Hashable {
+    public let mute_type: String
+    public let target_id: String
+
+    public init(mute_type: String, target_id: String) {
+        self.mute_type = mute_type
+        self.target_id = target_id
+    }
+}
+
+/// Pure mute helpers — the set-building reducer `FeedPipeline.applyMutes`
+/// consumes, plus the insert payload builder. Extracted so both are
+/// testable without a network (NotificationTests).
+public enum FeedMutes {
+
+    /// Split raw rows into the two mute sets — web `getFeedCards` L231–232:
+    /// `mutes.filter(m => m.muteType === 'user'/'movie').map(m => m.targetId)`.
+    /// Unknown `mute_type`s fall through both filters there and are dropped
+    /// here too; a user `target_id` that isn't a parseable uuid can never
+    /// match an `actor_id`, so it is dropped rather than crash the feed.
+    public static func sets(from rows: [FeedMuteRow]) -> (users: Set<UUID>, media: Set<String>) {
+        var users = Set<UUID>()
+        var media = Set<String>()
+        for row in rows {
+            switch row.mute_type {
+            case "user":
+                if let id = UUID(uuidString: row.target_id) { users.insert(id) }
+            case "movie":
+                media.insert(row.target_id)
+            default:
+                continue
+            }
+        }
+        return (users: users, media: media)
+    }
+
+    /// `feed_mutes` insert for a user mute — web `addMute` L636–640:
+    /// exactly `{user_id, mute_type, target_id}` (`id`/`created_at` are
+    /// server-side). The target uuid goes up lowercase so it compares
+    /// equal to Postgres's text form of `actor_id`.
+    public static func insertPayload(userID: UUID, mutingUser target: UUID) -> MuteInsertPayload {
+        MuteInsertPayload(user_id: userID.uuidString.lowercased(),
+                          mute_type: "user",
+                          target_id: target.uuidString.lowercased())
+    }
+
+    /// `feed_mutes` insert for a movie mute (same shape, tmdb id target).
+    public static func insertPayload(userID: UUID, mutingMedia tmdbID: String) -> MuteInsertPayload {
+        MuteInsertPayload(user_id: userID.uuidString.lowercased(),
+                          mute_type: "movie",
+                          target_id: tmdbID)
+    }
+}
+
+/// The exact `feed_mutes` insert column set. Built only via
+/// `FeedMutes.insertPayload` so the two mute kinds can't drift.
+public struct MuteInsertPayload: Encodable, Sendable, Equatable {
+    public let user_id: String
+    public let mute_type: String
+    public let target_id: String
+}
+
+extension FeedRepository {
+
+    /// The signed-in user's mute sets, ready for `FeedPipeline.applyMutes`
+    /// — web `getMutes` (L613–629) + the set split (L231–232) in one call.
+    /// The explicit `user_id` filter mirrors web on top of the
+    /// own-rows-only RLS. No session → empty sets (an anonymous feed has
+    /// nothing muted); read errors rethrow after logging.
+    public func mutes() async throws -> (users: Set<UUID>, media: Set<String>) {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let me = await SpoolClient.currentUserID() else {
+            NSLog("[FeedRepository] mutes: no session — empty")
+            return (users: [], media: [])
+        }
+
+        do {
+            let rows: [FeedMuteRow] = try await client
+                .from("feed_mutes")
+                .select("mute_type, target_id")
+                .eq("user_id", value: me.uuidString.lowercased())
+                .execute()
+                .value
+            return FeedMutes.sets(from: rows)
+        } catch {
+            NSLog("[FeedRepository] mutes failed: \(error)")
+            throw error
+        }
+    }
+
+    /// Mute a user's activity. Duplicate handling mirrors web `addMute`
+    /// (L636–647): web has NO conflict special-case — any insert error,
+    /// including the UNIQUE-triple 23505, is a logged failure there
+    /// (`return false`), so here it throws like every other write error.
+    /// (Contrast `toggleReaction`, where the contract explicitly makes
+    /// 23505 a success.)
+    public func muteUser(_ id: UUID) async throws {
+        try await insertMute { FeedMutes.insertPayload(userID: $0, mutingUser: id) }
+    }
+
+    /// Unmute a user. iOS deletes by the UNIQUE triple `(user_id,
+    /// mute_type, target_id)` instead of web's row id (`removeMute`,
+    /// L648–658) because the plan's interface takes the target, not a
+    /// mute-row id — the UNIQUE constraint makes the two exactly
+    /// equivalent. Deleting a mute that doesn't exist is a no-op.
+    public func unmuteUser(_ id: UUID) async throws {
+        try await deleteMute(type: "user", targetID: id.uuidString.lowercased())
+    }
+
+    /// Mute a movie/show by tmdb id. Same duplicate semantics as
+    /// `muteUser`.
+    public func muteMedia(_ tmdbID: String) async throws {
+        try await insertMute { FeedMutes.insertPayload(userID: $0, mutingMedia: tmdbID) }
+    }
+
+    /// Unmute a movie/show. Same by-target delete as `unmuteUser`.
+    public func unmuteMedia(_ tmdbID: String) async throws {
+        try await deleteMute(type: "movie", targetID: tmdbID)
+    }
+
+    // MARK: mute plumbing
+
+    private func insertMute(_ payload: (UUID) -> MuteInsertPayload) async throws {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let me = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+
+        do {
+            _ = try await client
+                .from("feed_mutes")
+                .insert(payload(me))
+                .execute()
+        } catch {
+            NSLog("[FeedRepository] mute insert failed: \(error)")
+            throw error
+        }
+    }
+
+    private func deleteMute(type: String, targetID: String) async throws {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let me = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+
+        do {
+            _ = try await client
+                .from("feed_mutes")
+                .delete()
+                .eq("user_id", value: me.uuidString.lowercased())
+                .eq("mute_type", value: type)
+                .eq("target_id", value: targetID)
+                .execute()
+        } catch {
+            NSLog("[FeedRepository] unmute failed: \(error)")
             throw error
         }
     }
