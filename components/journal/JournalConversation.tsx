@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { X, ChevronDown, ChevronUp, Eye, EyeOff, Users, AlertTriangle, Calendar, MapPin, Tv, Send, Sparkles, ArrowLeft, MessageSquare } from 'lucide-react';
 import { RankedItem, JournalEntry, StandoutPerformance, JournalVisibility } from '../../types';
 import { TIER_COLORS, JOURNAL_REVIEW_PROMPTS, JOURNAL_TAKEAWAY_PROMPTS, JOURNAL_MAX_PHOTOS, JOURNAL_MAX_MOMENTS, PLATFORM_OPTIONS } from '../../constants';
-import { upsertJournalEntry, getJournalEntry, uploadJournalPhoto, deleteJournalPhoto, getJournalStats, UpsertJournalData } from '../../services/journalService';
+import { upsertJournalEntry, getJournalEntry, pickEntryForEdit, uploadJournalPhoto, deleteJournalPhoto, getJournalStats, UpsertJournalData } from '../../services/journalService';
 import { createSession, sendAgentMessage, requestReviewGeneration, endSession, AgentContext } from '../../services/agentService';
 import { supabase } from '../../lib/supabase';
 import { recordAllCorrections } from '../../services/correctionService';
@@ -211,24 +211,23 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
     setChatError(null);
 
     const run = async () => {
-      // 1. Existing entry prop — go straight to draft
-      if (existingEntry) {
-        if (cancelled) return;
-        populateFromEntry(existingEntry);
-        setPhase('draft');
-        return;
-      }
-
-      // 2. Check DB for saved entry — if found, go to draft
-      const entry = await getJournalEntry(userId, item.id);
+      // 1. Always probe the DB for the owner's saved row — even when an
+      //    existingEntry prop was passed. Grid/search rows come from
+      //    cross-user reads that exclude owner-only personal_takeaway
+      //    (audit B5), and the save path is a full-replace upsert: trusting
+      //    the passed row would silently wipe the takeaway on save.
+      //    getJournalEntry is the owner path and returns the full row; the
+      //    prop only serves as a fallback if the probe fails.
+      const probed = await getJournalEntry(userId, item.id);
       if (cancelled) return;
+      const entry = pickEntryForEdit(probed, existingEntry);
       if (entry) {
         populateFromEntry(entry);
         setPhase('draft');
         return;
       }
 
-      // 3. No existing entry — start AI chat
+      // 2. No existing entry — start AI chat
       await initSession(() => cancelled);
     };
 

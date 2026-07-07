@@ -27,8 +27,10 @@ import {
   listJournalEntries,
   getJournalEntry,
   getJournalEntryById,
+  pickEntryForEdit,
 } from '../journalService';
 import type { ResolvedJournalVisibility } from '../journalService';
+import type { JournalEntry } from '../../types';
 import { REVIEW_ENTRY_COLUMNS, getReviewsForMovie, getReviewsByUser } from '../reviewService';
 
 /**
@@ -387,5 +389,64 @@ describe('journal read paths (B5)', () => {
     expect(tablesCalled()).not.toContain('journal_likes');
     expect(reviews).toHaveLength(1);
     expect(reviews[0].isLikedByViewer).toBe(false);
+  });
+});
+
+// ── pickEntryForEdit — probe-vs-prop seam for the composer (B5 follow-up) ───
+//
+// Grid/search edit passes a list/search row as `existingEntry` — those rows
+// come from cross-user reads that EXCLUDE owner-only personal_takeaway, and
+// the save path is a full-replace upsert: trusting the passed row would
+// silently wipe the takeaway. The composer must always probe the owner row
+// (getJournalEntry keeps select('*')) and prefer it over the prop.
+
+describe('pickEntryForEdit', () => {
+  function entryFixture(overrides: Partial<JournalEntry> = {}): JournalEntry {
+    return {
+      id: 'entry-1',
+      userId: 'user-1',
+      tmdbId: '603',
+      title: 'The Matrix',
+      containsSpoilers: false,
+      moodTags: [],
+      vibeTags: [],
+      favoriteMoments: [],
+      standoutPerformances: [],
+      watchedWithUserIds: [],
+      isRewatch: false,
+      photoPaths: [],
+      likeCount: 0,
+      createdAt: '2026-07-07T00:00:00Z',
+      updatedAt: '2026-07-07T00:00:00Z',
+      ...overrides,
+    } as JournalEntry;
+  }
+
+  it('prefers the probed owner row over the passed row — takeaway survives the grid-edit path', () => {
+    // The grid/search row lacks personalTakeaway (shared column list / search
+    // RPC, audit B5); the owner probe carries it.
+    const probed = entryFixture({ personalTakeaway: 'my private takeaway' });
+    const fromGrid = entryFixture({ personalTakeaway: undefined });
+
+    const picked = pickEntryForEdit(probed, fromGrid);
+
+    expect(picked).toBe(probed);
+    expect(picked?.personalTakeaway).toBe('my private takeaway');
+  });
+
+  it('prefers the probed row even when the prop carries a (stale) takeaway', () => {
+    const probed = entryFixture({ personalTakeaway: 'fresh' });
+    const prop = entryFixture({ personalTakeaway: 'stale' });
+    expect(pickEntryForEdit(probed, prop)?.personalTakeaway).toBe('fresh');
+  });
+
+  it('falls back to the passed row when the probe returns nothing', () => {
+    const prop = entryFixture();
+    expect(pickEntryForEdit(null, prop)).toBe(prop);
+  });
+
+  it('returns null when there is no entry at all (fresh journal → chat phase)', () => {
+    expect(pickEntryForEdit(null, null)).toBeNull();
+    expect(pickEntryForEdit(null, undefined)).toBeNull();
   });
 });

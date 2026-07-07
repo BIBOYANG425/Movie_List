@@ -302,6 +302,23 @@ export async function getJournalEntry(
 }
 
 /**
+ * Probe-vs-prop seam for the composer's edit flow. Rows passed into the
+ * composer from the journal grid/search come from cross-user reads that
+ * EXCLUDE owner-only personal_takeaway (audit B5), and the save path is a
+ * full-replace upsert — populating the form from such a row would silently
+ * wipe the owner's takeaway on save. The freshly probed owner row
+ * (getJournalEntry, which keeps select('*')) therefore always wins; the
+ * passed row is only a fallback for a failed probe, and null means "no entry
+ * yet" (composer starts the chat phase).
+ */
+export function pickEntryForEdit(
+  probed: JournalEntry | null,
+  passed?: JournalEntry | null,
+): JournalEntry | null {
+  return probed ?? passed ?? null;
+}
+
+/**
  * Id-addressed fetch with no owner scoping — cross-user capable, so it reads
  * the shared column list (no personal_takeaway, audit B5). Owner flows that
  * need the takeaway use getJournalEntry.

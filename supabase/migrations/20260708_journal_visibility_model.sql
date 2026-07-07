@@ -18,6 +18,16 @@
 --   4. AFTER the web deploy, run §4 (the single DO block, quoted there) once
 --      more to drop the transitional journal_likes compat view. Do NOT re-run
 --      §§1-3 (the DROP POLICY would fail — by design, it fails loudly).
+--
+--   NOTE on filename-ordered tooling (e.g. `supabase db push`): it sorts
+--   20260708_journal_search_likes_hardening.sql BEFORE this file, reversing
+--   steps 1-2 AND firing §4's view drop early (the hardening file has just
+--   created the view). Acceptable if it happens: the reversed RLS order is
+--   the "monotonic improvement" case analyzed in the hardening file's
+--   header, and the early view drop only degrades pre-deploy bundles'
+--   liked-state reads to isLikedByViewer=false via reviewService's `?? []`
+--   fallbacks (per the compat notes below). Owner-manual apply per this
+--   runbook avoids both entirely.
 -- ============================================================================
 -- APPLY-THEN-MERGE COMPATIBILITY (old deployed web code, between DB apply and
 -- web deploy of this PR):
