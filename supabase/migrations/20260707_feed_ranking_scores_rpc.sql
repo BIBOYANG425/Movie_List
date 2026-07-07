@@ -34,6 +34,16 @@
 -- expression is numeric throughout; the ::numeric cast makes the intent
 -- explicit and guards against any operand ever becoming float.
 --
+-- Known (accepted) divergence vs the legacy JS client, D tier only: for D-tier
+-- populations >= 57 (n = tier_total - 1 a multiple of 56: totals 57, 113,
+-- 169, ...), exact-half values such as 28.5/10 round UP here (numeric
+-- half-away-from-zero — the mathematically correct result), where the old
+-- client's float arithmetic landed at e.g. 2.8499999999999996 and rounded
+-- DOWN. Up to 4 positions per such large D tier may therefore show a +0.1
+-- score-badge shift vs the legacy client (e.g. 2.8 -> 2.9). S/A/B/C never
+-- diverge (verified exhaustively over tier totals 1..2000). If a 2.8 -> 2.9
+-- style report comes in, this is that — not an RPC bug.
+--
 -- security invoker: ranking-table RLS stays in force for the caller, so tier
 -- totals are computed over exactly the rows the viewer can already see
 -- (own / followed / public-profile actors) — identical to the old client-side
