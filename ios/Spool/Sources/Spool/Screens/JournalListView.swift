@@ -131,9 +131,6 @@ public struct JournalListView: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 12) {
                 Spacer(minLength: 40)
-                Text("no entries yet")
-                    .font(SpoolFonts.serif(22))
-                    .foregroundStyle(t.ink)
                 Text("no entries yet — rank something and write about it")
                     .font(SpoolFonts.hand(14))
                     .foregroundStyle(t.inkSoft)

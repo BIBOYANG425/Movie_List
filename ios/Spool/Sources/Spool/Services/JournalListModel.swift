@@ -178,8 +178,14 @@ public final class JournalListModel: ObservableObject {
     /// state to the write), then persist; a throw reverts both. Works whether the
     /// row lives in `entries` (list) or `searchResults` (search).
     public func toggleLike(entryID: UUID) async {
+        // Snapshot the LITERAL pre-toggle state up front. The revert restores
+        // this snapshot verbatim — never recomputes it. Recomputing via a second
+        // `applyLikeToggle` is off-by-one whenever the optimistic apply CLAMPED
+        // (stale count=0 + wasLiked=true → newCount=0, and recompute would bump
+        // it back to 1, leaving a phantom like on screen).
         let wasLiked = likedIDs.contains(entryID)
-        let (newCount, newLiked) = Self.applyLikeToggle(count: likeCount(for: entryID), liked: wasLiked)
+        let preCount = likeCount(for: entryID)
+        let (newCount, newLiked) = Self.applyLikeToggle(count: preCount, liked: wasLiked)
 
         // Optimistic apply.
         setLikeState(entryID: entryID, count: newCount, liked: newLiked)
@@ -187,9 +193,8 @@ public final class JournalListModel: ObservableObject {
         do {
             try await toggleLikeIO(entryID, wasLiked)
         } catch {
-            // Revert to the pre-toggle snapshot.
-            let (revertCount, _) = Self.applyLikeToggle(count: newCount, liked: newLiked)
-            setLikeState(entryID: entryID, count: revertCount, liked: wasLiked)
+            // Restore the pre-toggle snapshot LITERALLY.
+            setLikeState(entryID: entryID, count: preCount, liked: wasLiked)
         }
     }
 

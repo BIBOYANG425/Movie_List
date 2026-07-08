@@ -76,6 +76,19 @@ public enum RankPersistence {
             // forget inside StubWriter: a stub failure never fails the rank
             // save, and palette extraction runs detached.
             await StubWriter.writeStub(movie: movie, tier: tier)
+
+            // STAGE-A journal write (audit stage-a): every rank produces a real
+            // journal_entries row from the ceremony's moods + one-liner, so
+            // ranking and journaling never drift. This does NOT replace the
+            // `user_rankings.notes` write above (RankingInsert still carries the
+            // line as `notes`); it ADDS the journal row so the Stubs→journal
+            // list and the composer's probe-before-edit both find it. Full
+            // replace on `(user_id, tmdb_id)`, so a later "write more" edit
+            // round-trips through the same conflict key.
+            await JournalQuickEntry.write(
+                tmdbId: movie.id, title: movie.title, posterUrl: movie.posterUrl,
+                line: line, moods: moods
+            )
             return
         }
 

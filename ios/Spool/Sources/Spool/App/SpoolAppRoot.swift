@@ -70,6 +70,10 @@ public struct SpoolAppRoot: View {
     @State private var showSettings: Bool = false
     // Full shelf sheet (all tiers, all ranks, in one list)
     @State private var showFullList: Bool = false
+    // Journal composer sheet — a bound JournalDraftModel drives it. Set from the
+    // ceremony "write more" affordance (seeded with moods+line) and from a
+    // Stubs→journal card tap (seeded from a getOwnEntry probe). nil = closed.
+    @State private var journalComposer: JournalDraftModel? = nil
 
     public init() {}
 
@@ -150,6 +154,25 @@ public struct SpoolAppRoot: View {
                 }
             )
         }
+        .sheet(item: composerBinding) { token in
+            JournalComposer(model: token.model, onClose: { journalComposer = nil })
+        }
+    }
+
+    /// Bridge the optional composer model to a `sheet(item:)` binding. The model
+    /// isn't `Identifiable`, so wrap it in a lightweight token that is.
+    private var composerBinding: Binding<ComposerToken?> {
+        Binding(
+            get: { journalComposer.map(ComposerToken.init) },
+            set: { if $0 == nil { journalComposer = nil } }
+        )
+    }
+
+    /// Identifiable wrapper so a `JournalDraftModel` can drive `sheet(item:)`.
+    private struct ComposerToken: Identifiable {
+        let model: JournalDraftModel
+        var id: ObjectIdentifier { ObjectIdentifier(model) }
+        init(_ model: JournalDraftModel) { self.model = model }
     }
 
     /// Slim gold banner above the tab bar. Tap → opens the sign-in sheet.
@@ -240,7 +263,10 @@ public struct SpoolAppRoot: View {
                     }
                 )
             case .stubs:
-                StubsScreen { stubDetail = $0 }
+                StubsScreen(
+                    onOpenDetail: { stubDetail = $0 },
+                    onOpenJournalEntry: { tmdbId in presentComposerForEntry(tmdbId: tmdbId) }
+                )
             case .friends:
                 FriendsScreen(
                     onOpenTwin: { twinOpen = $0 },
@@ -332,9 +358,67 @@ public struct SpoolAppRoot: View {
                         }
                         flow = nil
                         tab = .feed
+                    },
+                    onWriteMore: {
+                        // "write more" → open the full composer seeded with the
+                        // ceremony's moods + one-liner. The rank flow closes
+                        // behind the composer sheet (the quick journal row lands
+                        // when the composer saves; the user_rankings row is
+                        // saved on an explicit finish, so we also persist the
+                        // rank here so backing out of the composer still keeps
+                        // the shelf entry that a "post to feed" would have made).
+                        let movieToSave = m
+                        let tierToSave = t
+                        let rankToSave = rankFinalRank
+                        let moodsToSave = rankMoods
+                        let lineToSave = rankLine
+                        Task {
+                            await RankPersistence.save(
+                                movie: movieToSave, tier: tierToSave,
+                                rank: rankToSave, moods: moodsToSave, line: lineToSave
+                            )
+                        }
+                        presentComposerForCeremony(movie: m, moods: rankMoods, line: rankLine)
+                        flow = nil
+                        tab = .stubs
                     }
                 )
             }
+        }
+    }
+
+    /// Build a fully-bound composer model, seed it from the ceremony's moods +
+    /// one-liner (folded into `reviewText`), and present it. The seed backstops a
+    /// nil probe (a brand-new entry) while a freshly-probed owner row still wins
+    /// (probe-before-edit), so this is safe even if the stage-a quick write
+    /// already landed a row.
+    private func presentComposerForCeremony(movie: Movie, moods: [String], line: String) {
+        let seed = JournalDraftModel.ceremonySeed(
+            tmdbId: movie.id, title: movie.title, posterUrl: movie.posterUrl,
+            line: line, moods: moods
+        )
+        let model = JournalEmitters.makeDraftModel(seed: seed)
+        journalComposer = model
+        Task {
+            await model.openForEntry(
+                tmdbId: movie.id, title: movie.title, posterUrl: movie.posterUrl, seed: seed
+            )
+        }
+    }
+
+    /// Open the composer to EDIT an existing entry by `tmdbId` (Stubs→journal
+    /// card tap). No seed — `openForEntry` probes the full owner row so the edit
+    /// starts from the authoritative record (personal_takeaway intact).
+    private func presentComposerForEntry(tmdbId: String) {
+        // Look up the entry's title/poster from the probe itself; pass minimal
+        // identity up front and let the probe hydrate the rest.
+        let model = JournalEmitters.makeDraftModel(seed: nil)
+        journalComposer = model
+        Task {
+            // The probe returns the full row; the composer renders its title
+            // from the hydrated draft. A placeholder title is only shown for the
+            // one frame before the probe resolves (composer is .loading anyway).
+            await model.openForEntry(tmdbId: tmdbId, title: "journal entry", posterUrl: nil, seed: nil)
         }
     }
 

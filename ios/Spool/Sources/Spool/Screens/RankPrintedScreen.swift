@@ -9,12 +9,17 @@ public struct RankPrintedScreen: View {
     public var finalScore: Double
     public var onClose: () -> Void
     public var onFinish: () -> Void
+    /// "write more" — open the full journal composer seeded with the ceremony's
+    /// moods + one-liner (Task 6). Defaulted to a no-op so existing call sites /
+    /// previews that don't wire it still compile.
+    public var onWriteMore: () -> Void
 
     @State private var printed: Bool = false
 
     public init(movie: Movie, tier: Tier, moods: [String], line: String,
                 finalRank: Int = 0, finalScore: Double = 0,
-                onClose: @escaping () -> Void, onFinish: @escaping () -> Void) {
+                onClose: @escaping () -> Void, onFinish: @escaping () -> Void,
+                onWriteMore: @escaping () -> Void = {}) {
         self.movie = movie
         self.tier = tier
         self.moods = moods
@@ -23,6 +28,7 @@ public struct RankPrintedScreen: View {
         self.finalScore = finalScore
         self.onClose = onClose
         self.onFinish = onFinish
+        self.onWriteMore = onWriteMore
     }
 
     public var body: some View {
@@ -74,6 +80,18 @@ public struct RankPrintedScreen: View {
                         SpoolPill("post to feed ✓", filled: true, action: onFinish)
                             .padding(.horizontal, 8)
                             .padding(.top, 8)
+
+                        Button(action: onWriteMore) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "pencil.line")
+                                    .font(.system(size: 13))
+                                Text("write more about it →")
+                                    .font(SpoolFonts.script(18))
+                            }
+                            .foregroundStyle(t.accent)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 12)
 
                         Button("keep private →", action: onClose)
                             .font(SpoolFonts.script(17))

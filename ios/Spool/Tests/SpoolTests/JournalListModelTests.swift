@@ -227,6 +227,32 @@ final class JournalListModelTests: XCTestCase {
         XCTAssertEqual(model.likeCount(for: e1), 2)
     }
 
+    /// CLAMP-REVERT off-by-one guard. A stale row shows count=0 but the viewer
+    /// is currently liked (wasLiked=true) — e.g. another device already unliked
+    /// and the count drifted to 0. The optimistic unlike clamps at 0, so
+    /// `newCount == 0`. On a write throw the revert must restore the LITERAL
+    /// pre-toggle count (0), NOT recompute `applyLikeToggle(newCount, newLiked)`
+    /// which would produce 1 and leave a phantom like on screen.
+    func testToggleLikeRevertRestoresLiteralPreToggleCountWhenClamped() async {
+        struct Boom: Error {}
+        let model = makeModel(
+            // Stale row: count already 0, yet the viewer's liked-state is true.
+            listOwnEntries: { [self.row(id: self.e1, title: "A", likeCount: 0)] },
+            likedEntryIDs: { _ in [self.e1] },   // starts liked
+            toggleLike: { _, _ in throw Boom() }
+        )
+        await model.load()
+        XCTAssertTrue(model.likedIDs.contains(e1))
+        XCTAssertEqual(model.likeCount(for: e1), 0)
+
+        await model.toggleLike(entryID: e1)
+
+        // Reverted to the exact pre-toggle snapshot: liked again, count still 0.
+        // A recompute-based revert would wrongly bump this to 1.
+        XCTAssertTrue(model.likedIDs.contains(e1))
+        XCTAssertEqual(model.likeCount(for: e1), 0)
+    }
+
     func testToggleLikeUnlikeDecrementsAndPersists() async {
         var toggleArgs: [(UUID, Bool)] = []
         let model = makeModel(
