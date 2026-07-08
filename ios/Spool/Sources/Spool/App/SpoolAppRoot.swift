@@ -223,7 +223,22 @@ public struct SpoolAppRoot: View {
         } else {
             switch tab {
             case .feed:
-                FeedScreen(onRankTap: { onTab(.rank) })
+                FeedScreen(
+                    onRankTap: { onTab(.rank) },
+                    onOpenFriends: { tab = .friends },
+                    onOpenSettings: { showSettings = true },
+                    onOpenActor: { actorID, handle in
+                        // Route to the read-only profile. FriendProfileScreen
+                        // loads everything from `userID`; the handle is a
+                        // best-effort label until that fetch resolves.
+                        friendProfileOpen = Friend(
+                            handle: handle.map { $0.hasPrefix("@") ? $0 : "@\($0)" } ?? "@…",
+                            name: handle ?? "profile",
+                            twin: 0,
+                            userID: actorID
+                        )
+                    }
+                )
             case .stubs:
                 StubsScreen { stubDetail = $0 }
             case .friends:

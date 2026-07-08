@@ -6,12 +6,13 @@ import Supabase
 ///  - `getMyProfile` / `getProfile(id:)` for Profile tab
 ///  - `getProfilesByIds(_:)` for bulk hydration (friends, followers)
 ///  - `searchByHandle(_:)` for future "+ add friend" UX
+///  - `currentVisibility()` / `updateVisibility(_:)` for Settings explore opt-in read/write
 ///
 /// Returns `nil` (or empty) when `SpoolClient.shared` is nil so callers can
 /// fall back to fixtures without a thrown error. Row-level errors throw
 /// `RepoError` — caller decides whether to surface a toast.
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-07-08
 public actor ProfileRepository {
 
     public static let shared = ProfileRepository()
@@ -107,6 +108,56 @@ public actor ProfileRepository {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: profile visibility (Settings explore opt-in)
+
+    /// The signed-in user's `profiles.profile_visibility` — `public` /
+    /// `friends` / `private` — or nil when there's no session / no row. The
+    /// column ships in prod (design §3); `ProfileRow` doesn't carry it (iOS
+    /// screens never needed it before), so this reads the single column
+    /// directly rather than widening the row DTO. No session / read failure →
+    /// nil so the Settings picker can fall back to its default.
+    public func currentVisibility() async -> String? {
+        guard let client = SpoolClient.shared else { return nil }
+        guard let userID = await SpoolClient.currentUserID() else { return nil }
+        do {
+            let rows: [VisibilityRow] = try await client
+                .from("profiles")
+                .select("profile_visibility")
+                .eq("id", value: userID.uuidString)
+                .limit(1)
+                .execute()
+                .value
+            return rows.first?.profile_visibility
+        } catch {
+            NSLog("[ProfileRepository] currentVisibility failed: \(error)")
+            return nil
+        }
+    }
+
+    /// Write `profiles.profile_visibility`. Mirrors `updateMyProfile`'s
+    /// idioms: client + session guards, `.eq("id", …)` scoped update that RLS
+    /// re-enforces (`auth.uid() = id`), empty result → `.notAuthenticated`.
+    /// The value is trusted to be one of the three contract strings (the
+    /// Settings picker only ever passes those); the DB CHECK is the backstop.
+    public func updateVisibility(_ value: String) async throws {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+
+        let updated: [VisibilityRow] = try await client
+            .from("profiles")
+            .update(VisibilityUpdatePayload(profile_visibility: value))
+            .eq("id", value: userID.uuidString)
+            .select("profile_visibility")
+            .execute()
+            .value
+
+        guard updated.first != nil else {
+            // No row updated — almost always an RLS mismatch. Surface as
+            // notAuthenticated, same as updateMyProfile.
+            throw RepoError.notAuthenticated
+        }
+    }
+
     /// Username-contains search (case-insensitive). Returns up to 12 matches,
     /// excludes the current user. Empty query → []. Mirrors the web
     /// `searchUsers` username path — display-name matching is intentionally
@@ -182,6 +233,19 @@ private struct ProfileUpdatePayload: Encodable {
             try container.encode(value, forKey: key) // set
         }
     }
+}
+
+/// Single-column read/write for `profiles.profile_visibility` — kept off the
+/// main `ProfileRow` DTO since only Settings touches it.
+private struct VisibilityRow: Decodable {
+    let profile_visibility: String?
+}
+
+/// `profiles.profile_visibility` update body — a plain single-key encode
+/// (unlike the three-state profile patch, visibility is always a concrete
+/// value, never cleared to null).
+private struct VisibilityUpdatePayload: Encodable {
+    let profile_visibility: String
 }
 
 /// Mirrors `profiles` row shape used by web's `ProfileRow`. Optional fields

@@ -1,109 +1,230 @@
 import SwiftUI
 
+/// The C1 ticket-wall feed (spec §1–4): a header with a friends/explore
+/// segmented switcher, wordmark, and notification bell; a `LazyVStack` wall of
+/// `FeedTicketFlip` rows (front = `FeedTicket`, back = `FeedTicketBack` with a
+/// per-event `TicketEngagementModel` created lazily on first flip); pull-to-
+/// refresh; infinite scroll; and the two empty states (friends → find your
+/// people; explore → visibility opt-in).
+///
+/// The data pipeline lives in `FeedFeedModel` (below): a `@MainActor`
+/// `ObservableObject` — the codebase floor is iOS 16 so it follows the
+/// `ToastCenter`/`TicketEngagementModel` precedent, not `@Observable`. It owns
+/// a `FeedPageAssembler` wired to the REAL repositories and drives the
+/// caller-contract loop (assemble → append; mode switch re-assembles from a
+/// nil cursor with a fresh per-call throttle; refresh re-assembles from nil;
+/// infinite scroll continues after the last card while `hasMore`). Reads
+/// catch to empty per the ledger's Part-B contract.
+///
+/// Fixture/preview mode (no session) is preserved: `SpoolData.feedEventRows`
+/// are mapped through the SAME `FeedCards.card` path the live feed uses, so
+/// previews exercise the real card layer.
+///
+/// Pure decisions (the infinite-scroll trigger, the allow-type set) live in
+/// `FeedScreenLogic` (XCTest-covered); this file is composition + wiring.
+///
+/// Contract: docs/plans/2026-07-08-c1-ios-feed-ui-plan.md (Task 5), spec
+/// docs/plans/2026-07-08-c1-ios-feed-ui-design.md.
 public struct FeedScreen: View {
-    @AppStorage("spool.user_handle") private var userHandle: String = "you"
-    @State private var filter: FeedFilter = .week
-    @State private var liveEvents: [ActivityEventRow] = []
-    @State private var loading: Bool = true
-    @State private var hasSession: Bool = false
-
-    /// Invoked when the signed-in empty state's "rank something" CTA is tapped.
-    /// SpoolAppRoot wires this to its rank-tab handler.
+    /// Signed-in empty state "rank something" CTA (preserved from the prior
+    /// screen; SpoolAppRoot wires it to the rank tab).
     private let onRankTap: (() -> Void)?
+    /// Friends empty state → FriendsScreen ("find your people").
+    private let onOpenFriends: (() -> Void)?
+    /// Explore empty state → Settings visibility row (the opt-in loop).
+    private let onOpenSettings: (() -> Void)?
+    /// Open an actor's profile (ticket context menu + notification follower
+    /// rows). Carries the actor id and best-known handle so the parent can
+    /// build a `Friend`/`FriendProfileScreen` route.
+    private let onOpenActor: ((UUID, String?) -> Void)?
 
-    public init(onRankTap: (() -> Void)? = nil) {
+    @StateObject private var model = FeedFeedModel()
+
+    public init(onRankTap: (() -> Void)? = nil,
+                onOpenFriends: (() -> Void)? = nil,
+                onOpenSettings: (() -> Void)? = nil,
+                onOpenActor: ((UUID, String?) -> Void)? = nil) {
         self.onRankTap = onRankTap
+        self.onOpenFriends = onOpenFriends
+        self.onOpenSettings = onOpenSettings
+        self.onOpenActor = onOpenActor
     }
-
-    enum FeedFilter { case all, week }
 
     public var body: some View {
         SpoolScreen {
             VStack(spacing: 0) {
-                SpoolHeader(title: "friends") {
-                    HStack(spacing: 6) {
-                        SpoolPill("all",     active: filter == .all,  size: .sm) { filter = .all }
-                        SpoolPill("◷ week",  active: filter == .week, size: .sm) { filter = .week }
-                    }
-                }
+                header
                 ScrollView {
                     content
                         .padding(.horizontal, 16)
                         .padding(.bottom, 110)
                         .padding(.top, 2)
                 }
-                .refreshable { await reload() }
+                .refreshable { await model.refresh() }
             }
         }
-        .task { await reload() }
+        .task { await model.loadInitialIfNeeded() }
+    }
+
+    // MARK: header
+
+    private var header: some View {
+        SpoolThemeReader { t, _ in
+            VStack(spacing: 10) {
+                HStack(alignment: .center) {
+                    Text("spool")
+                        .font(SpoolFonts.serif(30))
+                        .tracking(-0.5)
+                        .foregroundStyle(t.ink)
+                    Spacer()
+                    NotificationBellView(onOpenActor: { actor in
+                        onOpenActor?(actor, nil)
+                    })
+                }
+                modeSwitcher(t: t)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 60)
+            .padding(.bottom, 12)
+        }
     }
 
     @ViewBuilder
+    private func modeSwitcher(t: SpoolPalette) -> some View {
+        HStack(spacing: 6) {
+            SpoolPill("friends", active: model.mode == .friends, size: .sm) {
+                Task { await model.switchMode(.friends) }
+            }
+            SpoolPill("explore", active: model.mode == .explore, size: .sm) {
+                Task { await model.switchMode(.explore) }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: content
+
+    @ViewBuilder
     private var content: some View {
-        if loading {
-            // Render nothing until the first reload() resolves. Prevents a
-            // one-frame flash of the preview-mode demo card on launch for
-            // signed-in users, since `hasSession` defaults to false.
+        if model.loading {
+            // Nothing until the first assemble resolves — avoids a one-frame
+            // flash of a placeholder for signed-in users.
             Color.clear.frame(height: 1)
-        } else if hasSession {
-            if liveFeedItems.isEmpty {
-                signedInEmptyState
-            } else {
-                VStack(spacing: 14) {
-                    ForEach(Array(liveFeedItems.enumerated()), id: \.element.id) { i, item in
-                        FeedCardView(item: item, tilt: tiltFor(i))
-                    }
-                }
-            }
+        } else if model.cards.isEmpty {
+            emptyState
         } else {
-            VStack(spacing: 14) {
-                demoHeaderCard
-                ForEach(Array(SpoolData.feed.enumerated()), id: \.element.id) { i, item in
-                    FeedCardView(item: item, tilt: tiltFor(i + 1))
+            ticketWall
+        }
+    }
+
+    private var ticketWall: some View {
+        LazyVStack(spacing: 16) {
+            ForEach(Array(model.cards.enumerated()), id: \.element.id) { index, card in
+                ticketRow(card: card, index: index)
+            }
+            if model.loadingMore {
+                ProgressView()
+                    .padding(.vertical, 16)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func ticketRow(card: FeedCard, index: Int) -> some View {
+        let isFlipped = model.flippedID == card.id
+        FeedTicketFlip(
+            isFlipped: Binding(
+                get: { model.flippedID == card.id },
+                set: { flip in model.setFlipped(card: card, flipped: flip) }
+            ),
+            front: {
+                FeedTicket(
+                    card: card,
+                    onFlip: { model.setFlipped(card: card, flipped: true) },
+                    onMuteUser: { Task { await model.muteUser(card) } },
+                    onMuteMedia: { Task { await model.muteMedia(card) } },
+                    onOpenActor: { onOpenActor?(card.actorID, card.actorUsername) }
+                )
+            },
+            back: {
+                if let engagement = model.engagementModel(for: card) {
+                    FeedTicketBack(
+                        card: card,
+                        model: engagement,
+                        currentUserID: model.currentUserID,
+                        onFlipBack: { model.setFlipped(card: card, flipped: false) }
+                    )
+                } else {
+                    // Fixture/preview mode: no live engagement model (no
+                    // session). A minimal back keeps the flip working.
+                    fixtureBack(card: card)
                 }
             }
-        }
-    }
-
-    private var demoHeaderCard: some View {
-        SpoolThemeReader { t, _ in
-            VStack(alignment: .leading, spacing: 6) {
-                Text("DEMO — SIGN IN TO SEE REAL FRIENDS")
-                    .font(SpoolFonts.mono(10))
-                    .tracking(2)
-                    .foregroundStyle(t.ink)
-                Text("the cards below are sample friends. your real feed starts the moment you sign in.")
-                    .font(SpoolFonts.hand(13))
-                    .foregroundStyle(t.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
+        )
+        // Infinite scroll: the last card appearing triggers the next page.
+        .onAppear {
+            if FeedScreenLogic.shouldLoadNextPage(
+                appearedIndex: index,
+                lastIndex: model.cards.count - 1,
+                hasMore: model.hasMore,
+                isLoading: model.loadingMore
+            ) {
+                Task { await model.loadNextPage() }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(t.yellow.opacity(0.9))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(t.ink, lineWidth: 1.5)
-            )
+        }
+        .zIndex(isFlipped ? 1 : 0)
+    }
+
+    @ViewBuilder
+    private func fixtureBack(card: FeedCard) -> some View {
+        SpoolThemeReader { t, _ in
+            VStack(spacing: 10) {
+                Text("REACTIONS + REPLIES")
+                    .font(SpoolFonts.mono(11)).tracking(2)
+                    .foregroundStyle(t.inkSoft)
+                Text("sign in to react and reply")
+                    .font(SpoolFonts.hand(15))
+                    .foregroundStyle(t.ink)
+                Button {
+                    model.setFlipped(card: card, flipped: false)
+                } label: {
+                    Text("TAP TO FLIP BACK")
+                        .font(SpoolFonts.mono(8)).tracking(2)
+                        .foregroundStyle(t.inkSoft)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, minHeight: 180)
+            .padding(16)
+            .background(t.cream)
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(t.ink, lineWidth: 1.5))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
     }
 
-    private var signedInEmptyState: some View {
+    // MARK: empty states
+
+    @ViewBuilder
+    private var emptyState: some View {
+        switch model.mode {
+        case .friends: friendsEmptyState
+        case .explore: exploreEmptyState
+        }
+    }
+
+    private var friendsEmptyState: some View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 16) {
-                Spacer(minLength: 40)
-                Text("no rankings yet")
+                Spacer(minLength: 60)
+                Text("your feed is quiet")
                     .font(SpoolFonts.serif(26))
                     .foregroundStyle(t.ink)
-                Text("rank something to start your feed")
+                Text("follow people to see their rankings, reviews, and lists here")
                     .font(SpoolFonts.hand(15))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
-                SpoolPill("rank something", filled: true, size: .md) {
-                    onRankTap?()
+                SpoolPill("find your people", filled: true, size: .md) {
+                    onOpenFriends?()
                 }
                 .padding(.top, 4)
                 Spacer(minLength: 20)
@@ -114,230 +235,353 @@ public struct FeedScreen: View {
         }
     }
 
-    private var liveFeedItems: [FeedItem] {
-        liveEvents.compactMap { event -> FeedItem? in
-            guard event.event_type == "ranking_add",
-                  let title = event.media_title,
-                  let tierStr = event.media_tier,
-                  let tier = Tier(rawValue: tierStr) else { return nil }
-            let seed = Int(event.media_tmdb_id?.hashValue ?? title.hashValue) % 12
-            return FeedItem(
-                actor: FeedActor(handle: "@\(userHandle)", when: relativeTime(from: event.created_at)),
-                kind: .rank(title: title, tier: tier, line: "",
-                            moods: [], seed: abs(seed), stubNo: "#\(String(event.id.uuidString.prefix(4)))"),
-                likes: 0, comments: 0, seen: "just now"
-            )
-        }
-    }
-
-    private func reload() async {
-        let userID = await SpoolClient.currentUserID()
-        let sessionPresent = userID != nil
-
-        if sessionPresent {
-            do {
-                let events = try await RankingRepository.shared.getRecentActivity(limit: 25)
-                await MainActor.run {
-                    liveEvents = events
-                    hasSession = true
-                    loading = false
+    private var exploreEmptyState: some View {
+        SpoolThemeReader { t, _ in
+            VStack(spacing: 16) {
+                Spacer(minLength: 60)
+                Text("explore is empty")
+                    .font(SpoolFonts.serif(26))
+                    .foregroundStyle(t.ink)
+                Text("public profiles appear here — make yours public in settings")
+                    .font(SpoolFonts.hand(15))
+                    .foregroundStyle(t.inkSoft)
+                    .multilineTextAlignment(.center)
+                SpoolPill("open settings", filled: true, size: .md) {
+                    onOpenSettings?()
                 }
-            } catch {
-                await MainActor.run {
-                    liveEvents = []
-                    hasSession = true
-                    loading = false
-                }
-            }
-        } else {
-            await MainActor.run {
-                liveEvents = []
-                hasSession = false
-                loading = false
-            }
-        }
-    }
-
-    private func relativeTime(from iso: String) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) ?? Date()
-        let interval = Date().timeIntervalSince(date)
-        if interval < 60       { return "now" }
-        if interval < 3600     { return "\(Int(interval / 60))m" }
-        if interval < 86400    { return "\(Int(interval / 3600))h" }
-        return "\(Int(interval / 86400))d"
-    }
-
-    private func tiltFor(_ i: Int) -> Double {
-        switch i % 4 {
-        case 0: return -0.8
-        case 1: return  0.6
-        case 2: return -0.4
-        default: return 0.5
-        }
-    }
-}
-
-struct FeedCardView: View {
-    let item: FeedItem
-    let tilt: Double
-
-    var body: some View {
-        SpoolThemeReader { t, mode in
-            VStack(alignment: .leading, spacing: 0) {
-                switch item.kind {
-                case let .rank(title, tier, line, moods, seed, stubNo):
-                    rankCard(title: title, tier: tier, line: line, moods: moods,
-                             seed: seed, stubNo: stubNo, t: t, mode: mode)
-                case let .shuffle(line, titles):
-                    shuffleCard(line: line, titles: titles, t: t, mode: mode)
-                case let .milestone(headline, sub):
-                    milestoneCard(headline: headline, sub: sub, t: t, mode: mode)
-                }
-            }
-            .padding(12)
-            .background(cardBackground(t: t))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(t.ink, lineWidth: 1.5)
-            )
-            .shadow(color: .black.opacity(0.06), radius: 0, x: 0, y: 2)
-            .rotationEffect(.degrees(tilt))
-            .overlay(alignment: .topLeading) { tapeOverlay(mode: mode) }
-        }
-    }
-
-    @ViewBuilder
-    private func cardBackground(t: SpoolPalette) -> some View {
-        if case .milestone = item.kind {
-            t.ink
-        } else {
-            t.cream
-        }
-    }
-
-    @ViewBuilder
-    private func tapeOverlay(mode: SpoolMode) -> some View {
-        if case .milestone = item.kind {
-            EmptyView()
-        } else if case .shuffle = item.kind {
-            Tape(color: Color(hex: 0xCE3B1F).opacity(0.35))
-                .rotationEffect(.degrees(5))
-                .offset(x: 200, y: -8)
-        } else if case .rank = item.kind {
-            Tape()
-                .rotationEffect(.degrees(-6))
-                .offset(x: 22, y: -8)
-        }
-    }
-
-    // MARK: card variants
-
-    @ViewBuilder
-    private func rankCard(title: String, tier: Tier, line: String, moods: [String],
-                          seed: Int, stubNo: String, t: SpoolPalette, mode: SpoolMode) -> some View {
-        feedHeader(actor: item.actor, t: t, action: {
-            HStack(spacing: 2) {
-                Text("ranked")
-                TierStamp(tier: tier, size: 18)
-            }
-        })
-        AdmitStub(
-            movie: Movie(id: title, title: title, year: 2023, director: "celine song", seed: seed),
-            tier: tier, line: line, moods: moods,
-            handle: item.actor.handle, stubNo: stubNo, compact: true
-        )
-        .padding(.top, 8)
-        feedActions(likes: item.likes, comments: item.comments, seen: item.seen, dark: false, t: t)
-    }
-
-    @ViewBuilder
-    private func shuffleCard(line: String, titles: [ShuffleTitle], t: SpoolPalette, mode: SpoolMode) -> some View {
-        feedHeader(actor: item.actor, t: t, action: { Text("bumped 3 in A-tier") })
-        HStack(spacing: 6) {
-            ForEach(Array(titles.enumerated()), id: \.offset) { idx, st in
-                if idx > 0 {
-                    Text(st.direction == .up ? "↑↑" : (st.direction == .down ? "↓" : "—"))
-                        .font(SpoolFonts.script(28))
-                        .foregroundStyle(st.direction == .up ? t.accent : t.inkSoft)
-                }
-                PosterBlock(title: st.title, director: "—", seed: st.seed)
-                    .frame(width: 52)
-            }
-        }
-        .padding(.top, 10)
-        Text("\"\(line)\"")
-            .font(SpoolFonts.script(18))
-            .foregroundStyle(t.ink)
-            .padding(.top, 8)
-        feedActions(likes: item.likes, comments: item.comments, seen: item.seen, dark: false, t: t)
-    }
-
-    @ViewBuilder
-    private func milestoneCard(headline: String, sub: String, t: SpoolPalette, mode: SpoolMode) -> some View {
-        ZStack {
-            VStack(spacing: 6) {
-                Text("NOW PLAYING · MILESTONE")
-                    .font(SpoolFonts.mono(10))
-                    .tracking(3)
-                    .foregroundStyle(t.cream.opacity(0.6))
-                Text(headline)
-                    .font(SpoolFonts.serif(36))
-                    .tracking(1)
-                    .foregroundStyle(t.yellow)
-                    .padding(.top, 6)
-                Text(sub)
-                    .font(SpoolFonts.script(20))
-                    .foregroundStyle(t.cream)
+                .padding(.top, 4)
+                Spacer(minLength: 20)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 22)
-            .padding(.horizontal, 14)
-            .overlay(alignment: .top) { Bulbs().padding(.horizontal, 12).padding(.top, 6) }
-            .overlay(alignment: .bottom) { Bulbs().padding(.horizontal, 12).padding(.bottom, 6) }
+            .padding(.vertical, 40)
+            .padding(.horizontal, 24)
         }
-        feedActions(likes: item.likes, comments: item.comments, seen: item.seen, dark: true, t: t)
-    }
-
-    // MARK: primitives
-
-    @ViewBuilder
-    private func feedHeader<Action: View>(actor: FeedActor, t: SpoolPalette,
-                                          @ViewBuilder action: () -> Action) -> some View {
-        HStack(spacing: 10) {
-            StripedAvatar(size: 30)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(actor.handle).font(SpoolFonts.hand(14, weight: .bold))
-                    action().font(SpoolFonts.hand(14))
-                }
-                .foregroundStyle(t.ink)
-                Text("\(actor.when.uppercased()) AGO")
-                    .font(SpoolFonts.mono(9))
-                    .tracking(2)
-                    .foregroundStyle(t.inkSoft)
-            }
-            Spacer()
-        }
-    }
-
-    @ViewBuilder
-    private func feedActions(likes: Int, comments: Int, seen: String, dark: Bool, t: SpoolPalette) -> some View {
-        HStack(spacing: 14) {
-            Text("♡ \(likes)")
-            Text("💬 \(comments)")
-            Spacer()
-            Text(seen)
-        }
-        .font(SpoolFonts.mono(10))
-        .tracking(1)
-        .foregroundStyle(dark ? t.cream.opacity(0.7) : t.inkSoft)
-        .padding(.top, 10)
     }
 }
 
-#Preview {
+// MARK: - Feed view-model
+
+/// Drives `FeedScreen`: owns a `FeedPageAssembler` wired to the real
+/// repositories, the current cards/cursor/mode, and the flip + engagement
+/// state. `@MainActor` `ObservableObject` (iOS-16 floor — see file header).
+///
+/// The assembler is rebuilt lazily; every `assemblePage` call gets a fresh
+/// per-call throttle dict (that reset is the assembler's own contract), so a
+/// mode switch or refresh is just a new call from a nil cursor. Reads inside
+/// the assembler already catch to empty; this model never surfaces a throw.
+@MainActor
+final class FeedFeedModel: ObservableObject {
+
+    @Published private(set) var cards: [FeedCard] = []
+    @Published private(set) var mode: FeedMode = .friends
+    @Published private(set) var loading: Bool = true
+    @Published private(set) var loadingMore: Bool = false
+    @Published private(set) var hasMore: Bool = false
+    /// The single flipped ticket (only one ticket is open at a time).
+    @Published var flippedID: UUID?
+
+    private(set) var currentUserID: UUID?
+    /// Keyset cursor into the current stream. `private(set)` so tests can read
+    /// it (`@testable`) to assert the mode-switch race leaves it on the right
+    /// stream; only this model writes it.
+    private(set) var cursor: FeedCursor?
+    private var hasSession = false
+    private var didLoadOnce = false
+
+    /// Monotonic stream generation. Bumped at the START of every operation that
+    /// resets the stream (`assembleFromStart` via switch/refresh/initial). Each
+    /// awaiting body captures the generation before suspending and re-checks it
+    /// after resuming; a mismatch means the stream was reset (e.g. a mode
+    /// switch) while this load was in flight, so the stale result is DROPPED
+    /// instead of contaminating the new stream. Without this, a friends
+    /// `loadNextPage` suspended across its RPC could resume after the user
+    /// switched to explore and append friends cards / overwrite the cursor.
+    private var generation = 0
+
+    /// The in-flight `loadNextPage` task, held so a mode switch / refresh can
+    /// cancel it (belt-and-suspenders with the generation token — the token
+    /// makes the result HARMLESS, the cancel stops WASTING the RPC).
+    private var pageLoadTask: Task<Void, Never>?
+
+    /// One engagement model per event id, created on first flip and loaded
+    /// then. Kept off `@Published` — the ticket back `@ObservedObject`s its
+    /// own model, so publishing the dictionary too would double-notify.
+    private var engagementModels: [UUID: TicketEngagementModel] = [:]
+
+    private let assembler: FeedPageAssembler
+    /// Session resolver — injected so tests can drive a signed-in model
+    /// without a live Supabase session.
+    private let resolveSession: () async -> UUID?
+
+    /// Production init: wire the assembler's injected IO to the real
+    /// repositories. Each closure is the exact PR #34 signature; the assembler
+    /// owns the contract loop (refill, cursor, throttle, fail-soft).
+    convenience init() {
+        self.init(
+            assembler: FeedPageAssembler(
+                fetchPage: { mode, cursor, pageSize in
+                    try await FeedRepository.shared.fetchPage(mode: mode, cursor: cursor, pageSize: pageSize)
+                },
+                fetchMutes: {
+                    try await FeedRepository.shared.mutes()
+                },
+                fetchProfiles: { ids in
+                    try await ProfileRepository.shared.getProfilesByIds(ids)
+                },
+                fetchScores: { pairs in
+                    try await FeedRepository.shared.rankingScores(pairs: pairs)
+                }
+            ),
+            resolveSession: { await SpoolClient.currentUserID() }
+        )
+    }
+
+    /// Designated init — takes an already-wired assembler + session resolver so
+    /// the mode-switch race is testable with fakes (FeedFeedModelTests).
+    init(assembler: FeedPageAssembler, resolveSession: @escaping () async -> UUID?) {
+        self.assembler = assembler
+        self.resolveSession = resolveSession
+    }
+
+    // MARK: loading
+
+    /// First appearance: resolve the session once, then assemble the initial
+    /// page (or load fixtures when signed out). Idempotent across re-appears.
+    func loadInitialIfNeeded() async {
+        guard !didLoadOnce else { return }
+        didLoadOnce = true
+        currentUserID = await resolveSession()
+        hasSession = currentUserID != nil
+        await assembleFromStart()
+    }
+
+    /// Pull-to-refresh: re-assemble from a nil cursor (a brand-new
+    /// `assemblePage` call, so the assembler resets its per-call throttle).
+    func refresh() async {
+        // Re-check the session — the user may have signed in since first load.
+        currentUserID = await resolveSession()
+        hasSession = currentUserID != nil
+        await assembleFromStart()
+    }
+
+    /// Switch friends ⇄ explore: reset cursor + flip state and re-assemble
+    /// from the start (fresh throttle via the new call). Ignores a redundant
+    /// same-mode tap even while an assemble is in flight (`loading`) so a
+    /// double-tap can't stack redundant reassembles.
+    func switchMode(_ newMode: FeedMode) async {
+        guard newMode != mode else { return }
+        mode = newMode
+        await assembleFromStart()
+    }
+
+    /// Fresh first page for the current mode. Signed-out → fixtures. Bumps the
+    /// generation and cancels any in-flight page load so a suspended
+    /// `loadNextPage` from the previous stream can't write into this one.
+    private func assembleFromStart() async {
+        generation += 1
+        let gen = generation
+        pageLoadTask?.cancel()
+        pageLoadTask = nil
+
+        flippedID = nil
+        engagementModels.removeAll()
+        cursor = nil
+        loading = true
+
+        guard hasSession else {
+            cards = Self.fixtureCards()
+            hasMore = false
+            loading = false
+            return
+        }
+
+        let result = await assembler.assemblePage(
+            mode: mode, after: nil, allowedTypes: FeedScreenLogic.allEventTypes
+        )
+        // Stream reset (mode switch / refresh) landed while we were suspended —
+        // discard this now-stale page.
+        guard gen == generation else { return }
+        cards = result.cards
+        cursor = result.cursor
+        hasMore = result.hasMore
+        loading = false
+    }
+
+    /// Infinite scroll: append the next page after the current cursor. Guarded
+    /// against concurrent loads (`loadingMore`) on top of the pure
+    /// `shouldLoadNextPage` gate at the call site. Runs inside a held task so a
+    /// mode switch / refresh can cancel it; the generation token discards any
+    /// result that resumes after the stream was reset.
+    func loadNextPage() async {
+        guard hasSession, hasMore, !loadingMore, !loading else { return }
+        loadingMore = true
+        let gen = generation
+        let modeAtStart = mode
+        let cursorAtStart = cursor
+
+        let task = Task { @MainActor in
+            defer { loadingMore = false }
+
+            let result = await assembler.assemblePage(
+                mode: modeAtStart, after: cursorAtStart, allowedTypes: FeedScreenLogic.allEventTypes
+            )
+            // A reset (mode switch / refresh / cancel) happened while the RPC
+            // was in flight — DROP the result rather than append friends cards
+            // onto the explore list or overwrite the explore cursor.
+            guard gen == generation, !Task.isCancelled else { return }
+
+            // Append de-duplicating on id (defensive — the cursor contract
+            // already prevents overlap, but a repeated row must never
+            // double-render).
+            var seen = Set(cards.map(\.id))
+            for card in result.cards where seen.insert(card.id).inserted {
+                cards.append(card)
+            }
+            cursor = result.cursor
+            hasMore = result.hasMore
+        }
+        pageLoadTask = task
+        await task.value
+    }
+
+    // MARK: flip + engagement
+
+    func setFlipped(card: FeedCard, flipped: Bool) {
+        if flipped {
+            flippedID = card.id
+            // Lazily create + load the engagement model on first flip.
+            if hasSession, engagementModels[card.id] == nil {
+                let model = Self.makeEngagementModel(eventID: card.id)
+                engagementModels[card.id] = model
+                Task { await model.load() }
+            }
+        } else if flippedID == card.id {
+            flippedID = nil
+        }
+    }
+
+    /// The engagement model for a flipped ticket, or nil in fixture mode.
+    func engagementModel(for card: FeedCard) -> TicketEngagementModel? {
+        engagementModels[card.id]
+    }
+
+    private static func makeEngagementModel(eventID: UUID) -> TicketEngagementModel {
+        TicketEngagementModel(
+            eventID: eventID,
+            loadCounts: {
+                let map = try await FeedRepository.shared.engagement(for: [eventID])
+                return map[eventID] ?? EngagementCounts(
+                    reactions: EngagementReducer.reactionTypes.reduce(into: [:]) { $0[$1] = 0 },
+                    comments: 0,
+                    myReactions: []
+                )
+            },
+            loadThread: {
+                try await FeedRepository.shared.comments(for: eventID)
+            },
+            toggleReaction: { reaction, currentlyMine in
+                try await FeedRepository.shared.toggleReaction(
+                    eventID: eventID, reaction: reaction, currentlyMine: currentlyMine)
+            },
+            addComment: { body in
+                try await FeedRepository.shared.addComment(eventID: eventID, body: body, parentID: nil)
+            },
+            deleteComment: { id in
+                try await FeedRepository.shared.deleteComment(id: id)
+            }
+        )
+    }
+
+    // MARK: mutes
+
+    /// Mute the actor, then locally drop all of their tickets from the wall
+    /// (server side takes effect on the next fetch). A failed write leaves the
+    /// wall unchanged.
+    func muteUser(_ card: FeedCard) async {
+        do {
+            try await FeedRepository.shared.muteUser(card.actorID)
+            cards.removeAll { $0.actorID == card.actorID }
+        } catch {
+            // no-op — the mute didn't take; keep the tickets visible.
+        }
+    }
+
+    /// Mute the title, then locally drop all tickets carrying that tmdb id.
+    func muteMedia(_ card: FeedCard) async {
+        guard let tmdbID = card.mediaTmdbID else { return }
+        do {
+            try await FeedRepository.shared.muteMedia(tmdbID)
+            cards.removeAll { $0.mediaTmdbID == tmdbID }
+        } catch {
+            // no-op.
+        }
+    }
+
+    // MARK: fixtures
+
+    /// Signed-out demo wall — the SAME card pipeline the live feed uses
+    /// (`FeedCards.card`), with fixture handles hydrated locally.
+    static func fixtureCards() -> [FeedCard] {
+        SpoolData.feedEventRows.map { row in
+            var card = FeedCards.card(from: row)
+            card.actorUsername = SpoolData.feedFixtureUsernames[row.actor_id]
+            return card
+        }
+    }
+}
+
+// MARK: - Previews
+
+#if DEBUG
+#Preview("feed · fixtures (paper)") {
     FeedScreen().spoolMode(.paper)
 }
+
+#Preview("feed · fixtures (dark)") {
+    FeedScreen().spoolMode(.dark)
+}
+
+/// Empty-state previews — force the model into an empty, signed-in-looking
+/// state for each mode by rendering the empty views directly.
+private struct FeedEmptyPreview: View {
+    let explore: Bool
+    var body: some View {
+        SpoolScreen {
+            VStack(spacing: 0) {
+                SpoolThemeReader { t, _ in
+                    HStack {
+                        Text("spool").font(SpoolFonts.serif(30)).foregroundStyle(t.ink)
+                        Spacer()
+                        NotificationBellView()
+                    }
+                    .padding(.horizontal, 18).padding(.top, 60).padding(.bottom, 12)
+                }
+                SpoolThemeReader { t, _ in
+                    VStack(spacing: 16) {
+                        Spacer(minLength: 60)
+                        Text(explore ? "explore is empty" : "your feed is quiet")
+                            .font(SpoolFonts.serif(26)).foregroundStyle(t.ink)
+                        Text(explore
+                             ? "public profiles appear here — make yours public in settings"
+                             : "follow people to see their rankings, reviews, and lists here")
+                            .font(SpoolFonts.hand(15))
+                            .foregroundStyle(t.inkSoft)
+                            .multilineTextAlignment(.center)
+                        SpoolPill(explore ? "open settings" : "find your people", filled: true, size: .md) {}
+                        Spacer()
+                    }
+                    .padding(.horizontal, 24)
+                }
+            }
+        }
+    }
+}
+
+#Preview("feed · friends empty") {
+    FeedEmptyPreview(explore: false).spoolMode(.paper)
+}
+
+#Preview("feed · explore empty") {
+    FeedEmptyPreview(explore: true).spoolMode(.paper)
+}
+#endif
