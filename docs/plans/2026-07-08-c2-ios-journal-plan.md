@@ -20,7 +20,7 @@
 - **Likes:** `journal_entry_likes(entry_id,user_id)` table; toggle = INSERT `ON CONFLICT DO NOTHING` / DELETE own; read `like_count` from the row; batch initial liked-state via `likedEntryIds`; NEVER call the dropped increment/decrement RPCs or write `like_count`. Any like bumps `updated_at` — render `created_at`, not `updated_at`.
 - **Photos:** paths only (`{userId}/{entryId}/{index}.{ext}`, bucket `journal-photos`, max `JOURNAL_MAX_PHOTOS`=6); private bucket, owner-only storage RLS; render via fresh 30-day signed URLs (`JOURNAL_PHOTO_SIGNED_URL_TTL_SECONDS`=2592000), never persist a signed URL. **This cycle renders ONLY the owner's own journal (inside the owner's Stubs tab), so owner-only SELECT is sufficient — do NOT build any cross-user journal/photo surface (that needs the storage-policy extension first, out of scope).**
 - **personal_takeaway** owner-only: iOS only ever reads its own entries here (owner path `select('*')`), so it's always safe to read/render in this cycle; never build a cross-user read.
-- **Dates:** `watched_date` default = local `yyyy-MM-dd` (reuse the local-date helper from stubs — `StubWriteContract.localDateString` or the equivalent; do NOT use a GMT formatter). Tag constant ID sets (`MOOD_TAGS` 23 ids, `VIBE_TAGS` 11 ids, `PLATFORM_OPTIONS` 14 ids, `JOURNAL_MAX_MOMENTS`=5) are in web `constants.ts:192,222,236,271` — mirror the ID lists verbatim into a Swift constants file; iOS is the source of the labels for its own UI but the IDs must match web.
+- **Dates:** `watched_date` default = local `yyyy-MM-dd` (reuse the local-date helper from stubs — `StubWriteContract.localDateString` or the equivalent; do NOT use a GMT formatter). Tag constant ID sets (`MOOD_TAGS` 23 ids, `VIBE_TAGS` 11 ids, `PLATFORM_OPTIONS` 13 ids — the "14" miscounted a type-annotation line, `JOURNAL_MAX_MOMENTS`=5) are in web `constants.ts:192,222,236,271` — mirror the ID lists verbatim into a Swift constants file; iOS is the source of the labels for its own UI but the IDs must match web.
 - No UIKit except `PhotosUI` (PHPicker is the sanctioned exception; no `import UIKit` for layout). Conventional commits + `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`. `JournalEntrySheet` (web dead code) is NOT ported. AI agent + cross-user journal viewing + journal_tag deep-linking are OUT of scope (ledgered).
 
 ---
@@ -33,7 +33,7 @@
 ```swift
 public enum JournalVisibility: String, Sendable { case pub = "public", friends, priv = "private" }
 public struct StandoutPerformance: Codable, Equatable, Sendable { public let personId: Int; public let name: String; public let character: String? }
-public struct JournalRow: Codable, Sendable, Hashable {   // full select('*') owner row DTO — all 25 columns; server cols optional-decoded
+public struct JournalRow: Codable, Sendable, Hashable {   // full select('*') owner row DTO — decodes 23 fields (omits search_vector + updated_at, both intentional); server cols optional-decoded
     public let id: UUID; public let user_id: UUID; public let tmdb_id: String; public let title: String
     public let poster_url: String?; public let rating_tier: String?; public let review_text: String?
     public let contains_spoilers: Bool; public let mood_tags: [String]?; public let vibe_tags: [String]?
