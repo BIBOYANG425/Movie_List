@@ -9,7 +9,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | C0 | Stub write fix | iOS build in final review | audits/2026-07-07-c0-stub-web-audit.md | #30 | (PR opens after final review) |
 | C1 | Feed + notifications | feed UI built on `feat/ios-parity-c1-feed-ui` (PR pending); data layer + web fixes already merged (#32, #34; migrations applied + probes passed 2026-07-08) | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
 | C2 | Journal + AI agent | web fixes: migrations 1-2 APPLIED to prod + probes passed 2026-07-08; photos migration pending (applies immediately before merge); PR #33 rebasing | audits/2026-07-08-c2-journal-web-audit.md | #33 | — |
-| C3 | Watchlist + Discover | pending | — | — | — |
+| C3 | Watchlist + Discover | web blocking fixes in PR (B1/B2/B3a/B4/B5); iOS watchlist+discover port pending | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (PR pending, branch `fix/c3-watchlist-discover-web-blocking`) | — |
 | C4 | Ranking management | pending | — | — | — |
 | C5 | TV seasons + books | pending | — | — | — |
 | C6 | zh localization | pending | — | — | — |
@@ -40,6 +40,12 @@ Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
 - [C2] [blocking] B6 'friends'-visibility review bodies emitted into `activity_events` (explore-readable) — fixed (57823ab): emission gated on RESOLVED visibility = 'public', fail-closed profile fetch at emission time
 - [C2] [blocking] B7 UTC-derived `watched_date` + mixed-timezone streak math — fixed (b001e2f): `localDateString` defaults (service + composer), pure `computeStreaks` in whole local calendar days
 - [C2] [deferred] 16 findings D1–D16 logged in audits/2026-07-08-c2-journal-web-audit.md (feed-card re-emission on every save, tag-notification visibility leak, agent persistence races D3/D7/D8, provenance mislabels, consent auto-grant D11, open LLM proxy D12, spoiler render gap, perf; see doc)
+- [C3] [blocking] B5 rank-from-watchlist deleted the bookmark even when the ranking save failed (data loss on transient failure, item in neither list) — fixed on `fix/c3-watchlist-discover-web-blocking` (a61087e): add/addTV/addBook return a success boolean, `shouldRemoveBookmarkAfterRank` gates the delete; iOS C3 copies the CORRECTED semantics, not the shipped behavior
+- [C3] [blocking] B2/D5 `handleSearchSaveTV` minted TV bookmarks without `showTmdbId` (→ `show_tmdb_id=0`) and with raw compound genres; ranking them wrote season-less `tv_rankings` — fixed (cd6b902): `tvWatchlistItemFromShow` sets `showTmdbId` + `normalizeTVGenres`. Preventive (prod verified 0 season-less rows, no backfill)
+- [C3] [blocking] B1 Letterboxd import wrote bare `String(entry.tmdbId)` (split-format ids corrupt exclusion/taste-regex/cross-user compare/dup rows) — fixed (af7cb92, c2ebcf5): all four import write-time sites (`user_rankings`, `watchlist_items`, `journal_entries`, exclusion reads) route through `canonicalMovieTmdbId`. Preventive (prod verified 0 bare ids, no backfill)
+- [C3] [blocking] B3a `watchlist_items` had no UPDATE policy while `addToWatchlist` upserts merge-duplicates (ON CONFLICT DO UPDATE RLS-denied on stale pre-check) — fixed: migration `20260708_c3_watchlist_update_policy.sql` adds owner UPDATE mirroring tv/book
+- [C3] [blocking] B4 `trg_recompute_taste` fired O(tier-size) SECURITY DEFINER full-profile recomputes per rank into `user_taste_profiles`, which no client reads (verified LIVE in prod) — fixed: migration `20260708_c3_drop_taste_recompute.sql` drops trigger + `trigger_recompute_taste()` + `recompute_taste_profile(uuid)`; tables `user_taste_profiles`/`movie_credits_cache` PARKED (Q1 owner)
+- [C3] [deferred] 14 findings D1–D14 logged in audits/2026-07-08-c3-watchlist-discover-web-audit.md §3 (friend-pool sampling bias, no stale-request guard, variety pagination, dead-code cluster D7, whole-show `season_number 0` vs NULL D6, i18n misses; see doc) — not blocking the iOS port
 
 ## C1 adjudications (controller, 2026-07-07 — recorded verbatim, do not relitigate)
 
@@ -286,3 +292,71 @@ BEGIN
   END IF;
 END $drop_compat$;
 ```
+
+### C3 notes
+
+Web fixes on `fix/c3-watchlist-discover-web-blocking` per
+`2026-07-08-c3-web-blocking-fixes.md`; contract in
+`docs/contracts/shared-payloads.md` (`watchlist_items (+ tv/book variants)`).
+
+**Fixed (in the web PR):**
+
+- **B5** rank-from-watchlist data loss — return-success from add/addTV/addBook, delete the bookmark only on confirmed save (`shouldRemoveBookmarkAfterRank`); the exact flow iOS C3 ports.
+- **B2/D5** TV watchlist save now carries `showTmdbId` + normalized genres (`tvWatchlistItemFromShow`) — preventive, prod clean (0 season-less `tv_rankings`).
+- **B1** write-time canonical `tmdb_` ids at all 4 Letterboxd import sites incl. `journal_entries` (`canonicalMovieTmdbId`) — preventive, prod clean (0 bare ids).
+- **B3a** `watchlist_items` owner UPDATE policy migration (`20260708_c3_watchlist_update_policy.sql`).
+- **B4** drop dead taste-recompute trigger + `trigger_recompute_taste()` + `recompute_taste_profile(uuid)` (`20260708_c3_drop_taste_recompute.sql`) — verified LIVE in prod; tables `user_taste_profiles`/`movie_credits_cache` parked.
+
+**Deferred to OWNER (adjudication needed):**
+
+- **Q2 — movie-watchlist visibility (B3b):** follower-visible (align with tv/book, unblocks the iOS Twin exclusion in `TasteRepository.getRecommendationsForFriend`) vs owner-only privacy. Changes what friends can see. Movie SELECT stays owner-only until decided.
+- **Q1 — drop `user_taste_profiles` / `movie_credits_cache` tables:** currently PARKED by B4 (trigger+functions dropped, tables left as harmless empty skeletons; keeps the drop reversible). Owner decides the table drop.
+- **B1 backfill — N/A:** prod verified 0 bare-format `tmdb_id` rows, so no one-shot `bare→tmdb_` UPDATE is written (Q3 moot). Same for B2 (0 season-less rows).
+
+**Deferred D-items (D1–D14 in the audit §3):** friend-pool sampling bias (D1),
+no stale-request guard on suggestion loads (D3), variety pool ignores `page` (D4),
+whole-show `season_number 0` vs schema-NULL (D6 — contract doc pins "0-or-NULL"),
+dead-code cluster D7 (SharedWatchlistView, `saveActivityMovieToWatchlist`,
+`manual:` minters — W0.3 delete candidate), and 9 more. Not blocking the iOS port;
+dispositions per the audit doc. **The discover EDGE FUNCTION (audit §2 —
+`suggestions` + companion `tmdb-proxy`) is a SEPARATE C3 sub-project** needing
+owner infra (TMDB secret in the function store + deploy) and product decisions
+(Q4 proxy, Q5 pool provenance, Q6 what "Discover" is on iOS) — not in this web-fix PR.
+
+**iOS gap (audit §4):** no watchlist/discover code exists on iOS. Needed —
+`WatchlistRepository` (3 tables, §1.1 contract), the watchlist tab UI,
+rank-from-watchlist with the CORRECTED B5 semantics (delete only on confirmed
+save), `SuggestionsClient` (`functions.invoke('suggestions')` per §2), and fixing
+`TasteRepository.getRecommendationsForFriend` per the B3 adjudication (Q2).
+
+## C3 migration runbook (owner applies)
+
+Same precedent as the C1/C2 runbooks: agent prod-DDL is permission-gated, so the
+OWNER applies these files via the Supabase SQL editor / MCP `apply_migration`
+(project `emulyralduiitxuigboj`). **Order does NOT matter between the two** — they
+touch disjoint objects, and BOTH are apply-then-merge safe (the UPDATE policy is
+purely additive; dropping the trigger only stops writes to tables the deployed
+code never reads). Apply them, run the probes, then merge the PR.
+
+**1. `supabase/migrations/20260708_c3_watchlist_update_policy.sql`** — B3a: adds
+the owner UPDATE policy to `watchlist_items` (mirrors tv/book). Rollback (verbatim
+in the file): `DROP POLICY "Users can update own watchlist" ON watchlist_items;`.
+
+**2. `supabase/migrations/20260708_c3_drop_taste_recompute.sql`** — B4: drops
+`trg_recompute_taste`, `trigger_recompute_taste()`, `recompute_taste_profile(uuid)`.
+Tables `user_taste_profiles` / `movie_credits_cache` PARKED (Q1). Rollback
+(byte-verbatim in the file) re-creates worker function → trigger function →
+trigger against the still-present parked tables.
+
+**3. Verification probes** — run the 5 probes in
+`docs/plans/audits/2026-07-08-c3-migration-verification.md`, each write probe
+wrapped `begin; … rollback;`:
+
+- **(a)** `watchlist_items` has exactly one UPDATE policy (`Users can update own watchlist`) → expect `1`.
+- **(b)** an authenticated owner UPDATE on their own watchlist row succeeds (`UPDATE 1`, no RLS denial).
+- **(c)** `%taste%` triggers on `user_rankings` = `0` (and optionally `trigger_recompute_taste` + `recompute_taste_profile` gone from `pg_proc`). **This hard probe is the discriminator** — trigger-count `0` proves the drop regardless of profile-count movement.
+- **(d)** a `user_rankings` upsert no longer grows `user_taste_profiles` (count stable). **Use a FRESH user with no prior taste profile** so the count-grows case discriminates (an existing-profile user only bumps `updated_at`, which a count can't see) — or rely on the hard probe (c) trigger-count=0.
+- **(e)** parked tables `user_taste_profiles` + `movie_credits_cache` still EXIST (not dropped).
+
+**4. Merge the PR.** No deploy-window sensitivity — both migrations are
+apply-then-merge safe, so applying before or after the merge is fine.

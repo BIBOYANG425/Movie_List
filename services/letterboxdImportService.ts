@@ -9,6 +9,7 @@ import JSZip from 'jszip';
 import { parseCSV } from './csvParser';
 import { TMDB_BASE, TMDB_IMAGE_BASE, GENRE_MAP } from './tmdbService';
 import { classifyBracket } from './rankingAlgorithm';
+import { canonicalMovieTmdbId } from './watchlistRankHelpers';
 import { supabase } from '../lib/supabase';
 import { Tier, Bracket } from '../types';
 
@@ -412,7 +413,9 @@ export async function persistImport(
   }
 
   // Batch upsert rankings
-  const rankingsToInsert = ranked.filter(r => !existingRankingIds.has(String(r.tmdbId)));
+  const rankingsToInsert = ranked.filter(
+    r => !existingRankingIds.has(canonicalMovieTmdbId(r.tmdbId)),
+  );
   result.rankingsSkipped = ranked.length - rankingsToInsert.length;
 
   for (let i = 0; i < rankingsToInsert.length; i += BATCH_SIZE) {
@@ -421,7 +424,7 @@ export async function persistImport(
       tierMaxPos[entry.tier]++;
       return {
         user_id: userId,
-        tmdb_id: String(entry.tmdbId),
+        tmdb_id: canonicalMovieTmdbId(entry.tmdbId),
         title: entry.title,
         year: entry.yearStr,
         poster_url: entry.posterUrl,
@@ -448,9 +451,11 @@ export async function persistImport(
   }
 
   // Batch upsert watchlist (skip items already ranked)
-  const allRankedTmdbIds = new Set(ranked.map(r => String(r.tmdbId)));
+  const allRankedTmdbIds = new Set(ranked.map(r => canonicalMovieTmdbId(r.tmdbId)));
   const watchlistToInsert = watchlistEntries.filter(
-    w => !existingWatchlistIds.has(String(w.tmdbId)) && !allRankedTmdbIds.has(String(w.tmdbId))
+    w =>
+      !existingWatchlistIds.has(canonicalMovieTmdbId(w.tmdbId)) &&
+      !allRankedTmdbIds.has(canonicalMovieTmdbId(w.tmdbId))
   );
   result.watchlistSkipped = watchlistEntries.length - watchlistToInsert.length;
 
@@ -458,7 +463,7 @@ export async function persistImport(
     const batch = watchlistToInsert.slice(i, i + BATCH_SIZE);
     const rows = batch.map(entry => ({
       user_id: userId,
-      tmdb_id: String(entry.tmdbId),
+      tmdb_id: canonicalMovieTmdbId(entry.tmdbId),
       title: entry.title,
       year: entry.yearStr,
       poster_url: entry.posterUrl,
@@ -485,7 +490,7 @@ export async function persistImport(
     const batch = journalEntries.slice(i, i + BATCH_SIZE);
     const rows = batch.map(entry => ({
       user_id: userId,
-      tmdb_id: String(entry.tmdbId),
+      tmdb_id: canonicalMovieTmdbId(entry.tmdbId),
       title: entry.title,
       poster_url: entry.posterUrl,
       rating_tier: entry.tier,

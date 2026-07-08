@@ -1,0 +1,309 @@
+-- ============================================================================
+-- C3 Task 4 — drop the dead taste-recompute trigger + functions (audit B4)
+--
+-- Plan:  docs/plans/2026-07-08-c3-web-blocking-fixes.md (Task 4)
+-- Audit: docs/plans/audits/2026-07-08-c3-watchlist-discover-web-audit.md (B4)
+-- Source of the objects dropped: supabase/migrations/supabase_smart_suggestions.sql
+--
+-- ============================================================================
+-- WHAT THIS FIXES (B4): the single SECURITY DEFINER function
+-- `trigger_recompute_taste()` (supabase_smart_suggestions.sql:291-309) is wired
+-- as a FOR EACH ROW AFTER INSERT/UPDATE/DELETE trigger on ALL THREE ranking
+-- tables — NOT just `user_rankings` as the audit understated:
+--   * `trg_recompute_taste`       ON user_rankings  (supabase_smart_suggestions.sql:312-316)
+--   * `trg_recompute_taste_tv`    ON tv_rankings     (applied to prod out-of-band; not in any tracked migration file)
+--   * `trg_recompute_taste_books` ON book_rankings   (applied to prod out-of-band; not in any tracked migration file)
+-- All three call the same `trigger_recompute_taste()`, which PERFORMs
+-- `recompute_taste_profile(user_id)` — a full-profile recompute (:100-287) that
+-- rescans ALL of the user's rankings and joins `movie_credits_cache`. Because
+-- every ranking ceremony re-upserts the whole tier (RankingAppPage.tsx:497-521),
+-- one rank into a 30-item tier fires 30 full recomputes; a 500-film Letterboxd
+-- import fires hundreds — and this now fires on movie, TV, AND book ranking
+-- writes (3× the documented cost). All output lands in `user_taste_profiles`,
+-- which NO client reads (the live engine builds an ephemeral in-memory profile
+-- via buildTasteProfile). `movie_credits_cache` has no writer anywhere, so every
+-- recompute writes skeleton profiles anyway. Net: per-row O(tier-size) full
+-- recomputes across three tables into tables nothing reads.
+--
+-- Prod state verified 2026-07-07: ALL THREE triggers above AND both functions
+-- (`trigger_recompute_taste()`, `recompute_taste_profile(uuid)`) are live
+-- (Q1 + prod-apply). The prior single-table drop failed with SQLSTATE 2BP01:
+-- `DROP FUNCTION trigger_recompute_taste()` was blocked because the tv/book
+-- triggers still depended on it, rolling back the whole transaction. All three
+-- triggers must be dropped BEFORE the shared function. The IF EXISTS guards
+-- below are defensive only; every object is verified-present.
+--
+-- NOTE: the tv/book trigger definitions live in NO tracked migration file
+-- (they were applied to prod out-of-band). The rollback block below reconstructs
+-- them verbatim as exact structural clones of the user_rankings trigger — same
+-- shared function, same AFTER INSERT/UPDATE/DELETE FOR EACH ROW timing,
+-- differing only in trigger name + target table. tv_rankings/book_rankings both
+-- carry `user_id` (supabase_tv_rankings.sql:8 / supabase_book_rankings.sql:8),
+-- which is all `trigger_recompute_taste()` reads, so the clones are equivalent.
+--
+-- PARKED, NOT DROPPED (Q1 owner decision): the tables `user_taste_profiles`
+-- and `movie_credits_cache` are LEFT IN PLACE. With the trigger gone nothing
+-- writes them, so they are harmless empty skeletons; parking keeps the drop
+-- fully reversible (rollback below re-arms the trigger against the still-present
+-- tables) and defers the table-drop to a separate owner-gated change (plan
+-- Global Constraints "Deferred to owner").
+--
+-- Apply-then-merge safe: removal-only; the deployed web/iOS code and server.js
+-- contain ZERO references to these functions/tables/trigger (audit premise 1),
+-- so dropping them cannot break any deployed path. Runbook order vs the
+-- watchlist UPDATE-policy migration does not matter (disjoint objects).
+-- ============================================================================
+-- ROLLBACK (verbatim, from supabase_smart_suggestions.sql:97-317 for the worker
+-- + trigger function + user_rankings trigger; the tv/book triggers reconstructed
+-- as exact structural clones per the header NOTE) — recreate the worker
+-- function, then the trigger function, then ALL THREE triggers. The parked
+-- tables `user_taste_profiles` / `movie_credits_cache` are still present, so
+-- these statements fully restore prior behavior:
+--
+--   -- 3. RPC function: recompute_taste_profile
+--   CREATE OR REPLACE FUNCTION recompute_taste_profile(target_user_id uuid)
+--   RETURNS void
+--   LANGUAGE plpgsql
+--   SECURITY DEFINER
+--   AS $$
+--   DECLARE
+--     v_total        integer;
+--     v_genres       jsonb := '{}';
+--     v_directors    jsonb := '{}';
+--     v_actors       jsonb := '{}';
+--     v_decades      jsonb := '{}';
+--     v_avg_runtime  integer;
+--     v_underexposed text[];
+--     v_top_ids      integer[];
+--     v_tier_weight  integer;
+--     rec            record;
+--
+--     -- Full TMDB genre list for underexposed calculation
+--     all_genres     text[] := ARRAY[
+--       'Action','Adventure','Animation','Comedy','Crime','Documentary',
+--       'Drama','Family','Fantasy','History','Horror','Music','Mystery',
+--       'Romance','Sci-Fi','TV Movie','Thriller','War','Western'
+--     ];
+--     g              text;
+--     ranked_genres  text[];
+--   BEGIN
+--     -- Count total rankings
+--     SELECT count(*)::integer INTO v_total
+--     FROM user_rankings
+--     WHERE user_id = target_user_id;
+--
+--     -- If no rankings, delete taste profile and return
+--     IF v_total = 0 THEN
+--       DELETE FROM user_taste_profiles WHERE user_id = target_user_id;
+--       RETURN;
+--     END IF;
+--
+--     -- Iterate over each ranking joined with credits cache
+--     FOR rec IN
+--       SELECT
+--         ur.tier,
+--         ur.tmdb_id AS raw_tmdb_id,
+--         replace(ur.tmdb_id, 'tmdb_', '')::int AS numeric_tmdb_id,
+--         mcc.directors AS credit_directors,
+--         mcc.top_cast AS credit_cast,
+--         mcc.genres AS credit_genres,
+--         mcc.runtime AS credit_runtime,
+--         mcc.release_year AS credit_year
+--       FROM user_rankings ur
+--       LEFT JOIN movie_credits_cache mcc
+--         ON mcc.tmdb_id = replace(ur.tmdb_id, 'tmdb_', '')::int
+--       WHERE ur.user_id = target_user_id
+--     LOOP
+--       -- Determine tier weight
+--       v_tier_weight := CASE rec.tier
+--         WHEN 'S' THEN 5
+--         WHEN 'A' THEN 4
+--         WHEN 'B' THEN 3
+--         WHEN 'C' THEN 2
+--         WHEN 'D' THEN 1
+--         ELSE 1
+--       END;
+--
+--       -- Accumulate genre scores (from credits cache if available)
+--       IF rec.credit_genres IS NOT NULL THEN
+--         FOREACH g IN ARRAY rec.credit_genres LOOP
+--           v_genres := jsonb_set(
+--             v_genres,
+--             ARRAY[g],
+--             to_jsonb(COALESCE((v_genres->>g)::integer, 0) + v_tier_weight)
+--           );
+--         END LOOP;
+--       END IF;
+--
+--       -- Accumulate director scores from credits cache
+--       IF rec.credit_directors IS NOT NULL AND jsonb_array_length(rec.credit_directors) > 0 THEN
+--         FOR i IN 0..jsonb_array_length(rec.credit_directors) - 1 LOOP
+--           DECLARE
+--             director_name text := rec.credit_directors->>i;
+--           BEGIN
+--             v_directors := jsonb_set(
+--               v_directors,
+--               ARRAY[director_name],
+--               to_jsonb(COALESCE((v_directors->>director_name)::integer, 0) + v_tier_weight)
+--             );
+--           END;
+--         END LOOP;
+--       END IF;
+--
+--       -- Accumulate actor scores from credits cache
+--       IF rec.credit_cast IS NOT NULL AND jsonb_array_length(rec.credit_cast) > 0 THEN
+--         FOR i IN 0..jsonb_array_length(rec.credit_cast) - 1 LOOP
+--           DECLARE
+--             actor_name text := rec.credit_cast->>i;
+--           BEGIN
+--             v_actors := jsonb_set(
+--               v_actors,
+--               ARRAY[actor_name],
+--               to_jsonb(COALESCE((v_actors->>actor_name)::integer, 0) + v_tier_weight)
+--             );
+--           END;
+--         END LOOP;
+--       END IF;
+--
+--       -- Accumulate decade distribution
+--       IF rec.credit_year IS NOT NULL THEN
+--         DECLARE
+--           decade text := ((rec.credit_year / 10) * 10)::text || 's';
+--         BEGIN
+--           v_decades := jsonb_set(
+--             v_decades,
+--             ARRAY[decade],
+--             to_jsonb(COALESCE((v_decades->>decade)::integer, 0) + 1)
+--           );
+--         END;
+--       END IF;
+--     END LOOP;
+--
+--     -- Compute average runtime from credits cache
+--     SELECT avg(mcc.runtime)::integer INTO v_avg_runtime
+--     FROM user_rankings ur
+--     JOIN movie_credits_cache mcc
+--       ON mcc.tmdb_id = replace(ur.tmdb_id, 'tmdb_', '')::int
+--     WHERE ur.user_id = target_user_id
+--       AND mcc.runtime IS NOT NULL;
+--
+--     -- Identify underexposed genres: all TMDB genres minus those with >= 2 ranked movies
+--     ranked_genres := ARRAY(
+--       SELECT g2
+--       FROM (
+--         SELECT unnest(mcc.genres) AS g2, count(*) AS cnt
+--         FROM user_rankings ur
+--         JOIN movie_credits_cache mcc
+--           ON mcc.tmdb_id = replace(ur.tmdb_id, 'tmdb_', '')::int
+--         WHERE ur.user_id = target_user_id
+--         GROUP BY g2
+--         HAVING count(*) >= 2
+--       ) sub
+--     );
+--     v_underexposed := ARRAY(
+--       SELECT unnest(all_genres)
+--       EXCEPT
+--       SELECT unnest(ranked_genres)
+--     );
+--
+--     -- Collect S and A tier tmdb_ids
+--     v_top_ids := ARRAY(
+--       SELECT replace(ur.tmdb_id, 'tmdb_', '')::int
+--       FROM user_rankings ur
+--       WHERE ur.user_id = target_user_id
+--         AND ur.tier IN ('S', 'A')
+--       ORDER BY ur.rank_position
+--     );
+--
+--     -- Sort directors: take top entries by score descending
+--     v_directors := (
+--       SELECT coalesce(jsonb_agg(jsonb_build_object('name', kv.key, 'score', kv.value::int) ORDER BY kv.value::int DESC), '[]'::jsonb)
+--       FROM jsonb_each_text(v_directors) kv
+--     );
+--
+--     -- Sort actors: take top entries by score descending
+--     v_actors := (
+--       SELECT coalesce(jsonb_agg(jsonb_build_object('name', kv.key, 'score', kv.value::int) ORDER BY kv.value::int DESC), '[]'::jsonb)
+--       FROM jsonb_each_text(v_actors) kv
+--     );
+--
+--     -- Upsert into user_taste_profiles
+--     INSERT INTO user_taste_profiles (
+--       user_id, weighted_genres, top_directors, top_actors,
+--       decade_distribution, avg_runtime, underexposed_genres,
+--       top_movie_ids, total_ranked, updated_at
+--     ) VALUES (
+--       target_user_id, v_genres, v_directors, v_actors,
+--       v_decades, v_avg_runtime, v_underexposed,
+--       v_top_ids, v_total, now()
+--     )
+--     ON CONFLICT (user_id) DO UPDATE SET
+--       weighted_genres     = EXCLUDED.weighted_genres,
+--       top_directors       = EXCLUDED.top_directors,
+--       top_actors          = EXCLUDED.top_actors,
+--       decade_distribution = EXCLUDED.decade_distribution,
+--       avg_runtime         = EXCLUDED.avg_runtime,
+--       underexposed_genres = EXCLUDED.underexposed_genres,
+--       top_movie_ids       = EXCLUDED.top_movie_ids,
+--       total_ranked        = EXCLUDED.total_ranked,
+--       updated_at          = EXCLUDED.updated_at;
+--   END;
+--   $$;
+--
+--   -- 4. Trigger function: fires after INSERT/UPDATE/DELETE on user_rankings
+--   CREATE OR REPLACE FUNCTION trigger_recompute_taste()
+--   RETURNS trigger
+--   LANGUAGE plpgsql
+--   SECURITY DEFINER
+--   AS $$
+--   DECLARE
+--     affected_user_id uuid;
+--   BEGIN
+--     -- Determine which user was affected
+--     IF TG_OP = 'DELETE' THEN
+--       affected_user_id := OLD.user_id;
+--     ELSE
+--       affected_user_id := NEW.user_id;
+--     END IF;
+--
+--     PERFORM recompute_taste_profile(affected_user_id);
+--     RETURN NULL;
+--   END;
+--   $$;
+--
+--   -- Create the trigger on user_rankings (verbatim, supabase_smart_suggestions.sql:311-316)
+--   DROP TRIGGER IF EXISTS trg_recompute_taste ON user_rankings;
+--   CREATE TRIGGER trg_recompute_taste
+--     AFTER INSERT OR UPDATE OR DELETE ON user_rankings
+--     FOR EACH ROW
+--     EXECUTE FUNCTION trigger_recompute_taste();
+--
+--   -- Create the trigger on tv_rankings (structural clone; prod out-of-band)
+--   DROP TRIGGER IF EXISTS trg_recompute_taste_tv ON tv_rankings;
+--   CREATE TRIGGER trg_recompute_taste_tv
+--     AFTER INSERT OR UPDATE OR DELETE ON tv_rankings
+--     FOR EACH ROW
+--     EXECUTE FUNCTION trigger_recompute_taste();
+--
+--   -- Create the trigger on book_rankings (structural clone; prod out-of-band)
+--   DROP TRIGGER IF EXISTS trg_recompute_taste_books ON book_rankings;
+--   CREATE TRIGGER trg_recompute_taste_books
+--     AFTER INSERT OR UPDATE OR DELETE ON book_rankings
+--     FOR EACH ROW
+--     EXECUTE FUNCTION trigger_recompute_taste();
+-- ============================================================================
+
+-- Drop ALL THREE triggers first — every one depends on trigger_recompute_taste()
+-- and a leftover dependency raises SQLSTATE 2BP01 on the function drop (this is
+-- exactly what failed the prior single-table attempt and rolled it back).
+DROP TRIGGER IF EXISTS trg_recompute_taste ON user_rankings;
+DROP TRIGGER IF EXISTS trg_recompute_taste_tv ON tv_rankings;
+DROP TRIGGER IF EXISTS trg_recompute_taste_books ON book_rankings;
+
+-- Then the shared trigger function (it PERFORMs the worker).
+DROP FUNCTION IF EXISTS trigger_recompute_taste();
+
+-- Then the worker function.
+DROP FUNCTION IF EXISTS recompute_taste_profile(uuid);
+
+-- Tables user_taste_profiles / movie_credits_cache intentionally PARKED (Q1).
