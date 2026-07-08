@@ -25,7 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 import { createStub } from '../services/stubService';
-import { shouldRemoveBookmarkAfterRank } from '../services/watchlistRankHelpers';
+import { shouldRemoveBookmarkAfterRank, tvWatchlistItemFromShow } from '../services/watchlistRankHelpers';
 import { TMDBMovie, TMDBTVShow } from '../services/tmdbService';
 import { OpenLibraryBook } from '../services/openLibraryService';
 import { useLocalizedItems, useLocalizedWatchlist } from '../hooks/useLocalizedItems';
@@ -1359,16 +1359,7 @@ const RankingAppPage = () => {
   };
   const handleSearchSaveMovie = (movie: TMDBMovie) => { addToWatchlist(movie); };
   const handleSearchSaveTV = (show: TMDBTVShow) => {
-    const item: WatchlistItem = {
-      id: show.id,
-      title: show.name,
-      year: show.year,
-      posterUrl: show.posterUrl ?? '',
-      type: 'tv_season',
-      genres: show.genres ?? [],
-      addedAt: new Date().toISOString(),
-    };
-    addToTVWatchlist(item);
+    addToTVWatchlist(tvWatchlistItemFromShow(show, new Date().toISOString()));
   };
   const handleSearchSaveBook = (book: OpenLibraryBook) => {
     const item: WatchlistItem = {
