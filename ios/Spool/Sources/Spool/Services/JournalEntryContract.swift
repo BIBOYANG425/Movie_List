@@ -9,21 +9,43 @@ import Foundation
 /// `JournalContractTests`.
 public enum JournalEntryContract {
 
-    /// `RESOLVED = COALESCE(visibility_override, profiles.profile_visibility)`.
-    /// An explicit override always wins. A nil override inherits the profile
-    /// default. Fail-closed edges: an unknown/nil profile visibility (with a
-    /// nil override) resolves to `.friends`, never `.pub`. An override string
-    /// can only be a valid `JournalVisibility` here (the type enforces it); a
-    /// garbage STORED override is handled at decode time by `draft(from:)`
-    /// mapping it to nil, so a corrupt row reads as inherit-then-friends.
-    public static func resolveVisibility(override: JournalVisibility?, profileVisibility: String?) -> JournalVisibility {
-        if let override { return override }
+    /// `RESOLVED = COALESCE(visibility_override, profiles.profile_visibility)`,
+    /// driven by the RAW stored `visibility_override` string — the single
+    /// source of truth, mirroring web `resolveVisibility` (journalService.ts)
+    /// exactly. Fail-closed ladder:
+    ///  - `rawOverride` == a valid enum string (`public|friends|private`,
+    ///    case-sensitive) → that value;
+    ///  - `rawOverride` non-empty but INVALID → `.priv` (mirrors the SQL policy
+    ///    where a value matching no branch grants nothing — one step MORE
+    ///    restrictive than friends, NOT less);
+    ///  - `rawOverride` nil/empty ("Default") → inherit `profileVisibility`
+    ///    (unknown/nil profile → `.friends`, never `.pub`).
+    /// Use THIS overload wherever a stored row's override drives resolution
+    /// (the review-event gate especially).
+    public static func resolveVisibility(rawOverride: String?, profileVisibility: String?) -> JournalVisibility {
+        if let raw = rawOverride, !raw.isEmpty {
+            switch raw {
+            case "public": return .pub
+            case "friends": return .friends
+            case "private": return .priv
+            default: return .priv   // non-empty invalid → fail closed to private
+            }
+        }
+        // nil/empty override → inherit the profile default.
         switch profileVisibility {
         case "public": return .pub
         case "friends": return .friends
         case "private": return .priv
-        default: return .friends   // unknown/nil profile → friends, never public
+        default: return .friends    // unknown/nil profile → friends, never public
         }
+    }
+
+    /// Typed overload for the composer default picker, where the override is
+    /// always a user-picked valid `JournalVisibility` (or nil = Default). It
+    /// delegates to the raw overload via `override?.rawValue` so there is ONE
+    /// source of truth for the fail-closed ladder.
+    public static func resolveVisibility(override: JournalVisibility?, profileVisibility: String?) -> JournalVisibility {
+        resolveVisibility(rawOverride: override?.rawValue, profileVisibility: profileVisibility)
     }
 
     /// Build the full-replace upsert payload from the editable draft. The
@@ -58,7 +80,10 @@ public enum JournalEntryContract {
     /// Hydrate the editable draft from a freshly-probed owner row. Nil server
     /// optionals become empty editable defaults (the composer binds to
     /// non-optional String/[T]); a garbage stored `visibility_override` maps to
-    /// nil (Default) rather than fabricating a case.
+    /// nil (Default) so the PICKER offers a valid choice rather than fabricating
+    /// a case. (This is only the editable-picker view — read-side resolution of
+    /// a garbage stored override fails closed to `.priv` via the raw overload,
+    /// not to Default; the two concerns are intentionally separate.)
     public static func draft(from row: JournalRow) -> JournalDraft {
         JournalDraft(
             tmdbId: row.tmdb_id,

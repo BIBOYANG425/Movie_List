@@ -81,6 +81,52 @@ final class JournalContractTests: XCTestCase {
         XCTAssertEqual(JournalEntryContract.resolveVisibility(override: nil, profileVisibility: ""), .friends)
     }
 
+    // MARK: raw-string overload — web parity (journalService.ts:39). A stored
+    // ROW's visibility_override is an arbitrary string; a non-empty-but-INVALID
+    // value fails closed to private (one step MORE restrictive than friends),
+    // mirroring the SQL policy where a value matching no branch grants nothing.
+
+    func testResolveVisibilityRawValidOverrideMapsToEnum() {
+        for profile in ["public", "friends", "private", "garbage", nil] as [String?] {
+            XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: "public", profileVisibility: profile), .pub, "profile=\(String(describing: profile))")
+            XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: "friends", profileVisibility: profile), .friends, "profile=\(String(describing: profile))")
+            XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: "private", profileVisibility: profile), .priv, "profile=\(String(describing: profile))")
+        }
+    }
+
+    func testResolveVisibilityRawGarbageOverrideFailsClosedToPrivate() {
+        // The exact web-parity case: a non-empty invalid stored override →
+        // private, regardless of profile (never friends, never public).
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: "garbage", profileVisibility: "public"), .priv)
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: "garbage", profileVisibility: "garbage"), .priv)
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: "garbage", profileVisibility: nil), .priv)
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: "PUBLIC", profileVisibility: "public"), .priv, "case-sensitive: only exact lowercase is valid")
+    }
+
+    func testResolveVisibilityRawNilOrEmptyOverrideInheritsProfile() {
+        // nil or empty override = "Default" → inherit profile (unknown/nil → friends).
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: nil, profileVisibility: "public"), .pub)
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: nil, profileVisibility: "private"), .priv)
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: nil, profileVisibility: "garbage"), .friends)
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: nil, profileVisibility: nil), .friends)
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: "", profileVisibility: "public"), .pub)
+        XCTAssertEqual(JournalEntryContract.resolveVisibility(rawOverride: "", profileVisibility: nil), .friends)
+    }
+
+    func testTypedOverloadAgreesWithRawForAllValidInputs() {
+        // One source of truth: the typed overload delegates to the raw one, so
+        // for every valid (override, profile) pair the two must agree.
+        let overrides: [JournalVisibility?] = [nil, .pub, .friends, .priv]
+        let profiles: [String?] = ["public", "friends", "private", "garbage", "", nil]
+        for override in overrides {
+            for profile in profiles {
+                let typed = JournalEntryContract.resolveVisibility(override: override, profileVisibility: profile)
+                let raw = JournalEntryContract.resolveVisibility(rawOverride: override?.rawValue, profileVisibility: profile)
+                XCTAssertEqual(typed, raw, "override=\(String(describing: override)) profile=\(String(describing: profile))")
+            }
+        }
+    }
+
     // MARK: upsert payload — the exact 20-key set, full-replace
 
     func testUpsertPayloadEncodesExactly20ClientColumns() throws {
