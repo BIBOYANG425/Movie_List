@@ -347,3 +347,139 @@ Tests: `services/__tests__/journalService.test.ts` (visibility truth table,
 event gate, column lists, edit seam), `journalLikes.test.ts` (toggle/payload),
 `journalPhotos.test.ts` (path extraction/signing), `journalDates.test.ts`
 (streak truth table + named-timezone fixtures).
+
+## watchlist_items (+ tv/book variants) (since C3 web fixes, branch `fix/c3-watchlist-discover-web-blocking`)
+
+Three parallel bookmark tables — one per media vertical. Reference
+implementation: `pages/RankingAppPage.tsx` (CRUD + rank-from-watchlist),
+`services/watchlistRankHelpers.ts` (pure seams), `services/letterboxdImportService.ts`
+(import write paths). SQL: `supabase/migrations/supabase_schema.sql:37-49,146-148`
+(movie) + `20260708_c3_watchlist_update_policy.sql`; `supabase_tv_rankings.sql:65-112`
+(tv); `supabase_book_rankings.sql:67-116` (book). Enforcement labels:
+**[server]** = RLS enforces it, clients cannot break it; **[client]** = each
+client MUST implement it — the DB will not stop a wrong write/read.
+
+### Row shapes (verified against DDL)
+
+All three key on `UNIQUE(user_id, tmdb_id)`. `added_at` is
+`timestamptz NOT NULL DEFAULT now()` and is NEVER sent by the client (DB default
+owns it). `genres` is `text[] NOT NULL DEFAULT '{}'`. `id` uuid PK is DB-default.
+
+| | `watchlist_items` | `tv_watchlist_items` | `book_watchlist_items` |
+|---|---|---|---|
+| id-format of `tmdb_id` | `tmdb_{n}` (movies) | `tv_{showId}_s{n}` (season) or `tv_{showId}` (whole-show bookmark) | `ol_{workKey}` (e.g. `ol_OL27448W`) |
+| `type` default | `'movie'` | `'tv_season'` | `'book'` |
+| shared media cols | `title` (NOT NULL), `year`, `poster_url` (FULL URL, not a bare path), `genres` | same | same |
+| vertical cols | `director` | `show_tmdb_id integer NOT NULL`, `season_number integer` (NULL-able), `season_title`, `creator` | `author`, `page_count`, `isbn`, `ol_work_key`, `ol_ratings_average real` |
+
+`poster_url` carries the full `w500` image URL (same convention as
+`movie_stubs.poster_path`), NOT a bare TMDB path.
+
+### id-format canon [client] (post-B1)
+
+The canonical movie id is `tmdb_{n}` everywhere (`tmdbService.mapTmdbResult`,
+`DiscoverView.normalizeTmdbId`). B1's fix normalizes at WRITE TIME ONLY: the
+Letterboxd import used to write bare `String(entry.tmdbId)` into `user_rankings`,
+`watchlist_items`, and `journal_entries` — all four import write/exclusion sites
+now route through the pure `canonicalMovieTmdbId(rawId)`
+(`services/watchlistRankHelpers.ts`), idempotent (`tmdb_603`→`tmdb_603`,
+`603`→`tmdb_603`, `"603"`→`tmdb_603`). iOS MUST apply the same normalizer at every
+movie-id write site so a bare id can never land and corrupt engine exclusion, the
+taste regex `/tmdb_(\d+)/`, or cross-user string comparison. **No backfill was
+run — prod verified 0 bare-format rows** (B1 is purely preventive). Books are
+`ol_{key}`; TV rankings are `tv_{showId}_s{n}` (seasons) but the engine
+recommends whole SHOWS (`tv_{showId}`) — callers pre-expand season ids to show
+ids for exclusion.
+
+### TV whole-show bookmarks: `season_number` is 0-or-NULL [client] (D6)
+
+The schema comments `season_number integer` as "NULL = whole show bookmark"
+(`supabase_tv_rankings.sql:70`), but web actually WRITES `0`:
+`addToTVWatchlist` stores `season_number: item.seasonNumber ?? 0`
+(`RankingAppPage.tsx:679`; same `?? 0` for `show_tmdb_id`). All readers treat 0
+as falsy, so 0 and NULL are interchangeable "whole show" markers. iOS must
+replicate "**0 OR NULL = whole show**" on read and may write either (web writes 0;
+NULL is equally valid). A whole-show bookmark carries a real `show_tmdb_id` and a
+season-less `tmdb_id` (`tv_{showId}`).
+
+### Never trust `show_tmdb_id = 0` rows [client] (B2)
+
+Before B2's fix, `handleSearchSaveTV` minted TV bookmarks WITHOUT `showTmdbId`, so
+`addToTVWatchlist`'s `?? 0` stored `show_tmdb_id = 0`; ranking that row later
+mis-routed into the direct-to-tier branch and persisted a season-LESS
+`tv_rankings` row (`tv_{showId}`, `show_tmdb_id = 0`, `season_number = 0`),
+violating the season-id contract every downstream consumer assumes. B2 fixes the
+write (`tvWatchlistItemFromShow` sets `showTmdbId: show.tmdbId` + normalized
+genres) and the correct show-level routing keys on a truthy `showTmdbId`. **Prod
+verified clean (0 season-less rows), so B2 is preventive — no backfill.** iOS MUST
+treat any `show_tmdb_id = 0` TV row as corrupt: never rank it directly; route it
+through season selection (or ignore it).
+
+### Rank-from-watchlist: delete the bookmark ONLY on confirmed save [client] (B5, CORRECTED)
+
+The shipped web behavior was a data-loss bug: the ranking-save error was
+swallowed inside `addItem`/`addTVItem`/`addBookItem` (void return + toast), then
+the handler UNCONDITIONALLY deleted the watchlist row — a transient save failure
+destroyed the bookmark (item in neither list). The corrected contract, now the
+canon:
+
+1. `addItem`/`addTVItem`/`addBookItem` RETURN a success boolean (true on resolved
+   upsert, false on the caught error — keep the toast).
+2. The handler deletes the bookmark only when
+   `shouldRemoveBookmarkAfterRank(saveSucceeded)` is true
+   (`services/watchlistRankHelpers.ts` — returns the flag verbatim; pinned by a
+   vitest), and only AFTER `onAdd` resolves (existing ordering).
+
+**iOS C3 MUST copy this CORRECTED semantics, NOT the shipped web behavior** —
+delete the watchlist row only on confirmed rank save. Same rule for all three
+verticals. Whole-show TV bookmarks route through season selection before the tier
+step; season bookmarks go straight to tier.
+
+### RLS (post-B3a)
+
+| | `watchlist_items` | `tv_watchlist_items` | `book_watchlist_items` |
+|---|---|---|---|
+| SELECT | **owner only** [server] | owner **+ followers** | owner + followers |
+| INSERT | owner | owner | owner |
+| UPDATE | owner (**added by B3a**) | owner | owner |
+| DELETE | owner | owner | owner |
+
+- **[server] B3a — UPDATE policy added.** `watchlist_items` previously had only
+  SELECT/INSERT/DELETE (`supabase_schema.sql:146-148`); `addToWatchlist` writes a
+  merge-duplicates UPSERT on `(user_id, tmdb_id)`, so whenever the client-side
+  pre-check is stale (second device/tab, or dual-format B1 rows) the
+  `ON CONFLICT DO UPDATE` path was RLS-denied → save failed with revert+toast.
+  `20260708_c3_watchlist_update_policy.sql` adds the owner policy
+  `USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)`, mirroring the
+  tv/book tables. iOS upsert-on-conflict now works once this migration is live.
+- **[server] Movie SELECT is owner-only — PENDING owner decision Q2 (FLAG).** The
+  tv/book watchlist tables are follower-visible; `watchlist_items` SELECT is
+  owner-only. iOS `TasteRepository.getRecommendationsForFriend` already reads the
+  TARGET's `watchlist_items` for its Twin-exclusion, which silently returns 0 rows
+  under owner-only RLS (recommends movies already on the friend's watchlist). One
+  side must move: either add the follower-SELECT policy (align with tv/book,
+  unblock the iOS exclusion) or declare movie watchlists private and drop that iOS
+  read. **Owner adjudication required — it changes what friends can see.** Until
+  decided, treat movie watchlists as owner-only.
+
+### Write / remove paths [client]
+
+- **Add:** optimistic prepend, then UPSERT on `(user_id, tmdb_id)`
+  (merge-duplicates); revert + toast on error. Guarded by a client-side
+  `watchlist.some(w => w.id === item.id)` pre-check, so the conflict/UPDATE path
+  normally never fires (which historically masked the missing B3a policy). Movie
+  add always writes `type: 'movie'`; TV add writes
+  `show_tmdb_id: item.showTmdbId ?? 0`, `season_number: item.seasonNumber ?? 0`.
+- **Letterboxd import:** batch upsert with `ignoreDuplicates: true` (DO NOTHING —
+  never needs the UPDATE policy), canonical `tmdb_` ids, pre-filtered against the
+  existing watchlist and the import's own ranked set.
+- **Remove:** optimistic DELETE by `(user_id, tmdb_id)`; errors are ignored (no
+  revert on delete failure — the item silently reappears on the next full load).
+- **Read:** one initial parallel load of all six tables scoped to the user,
+  watchlists ordered `added_at desc`. No pagination, no refetch except a full page
+  reload.
+
+Tests: `services/__tests__/watchlistRankHelpers.test.ts`
+(`shouldRemoveBookmarkAfterRank` truth, `canonicalMovieTmdbId` idempotency/prefix,
+`tvWatchlistItemFromShow` shape); `services/__tests__/letterboxdImportIds.test.ts`
+(import writes canonical ids at all sites).
