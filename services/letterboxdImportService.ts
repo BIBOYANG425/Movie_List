@@ -490,7 +490,7 @@ export async function persistImport(
     const batch = journalEntries.slice(i, i + BATCH_SIZE);
     const rows = batch.map(entry => ({
       user_id: userId,
-      tmdb_id: String(entry.tmdbId),
+      tmdb_id: canonicalMovieTmdbId(entry.tmdbId),
       title: entry.title,
       poster_url: entry.posterUrl,
       rating_tier: entry.tier,
