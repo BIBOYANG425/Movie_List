@@ -361,12 +361,16 @@ public struct SpoolAppRoot: View {
                     },
                     onWriteMore: {
                         // "write more" → open the full composer seeded with the
-                        // ceremony's moods + one-liner. The rank flow closes
-                        // behind the composer sheet (the quick journal row lands
-                        // when the composer saves; the user_rankings row is
-                        // saved on an explicit finish, so we also persist the
-                        // rank here so backing out of the composer still keeps
-                        // the shelf entry that a "post to feed" would have made).
+                        // ceremony's moods + one-liner. Persist the rank here so
+                        // backing out of the composer still keeps the shelf entry
+                        // a plain "post to feed" would have made — but pass
+                        // `writeJournalQuickEntry: false` so the stage-a journal
+                        // upsert does NOT fire. The composer's explicit
+                        // full-replace save is the authoritative journal write on
+                        // this path; running both would double-write / race on the
+                        // same (user_id, tmdb_id) key. The two are exclusive, so
+                        // the composer probe deterministically finds nil and seeds
+                        // from moods+line (already tested).
                         let movieToSave = m
                         let tierToSave = t
                         let rankToSave = rankFinalRank
@@ -375,7 +379,8 @@ public struct SpoolAppRoot: View {
                         Task {
                             await RankPersistence.save(
                                 movie: movieToSave, tier: tierToSave,
-                                rank: rankToSave, moods: moodsToSave, line: lineToSave
+                                rank: rankToSave, moods: moodsToSave, line: lineToSave,
+                                writeJournalQuickEntry: false
                             )
                         }
                         presentComposerForCeremony(movie: m, moods: rankMoods, line: rankLine)
