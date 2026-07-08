@@ -8,7 +8,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 |---|---|---|---|---|---|
 | C0 | Stub write fix | iOS build in final review | audits/2026-07-07-c0-stub-web-audit.md | #30 | (PR opens after final review) |
 | C1 | Feed + notifications | feed UI built on `feat/ios-parity-c1-feed-ui` (PR pending); data layer + web fixes already merged (#32, #34; migrations applied + probes passed 2026-07-08) | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
-| C2 | Journal + AI agent | web fixes: migrations 1-2 APPLIED to prod + probes passed 2026-07-08; photos migration pending (applies immediately before merge); PR #33 rebasing | audits/2026-07-08-c2-journal-web-audit.md | #33 | — |
+| C2 | Journal + AI agent | web fixes merged (PR #33); iOS journal built on `feat/ios-parity-c2-journal` (PR pending) | audits/2026-07-08-c2-journal-web-audit.md | #33 | (PR pending) |
 | C3 | Watchlist + Discover | web blocking fixes in PR (B1/B2/B3a/B4/B5); iOS watchlist+discover port pending | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (PR pending, branch `fix/c3-watchlist-discover-web-blocking`) | — |
 | C4 | Ranking management | pending | — | — | — |
 | C5 | TV seasons + books | pending | — | — | — |
@@ -160,6 +160,39 @@ Feed UI built on `feat/ios-parity-c1-feed-ui` per `2026-07-08-c1-ios-feed-ui-pla
 - Flip a ticket → react (fire / agree / disagree / want-to-watch / love) + comment → round-trip persists.
 - Notification bell badge appears; opening the sheet marks fetched-unread read (badge clears).
 - Settings → profile-visibility row changes value; if set to `public`, your own activity appears in explore.
+
+### C2-iOS notes
+
+Journal built on `feat/ios-parity-c2-journal` per `2026-07-08-c2-ios-journal-plan.md` (Tasks 1–6, 355 tests); final contract re-verify (Task 7) found zero DTO/payload mismatches against the Global Constraints quotes. Contract in `docs/contracts/shared-payloads.md` (`journal_entries` → iOS implementations).
+
+**Built:** full manual journal — ceremony quick-entry (stage-a) + a journal tab in `StubsScreen` + the `JournalComposer` (15 editable fields) + photos + search + likes; emitters (review activity event + `journal_tag` notification) bound with a fail-closed public-only review gate (mirrors the web B6 fix).
+
+**Corrections caught during build (adjudicated to web/contract):**
+
+- `PLATFORM_OPTIONS` is 13 ids, not 14 (the plan/contract "14" miscounted a type-annotation line) — contract + plan text corrected.
+- An invalid stored `visibility_override` resolves to `private` (web parity, fail-closed via the raw-string overload).
+- Photo-add mints a MINIMAL side-effect-free entry (web parity — no duplicate review event / journal_tag on adding a photo; the full side effects fire only on an explicit save).
+- Ceremony quick-entry and write-more are mutually exclusive (`writeJournalQuickEntry: false` on the write-more path) — no double-write / clobber.
+
+**Deferred (own follow-ups, ledgered):**
+
+- AI agent chat — the Kimi journal-agent edge-function client (session / consent / correction flow). Not built this cycle.
+- Cross-user journal viewing on other profiles + its storage-policy prerequisite: the `20260708_journal_photos_private.sql` §4 resolved-visibility EXISTS storage-SELECT extension MUST be applied before any cross-user photo surface ships (owner-only SELECT fails closed otherwise).
+- `journal_tag` notification deep-link on iOS (the notification renders; tap-through to the tagged entry is not wired).
+
+**Known residuals carried:**
+
+- Write-more probe-miss window can set a fabricated entry id for the photo folder segment (cosmetic — paths stay internally consistent).
+- `journal_tag` fires regardless of visibility and re-fires on every save (web D2, mirrored as-is until D2 is fixed on web).
+
+**Owner device-smoke checklist:**
+
+- Rank a movie → tap "write more" → the composer opens seeded with the ceremony moods + one-liner.
+- Fill fields including a photo → save → the entry appears in the Stubs/journal tab.
+- A plain rank (no "write more") still creates a journal entry (stage-a quick entry).
+- Edit an entry → verify `personal_takeaway` survives the edit (the probe-before-edit wipe-guard).
+- Set the review public → it appears in the explore feed; a friends/private review does NOT.
+- Like an entry; run a search.
 
 ## C2 migration runbook (owner applies)
 

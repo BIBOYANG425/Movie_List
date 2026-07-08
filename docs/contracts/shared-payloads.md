@@ -211,7 +211,8 @@ Column semantics (beyond the obvious):
 - `review_text` / other optional texts [client]: empty string coerced to null.
 - `mood_tags`: ids from `MOOD_TAGS` (23 ids, constants.ts) — not
   DB-validated. `vibe_tags`: ids from `VIBE_TAGS` (11 ids).
-  `watched_platform`: id from `PLATFORM_OPTIONS` (14 ids).
+  `watched_platform`: id from `PLATFORM_OPTIONS` (13 ids — see the iOS-build
+  correction below; the earlier "14" miscounted a type-annotation line).
   `favorite_moments`: free text, max `JOURNAL_MAX_MOMENTS` = 5.
 - `standout_performances`: jsonb array of
   `{personId: number, name: string, character?: string}`.
@@ -347,6 +348,55 @@ Tests: `services/__tests__/journalService.test.ts` (visibility truth table,
 event gate, column lists, edit seam), `journalLikes.test.ts` (toggle/payload),
 `journalPhotos.test.ts` (path extraction/signing), `journalDates.test.ts`
 (streak truth table + named-timezone fixtures).
+
+### iOS implementations (since C2-iOS, branch `feat/ios-parity-c2-journal`)
+
+The full MANUAL journal (no AI agent — deferred, see below). Pure/tested
+contract + models under thin SwiftUI, mirroring the feed cycle:
+
+- `JournalEntryContract` (`ios/Spool/Sources/Spool/Services/JournalEntryContract.swift`)
+  — the pure marshalling/policy seam: `resolveVisibility` (COALESCE + fail-closed
+  edges), `upsertPayload` (the full-replace 20-column build), `draft(from:)`,
+  `pickEntryForEdit`, `shouldEmitReviewEvent`. Models + tag constants in
+  `JournalModels.swift` / `JournalConstants.swift`.
+- `JournalRepository` (actor, `JournalRepository.swift`) — CRUD, search RPC,
+  likes, `user_rankings.tier` lookup; `PhotoStore` (actor, `PhotoStore.swift`)
+  — PHPicker-byte upload + 30-day signed URLs; `JournalDraftModel` /
+  `JournalListModel` (@MainActor ObservableObjects) drive the `JournalComposer`
+  (15 editable fields), the journal tab in `StubsScreen`, and the entry card.
+  Emitters (`JournalEmitters.swift`) bind the review activity event + the
+  `journal_tag` notification to real inserts, gated by the model's fail-closed
+  public-only review gate (mirrors the web B6 fix).
+- **Probe-before-edit rule mirrored:** iOS mirrors `pickEntryForEdit(probed,
+  passed)` — the freshly-probed owner row (`getOwnEntry`, `select('*')`) always
+  wins over a takeaway-less list/search row, so a save can never null
+  `personal_takeaway`.
+- **Owner-only this cycle:** iOS renders ONLY the owner's own journal (inside the
+  owner's Stubs tab). There is NO cross-user journal/photo surface — that would
+  need the storage-policy extension (the `20260708_journal_photos_private.sql`
+  §4 resolved-visibility EXISTS) applied FIRST. Not built; ledgered.
+- **iOS resolves an invalid stored `visibility_override` to `private`** via the
+  raw-string overload `resolveVisibility(rawOverride:profileVisibility:)` — a
+  non-empty override matching no valid enum case fails closed to `.priv` (web
+  parity; the SQL policy grants nothing for such a value). The typed
+  composer-picker overload maps a garbage stored value to nil (Default) for the
+  picker only — the two concerns are deliberately separate.
+
+**Two contract-text corrections found during the iOS build (both applied here):**
+
+- `PLATFORM_OPTIONS` is **13 ids, not 14.** The "14" miscounted the source
+  array's `{ id: string; ... }` type-annotation line as an option. The 13 ids:
+  `theater, netflix, apple_tv, max, hulu, prime, disney, peacock, paramount,
+  mubi, criterion, physical, other`. (Corrected in the Column semantics list
+  above.)
+- The plan's "25-column `JournalRow`" note is wrong: the owner-row DTO decodes
+  **23 fields** — it omits `search_vector` and `updated_at`, both intentional
+  (a generated column and a trigger-owned column that no client renders; likes
+  bump `updated_at` and cards render `created_at`).
+
+Tests (iOS): `JournalContractTests`, `JournalRepositoryLogicTests`,
+`PhotoStoreLogicTests`, `JournalDraftModelTests`, `JournalListModelTests`,
+`JournalEmittersTests` under `ios/Spool/Tests/SpoolTests/`.
 
 ## watchlist_items (+ tv/book variants) (since C3 web fixes, branch `fix/c3-watchlist-discover-web-blocking`)
 
