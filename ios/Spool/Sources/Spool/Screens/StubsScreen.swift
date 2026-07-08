@@ -1,7 +1,21 @@
 import SwiftUI
 
+/// The two segments of the Stubs tab: the existing film-strip stub calendar,
+/// and the C2 journal list (`JournalListView`). Mirrors the feed's
+/// friends/explore segmented switcher idiom (SpoolPill row).
+public enum StubsTab: String, CaseIterable, Sendable {
+    case stubs
+    case journal
+}
+
 public struct StubsScreen: View {
     public var onOpenDetail: (WatchedDay) -> Void
+    /// Open the journal composer for a tapped entry (Task 6 wires it to a
+    /// `getOwnEntry` probe). Defaulted so existing call sites need no change.
+    public var onOpenJournalEntry: (String) -> Void
+
+    /// Which segment is showing — `stubs` (the calendar grid) or `journal`.
+    @State private var selectedTab: StubsTab = .stubs
 
     @State private var monthDays: [WatchedDay] = []
     @State private var lastStub: StubRow?
@@ -27,59 +41,30 @@ public struct StubsScreen: View {
     /// rapidly taps ‹/› and the older fetch would clobber newer state.
     @State private var loadTask: Task<Void, Never>? = nil
 
-    public init(onOpenDetail: @escaping (WatchedDay) -> Void = { _ in }) {
+    public init(onOpenDetail: @escaping (WatchedDay) -> Void = { _ in },
+                onOpenJournalEntry: @escaping (String) -> Void = { _ in }) {
         self.onOpenDetail = onOpenDetail
+        self.onOpenJournalEntry = onOpenJournalEntry
     }
 
     public var body: some View {
         SpoolScreen {
             VStack(spacing: 0) {
                 SpoolHeader(title: "my stubs") {
-                    monthStepper
-                }
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(countsLine)
-                            .font(SpoolFonts.mono(10))
-                            .tracking(2)
-                            .foregroundStyle(SpoolTokens.paper.inkSoft)
-                            .padding(.top, 2)
-
-                        FilmStripCalendar(days: monthDays, totalDays: daysInDisplayedMonth, onTap: onOpenDetail)
-                            .padding(.top, 10)
-
-                        SpoolThemeReader { t, _ in
-                            Text("tap a day to see the stub ↑")
-                                .font(SpoolFonts.script(13))
-                                .foregroundStyle(t.inkSoft)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.top, 6)
-                        }
-
-                        Text("LAST WATCHED")
-                            .font(SpoolFonts.mono(10))
-                            .tracking(2)
-                            .foregroundStyle(SpoolTokens.paper.inkSoft)
-                            .padding(.top, 16)
-
-                        lastWatchedCard
-                            .rotationEffect(.degrees(-0.5))
-                            .padding(.top, 6)
-
-                        // MonthRecapBox intentionally hidden until the recap
-                        // experience is real. Component code still exists so
-                        // we can flip this back on without a rewrite.
+                    // The month stepper only applies to the calendar grid; hide
+                    // it on the journal segment (which has no month scope).
+                    if selectedTab == .stubs {
+                        monthStepper
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 110)
                 }
-                .refreshable {
-                    // `refreshable` wants to suspend until the pull-to-refresh
-                    // finishes, so await the task we kick off instead of
-                    // returning immediately.
-                    triggerReload()
-                    await loadTask?.value
+
+                tabSwitcher
+
+                switch selectedTab {
+                case .stubs:
+                    stubsBody
+                case .journal:
+                    JournalListView(onOpenEntry: onOpenJournalEntry)
                 }
             }
         }
@@ -87,6 +72,73 @@ public struct StubsScreen: View {
         // iOS 16-compatible onChange signature (no oldValue/newValue pair).
         .onChange(of: displayedYM) { _ in
             triggerReload()
+        }
+    }
+
+    // MARK: tab switcher
+
+    /// stubs ⇄ journal segmented control — the feed's friends/explore SpoolPill
+    /// idiom (FeedScreen.modeSwitcher).
+    private var tabSwitcher: some View {
+        HStack(spacing: 6) {
+            SpoolPill("stubs", active: selectedTab == .stubs, size: .sm) {
+                selectedTab = .stubs
+            }
+            SpoolPill("journal", active: selectedTab == .journal, size: .sm) {
+                selectedTab = .journal
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: stubs segment (the existing calendar grid — unchanged)
+
+    private var stubsBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(countsLine)
+                    .font(SpoolFonts.mono(10))
+                    .tracking(2)
+                    .foregroundStyle(SpoolTokens.paper.inkSoft)
+                    .padding(.top, 2)
+
+                FilmStripCalendar(days: monthDays, totalDays: daysInDisplayedMonth, onTap: onOpenDetail)
+                    .padding(.top, 10)
+
+                SpoolThemeReader { t, _ in
+                    Text("tap a day to see the stub ↑")
+                        .font(SpoolFonts.script(13))
+                        .foregroundStyle(t.inkSoft)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 6)
+                }
+
+                Text("LAST WATCHED")
+                    .font(SpoolFonts.mono(10))
+                    .tracking(2)
+                    .foregroundStyle(SpoolTokens.paper.inkSoft)
+                    .padding(.top, 16)
+
+                lastWatchedCard
+                    .rotationEffect(.degrees(-0.5))
+                    .padding(.top, 6)
+
+                // MonthRecapBox intentionally hidden until the recap
+                // experience is real. Component code still exists so
+                // we can flip this back on without a rewrite.
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 110)
+        }
+        .refreshable {
+            // `refreshable` wants to suspend until the pull-to-refresh
+            // finishes, so await the task we kick off instead of
+            // returning immediately.
+            triggerReload()
+            await loadTask?.value
         }
     }
 
@@ -543,6 +595,6 @@ public struct YearMonth: Hashable, Sendable {
     }
 }
 
-#Preview {
+#Preview("stubs · segmented header") {
     StubsScreen(onOpenDetail: { _ in }).spoolMode(.paper)
 }

@@ -42,4 +42,54 @@ public enum JournalConstants {
     /// `JOURNAL_PHOTO_SIGNED_URL_TTL_SECONDS` — 30 days. Signed URLs are minted
     /// fresh on every render and never persisted.
     public static let journalPhotoSignedURLTTL = 2_592_000
+
+    // MARK: - Display labels (iOS-owned; ids stay canonical/cross-platform)
+
+    /// `MOOD_TAGS` id → display label, mirroring web `constants.ts` `MOOD_TAGS`
+    /// labels verbatim. iOS owns the copy for its own UI (the card renders these
+    /// on the mood stamps); the IDs remain the canonical cross-platform values.
+    static let moodLabels: [String: String] = [
+        "inspired": "Inspired", "joyful": "Joyful", "thrilled": "Thrilled",
+        "moved": "Moved", "amazed": "Amazed", "comforted": "Comforted",
+        "hopeful": "Hopeful", "thoughtful": "Thoughtful", "nostalgic": "Nostalgic",
+        "melancholy": "Melancholy", "haunted": "Haunted", "contemplative": "Contemplative",
+        "tense": "Tense", "disturbed": "Disturbed", "heartbroken": "Heartbroken",
+        "angry": "Angry", "overwhelmed": "Overwhelmed", "exhausted": "Exhausted",
+        "amused": "Amused", "charmed": "Charmed", "entertained": "Entertained",
+        "relaxed": "Relaxed", "satisfied": "Satisfied",
+    ]
+
+    /// `VIBE_TAGS` id → display label (web `constants.ts` `VIBE_TAGS` labels).
+    static let vibeLabels: [String: String] = [
+        "solo_watch": "Solo watch", "date_night": "Date night",
+        "movie_night": "Movie night", "family_time": "Family time",
+        "theater": "Theater experience", "cozy_night": "Cozy night in",
+        "binge": "Binge session", "rewatch": "Rewatch", "blind_watch": "Blind watch",
+        "late_night": "Late night", "travel": "Travel watch",
+    ]
+
+    /// `PLATFORM_OPTIONS` id → display label (web `constants.ts`).
+    static let platformLabels: [String: String] = [
+        "theater": "Theater", "netflix": "Netflix", "apple_tv": "Apple TV+",
+        "max": "Max", "hulu": "Hulu", "prime": "Prime Video", "disney": "Disney+",
+        "peacock": "Peacock", "paramount": "Paramount+", "mubi": "Mubi",
+        "criterion": "Criterion Channel", "physical": "Physical media", "other": "Other",
+    ]
+
+    /// Resolve a mood id to its display label. Unknown ids (a web-added id iOS
+    /// hasn't mirrored yet) fall back to the id itself so nothing renders blank —
+    /// the tag still shows, just with its raw id.
+    public static func moodLabel(_ id: String) -> String {
+        moodLabels[id] ?? id
+    }
+
+    /// Resolve a vibe id to its display label (unknown → the id itself).
+    public static func vibeLabel(_ id: String) -> String {
+        vibeLabels[id] ?? id
+    }
+
+    /// Resolve a platform id to its display label (unknown → the id itself).
+    public static func platformLabel(_ id: String) -> String {
+        platformLabels[id] ?? id
+    }
 }
