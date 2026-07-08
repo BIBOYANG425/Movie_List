@@ -25,6 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 import { createStub } from '../services/stubService';
+import { shouldRemoveBookmarkAfterRank } from '../services/watchlistRankHelpers';
 import { TMDBMovie, TMDBTVShow } from '../services/tmdbService';
 import { OpenLibraryBook } from '../services/openLibraryService';
 import { useLocalizedItems, useLocalizedWatchlist } from '../hooks/useLocalizedItems';
@@ -476,8 +477,8 @@ const RankingAppPage = () => {
     }
   };
 
-  const addItem = async (newItem: RankedItem) => {
-    if (!user) return;
+  const addItem = async (newItem: RankedItem): Promise<boolean> => {
+    if (!user) return false;
 
     let updatedTierList: RankedItem[] = [];
 
@@ -516,7 +517,7 @@ const RankingAppPage = () => {
       if (error) {
         console.error('Failed to save ranking:', error);
         setToastMessage(t('ranking.failedSaveRanking'));
-        return;
+        return false;
       }
     }
 
@@ -542,6 +543,8 @@ const RankingAppPage = () => {
       posterPath: newItem.posterUrl,
       tier: newItem.tier,
     }).catch(() => {});
+
+    return true;
   };
 
   const removeItem = async (id: string) => {
@@ -753,8 +756,8 @@ const RankingAppPage = () => {
 
   // ─── TV CRUD ──────────────────────────────────────────────────────────────
 
-  const persistTVRankings = async (updatedItems: RankedItem[]) => {
-    if (!user || updatedItems.length === 0) return;
+  const persistTVRankings = async (updatedItems: RankedItem[]): Promise<boolean> => {
+    if (!user || updatedItems.length === 0) return false;
     const rows = updatedItems.map(item => ({
       user_id: user.id,
       tmdb_id: item.id,
@@ -780,11 +783,13 @@ const RankingAppPage = () => {
     if (error) {
       console.error('Failed to save TV ranking:', error);
       setToastMessage(t('ranking.failedSaveTV'));
+      return false;
     }
+    return true;
   };
 
-  const addTVItem = async (newItem: RankedItem) => {
-    if (!user) return;
+  const addTVItem = async (newItem: RankedItem): Promise<boolean> => {
+    if (!user) return false;
 
     let updatedTierList: RankedItem[] = [];
 
@@ -801,7 +806,7 @@ const RankingAppPage = () => {
       return [...otherItems, ...updatedTierList];
     });
 
-    await persistTVRankings(updatedTierList);
+    const saveSucceeded = await persistTVRankings(updatedTierList);
 
     await logRankingActivityEvent(
       user.id,
@@ -825,6 +830,8 @@ const RankingAppPage = () => {
       posterPath: newItem.posterUrl,
       tier: newItem.tier,
     }).catch(() => {});
+
+    return saveSucceeded;
   };
 
   const removeTVItem = async (id: string) => {
@@ -991,8 +998,8 @@ const RankingAppPage = () => {
 
   // ─── Book CRUD ────────────────────────────────────────────────────────────
 
-  const persistBookRankings = async (updatedItems: RankedItem[]) => {
-    if (!user || updatedItems.length === 0) return;
+  const persistBookRankings = async (updatedItems: RankedItem[]): Promise<boolean> => {
+    if (!user || updatedItems.length === 0) return false;
     const rows = updatedItems.map(item => ({
       user_id: user.id,
       tmdb_id: item.id,
@@ -1018,11 +1025,13 @@ const RankingAppPage = () => {
     if (error) {
       console.error('Failed to save book ranking:', error);
       setToastMessage(t('ranking.failedSaveBook'));
+      return false;
     }
+    return true;
   };
 
-  const addBookItem = async (newItem: RankedItem) => {
-    if (!user) return;
+  const addBookItem = async (newItem: RankedItem): Promise<boolean> => {
+    if (!user) return false;
     let updatedTierList: RankedItem[] = [];
 
     setBookItems((prev) => {
@@ -1036,7 +1045,7 @@ const RankingAppPage = () => {
       return [...otherItems, ...updatedTierList];
     });
 
-    await persistBookRankings(updatedTierList);
+    const saveSucceeded = await persistBookRankings(updatedTierList);
 
     await logRankingActivityEvent(
       user.id,
@@ -1051,6 +1060,8 @@ const RankingAppPage = () => {
       },
       'ranking_add',
     );
+
+    return saveSucceeded;
   };
 
   const removeBookItem = async (id: string) => {
@@ -1181,18 +1192,24 @@ const RankingAppPage = () => {
   };
 
   const handleAddBookItem = async (newItem: RankedItem) => {
-    await addBookItem(newItem);
+    const saveSucceeded = await addBookItem(newItem);
     setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
     if (bookItemToRank) {
-      await removeBookFromWatchlist(bookItemToRank.id);
+      // Delete the bookmark only when the rank actually saved (B5 data-loss fix).
+      if (shouldRemoveBookmarkAfterRank(saveSucceeded)) {
+        await removeBookFromWatchlist(bookItemToRank.id);
+      }
       setBookItemToRank(null);
     }
   };
 
   const handleAddTVItem = async (newItem: RankedItem) => {
-    await addTVItem(newItem);
+    const saveSucceeded = await addTVItem(newItem);
     if (preselectedTVItem) {
-      await removeTVFromWatchlist(preselectedTVItem.id);
+      // Delete the bookmark only when the rank actually saved (B5 data-loss fix).
+      if (shouldRemoveBookmarkAfterRank(saveSucceeded)) {
+        await removeTVFromWatchlist(preselectedTVItem.id);
+      }
       setPreselectedTVItem(null);
     }
     setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
@@ -1200,9 +1217,12 @@ const RankingAppPage = () => {
 
   const handleAddItem = async (newItem: RankedItem) => {
     const wasMigration = !!migrationState;
-    await addItem(newItem);
+    const saveSucceeded = await addItem(newItem);
     if (preselectedForRank) {
-      await removeFromWatchlist(preselectedForRank.id);
+      // Delete the bookmark only when the rank actually saved (B5 data-loss fix).
+      if (shouldRemoveBookmarkAfterRank(saveSucceeded)) {
+        await removeFromWatchlist(preselectedForRank.id);
+      }
       setPreselectedForRank(null);
     }
     if (migrationState) {
