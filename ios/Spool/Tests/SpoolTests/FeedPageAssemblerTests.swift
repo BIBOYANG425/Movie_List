@@ -226,6 +226,40 @@ final class FeedPageAssemblerTests: XCTestCase {
         XCTAssertEqual(result.cursor, FeedPipeline.cursor(fromLastConsumed: dropped))
     }
 
+    func testShortPageStrandsUndeliveredTailCursorIsLastConsumedNotLastKept() async {
+        // The "strand quirk" (web L293-294 + L308): a SHORT raw page (< pageSize,
+        // so hasMore is false) whose KEPT cards top up the delivered page, but
+        // whose trailing rows are all DROPPED — consumed (cursor-advanced) yet
+        // undelivered. Because hasMore is judged on the RAW row count while the
+        // cursor advances over every consumed row, the returned cursor must sit
+        // at the last CONSUMED raw row (a dropped one), NOT the last kept card.
+        // If the cursor rewound to the last kept card, the next call would
+        // re-fetch and re-drop the strand forever.
+        //
+        // Discriminating construction: keep k1..k3, then TWO trailing mute-drops.
+        // A short page whose LAST row is kept would leave cursor == last kept and
+        // could not tell the two apart — the strand is what makes them diverge.
+        let k1 = makeRow(actor: actorA), k2 = makeRow(actor: actorA), k3 = makeRow(actor: actorA)
+        let strand1 = makeRow(actor: actorB), strand2 = makeRow(actor: actorB)
+        // 5 rows < pageSize 8 → short → hasMore false; kept fills to 3, the
+        // remaining two are consumed-but-undelivered.
+        let script = PageScript(pages: [[k1, k2, k3, strand1, strand2]])
+        let assembler = makeAssembler(pageSize: 8, script: script,
+                                      mutes: { ([self.actorB], []) })
+
+        let result = await assembler.assemblePage(mode: .friends, after: nil, allowedTypes: allTypes)
+
+        XCTAssertEqual(result.cards.map(\.id), [k1, k2, k3].map(\.id))
+        XCTAssertFalse(result.hasMore, "raw page was short → stream exhausted")
+        XCTAssertEqual(script.calls.count, 1, "short page ends the loop — no refill despite kept < pageSize")
+        // The load-bearing assertion: cursor is the last CONSUMED raw row
+        // (strand2, a dropped one), NOT the last kept card (k3).
+        XCTAssertEqual(result.cursor, FeedPipeline.cursor(fromLastConsumed: strand2),
+                       "returned cursor = last consumed raw row, not last kept card")
+        XCTAssertNotEqual(result.cursor, FeedPipeline.cursor(fromLastConsumed: k3),
+                          "strand path must advance the cursor past the last kept card")
+    }
+
     func testMediaMuteDropsRowsToo() async {
         let kept = makeRow(actor: actorA, tmdbID: "safe")
         let dropped = makeRow(actor: actorA, tmdbID: "muted-movie")

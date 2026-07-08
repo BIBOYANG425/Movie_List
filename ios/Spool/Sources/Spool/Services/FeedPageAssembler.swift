@@ -9,19 +9,19 @@ import Foundation
 /// The binding Part-B caller contract (docs/plans/2026-07-07-ios-parity-
 /// ledger.md, C1-iOS notes; plan Global Constraints):
 ///  - stage order = type filter → mutes → throttle; the milestone throttle
-///    runs LAST over the surviving rows (web L307-320);
+///    runs LAST over the surviving rows (web L310-325);
 ///  - the throttle counts dict lives for ONE `assemblePage` call — created
 ///    inside, carried across that call's refill pages, never across calls
 ///    (web resets per getFeedCards call, L275-280);
 ///  - the cursor advances over EVERY consumed raw row, kept or dropped, and
 ///    the result carries the last RAW row's cursor — never rewound to the
-///    last kept card (web L306);
+///    last kept card (web L308);
 ///  - `hasMore` = last raw page row count == pageSize (web L293-294);
 ///  - ≤ `maxRPCPages` raw fetches per call (web MAX_FEED_RPC_PAGES, L212);
 ///  - reads fail soft AT THIS LAYER for page assembly: a first-page
 ///    `fetchPage` throw yields empty/hasMore-false; a later refill throw
 ///    returns what's kept so far with hasMore true (an error is not
-///    end-of-stream — web L288-292 breaks without exhausting); mutes/
+///    end-of-stream — web L287-290 breaks without exhausting); mutes/
 ///    profiles/scores throws degrade (web's in-service soft-fails:
 ///    getMutes L619-622 returns []).
 ///
@@ -131,7 +131,7 @@ public actor FeedPageAssembler {
             } catch {
                 // First page: nothing to show — empty result, hasMore false.
                 // Later refill: keep what we have; the error is NOT
-                // end-of-stream, so exhausted stays false (web L288-292).
+                // end-of-stream, so exhausted stays false (web L287-290).
                 if rpcPages == 1 { firstFetchFailed = true }
                 break
             }
@@ -142,12 +142,12 @@ public actor FeedPageAssembler {
 
             for row in raw {
                 // Page full: the unconsumed tail is NOT cursor-advanced —
-                // the next call re-fetches it (web L301).
+                // the next call re-fetches it (web L297).
                 if kept.count >= config.pageSize { break }
 
                 // Row consumed — advance the keyset whether it survives the
                 // stages or not. This is what makes refilling never skip
-                // and never duplicate (web L306; audit B4c bug family).
+                // and never duplicate (web L308; audit B4c bug family).
                 cursor = FeedPipeline.cursor(fromLastConsumed: row)
 
                 // Stage 1: event-type filter.

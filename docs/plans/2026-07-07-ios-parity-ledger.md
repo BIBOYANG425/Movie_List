@@ -7,7 +7,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | Cycle | Feature | Status | Audit doc | Web-fix PR | iOS PR |
 |---|---|---|---|---|---|
 | C0 | Stub write fix | iOS build in final review | audits/2026-07-07-c0-stub-web-audit.md | #30 | (PR opens after final review) |
-| C1 | Feed + notifications | web fixes MERGED (#32, migrations applied + probes passed 2026-07-08); iOS data layer #34 MERGED; UI plan pending owner design input | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
+| C1 | Feed + notifications | feed UI built on `feat/ios-parity-c1-feed-ui` (PR pending); data layer + web fixes already merged (#32, #34; migrations applied + probes passed 2026-07-08) | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
 | C2 | Journal + AI agent | web fixes: migrations 1-2 APPLIED to prod + probes passed 2026-07-08; photos migration pending (applies immediately before merge); PR #33 rebasing | audits/2026-07-08-c2-journal-web-audit.md | #33 | — |
 | C3 | Watchlist + Discover | pending | — | — | — |
 | C4 | Ranking management | pending | — | — | — |
@@ -115,6 +115,45 @@ The plan's Task 2 "mapping" mandate was narrowed to the Interfaces block during 
 - Profile hydration with the 3-step avatar fallback chain (`avatar_url` → storage public URL from `avatar_path` → dicebear). `ProfileRepository.getProfilesByIds` already returns the needed columns.
 - Tier and time-range filter helpers.
 - Score-pair collection rule: pairs are collected ONLY for ranking/review cards that have a `media_tmdb_id` (web feedService L357-363).
+
+### C1-UI notes
+
+Feed UI built on `feat/ios-parity-c1-feed-ui` per `2026-07-08-c1-ios-feed-ui-plan.md` (Tasks 1–6); PR pending (data layer #34 + web fixes #32 already merged, both feed RPCs LIVE in prod). Full pure logic in tested layers (`FeedCards`, `FeedPageAssembler`, `TicketEngagementModel`); final contract re-check found zero closure/repository signature mismatches (compile is the proof) — grep gates: 0 `ISODate`, 0 `import UIKit` in any new `Feed*`/`Ticket*`/`NotificationBellView` file.
+
+**Plan-authoring corrections caught during build (all adjudicated to web/contract):**
+
+- Dicebear: plan prose said `7.x/initials/png`; web governs `8.x/thumbs/svg?seed=encodeURIComponent(username)` — iOS mirrors web byte-for-byte.
+- Reaction set: plan/spec said `laugh/sad/mind_blown` (mockup emoji leaked into the spec); the wire contract set is `fire/agree/disagree/want_to_watch/love` — spec corrected, iOS uses the contract set.
+- `FeedTicketFlip`: plan's Produces block carried a redundant `card:` param; shipped signature drops it (`FeedTicketFlip(isFlipped:front:back:)` — generic container, card flows through the front/back closures) — better generic API, plan Produces block corrected.
+
+**Accepted platform/behavior deltas:**
+
+- Score-badge rounding tie: iOS `%.1f` is half-even, web `toFixed` is half-up — they diverge only at an exact `.25` tie (`9.25 → 9.2` iOS vs `9.3` web); accepted, sub-perceptual on a display score.
+- Web's card-mapping catch path renders the literal string `"Invalid Date"` at runtime; iOS raw-echoes the malformed timestamp instead (iOS is the better behavior).
+- Throttle counts dict is per-page-assembly-CALL (created inside `assemblePage`, carried across that call's refill pages, reset on every new call) — matches web's per-`getFeedCards`-call reset.
+- Swipe-delete dropped → long-press-only: a `ScrollView` (not a `List`) can't host `swipeActions`; the design doc's swipe claim is retired.
+
+**Deferred / fast-follow (non-goals):**
+
+- Event-type / tier / time-range FILTER UI: the pure pipeline stages exist (`FeedPipeline` type/tier/time filters, `boosted_ts`-below-cutoff early stop); adding the filter chrome is purely additive, no data-layer change.
+- `journal_tag` notification deep-link → C2-iOS (the notification renders; the tap-through target is journal, which isn't built yet).
+- Throttle-replay equivalence nuance: iOS PERMANENTLY skips throttled-tail milestones within a scroll session, whereas web can re-keep them on a fresh `getFeedCards` call (its dict resets per call and its offset→cursor bridge can re-walk the prefix). iOS's cursor-native paging never re-walks, so a milestone throttled on page N stays skipped for the rest of that scroll. Accepted — the daily cap is the intent; a re-kept milestone on scroll-back would be the surprising behavior.
+
+**Shared-helper hoist candidate:**
+
+- `stableSeed`'s `abs(Int.min)` edge (`abs(digits)` traps when the parsed trailing integer is exactly `Int.min`) is inherited VERBATIM from `StubsScreen`; the fix belongs in a shared-helper hoist, not a divergent copy in the feed layer — do it once, both call sites benefit.
+
+**Task-4 minors carried:**
+
+- Reaction toggle revert restores the FULL counts snapshot including comment count — if a comment landed between the optimistic toggle and its throw, the revert loses that interleaved comment bump until the next reload (edge; self-heals on reload).
+- Composer char counter counts the UNTRIMMED draft, so trailing whitespace inflates the displayed count vs the ≤500-after-trim validation (cosmetic).
+
+**Owner device-smoke checklist** (the two feed RPCs are LIVE in prod — migrations already applied — so real feed data should work on device now):
+
+- Feed loads in BOTH friends + explore modes (with real data once you're signed in).
+- Flip a ticket → react (fire / agree / disagree / want-to-watch / love) + comment → round-trip persists.
+- Notification bell badge appears; opening the sheet marks fetched-unread read (badge clears).
+- Settings → profile-visibility row changes value; if set to `public`, your own activity appears in explore.
 
 ## C2 migration runbook (owner applies)
 
