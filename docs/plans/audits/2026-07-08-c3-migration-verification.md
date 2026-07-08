@@ -82,14 +82,36 @@ begin;
 rollback;
 ```
 
-## (c) No taste-recompute trigger remains on user_rankings — expect `0`
+## (c) No `trigger_recompute_taste`-backed trigger remains on ANY table — expect `0`
+
+The shared `trigger_recompute_taste()` function was wired to THREE triggers
+(`trg_recompute_taste` on `user_rankings`, `trg_recompute_taste_tv` on
+`tv_rankings`, `trg_recompute_taste_books` on `book_rankings`). Assert that
+zero triggers are backed by that function across the whole DB — this catches all
+three tables, not just `user_rankings`.
 
 ```sql
 select count(*)
-from pg_trigger
-where tgrelid = 'user_rankings'::regclass
-  and tgname like '%taste%';
--- EXPECT: 0   (pre-fix baseline was 1 — trg_recompute_taste)
+from pg_trigger t
+join pg_proc p on p.oid = t.tgfoid
+where p.proname = 'trigger_recompute_taste'
+  and not t.tgisinternal;
+-- EXPECT: 0   (pre-fix baseline was 3 — user_rankings + tv_rankings + book_rankings)
+```
+
+Optional — the per-table view, confirming each ranking table is clean:
+
+```sql
+select c.relname as table_name, count(t.tgname) as taste_triggers
+from (values ('user_rankings'), ('tv_rankings'), ('book_rankings')) v(relname)
+join pg_class c on c.relname = v.relname
+left join pg_trigger t
+  on t.tgrelid = c.oid
+  and not t.tgisinternal
+  and t.tgname like '%taste%'
+group by c.relname
+order by c.relname;
+-- EXPECT: each of the three tables reports taste_triggers = 0
 ```
 
 Optional — confirm the two functions are gone as well:
@@ -150,7 +172,7 @@ order by table_name;
 |---|---|
 | (a) UPDATE policy count on `watchlist_items` | `1` (named `Users can update own watchlist`) |
 | (b) owner UPDATE under authenticated JWT | succeeds (`UPDATE 1`, no RLS denial) |
-| (c) `%taste%` triggers on `user_rankings` | `0` |
+| (c) `trigger_recompute_taste`-backed triggers across ALL tables | `0` (pre-fix `3`: user/tv/book rankings) |
 | (c-opt) `trigger_recompute_taste` + `recompute_taste_profile` in `pg_proc` | `0` |
 | (d) `user_taste_profiles` count around a `user_rankings` upsert | stable (before = after) |
 | (e) `user_taste_profiles` + `movie_credits_cache` tables | both still exist (parked) |

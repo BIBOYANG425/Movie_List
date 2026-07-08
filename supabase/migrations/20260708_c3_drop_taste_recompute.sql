@@ -6,23 +6,40 @@
 -- Source of the objects dropped: supabase/migrations/supabase_smart_suggestions.sql
 --
 -- ============================================================================
--- WHAT THIS FIXES (B4): `trg_recompute_taste` is a FOR EACH ROW trigger on
--- `user_rankings` (supabase_smart_suggestions.sql:312-316). On every
--- INSERT/UPDATE/DELETE it calls `trigger_recompute_taste()` which PERFORMs
--- `recompute_taste_profile(user_id)` — a SECURITY DEFINER full-profile recompute
--- (:100-287) that rescans ALL of the user's rankings and joins
--- `movie_credits_cache`. Because every ranking ceremony re-upserts the whole
--- tier (RankingAppPage.tsx:497-521), one rank into a 30-item tier fires 30 full
--- recomputes; a 500-film Letterboxd import fires hundreds. All output lands in
--- `user_taste_profiles`, which NO client reads (the live engine builds an
--- ephemeral in-memory profile via buildTasteProfile). `movie_credits_cache` has
--- no writer anywhere, so every recompute writes skeleton profiles anyway.
--- Net: per-row O(tier-size) full recomputes into tables nothing reads.
+-- WHAT THIS FIXES (B4): the single SECURITY DEFINER function
+-- `trigger_recompute_taste()` (supabase_smart_suggestions.sql:291-309) is wired
+-- as a FOR EACH ROW AFTER INSERT/UPDATE/DELETE trigger on ALL THREE ranking
+-- tables — NOT just `user_rankings` as the audit understated:
+--   * `trg_recompute_taste`       ON user_rankings  (supabase_smart_suggestions.sql:312-316)
+--   * `trg_recompute_taste_tv`    ON tv_rankings     (applied to prod out-of-band; not in any tracked migration file)
+--   * `trg_recompute_taste_books` ON book_rankings   (applied to prod out-of-band; not in any tracked migration file)
+-- All three call the same `trigger_recompute_taste()`, which PERFORMs
+-- `recompute_taste_profile(user_id)` — a full-profile recompute (:100-287) that
+-- rescans ALL of the user's rankings and joins `movie_credits_cache`. Because
+-- every ranking ceremony re-upserts the whole tier (RankingAppPage.tsx:497-521),
+-- one rank into a 30-item tier fires 30 full recomputes; a 500-film Letterboxd
+-- import fires hundreds — and this now fires on movie, TV, AND book ranking
+-- writes (3× the documented cost). All output lands in `user_taste_profiles`,
+-- which NO client reads (the live engine builds an ephemeral in-memory profile
+-- via buildTasteProfile). `movie_credits_cache` has no writer anywhere, so every
+-- recompute writes skeleton profiles anyway. Net: per-row O(tier-size) full
+-- recomputes across three tables into tables nothing reads.
 --
--- Prod state verified 2026-07-08: `trg_recompute_taste` trigger AND the
--- `recompute_taste_profile` function ARE live on `user_rankings`
--- (audit Global Constraints + Q1). The IF EXISTS guards below are defensive
--- only; the objects are verified-present.
+-- Prod state verified 2026-07-07: ALL THREE triggers above AND both functions
+-- (`trigger_recompute_taste()`, `recompute_taste_profile(uuid)`) are live
+-- (Q1 + prod-apply). The prior single-table drop failed with SQLSTATE 2BP01:
+-- `DROP FUNCTION trigger_recompute_taste()` was blocked because the tv/book
+-- triggers still depended on it, rolling back the whole transaction. All three
+-- triggers must be dropped BEFORE the shared function. The IF EXISTS guards
+-- below are defensive only; every object is verified-present.
+--
+-- NOTE: the tv/book trigger definitions live in NO tracked migration file
+-- (they were applied to prod out-of-band). The rollback block below reconstructs
+-- them verbatim as exact structural clones of the user_rankings trigger — same
+-- shared function, same AFTER INSERT/UPDATE/DELETE FOR EACH ROW timing,
+-- differing only in trigger name + target table. tv_rankings/book_rankings both
+-- carry `user_id` (supabase_tv_rankings.sql:8 / supabase_book_rankings.sql:8),
+-- which is all `trigger_recompute_taste()` reads, so the clones are equivalent.
 --
 -- PARKED, NOT DROPPED (Q1 owner decision): the tables `user_taste_profiles`
 -- and `movie_credits_cache` are LEFT IN PLACE. With the trigger gone nothing
@@ -36,10 +53,12 @@
 -- so dropping them cannot break any deployed path. Runbook order vs the
 -- watchlist UPDATE-policy migration does not matter (disjoint objects).
 -- ============================================================================
--- ROLLBACK (verbatim, from supabase_smart_suggestions.sql:97-317) — recreate
--- the worker function, then the trigger function, then the trigger. The parked
+-- ROLLBACK (verbatim, from supabase_smart_suggestions.sql:97-317 for the worker
+-- + trigger function + user_rankings trigger; the tv/book triggers reconstructed
+-- as exact structural clones per the header NOTE) — recreate the worker
+-- function, then the trigger function, then ALL THREE triggers. The parked
 -- tables `user_taste_profiles` / `movie_credits_cache` are still present, so
--- these three statements fully restore prior behavior:
+-- these statements fully restore prior behavior:
 --
 --   -- 3. RPC function: recompute_taste_profile
 --   CREATE OR REPLACE FUNCTION recompute_taste_profile(target_user_id uuid)
@@ -252,18 +271,36 @@
 --   END;
 --   $$;
 --
---   -- Create the trigger on user_rankings
+--   -- Create the trigger on user_rankings (verbatim, supabase_smart_suggestions.sql:311-316)
 --   DROP TRIGGER IF EXISTS trg_recompute_taste ON user_rankings;
 --   CREATE TRIGGER trg_recompute_taste
 --     AFTER INSERT OR UPDATE OR DELETE ON user_rankings
 --     FOR EACH ROW
 --     EXECUTE FUNCTION trigger_recompute_taste();
+--
+--   -- Create the trigger on tv_rankings (structural clone; prod out-of-band)
+--   DROP TRIGGER IF EXISTS trg_recompute_taste_tv ON tv_rankings;
+--   CREATE TRIGGER trg_recompute_taste_tv
+--     AFTER INSERT OR UPDATE OR DELETE ON tv_rankings
+--     FOR EACH ROW
+--     EXECUTE FUNCTION trigger_recompute_taste();
+--
+--   -- Create the trigger on book_rankings (structural clone; prod out-of-band)
+--   DROP TRIGGER IF EXISTS trg_recompute_taste_books ON book_rankings;
+--   CREATE TRIGGER trg_recompute_taste_books
+--     AFTER INSERT OR UPDATE OR DELETE ON book_rankings
+--     FOR EACH ROW
+--     EXECUTE FUNCTION trigger_recompute_taste();
 -- ============================================================================
 
--- Drop the trigger first (it depends on the trigger function).
+-- Drop ALL THREE triggers first — every one depends on trigger_recompute_taste()
+-- and a leftover dependency raises SQLSTATE 2BP01 on the function drop (this is
+-- exactly what failed the prior single-table attempt and rolled it back).
 DROP TRIGGER IF EXISTS trg_recompute_taste ON user_rankings;
+DROP TRIGGER IF EXISTS trg_recompute_taste_tv ON tv_rankings;
+DROP TRIGGER IF EXISTS trg_recompute_taste_books ON book_rankings;
 
--- Then the trigger function (it PERFORMs the worker).
+-- Then the shared trigger function (it PERFORMs the worker).
 DROP FUNCTION IF EXISTS trigger_recompute_taste();
 
 -- Then the worker function.
