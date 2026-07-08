@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 
-import { shouldRemoveBookmarkAfterRank, tvWatchlistItemFromShow } from '../watchlistRankHelpers';
+import {
+  shouldRemoveBookmarkAfterRank,
+  tvWatchlistItemFromShow,
+  canonicalMovieTmdbId,
+} from '../watchlistRankHelpers';
 import type { TMDBTVShow } from '../tmdbService';
 
 // Pins the CORRECTED rank-from-watchlist contract (B5 data-loss fix): the
@@ -59,5 +63,37 @@ describe('tvWatchlistItemFromShow', () => {
     const item = tvWatchlistItemFromShow(show, '2026-07-07T00:00:00.000Z');
     expect(item.addedAt).toBe('2026-07-07T00:00:00.000Z');
     expect(item.type).toBe('tv_season');
+  });
+});
+
+// Pins the canonical movie tmdb_id write-time contract (B1 preventive): Letterboxd
+// import must write `tmdb_{n}`, never bare `{n}`, or engine exclusion, the
+// taste-profile /tmdb_(\d+)/ regex, and cross-user comparison all break, and a
+// second watchlist row can be minted for a movie a bare-id row already represents.
+// Behavior matches DiscoverView.normalizeTmdbId (prefix iff not already prefixed;
+// no numeric validation).
+describe('canonicalMovieTmdbId', () => {
+  it('leaves an already-prefixed id unchanged (idempotent)', () => {
+    expect(canonicalMovieTmdbId('tmdb_603')).toBe('tmdb_603');
+  });
+
+  it('prefixes a bare numeric string', () => {
+    expect(canonicalMovieTmdbId('603')).toBe('tmdb_603');
+  });
+
+  it('prefixes a numeric value', () => {
+    expect(canonicalMovieTmdbId(603)).toBe('tmdb_603');
+  });
+
+  it('is idempotent when applied twice', () => {
+    expect(canonicalMovieTmdbId(canonicalMovieTmdbId('603'))).toBe('tmdb_603');
+    expect(canonicalMovieTmdbId(canonicalMovieTmdbId('tmdb_603'))).toBe('tmdb_603');
+  });
+
+  it('passes through non-numeric input by prefixing (matches DiscoverView.normalizeTmdbId, no validation)', () => {
+    // DiscoverView.normalizeTmdbId only checks the `tmdb_` prefix; it never
+    // validates the payload, so a non-numeric raw id is prefixed verbatim rather
+    // than rejected. This helper reproduces that exact guard.
+    expect(canonicalMovieTmdbId('abc')).toBe('tmdb_abc');
   });
 });

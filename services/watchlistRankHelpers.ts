@@ -28,6 +28,21 @@ export function shouldRemoveBookmarkAfterRank(saveSucceeded: boolean): boolean {
 }
 
 /**
+ * Canonicalize a movie tmdb_id to the `tmdb_{n}` form used everywhere else in
+ * the app (tmdbService `tmdb_${m.id}`, DiscoverView.normalizeTmdbId). Idempotent:
+ * an already-prefixed id is returned unchanged, a bare numeric string/number is
+ * prefixed. Matches DiscoverView.normalizeTmdbId's guard (prefix iff not already
+ * `tmdb_`-prefixed) so it does not validate or reject non-numeric input; it only
+ * prefixes. Accepts number or string; used at Letterboxd import write time so a
+ * bare `String(entry.tmdbId)` can never land in user_rankings/watchlist_items and
+ * corrupt engine exclusion, taste-profile regex, or cross-user comparison (B1).
+ */
+export function canonicalMovieTmdbId(rawId: string | number): string {
+  const s = String(rawId);
+  return s.startsWith('tmdb_') ? s : `tmdb_${s}`;
+}
+
+/**
  * Build the WatchlistItem for a whole-show TV bookmark minted from a search
  * result. Sets `showTmdbId` (the numeric show id) so ranking the row later routes
  * through season selection, and normalizes compound TV genres so classifyBracket
