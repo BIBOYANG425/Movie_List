@@ -281,9 +281,27 @@ final class FeedFeedModel: ObservableObject {
     @Published var flippedID: UUID?
 
     private(set) var currentUserID: UUID?
-    private var cursor: FeedCursor?
+    /// Keyset cursor into the current stream. `private(set)` so tests can read
+    /// it (`@testable`) to assert the mode-switch race leaves it on the right
+    /// stream; only this model writes it.
+    private(set) var cursor: FeedCursor?
     private var hasSession = false
     private var didLoadOnce = false
+
+    /// Monotonic stream generation. Bumped at the START of every operation that
+    /// resets the stream (`assembleFromStart` via switch/refresh/initial). Each
+    /// awaiting body captures the generation before suspending and re-checks it
+    /// after resuming; a mismatch means the stream was reset (e.g. a mode
+    /// switch) while this load was in flight, so the stale result is DROPPED
+    /// instead of contaminating the new stream. Without this, a friends
+    /// `loadNextPage` suspended across its RPC could resume after the user
+    /// switched to explore and append friends cards / overwrite the cursor.
+    private var generation = 0
+
+    /// The in-flight `loadNextPage` task, held so a mode switch / refresh can
+    /// cancel it (belt-and-suspenders with the generation token — the token
+    /// makes the result HARMLESS, the cancel stops WASTING the RPC).
+    private var pageLoadTask: Task<Void, Never>?
 
     /// One engagement model per event id, created on first flip and loaded
     /// then. Kept off `@Published` — the ticket back `@ObservedObject`s its
@@ -291,25 +309,38 @@ final class FeedFeedModel: ObservableObject {
     private var engagementModels: [UUID: TicketEngagementModel] = [:]
 
     private let assembler: FeedPageAssembler
+    /// Session resolver — injected so tests can drive a signed-in model
+    /// without a live Supabase session.
+    private let resolveSession: () async -> UUID?
 
-    init() {
-        // Wire the assembler's injected IO to the real repositories. Each
-        // closure is the exact PR #34 signature; the assembler owns the
-        // contract loop (refill, cursor, throttle, fail-soft).
-        assembler = FeedPageAssembler(
-            fetchPage: { mode, cursor, pageSize in
-                try await FeedRepository.shared.fetchPage(mode: mode, cursor: cursor, pageSize: pageSize)
-            },
-            fetchMutes: {
-                try await FeedRepository.shared.mutes()
-            },
-            fetchProfiles: { ids in
-                try await ProfileRepository.shared.getProfilesByIds(ids)
-            },
-            fetchScores: { pairs in
-                try await FeedRepository.shared.rankingScores(pairs: pairs)
-            }
+    /// Production init: wire the assembler's injected IO to the real
+    /// repositories. Each closure is the exact PR #34 signature; the assembler
+    /// owns the contract loop (refill, cursor, throttle, fail-soft).
+    convenience init() {
+        self.init(
+            assembler: FeedPageAssembler(
+                fetchPage: { mode, cursor, pageSize in
+                    try await FeedRepository.shared.fetchPage(mode: mode, cursor: cursor, pageSize: pageSize)
+                },
+                fetchMutes: {
+                    try await FeedRepository.shared.mutes()
+                },
+                fetchProfiles: { ids in
+                    try await ProfileRepository.shared.getProfilesByIds(ids)
+                },
+                fetchScores: { pairs in
+                    try await FeedRepository.shared.rankingScores(pairs: pairs)
+                }
+            ),
+            resolveSession: { await SpoolClient.currentUserID() }
         )
+    }
+
+    /// Designated init — takes an already-wired assembler + session resolver so
+    /// the mode-switch race is testable with fakes (FeedFeedModelTests).
+    init(assembler: FeedPageAssembler, resolveSession: @escaping () async -> UUID?) {
+        self.assembler = assembler
+        self.resolveSession = resolveSession
     }
 
     // MARK: loading
@@ -319,7 +350,7 @@ final class FeedFeedModel: ObservableObject {
     func loadInitialIfNeeded() async {
         guard !didLoadOnce else { return }
         didLoadOnce = true
-        currentUserID = await SpoolClient.currentUserID()
+        currentUserID = await resolveSession()
         hasSession = currentUserID != nil
         await assembleFromStart()
     }
@@ -328,21 +359,30 @@ final class FeedFeedModel: ObservableObject {
     /// `assemblePage` call, so the assembler resets its per-call throttle).
     func refresh() async {
         // Re-check the session — the user may have signed in since first load.
-        currentUserID = await SpoolClient.currentUserID()
+        currentUserID = await resolveSession()
         hasSession = currentUserID != nil
         await assembleFromStart()
     }
 
     /// Switch friends ⇄ explore: reset cursor + flip state and re-assemble
-    /// from the start (fresh throttle via the new call).
+    /// from the start (fresh throttle via the new call). Ignores a redundant
+    /// same-mode tap even while an assemble is in flight (`loading`) so a
+    /// double-tap can't stack redundant reassembles.
     func switchMode(_ newMode: FeedMode) async {
         guard newMode != mode else { return }
         mode = newMode
         await assembleFromStart()
     }
 
-    /// Fresh first page for the current mode. Signed-out → fixtures.
+    /// Fresh first page for the current mode. Signed-out → fixtures. Bumps the
+    /// generation and cancels any in-flight page load so a suspended
+    /// `loadNextPage` from the previous stream can't write into this one.
     private func assembleFromStart() async {
+        generation += 1
+        let gen = generation
+        pageLoadTask?.cancel()
+        pageLoadTask = nil
+
         flippedID = nil
         cursor = nil
         loading = true
@@ -357,6 +397,9 @@ final class FeedFeedModel: ObservableObject {
         let result = await assembler.assemblePage(
             mode: mode, after: nil, allowedTypes: FeedScreenLogic.allEventTypes
         )
+        // Stream reset (mode switch / refresh) landed while we were suspended —
+        // discard this now-stale page.
+        guard gen == generation else { return }
         cards = result.cards
         cursor = result.cursor
         hasMore = result.hasMore
@@ -365,23 +408,39 @@ final class FeedFeedModel: ObservableObject {
 
     /// Infinite scroll: append the next page after the current cursor. Guarded
     /// against concurrent loads (`loadingMore`) on top of the pure
-    /// `shouldLoadNextPage` gate at the call site.
+    /// `shouldLoadNextPage` gate at the call site. Runs inside a held task so a
+    /// mode switch / refresh can cancel it; the generation token discards any
+    /// result that resumes after the stream was reset.
     func loadNextPage() async {
         guard hasSession, hasMore, !loadingMore, !loading else { return }
         loadingMore = true
-        defer { loadingMore = false }
+        let gen = generation
+        let modeAtStart = mode
+        let cursorAtStart = cursor
 
-        let result = await assembler.assemblePage(
-            mode: mode, after: cursor, allowedTypes: FeedScreenLogic.allEventTypes
-        )
-        // Append de-duplicating on id (defensive — the cursor contract already
-        // prevents overlap, but a repeated row must never double-render).
-        var seen = Set(cards.map(\.id))
-        for card in result.cards where seen.insert(card.id).inserted {
-            cards.append(card)
+        let task = Task { @MainActor in
+            defer { loadingMore = false }
+
+            let result = await assembler.assemblePage(
+                mode: modeAtStart, after: cursorAtStart, allowedTypes: FeedScreenLogic.allEventTypes
+            )
+            // A reset (mode switch / refresh / cancel) happened while the RPC
+            // was in flight — DROP the result rather than append friends cards
+            // onto the explore list or overwrite the explore cursor.
+            guard gen == generation, !Task.isCancelled else { return }
+
+            // Append de-duplicating on id (defensive — the cursor contract
+            // already prevents overlap, but a repeated row must never
+            // double-render).
+            var seen = Set(cards.map(\.id))
+            for card in result.cards where seen.insert(card.id).inserted {
+                cards.append(card)
+            }
+            cursor = result.cursor
+            hasMore = result.hasMore
         }
-        cursor = result.cursor
-        hasMore = result.hasMore
+        pageLoadTask = task
+        await task.value
     }
 
     // MARK: flip + engagement

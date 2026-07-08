@@ -75,11 +75,12 @@ public struct NotificationBellView: View {
         }
     }
 
+    @MainActor
     private func refreshBadge() async {
         // Read catches to zero — the caller contract's fail-soft for badge
-        // reads (a network blip shouldn't strand a stale count).
-        let count = (try? await NotificationRepository.shared.unreadCount()) ?? 0
-        await MainActor.run { unread = count }
+        // reads (a network blip shouldn't strand a stale count). Already on the
+        // main actor (the `.task` runs there), so assign `unread` directly.
+        unread = (try? await NotificationRepository.shared.unreadCount()) ?? 0
     }
 
     // MARK: pure copy
