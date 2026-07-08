@@ -6,12 +6,13 @@ import Supabase
 ///  - `getMyProfile` / `getProfile(id:)` for Profile tab
 ///  - `getProfilesByIds(_:)` for bulk hydration (friends, followers)
 ///  - `searchByHandle(_:)` for future "+ add friend" UX
+///  - `currentVisibility()` / `updateVisibility(_:)` for Settings explore opt-in read/write
 ///
 /// Returns `nil` (or empty) when `SpoolClient.shared` is nil so callers can
 /// fall back to fixtures without a thrown error. Row-level errors throw
 /// `RepoError` — caller decides whether to surface a toast.
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-07-08
 public actor ProfileRepository {
 
     public static let shared = ProfileRepository()

@@ -384,6 +384,7 @@ final class FeedFeedModel: ObservableObject {
         pageLoadTask = nil
 
         flippedID = nil
+        engagementModels.removeAll()
         cursor = nil
         loading = true
 
@@ -469,7 +470,11 @@ final class FeedFeedModel: ObservableObject {
             eventID: eventID,
             loadCounts: {
                 let map = try await FeedRepository.shared.engagement(for: [eventID])
-                return map[eventID] ?? EngagementCounts(reactions: [:], comments: 0, myReactions: [])
+                return map[eventID] ?? EngagementCounts(
+                    reactions: EngagementReducer.reactionTypes.reduce(into: [:]) { $0[$1] = 0 },
+                    comments: 0,
+                    myReactions: []
+                )
             },
             loadThread: {
                 try await FeedRepository.shared.comments(for: eventID)
