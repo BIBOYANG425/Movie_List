@@ -254,6 +254,33 @@ final class JournalDraftModelTests: XCTestCase {
         XCTAssertNil(payload.review_text)
     }
 
+    /// A genuine unranked item (tier lookup returns nil, no throw) writes null —
+    /// correct, even when a probed row is present.
+    func testSave_tierGenuinelyNil_writesNull() async throws {
+        let rec = Recorder()
+        let probed = ownerRow()   // probed row has rating_tier "loved"
+        let model = makeModel(rec: rec, probe: { _ in probed }, ratingTier: { _ in nil })
+        await model.openForEntry(tmdbId: "603", title: "The Matrix", posterUrl: "/p.jpg", seed: nil)
+
+        await model.save()
+        let payload = try XCTUnwrap(rec.upsertPayloads.first)
+        XCTAssertNil(payload.rating_tier, "a true unranked (nil, no throw) writes null")
+    }
+
+    /// A TRANSIENT tier-lookup THROW must NOT null out an already-set tier: fall
+    /// back to the probed owner row's tier captured at open time.
+    func testSave_tierLookupThrows_preservesProbedTier() async throws {
+        let rec = Recorder()
+        let probed = ownerRow()   // rating_tier "loved"
+        let model = makeModel(rec: rec, probe: { _ in probed }, ratingTier: { _ in throw FakeError() })
+        await model.openForEntry(tmdbId: "603", title: "The Matrix", posterUrl: "/p.jpg", seed: nil)
+
+        await model.save()
+        let payload = try XCTUnwrap(rec.upsertPayloads.first)
+        XCTAssertEqual(payload.rating_tier, "loved",
+                       "a transient lookup failure must preserve the existing tier, not clobber it")
+    }
+
     // MARK: - Re-entrancy
 
     func testSave_reentrancyGuard() async {
@@ -273,31 +300,45 @@ final class JournalDraftModelTests: XCTestCase {
         XCTAssertEqual(rec.upsertPayloads.count, 1, "overlapping save must be dropped")
     }
 
-    // MARK: - Photo ordering (id must be minted first)
+    // MARK: - Photo ordering (side-effect-free mint, id must exist first)
 
-    /// A NEW entry has no id until first save. `addPhoto` must save first to mint
-    /// the id, upload under that ENTRY UUID, append the path, and save again to
-    /// persist `photo_paths`.
-    func testAddPhoto_newEntry_savesFirstThenUploadsUnderMintedID() async throws {
+    /// A NEW entry has no id until it exists. `addPhoto` mints one with a MINIMAL,
+    /// side-effect-free payload (exactly ONE upsert), uploads under that ENTRY
+    /// UUID, and holds the path in the IN-MEMORY draft — NOT auto-persisted (that
+    /// happens on the user's next explicit save). Mirrors web `handlePhotoAdd`.
+    func testAddPhoto_newEntry_mintsMinimalThenUploadsUnderMintedID() async throws {
         let rec = Recorder()
         let model = makeModel(rec: rec, probe: { _ in nil })
-        await model.openForEntry(tmdbId: "603", title: "T", posterUrl: nil, seed: nil)
+        await model.openForEntry(tmdbId: "603", title: "T", posterUrl: "/p.jpg", seed: nil)
+        // The user typed a review before adding a photo — must NOT be persisted by
+        // the mint (web mints a bare {title, posterUrl}).
+        model.draft.reviewText = "typed before photo"
 
         await model.addPhoto(data: Data([0x1]), ext: "jpg")
 
+        // Exactly ONE upsert: the minimal mint (no persist-again).
+        XCTAssertEqual(rec.upsertPayloads.count, 1)
+        let mint = try XCTUnwrap(rec.upsertPayloads.first)
+        // Minimal payload: identity only, empty review (gate closed), no photos.
+        XCTAssertEqual(mint.tmdb_id, "603")
+        XCTAssertEqual(mint.title, "T")
+        XCTAssertNil(mint.review_text, "mint carries an EMPTY review, not the draft's")
+        XCTAssertTrue(mint.photo_paths.isEmpty, "mint has no photos yet")
+        XCTAssertTrue(mint.watched_with_user_ids.isEmpty)
         // Uploaded under the minted entry id (not the tmdb id).
         XCTAssertEqual(rec.uploadCalls.count, 1)
         XCTAssertEqual(rec.uploadCalls.first?.entryID, entryID)
         XCTAssertEqual(rec.uploadCalls.first?.index, 0)
-        // Path landed in the draft and was persisted (two upserts: mint + persist).
+        // Path landed in the in-memory draft; the typed review is still there,
+        // unpersisted, waiting for the explicit save.
         XCTAssertEqual(model.draft.photoPaths.count, 1)
-        XCTAssertGreaterThanOrEqual(rec.upsertPayloads.count, 2)
-        XCTAssertEqual(rec.upsertPayloads.last?.photo_paths.count, 1)
+        XCTAssertEqual(model.draft.reviewText, "typed before photo")
     }
 
     /// An EXISTING entry (already has an id from the probe) uploads immediately —
-    /// no extra mint save; the index is the current photo count.
-    func testAddPhoto_existingEntry_uploadsAtNextIndex() async throws {
+    /// no mint upsert at all; the index is the current photo count, and the path
+    /// is held in-memory until the next explicit save.
+    func testAddPhoto_existingEntry_uploadsAtNextIndexNoUpsert() async throws {
         let rec = Recorder()
         let probed = ownerRow(photoPaths: ["a/0.jpg"])
         let model = makeModel(rec: rec, probe: { _ in probed })
@@ -305,9 +346,34 @@ final class JournalDraftModelTests: XCTestCase {
 
         await model.addPhoto(data: Data([0x2]), ext: "png")
 
+        XCTAssertTrue(rec.upsertPayloads.isEmpty, "existing id → no mint upsert")
         XCTAssertEqual(rec.uploadCalls.first?.entryID, entryID)
         XCTAssertEqual(rec.uploadCalls.first?.index, 1, "next index = existing photo count")
         XCTAssertEqual(model.draft.photoPaths.count, 2)
+    }
+
+    /// THE FIX: a new entry with a public review + a tagged friend fires ZERO
+    /// review-events and ZERO journal_tags during photo-add. Web mints
+    /// side-effect-free; the side effects fire only on the subsequent EXPLICIT
+    /// save, exactly once.
+    func testAddPhoto_newEntry_firesZeroSideEffects() async throws {
+        let rec = Recorder()
+        let model = makeModel(rec: rec, probe: { _ in nil })
+        await model.openForEntry(tmdbId: "603", title: "The Matrix", posterUrl: "/p.jpg", seed: nil)
+        model.draft.reviewText = "public review"
+        model.draft.visibilityOverride = .pub
+        model.draft.watchedWithUserIds = [friendA]
+
+        await model.addPhoto(data: Data([0x1]), ext: "jpg")
+
+        // Photo-add: no side effects, ever.
+        XCTAssertTrue(rec.reviewEvents.isEmpty, "photo-add must not emit a review event")
+        XCTAssertTrue(rec.journalTags.isEmpty, "photo-add must not emit journal_tags")
+
+        // The user's explicit save fires them once.
+        await model.save()
+        XCTAssertEqual(rec.reviewEvents.count, 1)
+        XCTAssertEqual(rec.journalTags.count, 1)
     }
 
     func testRemovePhoto_dropsPath() async {

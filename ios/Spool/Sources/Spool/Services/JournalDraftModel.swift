@@ -33,12 +33,18 @@ import SwiftUI
 ///     `JournalEntryContract.upsertPayload`, upserts, and captures the returned
 ///     row's id. Never a partial payload.
 ///
-///  3. PHOTO ORDERING. Photos live at `{userId}/{ENTRY-UUID}/{i}`; a NEW entry
-///     has no id until first save. So `addPhoto` mirrors web `handlePhotoAdd`:
-///     if no minted id yet, `save()` first (the returned row mints the id), then
-///     `uploadPhoto(..., entryID: mintedID, index: photoCount, ...)`, append the
-///     returned path, and `save()` again to persist `photo_paths`. An existing
-///     entry already has its id, so it uploads straight away.
+///  3. PHOTO ORDERING (side-effect-free mint). Photos live at
+///     `{userId}/{ENTRY-UUID}/{i}`; a NEW entry has no id until it exists. So
+///     `addPhoto` mirrors web `handlePhotoAdd` EXACTLY: if no minted id yet,
+///     `mintMinimalEntry()` upserts a MINIMAL `{title, posterUrl}` payload
+///     (empty review → gate closed, no tagged friends → no fan-out) that runs
+///     NO side effects, then `uploadPhoto(..., entryID: mintedID, index:
+///     photoCount, ...)`, and holds the path in the IN-MEMORY draft. The new
+///     `photo_paths` persists on the user's next EXPLICIT `save()` — so a
+///     photo-add NEVER fires a review event or a journal_tag, even if the user
+///     already typed a public review or tagged friends (the full draft's side
+///     effects run once, on the explicit save). An existing entry already has
+///     its id, so it uploads straight away (still no side effects).
 ///
 ///  4. SIDE EFFECTS on save, in web order (mirror `upsertJournalEntry` exactly):
 ///     a. `review` activity event ONLY when review non-empty AND resolved
@@ -128,6 +134,12 @@ public final class JournalDraftModel: ObservableObject {
     /// save returns a row. Photo paths and side-effect references key off it.
     public private(set) var loadedEntryID: UUID?
 
+    /// The probed owner row's `rating_tier` at open time — the fallback when a
+    /// tier lookup THROWS at save time (a transient failure must NOT null out an
+    /// already-set tier on the full replace). nil when there was no probed row
+    /// (a brand-new entry has no existing tier to preserve).
+    private var probedRatingTier: String?
+
     private let probeOwnEntry: ProbeOwnEntry
     private let seedRow: JournalRow?
     private let resolveRatingTier: ResolveRatingTier
@@ -189,6 +201,10 @@ public final class JournalDraftModel: ObservableObject {
             draft = Self.blankDraft(tmdbId: tmdbId, title: title, posterUrl: posterUrl)
             loadedEntryID = nil
         }
+        // Preserve ONLY the probed owner row's tier as the throw-fallback — a
+        // seed/list row (which omits or staleness-carries tier) must not backstop
+        // a lookup failure; only the fresh owner probe is authoritative.
+        probedRatingTier = probed?.rating_tier
         inlineError = nil
         phase = .ready
     }
@@ -220,9 +236,23 @@ public final class JournalDraftModel: ObservableObject {
     /// Resolve tier (never the form), build the full-20-field payload, upsert.
     private func performUpsert() async throws -> JournalRow {
         guard let userID = await currentUserID() else { throw DraftError.notAuthenticated }
-        let tier = (try? await resolveRatingTier(draft.tmdbId)) ?? nil
+        let tier = await resolvedTierForSave()
         let payload = JournalEntryContract.upsertPayload(userID: userID, ratingTier: tier, from: draft)
         return try await upsertIO(payload)
+    }
+
+    /// The `rating_tier` to write on a full replace. A genuine nil (the item is
+    /// unranked) writes null — correct. But a tier-lookup THROW (a transient
+    /// read failure) must NOT clobber an already-set tier: fall back to the
+    /// probed owner row's tier captured at open time, so a hiccup preserves the
+    /// existing value. A brand-new entry has no probed tier, so the fallback is
+    /// itself nil (unranked → null, as it should be).
+    private func resolvedTierForSave() async -> String? {
+        do {
+            return try await resolveRatingTier(draft.tmdbId)
+        } catch {
+            return probedRatingTier
+        }
     }
 
     /// Web order: (1) review activity event (gated), (2) journal_tag per friend.
@@ -285,35 +315,74 @@ public final class JournalDraftModel: ObservableObject {
 
     // MARK: - Photos (id-after-mint ordering)
 
-    /// Add a photo. Mirrors web `handlePhotoAdd`: photos key off the ENTRY UUID,
-    /// which a brand-new entry doesn't have until it's saved. So if no id has
-    /// been minted, save FIRST (the returned row mints it), upload under that id
-    /// at the next index, append the returned path, then save AGAIN to persist
-    /// `photo_paths`. An existing entry already has its id, so it uploads
-    /// straight away and one save persists the new path.
+    /// Add a photo. Mirrors web `handlePhotoAdd` (JournalConversation.tsx
+    /// L416-428) EXACTLY: photos key off the ENTRY UUID, which a brand-new entry
+    /// doesn't have until it's saved. So if no id has been minted, mint one with
+    /// a MINIMAL, SIDE-EFFECT-FREE upsert (`mintMinimalEntry` — title + posterUrl
+    /// only, empty review so the gate is closed, NO tagged friends), upload under
+    /// that id at the next index, and hold the new path in the IN-MEMORY draft.
+    ///
+    /// The new `photo_paths` is NOT auto-persisted here — it lands on the row on
+    /// the user's next EXPLICIT `save()`, which runs the review-event / journal_tag
+    /// side effects exactly once (web parity: photo-add fires ZERO side effects,
+    /// even if the user already typed a public review or tagged friends). An
+    /// existing entry already has its id, so it uploads straight away — still no
+    /// side effects, still deferred to the explicit save.
     public func addPhoto(data: Data, ext: String) async {
         guard phase == .ready, !saving else { return }
         guard draft.photoPaths.count < JournalConstants.journalMaxPhotos else { return }
 
-        // Ensure the entry has a minted id (web: upsert to get loadedEntryId).
+        // Ensure the entry has a minted id WITHOUT running side effects (web mints
+        // with a bare {title, posterUrl}, holding the photo path in view state).
         let entryID: UUID
         if let existing = loadedEntryID {
             entryID = existing
+        } else if let minted = await mintMinimalEntry() {
+            entryID = minted
         } else {
-            guard let row = await save() else { return }   // mint the id
-            entryID = row.id
+            return   // mint failed — inlineError already set
         }
 
         let index = draft.photoPaths.count
         do {
             let path = try await uploadPhotoIO(data, entryID, index, ext)
+            // In-memory only; persisted on the user's next explicit save().
             draft.photoPaths.append(path)
         } catch {
             inlineError = Self.photoFailure
-            return
         }
-        // Persist the new photo_paths on the row.
-        _ = await save()
+    }
+
+    /// Mint a brand-new entry with a MINIMAL, side-effect-free payload so
+    /// `addPhoto` has an entry id to upload under. Mirrors web `handlePhotoAdd`'s
+    /// `{ title, posterUrl }` upsert: review empty (review-event gate closed),
+    /// NO tagged friends (no journal_tag fan-out), all other columns their
+    /// full-replace defaults. Crucially this does NOT call `runSideEffects` — a
+    /// photo-add must never emit a review event or a tag notification (those fire
+    /// only on the user's explicit save). Returns the minted id, caching it in
+    /// `loadedEntryID`; nil on failure (with `inlineError` set).
+    private func mintMinimalEntry() async -> UUID? {
+        guard let userID = await currentUserID() else {
+            inlineError = Self.saveFailure
+            return nil
+        }
+        // A minimal draft: only the movie identity carries over; everything else
+        // is the blank default (empty review → gate closed, no friends → no tags,
+        // no photos yet). tmdb_id/user_id/contains_spoilers/is_rewatch/arrays are
+        // all supplied by the full-replace payload builder.
+        let minimal = Self.blankDraft(
+            tmdbId: draft.tmdbId, title: draft.title, posterUrl: draft.posterUrl
+        )
+        let tier = await resolvedTierForSave()
+        let payload = JournalEntryContract.upsertPayload(userID: userID, ratingTier: tier, from: minimal)
+        do {
+            let row = try await upsertIO(payload)
+            loadedEntryID = row.id
+            return row.id
+        } catch {
+            inlineError = Self.saveFailure
+            return nil
+        }
     }
 
     /// Remove a photo path from the draft. The stored object is left in the
