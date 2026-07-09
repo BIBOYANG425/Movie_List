@@ -93,6 +93,10 @@ public actor RankingRepository {
 
     // MARK: writes
 
+    // REVIEW FOLLOW-UP: insert serialization relies on callers' sequential await loops
+    // (OnboardingQueue flush / OnboardingFlow) — this actor is REENTRANT and does NOT
+    // itself serialize the read-splice-upsert-RPC sequence. Do not parallelize flush.
+
     /// Insert (or re-rank) a `user_rankings` row with SPLICE semantics, then an
     /// accompanying `activity_events` row.
     ///

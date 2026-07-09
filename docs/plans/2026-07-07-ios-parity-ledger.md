@@ -10,7 +10,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | C1 | Feed + notifications | feed UI built on `feat/ios-parity-c1-feed-ui` (PR pending); data layer + web fixes already merged (#32, #34; migrations applied + probes passed 2026-07-08) | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
 | C2 | Journal + AI agent | web fixes merged (PR #33); iOS journal built on `feat/ios-parity-c2-journal` (PR pending) | audits/2026-07-08-c2-journal-web-audit.md | #33 | (PR pending) |
 | C3 | Watchlist + Discover | web blocking fixes in PR (B1/B2/B3a/B4/B5); iOS watchlist+discover port pending | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (PR pending, branch `fix/c3-watchlist-discover-web-blocking`) | — |
-| C4 | Ranking management | pending | — | — | — |
+| C4 | Ranking management | blocking-fixes branch complete (Tasks 1-5 on `fix/c4-ranking-blocking`); iOS management UI is next sub-plan (pending owner design check) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | (PR pending) | — |
 | C5 | TV seasons + books | pending | — | — | — |
 | C6 | zh localization | pending | — | — | — |
 | C7 | Smaller items | pending | — | — | — |
@@ -46,6 +46,18 @@ Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
 - [C3] [blocking] B3a `watchlist_items` had no UPDATE policy while `addToWatchlist` upserts merge-duplicates (ON CONFLICT DO UPDATE RLS-denied on stale pre-check) — fixed: migration `20260708_c3_watchlist_update_policy.sql` adds owner UPDATE mirroring tv/book
 - [C3] [blocking] B4 `trg_recompute_taste` fired O(tier-size) SECURITY DEFINER full-profile recomputes per rank into `user_taste_profiles`, which no client reads (verified LIVE in prod) — fixed: migration `20260708_c3_drop_taste_recompute.sql` drops trigger + `trigger_recompute_taste()` + `recompute_taste_profile(uuid)`; tables `user_taste_profiles`/`movie_credits_cache` PARKED (Q1 owner)
 - [C3] [deferred] 14 findings D1–D14 logged in audits/2026-07-08-c3-watchlist-discover-web-audit.md §3 (friend-pool sampling bias, no stale-request guard, variety pagination, dead-code cluster D7, whole-show `season_number 0` vs NULL D6, i18n misses; see doc) — not blocking the iOS port
+- [C4] [blocking] B1 same-tier drop-on-container wrote a duplicate `rank_position` and left a gap (single-row UPDATE, no reindex) + emitted `ranking_move` even on no-op — fixed on `fix/c4-ranking-blocking`: same-tier container drops route through the reindex helper + RPC; event suppressed when order unchanged
+- [C4] [blocking] B2 movie cross-tier migration never compacted the source tier — fixed: migration completion calls `set_tier_order` for the source tier (membership minus the departed id), matching TV/book dual-tier behavior
+- [C4] [blocking] B3 re-rank deleted the ranking before the new rank existed (cancel = permanent data loss); emitted `ranking_remove`+`ranking_add` instead of `ranking_move` — fixed: delete deferred to ceremony completion; re-rank flow non-destructive; completion emits single `ranking_move`
+- [C4] [blocking] B4 re-rank in zh locale persisted the Chinese localized title into `user_rankings`, `activity_events.media_title`, and `movie_stubs.title` — fixed: `onRerank` handler looks up the raw item by id in the unlocalized `items` array before setting `preselectedForRank`
+- [C4] [blocking] B5 iOS ceremony insert wrote a mid-tier row without shifting the tier (duplicate positions being written to prod on every iOS rank into a non-empty tier) — fixed: `insertRanking` adopts splice semantics: read tier membership → pure-splice at clamped position → UPSERT the row → `set_tier_order` RPC renumbers the whole tier
+- [C4] [blocking] B6 whole-tier full-row upserts could resurrect concurrently-deleted rows (upsert = insert-or-update on stale snapshots) and interleave two-device reorders — fixed: `set_tier_order` RPC is UPDATE-only (cannot INSERT), positions-only (no media columns), and server-side transactional; all reorder/move/delete-compaction writes route through it
+- [C4] [adjudication] Q4 positions-only RPC over full-row upserts for all reorder/move/compact operations — owner-reviewable; see `docs/contracts/shared-payloads.md` `## user_rankings ordering` for the full contract
+- [C4] [deferred] 10 findings D1–D10 logged in audits/2026-07-09-c4-ranking-mgmt-web-audit.md §2 (updated_at churn D1, inconsistent error-handling rollback D2, NotesStep Skip clears notes D3, one-click delete no confirm D4, re-tier event divergence D5, migration skips notes edit D6, dead computeStickyTiers D7, watched_with_user_ids clobber on payload asymmetry D8, journal sheet pops after migration D9, handleReset bulk-delete no events D10) — not blocking the iOS port
+- [C4] [deferred] TV/book re-rank still deletes up-front — same data-loss class as B3; needs the B3 treatment in a later cycle
+- [C4] [deferred] iOS `insertRanking` tv/book path is latent-broken: `RankingPayload` carries `director`; `tv_rankings` needs `creator` + NOT NULL `show_tmdb_id`/`season_number`; `book_rankings` needs `author` — fails loudly, unreachable today (no tv/book ceremony on iOS); C5 must extend the payload
+- [C4] [deferred] web `addTVItem`/`addBookItem`: RPC failure is silent (no toast) and `ranking_add` still fires regardless — toast + event gate needed in a later cycle
+- [C4] [deferred] MOVIE SEARCH: owner reported fuzzy movie search not working — investigation complete (TMDB zero typo tolerance; no client fuzzy layer on UniversalSearch/onboarding/iOS; AddMediaModal local fuzzy dead via leading-article slice bug `filterMovies`); fix mini-cycle queued after C4 merge: zero-result typo-retry backoff in `tmdbService.ts` + iOS mirror + `fuzzySearch.ts` repair
 
 ## C1 adjudications (controller, 2026-07-07 — recorded verbatim, do not relitigate)
 
@@ -362,11 +374,37 @@ rank-from-watchlist with the CORRECTED B5 semantics (delete only on confirmed
 save), `SuggestionsClient` (`functions.invoke('suggestions')` per §2), and fixing
 `TasteRepository.getRecommendationsForFriend` per the B3 adjudication (Q2).
 
-### Search gaps mini-cycle (2026-07-09)
+### Search gaps mini-cycle (2026-07-09) — SHIPPED (PR #38)
 
-- CJK and fuzzy matching via trigram fallback (pg_trgm ILIKE over `title` and `review_text`; `similarity()` tie-break) landed in `supabase/migrations/20260709_journal_search_cjk_fuzzy.sql`; iOS debounce pending controller apply.
+- CJK and fuzzy matching via trigram fallback (pg_trgm ILIKE over `title` and `review_text`; `similarity()` tie-break) landed in `supabase/migrations/20260709_journal_search_cjk_fuzzy.sql`; iOS journal search cancellation-debounced (300ms).
 - Semantic / embedding search was explicitly considered and NOT chosen (owner decision); do not re-propose without a new owner trigger.
-- Migration pending controller apply (no prod deploy yet); probes in `docs/plans/audits/2026-07-09-search-verification.md`.
+- Migration applied to prod + all probes green (`docs/plans/audits/2026-07-09-search-verification.md`); merged in PR #38.
+
+### C4 notes
+
+Web and iOS fixes on `fix/c4-ranking-blocking` per `docs/plans/2026-07-09-c4-blocking-fixes-plan.md`; contract in `docs/contracts/shared-payloads.md` (`## user_rankings ordering`).
+
+**B1-B6 dispositions:**
+
+- **B1** same-tier drop-on-container: now routes through the reindex helper + RPC (same as `handleDropOnItem`); error handling + rollback added; `ranking_move` suppressed when the order didn't change.
+- **B2** movie cross-tier migration source gap: `addItem` completion now calls `set_tier_order` for the source tier (membership minus the departed id), matching the existing TV/book dual-tier compaction.
+- **B3** re-rank delete-first data loss: delete deferred to ceremony completion; the ceremony's `(user_id,tmdb_id)` upsert replaces the row non-destructively; completion emits `ranking_move` (never `ranking_remove`+`ranking_add`); cancel = zero writes.
+- **B4** zh-locale title persistence: `onRerank` handler looks up the raw item by id in the unlocalized `items` array before setting `preselectedForRank`; localized titles never reach persistence paths.
+- **B5** iOS duplicate positions: `insertRanking` now reads the target tier, pure-splices the new id at the clamped position, UPSERTs the row, then calls `set_tier_order` to compact the whole tier. Existing corrupted tiers self-heal on the next tier write. A one-shot repair probe (detect duplicate/gapped tiers per user) is in `docs/plans/audits/2026-07-09-c4-verification.md` — controller decides whether to run compaction; owner-ackable.
+- **B6** whole-tier upsert resurrection race: all reorder/move/delete-compaction writes now route through `set_tier_order` (UPDATE-only, cannot INSERT, positions-only — no media-column resurrection).
+
+**Q4 adjudication (owner-reviewable):** positions-only `set_tier_order` RPC over full-row upserts. See `docs/contracts/shared-payloads.md` `## user_rankings ordering` for the full contract. Rollback: `DROP FUNCTION public.set_tier_order(text, text, text[]);`.
+
+**10 deferred findings** (D1–D10): see `docs/plans/audits/2026-07-09-c4-ranking-mgmt-web-audit.md` §2.
+
+**iOS management UI** (reorder, re-tier, delete, notes editor affordances) is deliberately NOT in this branch — it needs a short owner design check (where the affordances live in the app) and builds on this corrected base. That is the next C4 sub-plan.
+
+**Known deferred items from task reviews:**
+
+- TV/book re-rank still deletes up-front — same data-loss class as B3; needs the B3 treatment in a later cycle.
+- iOS `insertRanking` tv/book path is latent-broken: `RankingPayload` carries `director`; `tv_rankings` needs `creator` + NOT NULL `show_tmdb_id`/`season_number`; `book_rankings` needs `author` — fails loudly, unreachable today (no tv/book ceremony on iOS); C5 must extend the payload.
+- Web `addTVItem`/`addBookItem`: RPC failure is silent (no toast) and `ranking_add` still fires regardless — fix in a later cycle.
+- MOVIE SEARCH: owner reported fuzzy movie search not working — investigation complete (TMDB zero typo tolerance; no client fuzzy layer on UniversalSearch/onboarding/iOS; AddMediaModal local fuzzy dead via leading-article slice bug); fix mini-cycle queued after C4 merge (zero-result typo-retry backoff in `tmdbService.ts` + iOS mirror + `fuzzySearch.ts` repair).
 
 ## C3 migration runbook (owner applies)
 
