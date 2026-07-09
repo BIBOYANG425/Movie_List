@@ -26,6 +26,12 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 import { createStub } from '../services/stubService';
 import { shouldRemoveBookmarkAfterRank, tvWatchlistItemFromShow } from '../services/watchlistRankHelpers';
+import {
+  tierOrderAfterReorder,
+  tierOrderAfterRemoval,
+  ordersAfterCrossTierMove,
+  setTierOrder,
+} from '../services/tierOrder';
 import { TMDBMovie, TMDBTVShow } from '../services/tmdbService';
 import { OpenLibraryBook } from '../services/openLibraryService';
 import { useLocalizedItems, useLocalizedWatchlist } from '../hooks/useLocalizedItems';
@@ -214,6 +220,19 @@ function rowToBookWatchlistItem(row: any): WatchlistItem {
   };
 }
 
+/**
+ * Ordered tmdb_id list for a single tier, best-first (rank ascending). This is
+ * the FULL intended membership the `set_tier_order` RPC requires — see
+ * services/tierOrder.ts. Optionally excludes an id (e.g. an item being removed
+ * or moved out) before ordering.
+ */
+function tierIdOrder(items: RankedItem[], tier: Tier, excludeId?: string): string[] {
+  return items
+    .filter((i) => i.tier === tier && i.id !== excludeId)
+    .sort((a, b) => a.rank - b.rank)
+    .map((i) => i.id);
+}
+
 const RankingAppPage = () => {
   const { user, profile, signOut } = useAuth();
   const { t } = useTranslation();
@@ -235,6 +254,11 @@ const RankingAppPage = () => {
   const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
   const [migrationState, setMigrationState] = useState<{ item: RankedItem, targetTier: Tier } | null>(null);
+  // B3: the RAW (unlocalized) source item of an in-progress re-rank. Non-null ⇒
+  // ceremony completion is a non-destructive move (upsert replaces the existing
+  // (user_id,tmdb_id) row; source tier compacted only if the tier changed) that
+  // emits a single `ranking_move`, never remove+add. Cleared on completion/close.
+  const [rerankState, setRerankState] = useState<RankedItem | null>(null);
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | TMDBMovie | RankedItem | null>(null);
   const [preselectedTVItem, setPreselectedTVItem] = useState<RankedItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -370,43 +394,45 @@ const RankingAppPage = () => {
       return;
     }
 
-    // Compute new rank from current items snapshot (before state update)
-    const others = items.filter((i) => i.id !== droppedId);
-    const newRank = others.filter((i) => i.tier === targetTier).length;
+    // Same-tier container drop: reindex the whole tier with the moved item at
+    // the end, then persist positions-only via the RPC (audit B1 — the old
+    // single-row .update wrote a duplicate + gap with no error handling).
+    const currentOrder = tierIdOrder(items, targetTier); // includes droppedId
+    const fromIndex = currentOrder.indexOf(droppedId);
+    const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, currentOrder.length - 1);
 
+    // No-op drop (already last): don't touch state, don't persist, don't emit.
+    const orderChanged = newOrder.some((id, idx) => id !== currentOrder[idx]);
+    if (!orderChanged) return;
+
+    const prevItems = [...items];
     setItems((prev) => {
-      const movedItem = prev.find((i) => i.id === droppedId);
-      if (!movedItem) return prev;
-
-      const rest = prev.filter((i) => i.id !== droppedId);
-      const newItem = { ...movedItem, tier: targetTier, rank: newRank };
-
-      return [...rest, newItem].sort((a, b) => {
-        if (a.tier === b.tier) return a.rank - b.rank;
-        return 0;
-      });
+      const otherItems = prev.filter((i) => i.tier !== targetTier);
+      const byId = new Map(prev.map((i) => [i.id, i]));
+      const reindexed = newOrder.map((id, idx) => ({ ...byId.get(id)!, tier: targetTier, rank: idx }));
+      return [...otherItems, ...reindexed];
     });
 
-    await supabase
-      .from('user_rankings')
-      .update({ tier: targetTier, rank_position: newRank, updated_at: new Date().toISOString() })
-      .eq('user_id', user.id)
-      .eq('tmdb_id', droppedId);
-
-    if (movedItem) {
-      await logRankingActivityEvent(
-        user.id,
-        {
-          id: movedItem.id,
-          title: movedItem.title,
-          tier: targetTier,
-          posterUrl: movedItem.posterUrl,
-          notes: movedItem.notes,
-          year: movedItem.year,
-        },
-        'ranking_move',
-      );
+    const { error } = await setTierOrder('movie', targetTier, newOrder);
+    if (error) {
+      console.error('Failed to save ranking:', error);
+      setToastMessage(t('ranking.failedSave'));
+      setItems(prevItems);
+      return;
     }
+
+    await logRankingActivityEvent(
+      user.id,
+      {
+        id: movedItem.id,
+        title: movedItem.title,
+        tier: targetTier,
+        posterUrl: movedItem.posterUrl,
+        notes: movedItem.notes,
+        year: movedItem.year,
+      },
+      'ranking_move',
+    );
   };
 
   const handleDropOnItem = async (e: React.DragEvent, targetId: string) => {
@@ -428,47 +454,24 @@ const RankingAppPage = () => {
       return;
     }
 
-    // Move within the SAME tier
-    let updatedTierList: RankedItem[] = [];
+    // Move within the SAME tier — reindex the tier and persist positions-only
+    // via the RPC (was a whole-tier full-row upsert — the B6 resurrect surface).
+    const currentOrder = tierIdOrder(items, targetItem.tier);
+    const fromIndex = currentOrder.indexOf(droppedId);
+    const toIndex = currentOrder.indexOf(targetId);
+    if (fromIndex === -1 || toIndex === -1) return;
+    const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, toIndex);
+
     const prevItems = [...items];
     setItems((prev) => {
-      const tierItems = prev.filter(i => i.tier === targetItem.tier).sort((a, b) => a.rank - b.rank);
       const otherItems = prev.filter(i => i.tier !== targetItem.tier);
-
-      // Find indices
-      const oldIndex = tierItems.findIndex(i => i.id === droppedId);
-      const newIndex = tierItems.findIndex(i => i.id === targetId);
-
-      if (oldIndex === -1 || newIndex === -1) return prev;
-
-      // Reorder array
-      const [removed] = tierItems.splice(oldIndex, 1);
-      tierItems.splice(newIndex, 0, removed);
-
-      // Reassign ranks
-      updatedTierList = tierItems.map((item, idx) => ({ ...item, rank: idx }));
-
-      return [...otherItems, ...updatedTierList];
+      const byId = new Map(prev.map((i) => [i.id, i]));
+      const reindexed = newOrder.map((id, idx) => ({ ...byId.get(id)!, rank: idx }));
+      return [...otherItems, ...reindexed];
     });
 
-    if (updatedTierList.length > 0) {
-      const rowsToUpdate = updatedTierList.map(item => ({
-        user_id: user.id,
-        tmdb_id: item.id,
-        title: item.title,
-        year: item.year,
-        poster_url: item.posterUrl,
-        type: item.type,
-        genres: item.genres,
-        director: item.director ?? null,
-        tier: item.tier,
-        rank_position: item.rank,
-        bracket: item.bracket ?? classifyBracket(item.genres),
-        primary_genre: item.genres[0] ?? null,
-        notes: item.notes ?? null,
-        updated_at: new Date().toISOString(),
-      }));
-      const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
+    if (newOrder.length > 0) {
+      const { error } = await setTierOrder('movie', targetItem.tier, newOrder);
       if (error) {
         console.error('Failed to save ranking:', error);
         setToastMessage(t('ranking.failedSave'));
@@ -477,7 +480,12 @@ const RankingAppPage = () => {
     }
   };
 
-  const addItem = async (newItem: RankedItem): Promise<boolean> => {
+  const addItem = async (
+    newItem: RankedItem,
+    // B3: a re-rank of an existing row is a MOVE, not a fresh add — the caller
+    // passes 'ranking_move' so completion never emits remove+add.
+    eventType: 'ranking_add' | 'ranking_move' = 'ranking_add',
+  ): Promise<boolean> => {
     if (!user) return false;
 
     let updatedTierList: RankedItem[] = [];
@@ -496,24 +504,40 @@ const RankingAppPage = () => {
     });
 
     if (updatedTierList.length > 0) {
-      const rowsToUpdate = updatedTierList.map(item => ({
-        user_id: user.id,
-        tmdb_id: item.id,
-        title: item.title,
-        year: item.year,
-        poster_url: item.posterUrl,
-        type: item.type,
-        genres: item.genres,
-        director: item.director ?? null,
-        tier: item.tier,
-        rank_position: item.rank,
-        bracket: item.bracket ?? classifyBracket(item.genres),
-        primary_genre: item.genres[0] ?? null,
-        notes: item.notes ?? null,
-        watched_with_user_ids: item.watchedWithUserIds ?? [],
-        updated_at: new Date().toISOString(),
-      }));
-      const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
+      // Full-row upsert of ONLY the new/moved item's OWN row (genuine
+      // insert-or-content-update on (user_id,tmdb_id) — the ceremony created
+      // it). Tier-mate rows are NOT re-sent; their positions are set by the
+      // RPC below (audit B6 — no more whole-tier full-row upsert here).
+      const targetOrder = updatedTierList.map((i) => i.id);
+      const newRankPosition = targetOrder.indexOf(newItem.id);
+      const { error: rowError } = await supabase.from('user_rankings').upsert(
+        {
+          user_id: user.id,
+          tmdb_id: newItem.id,
+          title: newItem.title,
+          year: newItem.year,
+          poster_url: newItem.posterUrl,
+          type: newItem.type,
+          genres: newItem.genres,
+          director: newItem.director ?? null,
+          tier: newItem.tier,
+          rank_position: newRankPosition,
+          bracket: newItem.bracket ?? classifyBracket(newItem.genres),
+          primary_genre: newItem.genres[0] ?? null,
+          notes: newItem.notes ?? null,
+          watched_with_user_ids: newItem.watchedWithUserIds ?? [],
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,tmdb_id' },
+      );
+      if (rowError) {
+        console.error('Failed to save ranking:', rowError);
+        setToastMessage(t('ranking.failedSaveRanking'));
+        return false;
+      }
+      // Compact the whole target tier's positions (the item's own row now
+      // exists, so the RPC's UPDATE-join reaches it too).
+      const { error } = await setTierOrder('movie', newItem.tier, targetOrder);
       if (error) {
         console.error('Failed to save ranking:', error);
         setToastMessage(t('ranking.failedSaveRanking'));
@@ -530,9 +554,11 @@ const RankingAppPage = () => {
         posterUrl: newItem.posterUrl,
         notes: newItem.notes,
         year: newItem.year,
-        watchedWithUserIds: newItem.watchedWithUserIds,
+        // Contract (shared-payloads.md line ~75): ranking_move never carries
+        // watched_with_user_ids — omit it for move events, keep for add events.
+        watchedWithUserIds: eventType === 'ranking_move' ? undefined : newItem.watchedWithUserIds,
       },
-      'ranking_add',
+      eventType,
     );
 
     // Generate ticket stub (fire-and-forget)
@@ -551,7 +577,11 @@ const RankingAppPage = () => {
     if (!user) return;
     const removedItem = items.find((item) => item.id === id);
 
-    let affectedTierItems: RankedItem[] = [];
+    // Reindexed membership of the removed item's tier (minus the id) — the RPC
+    // compacts it after the DELETE (was a whole-tier full-row upsert, B6).
+    const affectedTierOrder = removedItem
+      ? tierOrderAfterRemoval(tierIdOrder(items, removedItem.tier), id)
+      : [];
 
     setItems((prev) => {
       const without = prev.filter((i) => i.id !== id);
@@ -564,10 +594,6 @@ const RankingAppPage = () => {
           .sort((a, b) => a.rank - b.rank)
           .map((item, idx) => ({ ...item, rank: idx }));
         result = [...result, ...tierItems];
-        // Track items in the removed movie's tier for DB reindex
-        if (removedItem && tier === removedItem.tier) {
-          affectedTierItems = tierItems;
-        }
       });
 
       return result;
@@ -580,24 +606,8 @@ const RankingAppPage = () => {
       .eq('tmdb_id', id);
 
     // Persist reindexed ranks for remaining items in the affected tier
-    if (affectedTierItems.length > 0) {
-      const rowsToUpdate = affectedTierItems.map(item => ({
-        user_id: user.id,
-        tmdb_id: item.id,
-        title: item.title,
-        year: item.year,
-        poster_url: item.posterUrl,
-        type: item.type,
-        genres: item.genres,
-        director: item.director ?? null,
-        tier: item.tier,
-        rank_position: item.rank,
-        bracket: item.bracket ?? classifyBracket(item.genres),
-        primary_genre: item.genres[0] ?? null,
-        notes: item.notes ?? null,
-        updated_at: new Date().toISOString(),
-      }));
-      const { error } = await supabase.from('user_rankings').upsert(rowsToUpdate, { onConflict: 'user_id,tmdb_id' });
+    if (affectedTierOrder.length > 0) {
+      const { error } = await setTierOrder('movie', removedItem!.tier, affectedTierOrder);
       if (error) {
         console.error('Failed to reindex ranks after removal:', error);
         setToastMessage(t('ranking.failedUpdate'));
@@ -806,7 +816,16 @@ const RankingAppPage = () => {
       return [...otherItems, ...updatedTierList];
     });
 
-    const saveSucceeded = await persistTVRankings(updatedTierList);
+    // Full-row upsert of ONLY the new item's OWN row (genuine insert on
+    // (user_id,tmdb_id)); tier ORDER then via the RPC (audit B6 — no whole-tier
+    // full-row upsert).
+    const targetOrder = updatedTierList.map((i) => i.id);
+    const newRankPosition = targetOrder.indexOf(newItem.id);
+    let saveSucceeded = await persistTVRankings([{ ...newItem, rank: newRankPosition }]);
+    if (saveSucceeded && targetOrder.length > 0) {
+      const { error } = await setTierOrder('tv', newItem.tier, targetOrder);
+      if (error) saveSucceeded = false;
+    }
 
     await logRankingActivityEvent(
       user.id,
@@ -838,7 +857,11 @@ const RankingAppPage = () => {
     if (!user) return;
     const removedItem = tvItems.find((item) => item.id === id);
 
-    let affectedTierItems: RankedItem[] = [];
+    // Reindexed membership of the removed item's tier (minus the id) — the RPC
+    // compacts it after the DELETE (was a whole-tier full-row upsert, B6).
+    const affectedTierOrder = removedItem
+      ? tierOrderAfterRemoval(tierIdOrder(tvItems, removedItem.tier), id)
+      : [];
 
     setTvItems((prev) => {
       const without = prev.filter((i) => i.id !== id);
@@ -851,9 +874,6 @@ const RankingAppPage = () => {
           .sort((a, b) => a.rank - b.rank)
           .map((item, idx) => ({ ...item, rank: idx }));
         result = [...result, ...tierItems];
-        if (removedItem && tier === removedItem.tier) {
-          affectedTierItems = tierItems;
-        }
       });
 
       return result;
@@ -865,8 +885,12 @@ const RankingAppPage = () => {
       .eq('user_id', user.id)
       .eq('tmdb_id', id);
 
-    if (affectedTierItems.length > 0) {
-      await persistTVRankings(affectedTierItems);
+    if (affectedTierOrder.length > 0) {
+      const { error } = await setTierOrder('tv', removedItem!.tier, affectedTierOrder);
+      if (error) {
+        console.error('Failed to reindex TV ranks after removal:', error);
+        setToastMessage(t('ranking.failedUpdate'));
+      }
     }
 
     if (removedItem) {
@@ -896,44 +920,72 @@ const RankingAppPage = () => {
     if (!movedItem) return;
     const sourceTier = movedItem.tier;
 
-    let affectedItems: RankedItem[] = [];
+    // Same-tier container drop: reindex the tier with the moved item at the end,
+    // then persist positions-only via the RPC. The container onDrop routes here
+    // with no migration divert (unlike the movie path), so sourceTier ===
+    // targetTier is reachable and must NOT fall through to the cross-tier concat
+    // (that duplicated every tier-mate in state — Finding 1). No ranking_move
+    // event for TV (only the movie path emits, per contract).
+    if (sourceTier === targetTier) {
+      const currentOrder = tierIdOrder(tvItems, targetTier); // includes droppedId
+      const fromIndex = currentOrder.indexOf(droppedId);
+      const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, currentOrder.length - 1);
 
+      // No-op drop (already last): don't touch state, don't persist, don't emit.
+      const orderChanged = newOrder.some((id, idx) => id !== currentOrder[idx]);
+      if (!orderChanged) return;
+
+      const prevItems = [...tvItems];
+      setTvItems((prev) => {
+        const otherItems = prev.filter((i) => i.tier !== targetTier);
+        const byId = new Map(prev.map((i) => [i.id, i]));
+        const reindexed = newOrder.map((id, idx) => ({ ...byId.get(id)!, tier: targetTier, rank: idx }));
+        return [...otherItems, ...reindexed];
+      });
+
+      const { error } = await setTierOrder('tv', targetTier, newOrder);
+      if (error) {
+        console.error('Failed to save TV ranking:', error);
+        setToastMessage(t('ranking.failedSaveTV'));
+        setTvItems(prevItems);
+      }
+      return;
+    }
+
+    // Cross-tier move: compact BOTH tiers via the RPC (positions-only, delete-
+    // aware — was a whole-tier full-row upsert, the B6 resurrect surface). The
+    // row already exists; the RPC's p_tier re-tiers it, so no row upsert here.
+    const targetOrder = tierIdOrder(tvItems, targetTier); // excludes droppedId (different tier)
+    const { source: sourceOrder, target: newTargetOrder } = ordersAfterCrossTierMove(
+      tierIdOrder(tvItems, sourceTier),
+      targetOrder,
+      droppedId,
+      targetOrder.length, // append to end of target tier (matches prior UX)
+    );
+
+    const prevItems = [...tvItems];
     setTvItems((prev) => {
-      const item = prev.find((i) => i.id === droppedId);
-      if (!item) return prev;
-
-      const rest = prev.filter((i) => i.id !== droppedId);
-
-      // Reindex source tier (gap left by moved item)
-      const sourceTierItems = rest
-        .filter((i) => i.tier === sourceTier)
-        .sort((a, b) => a.rank - b.rank)
-        .map((it, idx) => ({ ...it, rank: idx }));
-
-      // Target tier: add moved item at the end, then reindex
-      const targetTierItems = rest
-        .filter((i) => i.tier === targetTier)
-        .sort((a, b) => a.rank - b.rank);
-      const newRank = targetTierItems.length;
-      const movedWithNewTier = { ...item, tier: targetTier, rank: newRank };
-      const updatedTargetItems = [...targetTierItems, movedWithNewTier].map((it, idx) => ({ ...it, rank: idx }));
-
-      // Other tiers unchanged
-      const otherItems = rest.filter((i) => i.tier !== sourceTier && i.tier !== targetTier);
-
-      // Collect all items that need DB persistence (both tiers)
-      affectedItems = sourceTier === targetTier
-        ? updatedTargetItems
-        : [...sourceTierItems, ...updatedTargetItems];
-
-      return [...otherItems, ...sourceTierItems, ...updatedTargetItems].filter(
-        // Deduplicate: if source === target, sourceTierItems is empty (item was removed)
-        (item, idx, arr) => arr.findIndex(a => a.id === item.id) === idx
-      );
+      const byId = new Map(prev.map((i) => [i.id, i]));
+      const otherItems = prev.filter((i) => i.tier !== sourceTier && i.tier !== targetTier);
+      const sourceReindexed = sourceOrder.map((id, idx) => ({ ...byId.get(id)!, tier: sourceTier, rank: idx }));
+      const targetReindexed = newTargetOrder.map((id, idx) => ({ ...byId.get(id)!, tier: targetTier, rank: idx }));
+      return [...otherItems, ...sourceReindexed, ...targetReindexed];
     });
 
-    if (affectedItems.length > 0) {
-      await persistTVRankings(affectedItems);
+    let moveFailed = false;
+    if (newTargetOrder.length > 0) {
+      const { error } = await setTierOrder('tv', targetTier, newTargetOrder);
+      if (error) moveFailed = true;
+    }
+    if (!moveFailed && sourceOrder.length > 0) {
+      const { error } = await setTierOrder('tv', sourceTier, sourceOrder);
+      if (error) moveFailed = true;
+    }
+    if (moveFailed) {
+      console.error('Failed to save TV ranking after cross-tier move');
+      setToastMessage(t('ranking.failedSaveTV'));
+      setTvItems(prevItems);
+      return;
     }
 
     if (movedItem) {
@@ -974,25 +1026,29 @@ const RankingAppPage = () => {
 
     setDraggedItemId(null);
 
-    let updatedTierList: RankedItem[] = [];
+    // Same-tier reorder → positions-only via the RPC (was a whole-tier full-row
+    // upsert, B6).
+    const currentOrder = tierIdOrder(tvItems, targetItem.tier);
+    const fromIndex = currentOrder.indexOf(droppedId);
+    const toIndex = currentOrder.indexOf(targetId);
+    if (fromIndex === -1 || toIndex === -1) return;
+    const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, toIndex);
+
+    const prevItems = [...tvItems];
     setTvItems((prev) => {
-      const tierItems = prev.filter(i => i.tier === targetItem.tier).sort((a, b) => a.rank - b.rank);
       const otherItems = prev.filter(i => i.tier !== targetItem.tier);
-
-      const oldIndex = tierItems.findIndex(i => i.id === droppedId);
-      const newIndex = tierItems.findIndex(i => i.id === targetId);
-
-      if (oldIndex === -1 || newIndex === -1) return prev;
-
-      const [removed] = tierItems.splice(oldIndex, 1);
-      tierItems.splice(newIndex, 0, removed);
-
-      updatedTierList = tierItems.map((item, idx) => ({ ...item, rank: idx }));
-      return [...otherItems, ...updatedTierList];
+      const byId = new Map(prev.map((i) => [i.id, i]));
+      const reindexed = newOrder.map((id, idx) => ({ ...byId.get(id)!, rank: idx }));
+      return [...otherItems, ...reindexed];
     });
 
-    if (updatedTierList.length > 0) {
-      await persistTVRankings(updatedTierList);
+    if (newOrder.length > 0) {
+      const { error } = await setTierOrder('tv', targetItem.tier, newOrder);
+      if (error) {
+        console.error('Failed to save TV ranking:', error);
+        setToastMessage(t('ranking.failedSaveTV'));
+        setTvItems(prevItems);
+      }
     }
   };
 
@@ -1045,7 +1101,15 @@ const RankingAppPage = () => {
       return [...otherItems, ...updatedTierList];
     });
 
-    const saveSucceeded = await persistBookRankings(updatedTierList);
+    // Full-row upsert of ONLY the new item's OWN row; tier ORDER via the RPC
+    // (audit B6 — no whole-tier full-row upsert).
+    const targetOrder = updatedTierList.map((i) => i.id);
+    const newRankPosition = targetOrder.indexOf(newItem.id);
+    let saveSucceeded = await persistBookRankings([{ ...newItem, rank: newRankPosition }]);
+    if (saveSucceeded && targetOrder.length > 0) {
+      const { error } = await setTierOrder('book', newItem.tier, targetOrder);
+      if (error) saveSucceeded = false;
+    }
 
     await logRankingActivityEvent(
       user.id,
@@ -1067,7 +1131,12 @@ const RankingAppPage = () => {
   const removeBookItem = async (id: string) => {
     if (!user) return;
     const removedItem = bookItems.find((item) => item.id === id);
-    let affectedTierItems: RankedItem[] = [];
+
+    // Reindexed membership of the removed item's tier (minus the id) — the RPC
+    // compacts it after the DELETE (was a whole-tier full-row upsert, B6).
+    const affectedTierOrder = removedItem
+      ? tierOrderAfterRemoval(tierIdOrder(bookItems, removedItem.tier), id)
+      : [];
 
     setBookItems((prev) => {
       const without = prev.filter((i) => i.id !== id);
@@ -1079,17 +1148,18 @@ const RankingAppPage = () => {
           .sort((a, b) => a.rank - b.rank)
           .map((item, idx) => ({ ...item, rank: idx }));
         result = [...result, ...tierItems];
-        if (removedItem && tier === removedItem.tier) {
-          affectedTierItems = tierItems;
-        }
       });
       return result;
     });
 
     await supabase.from('book_rankings').delete().eq('user_id', user.id).eq('tmdb_id', id);
 
-    if (affectedTierItems.length > 0) {
-      await persistBookRankings(affectedTierItems);
+    if (affectedTierOrder.length > 0) {
+      const { error } = await setTierOrder('book', removedItem!.tier, affectedTierOrder);
+      if (error) {
+        console.error('Failed to reindex book ranks after removal:', error);
+        setToastMessage(t('ranking.failedUpdate'));
+      }
     }
 
     if (removedItem) {
@@ -1144,23 +1214,73 @@ const RankingAppPage = () => {
     setDraggedItemId(null);
     if (!movedItem) return;
     const sourceTier = movedItem.tier;
-    let affectedItems: RankedItem[] = [];
 
+    // Same-tier container drop: reindex the tier with the moved item at the end,
+    // then persist positions-only via the RPC. The container onDrop routes here
+    // with no migration divert (unlike the movie path), so sourceTier ===
+    // targetTier is reachable and must NOT fall through to the cross-tier concat
+    // (that duplicated every tier-mate in state — Finding 1). No ranking_move
+    // event for books (only the movie path emits, per contract).
+    if (sourceTier === targetTier) {
+      const currentOrder = tierIdOrder(bookItems, targetTier); // includes droppedId
+      const fromIndex = currentOrder.indexOf(droppedId);
+      const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, currentOrder.length - 1);
+
+      // No-op drop (already last): don't touch state, don't persist, don't emit.
+      const orderChanged = newOrder.some((id, idx) => id !== currentOrder[idx]);
+      if (!orderChanged) return;
+
+      const prevItems = [...bookItems];
+      setBookItems((prev) => {
+        const otherItems = prev.filter((i) => i.tier !== targetTier);
+        const byId = new Map(prev.map((i) => [i.id, i]));
+        const reindexed = newOrder.map((id, idx) => ({ ...byId.get(id)!, tier: targetTier, rank: idx }));
+        return [...otherItems, ...reindexed];
+      });
+
+      const { error } = await setTierOrder('book', targetTier, newOrder);
+      if (error) {
+        console.error('Failed to save book ranking:', error);
+        setToastMessage(t('ranking.failedSaveBook'));
+        setBookItems(prevItems);
+      }
+      return;
+    }
+
+    // Cross-tier move: compact BOTH tiers via the RPC (positions-only — was a
+    // whole-tier full-row upsert, B6). Row already exists; RPC p_tier re-tiers.
+    const targetOrder = tierIdOrder(bookItems, targetTier);
+    const { source: sourceOrder, target: newTargetOrder } = ordersAfterCrossTierMove(
+      tierIdOrder(bookItems, sourceTier),
+      targetOrder,
+      droppedId,
+      targetOrder.length,
+    );
+
+    const prevItems = [...bookItems];
     setBookItems((prev) => {
-      const item = prev.find((i) => i.id === droppedId);
-      if (!item) return prev;
-      const rest = prev.filter((i) => i.id !== droppedId);
-      const sourceTierItems = rest.filter((i) => i.tier === sourceTier).sort((a, b) => a.rank - b.rank).map((it, idx) => ({ ...it, rank: idx }));
-      const targetTierItems = rest.filter((i) => i.tier === targetTier).sort((a, b) => a.rank - b.rank);
-      const newRank = targetTierItems.length;
-      const movedWithNewTier = { ...item, tier: targetTier, rank: newRank };
-      const updatedTargetItems = [...targetTierItems, movedWithNewTier].map((it, idx) => ({ ...it, rank: idx }));
-      const otherItems = rest.filter((i) => i.tier !== sourceTier && i.tier !== targetTier);
-      affectedItems = sourceTier === targetTier ? updatedTargetItems : [...sourceTierItems, ...updatedTargetItems];
-      return [...otherItems, ...sourceTierItems, ...updatedTargetItems].filter((item, idx, arr) => arr.findIndex(a => a.id === item.id) === idx);
+      const byId = new Map(prev.map((i) => [i.id, i]));
+      const otherItems = prev.filter((i) => i.tier !== sourceTier && i.tier !== targetTier);
+      const sourceReindexed = sourceOrder.map((id, idx) => ({ ...byId.get(id)!, tier: sourceTier, rank: idx }));
+      const targetReindexed = newTargetOrder.map((id, idx) => ({ ...byId.get(id)!, tier: targetTier, rank: idx }));
+      return [...otherItems, ...sourceReindexed, ...targetReindexed];
     });
 
-    if (affectedItems.length > 0) await persistBookRankings(affectedItems);
+    let moveFailed = false;
+    if (newTargetOrder.length > 0) {
+      const { error } = await setTierOrder('book', targetTier, newTargetOrder);
+      if (error) moveFailed = true;
+    }
+    if (!moveFailed && sourceOrder.length > 0) {
+      const { error } = await setTierOrder('book', sourceTier, sourceOrder);
+      if (error) moveFailed = true;
+    }
+    if (moveFailed) {
+      console.error('Failed to save book ranking after cross-tier move');
+      setToastMessage(t('ranking.failedSaveBook'));
+      setBookItems(prevItems);
+      return;
+    }
     if (movedItem) {
       await logRankingActivityEvent(user.id, { id: movedItem.id, title: movedItem.title, tier: targetTier, posterUrl: movedItem.posterUrl, notes: movedItem.notes, year: movedItem.year }, 'ranking_move');
     }
@@ -1176,19 +1296,31 @@ const RankingAppPage = () => {
     if (!movedItem || !targetItem) { setDraggedItemId(null); return; }
     if (movedItem.tier !== targetItem.tier) { await handleBookDrop(e, targetItem.tier); return; }
     setDraggedItemId(null);
-    let updatedTierList: RankedItem[] = [];
+
+    // Same-tier reorder → positions-only via the RPC (was a whole-tier full-row
+    // upsert, B6).
+    const currentOrder = tierIdOrder(bookItems, targetItem.tier);
+    const fromIndex = currentOrder.indexOf(droppedId);
+    const toIndex = currentOrder.indexOf(targetId);
+    if (fromIndex === -1 || toIndex === -1) return;
+    const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, toIndex);
+
+    const prevItems = [...bookItems];
     setBookItems((prev) => {
-      const tierItems = prev.filter(i => i.tier === targetItem.tier).sort((a, b) => a.rank - b.rank);
       const otherItems = prev.filter(i => i.tier !== targetItem.tier);
-      const oldIndex = tierItems.findIndex(i => i.id === droppedId);
-      const newIndex = tierItems.findIndex(i => i.id === targetId);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      const [removed] = tierItems.splice(oldIndex, 1);
-      tierItems.splice(newIndex, 0, removed);
-      updatedTierList = tierItems.map((item, idx) => ({ ...item, rank: idx }));
-      return [...otherItems, ...updatedTierList];
+      const byId = new Map(prev.map((i) => [i.id, i]));
+      const reindexed = newOrder.map((id, idx) => ({ ...byId.get(id)!, rank: idx }));
+      return [...otherItems, ...reindexed];
     });
-    if (updatedTierList.length > 0) await persistBookRankings(updatedTierList);
+
+    if (newOrder.length > 0) {
+      const { error } = await setTierOrder('book', targetItem.tier, newOrder);
+      if (error) {
+        console.error('Failed to save book ranking:', error);
+        setToastMessage(t('ranking.failedSaveBook'));
+        setBookItems(prevItems);
+      }
+    }
   };
 
   const handleAddBookItem = async (newItem: RankedItem) => {
@@ -1217,16 +1349,51 @@ const RankingAppPage = () => {
 
   const handleAddItem = async (newItem: RankedItem) => {
     const wasMigration = !!migrationState;
-    const saveSucceeded = await addItem(newItem);
-    if (preselectedForRank) {
+    // B3: a re-rank (rerankState set) is non-destructive — the row already
+    // exists, so completion is a MOVE. Its source tier is the raw item's old
+    // tier; the completion upsert replaces the (user_id,tmdb_id) row in place.
+    // B3 id-guard: only treat as a re-rank when the user actually confirmed the
+    // same movie that was pre-selected — if they navigated back and chose a
+    // different movie, that movie gets a genuine first add (ranking_add).
+    const isRerank = !!rerankState && rerankState.id === newItem.id;
+    const sourceTier = migrationState
+      ? migrationState.item.tier
+      : isRerank
+      ? rerankState!.tier
+      : null;
+    const saveSucceeded = await addItem(newItem, isRerank ? 'ranking_move' : 'ranking_add');
+    // B2/B3: a cross-tier move (migration OR re-rank into a different tier) must
+    // ALSO compact the SOURCE tier — the moved item's old tier keeps a gap
+    // otherwise (feed score RPC then emits out-of-range scores). addItem already
+    // handled the target tier; here we rewrite the source tier's membership minus
+    // the departed id. Skip when old tier == new tier (a same-tier reorder — the
+    // target compaction already covered it).
+    if (saveSucceeded && sourceTier && sourceTier !== newItem.tier) {
+      const sourceOrder = tierOrderAfterRemoval(tierIdOrder(items, sourceTier), newItem.id);
+      if (sourceOrder.length > 0) {
+        const { error } = await setTierOrder('movie', sourceTier, sourceOrder);
+        if (error) {
+          console.error('Failed to compact source tier after move:', error);
+          setToastMessage(t('ranking.failedUpdate'));
+        }
+      }
+    }
+    // A re-rank targets an already-ranked item, never a bookmark — don't touch
+    // the watchlist for it (the preselected item is the ranked row itself).
+    if (preselectedForRank && !isRerank) {
       // Delete the bookmark only when the rank actually saved (B5 data-loss fix).
       if (shouldRemoveBookmarkAfterRank(saveSucceeded)) {
         await removeFromWatchlist(preselectedForRank.id);
       }
+    }
+    if (preselectedForRank) {
       setPreselectedForRank(null);
     }
     if (migrationState) {
       setMigrationState(null);
+    }
+    if (rerankState) {
+      setRerankState(null);
     }
     setToastMessage(
       wasMigration
@@ -1541,8 +1708,15 @@ const RankingAppPage = () => {
                     setPreselectedTVItem(item);
                     setIsTVModalOpen(true);
                   } else {
-                    removeItem(item.id);
-                    setPreselectedForRank(item);
+                    // B3: non-destructive re-rank — do NOT delete first. The
+                    // ceremony completion replaces the (user_id,tmdb_id) row and
+                    // compacts both tiers; cancel = zero persistence.
+                    // B4 title-locale contract: TierRow passes LOCALIZED items,
+                    // so resolve the RAW item from `items` by id — the persisted
+                    // title must be the TMDB default-locale title, never the zh one.
+                    const rawItem = items.find((i) => i.id === item.id) ?? item;
+                    setRerankState(rawItem);
+                    setPreselectedForRank(rawItem);
                     setIsModalOpen(true);
                   }
                 }}
@@ -1587,9 +1761,12 @@ const RankingAppPage = () => {
       <AddMediaModal
         isOpen={isModalOpen}
         onClose={() => {
+          // B3: closing mid-re-rank persists NOTHING (no delete happened up
+          // front) — just clear the in-flight state.
           setIsModalOpen(false);
           setPreselectedForRank(null);
           setMigrationState(null);
+          setRerankState(null);
         }}
         onAdd={handleAddItem}
         onSaveForLater={addToWatchlist}
@@ -1675,8 +1852,13 @@ const RankingAppPage = () => {
               const newParams = new URLSearchParams(searchParams);
               newParams.delete('movieId');
               setSearchParams(newParams);
-              removeItem(item.id);
-              setPreselectedForRank(item);
+              // B3: non-destructive re-rank — the ceremony completion replaces
+              // the (user_id,tmdb_id) row and compacts both tiers; no delete-first.
+              // B4 title-locale contract: resolve the RAW item from `items` by id
+              // so the persisted title is the TMDB default-locale title.
+              const rawItem = items.find((i) => i.id === item.id) ?? item;
+              setRerankState(rawItem);
+              setPreselectedForRank(rawItem);
               setIsModalOpen(true);
             }}
           />

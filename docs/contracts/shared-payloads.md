@@ -405,6 +405,57 @@ Tests (iOS): `JournalContractTests`, `JournalRepositoryLogicTests`,
 `PhotoStoreLogicTests`, `JournalDraftModelTests`, `JournalListModelTests`,
 `JournalEmittersTests` under `ios/Spool/Tests/SpoolTests/`.
 
+## user_rankings ordering (since C4 blocking fixes, branch `fix/c4-ranking-blocking`)
+
+### Position-integrity invariant
+
+Within each `(user_id, tier)` and per media table (`user_rankings` / `tv_rankings` / `book_rankings`), `rank_position` is contiguous `0..n-1` with no duplicates (0 = best). Nothing in the DB enforces this — the only constraint is `UNIQUE(user_id, tmdb_id)`. Every management write must preserve it. Consumers that break visibly when it is violated: `get_feed_ranking_scores` does arithmetic on the raw column (`score = lo + (hi-lo)·(tier_total-1-rank_position)/(tier_total-1)`) — a gap puts the max position above `tier_total-1`, producing a negative numerator and a score below the tier floor; a duplicate gives two items identical scores. iOS `getAllRankedItems`/`getTierItems` order by `rank_position` — duplicates make order nondeterministic in the H2H engine.
+
+### `set_tier_order` RPC contract
+
+`set_tier_order(p_media text, p_tier text, p_tmdb_ids text[]) returns integer`
+
+Migration: `supabase/migrations/20260709_set_tier_order_rpc.sql`.
+
+- **SECURITY INVOKER.** Runs as the caller; the own-rows UPDATE RLS policies on all three tables gate writes to `auth.uid()`'s rows. No elevated privilege.
+- **`p_media`** ∈ `('movie', 'tv', 'book')` — routes to `user_rankings`, `tv_rankings`, `book_rankings` respectively via three static branches (no dynamic SQL). Any other value RAISEs with errcode 22023.
+- **UPDATE-only — resurrect-proof.** The function performs a single UPDATE per branch and is structurally incapable of INSERT. It can only move rows that already exist. A row must therefore be upserted by the caller BEFORE calling this RPC — the upsert creates the row; the RPC compacts the tier. A deleted id matches nothing and is silently skipped. This fixes the B6 resurrection race: the old full-row upsert shape could re-INSERT a row another device had just deleted.
+- **Delete-aware compaction.** Positions are assigned by `row_number() OVER (ORDER BY ordinality) - 1` over only the ids in the array that actually exist as the caller's rows. Ids in the array with no matching row (deleted or never-ranked) are silently skipped, so surviving rows compact to a contiguous `0..k-1`. A caller can pass a stale membership snapshot that names a since-deleted id and the result is still gap-free.
+- **Dedup: first occurrence wins.** If `p_tmdb_ids` lists the same id more than once (e.g., an iOS re-rank splices an id into a membership array that already contains it), the id is ranked at its FIRST occurrence and later occurrences are ignored: `['a','a','b']` behaves as `['a','b']` (a → 0, b → 1, returns 2).
+- **Returns** the number of rows actually updated (missing ids not counted). Empty or NULL array is a no-op returning 0.
+
+**FULL-MEMBERSHIP CALLER RULE (CRITICAL — partial arrays corrupt):** `p_tmdb_ids` MUST be the tier's ENTIRE intended membership, in the desired order. Rows of the same `(user_id, tier)` that are NOT in the array are left UNTOUCHED at their old positions. So a partial array does NOT "update just a few" — it orphans the unlisted rows' positions, recreating the very gap/dup corruption this RPC exists to prevent. Callers moving an item between tiers must call TWICE: once for the source tier (its full membership minus the departed id) and once for the target tier (its full membership plus the arriving id). Callers removing an item must call once for the item's tier (its full membership minus the removed id).
+
+### Title-locale pin
+
+The persisted `title` in `user_rankings`, `activity_events.media_title`, and `movie_stubs.title` is the TMDB **default-locale** title — never a localized (e.g., zh-CN) one. Web's `useLocalizedItems` replaces `title` with zh-CN strings for display only; the management handlers that write to persistence must look up the raw item by id before persisting. iOS has no localization layer today; the pin is a forward contract.
+
+### Deliberate orphan semantics on delete
+
+When a ranking row is deleted, ONLY the ranking row is removed plus tier compaction (via `set_tier_order`) plus a `ranking_remove` activity event (`{notes?, year?}` metadata). The following artifacts survive by design and are not touched:
+
+| Artifact | Fate |
+|---|---|
+| `movie_stubs` row | kept; a later re-rank refreshes it via the 23505 update path |
+| `journal_entries` row | kept; the journal is a diary, independent of the shelf |
+| `activity_events` history | kept forever (append-only; no UPDATE/DELETE policy) |
+| `comparison_logs` | kept |
+| watchlist | NOT restored; delete ≠ un-rank back to bookmark |
+
+These semantics are deliberate and documented — do not add cleanup without an explicit product decision.
+
+### Re-rank emits `ranking_move`, never `ranking_remove` + `ranking_add`
+
+A web movie re-rank through the ceremony flow MUST emit a single `ranking_move` event with metadata `{notes?, year?}` (never `watched_with_user_ids` — the move sites do not pass it; consistent with the existing `ranking_move` sites in the `activity_events` table above). It must never emit `ranking_remove` followed by `ranking_add` — that double-emission miscounts milestones, misrepresents the feed, and was the pre-C4 bug (B3).
+
+A same-tier reorder with no actual position change must emit NO event (B1 no-op suppression).
+
+**Known deviations (ledgered):** Three live paths do not yet satisfy the MUST above; all are deliberately deferred and tracked in `docs/plans/2026-07-07-ios-parity-ledger.md`:
+
+1. **Web movie drag-migration** still emits `ranking_add` (the drag path was not touched in B3; Q2 standardization deferred).
+2. **Web TV/book re-rank** still emits `ranking_remove` + `ranking_add` (delete-first flow; needs the B3 treatment in a later cycle, deferred).
+3. **iOS ceremony re-rank** (upsert path shipped in B5): when the new tier differs, only the target tier is spliced/compacted — the source tier keeps a gap until its next write (self-heals) — and the emission is `ranking_add` rather than `ranking_move`. Fix planned in the iOS management-UI sub-plan.
+
 ## watchlist_items (+ tv/book variants) (since C3 web fixes, branch `fix/c3-watchlist-discover-web-blocking`)
 
 Three parallel bookmark tables — one per media vertical. Reference
