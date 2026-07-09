@@ -8,6 +8,7 @@
 import JSZip from 'jszip';
 import { parseCSV } from './csvParser';
 import { TMDB_BASE, TMDB_IMAGE_BASE, GENRE_MAP } from './tmdbService';
+import { typoRetryVariants } from './searchVariants';
 import { classifyBracket } from './rankingAlgorithm';
 import { canonicalMovieTmdbId } from './watchlistRankHelpers';
 import { supabase } from '../lib/supabase';
@@ -222,66 +223,96 @@ const CONCURRENCY = 8;
 const BATCH_DELAY_MS = 50;
 const MAX_RETRIES = 3;
 
+// Attempt a single TMDB query term with the year param. Returns:
+//   ResolvedEntry — got a result
+//   null          — zero results (ok to retry with a variant)
+//   'http-error'  — non-ok HTTP (stop, do not spray more requests)
+async function fetchTMDBTerm(
+  term: string,
+  name: string,
+  year: number | null,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<ResolvedEntry | null | 'http-error'> {
+  const url = new URL(`${TMDB_BASE}/search/movie`);
+  url.searchParams.set('api_key', apiKey);
+  url.searchParams.set('query', term);
+  url.searchParams.set('include_adult', 'false');
+  if (year) url.searchParams.set('year', String(year));
+
+  const res = await fetch(url.toString(), { signal });
+
+  if (res.status === 429) return 'http-error';
+  if (!res.ok) return 'http-error';
+
+  const data = await res.json();
+  const results = data.results as any[];
+  if (!results || results.length === 0) return null;
+
+  // Best match: prefer exact year match
+  let best = results[0];
+  if (year) {
+    const yearMatch = results.find((r: any) =>
+      r.release_date && r.release_date.startsWith(String(year))
+    );
+    if (yearMatch) best = yearMatch;
+  }
+
+  const genres = (best.genre_ids as number[] | undefined)
+    ?.map((gid: number) => GENRE_MAP[gid])
+    .filter(Boolean)
+    .slice(0, 3) ?? [];
+
+  return {
+    name,
+    year,
+    letterboxdUri: null,
+    rating: null,
+    watchedDate: null,
+    reviewText: null,
+    isRewatch: false,
+    tmdbId: best.id,
+    title: best.title,
+    posterUrl: best.poster_path ? `${TMDB_IMAGE_BASE}${best.poster_path}` : null,
+    genres,
+    yearStr: best.release_date ? best.release_date.slice(0, 4) : '—',
+  };
+}
+
 async function searchTMDB(
   name: string,
   year: number | null,
   apiKey: string,
   signal?: AbortSignal,
 ): Promise<ResolvedEntry | null> {
-  const url = new URL(`${TMDB_BASE}/search/movie`);
-  url.searchParams.set('api_key', apiKey);
-  url.searchParams.set('query', name);
-  url.searchParams.set('include_adult', 'false');
-  if (year) url.searchParams.set('year', String(year));
-
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     if (signal?.aborted) return null;
 
     try {
-      const res = await fetch(url.toString(), { signal });
+      const primary = await fetchTMDBTerm(name, name, year, apiKey, signal);
 
-      if (res.status === 429) {
-        const backoff = Math.pow(2, attempt) * 1000;
-        await new Promise(r => setTimeout(r, backoff));
-        continue;
+      if (primary === 'http-error') {
+        if (attempt < MAX_RETRIES - 1) {
+          const backoff = Math.pow(2, attempt) * 1000;
+          await new Promise(r => setTimeout(r, backoff));
+          continue;
+        }
+        return null;
       }
 
-      if (!res.ok) return null;
+      if (primary !== null) return primary;
 
-      const data = await res.json();
-      const results = data.results as any[];
-      if (!results || results.length === 0) return null;
-
-      // Best match: prefer exact year match
-      let best = results[0];
-      if (year) {
-        const yearMatch = results.find((r: any) =>
-          r.release_date && r.release_date.startsWith(String(year))
-        );
-        if (yearMatch) best = yearMatch;
+      // Zero-result path: try typo variants, same year, stop on HTTP error.
+      for (const variant of typoRetryVariants(name)) {
+        if (signal?.aborted) return null;
+        const retry = await fetchTMDBTerm(variant, name, year, apiKey, signal);
+        if (retry === 'http-error') return null;
+        if (retry !== null) return retry;
       }
 
-      const genres = (best.genre_ids as number[] | undefined)
-        ?.map((gid: number) => GENRE_MAP[gid])
-        .filter(Boolean)
-        .slice(0, 3) ?? [];
-
-      return {
-        name,
-        year,
-        letterboxdUri: null,
-        rating: null,
-        watchedDate: null,
-        reviewText: null,
-        isRewatch: false,
-        tmdbId: best.id,
-        title: best.title,
-        posterUrl: best.poster_path ? `${TMDB_IMAGE_BASE}${best.poster_path}` : null,
-        genres,
-        yearStr: best.release_date ? best.release_date.slice(0, 4) : '—',
-      };
+      return null;
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return null;
       lastError = err as Error;

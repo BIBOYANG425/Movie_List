@@ -857,7 +857,9 @@ export async function searchMovies(
 
   // One fetch+map for a single query term. Reused verbatim by the zero-result
   // typo-retry loop below so retries share the exact same request/mapping path.
-  const fetchAndMap = async (term: string): Promise<TMDBMovie[]> => {
+  // Returns null on a non-ok HTTP response so the caller can distinguish a real
+  // zero-result from an HTTP error (429/5xx/401) and skip the variant loop.
+  const fetchAndMap = async (term: string): Promise<TMDBMovie[] | null> => {
     const url = new URL(`${TMDB_BASE}/search/movie`);
     url.searchParams.set('api_key', apiKey);
     url.searchParams.set('query', term);
@@ -869,7 +871,7 @@ export async function searchMovies(
 
     if (!res.ok) {
       console.error(`TMDB API error: ${res.status} ${res.statusText}`);
-      return [];
+      return null;
     }
 
     const data = await res.json();
@@ -882,11 +884,15 @@ export async function searchMovies(
 
   try {
     const primary = await fetchAndMap(query);
+    // null means HTTP error — bail immediately, no variant loop.
+    if (primary === null) return [];
     if (primary.length > 0) return primary;
 
     // Zero-result path only: retry with cheap typo variants, first non-empty wins.
+    // A non-ok response during variants also stops the loop.
     for (const variant of typoRetryVariants(query)) {
       const retry = await fetchAndMap(variant);
+      if (retry === null) break;
       if (retry.length > 0) return retry;
     }
 
@@ -1241,7 +1247,9 @@ export async function searchTVShows(
 
   // One fetch+map for a single query term. Reused verbatim by the zero-result
   // typo-retry loop below so retries share the exact same request/mapping path.
-  const fetchAndMap = async (term: string): Promise<TMDBTVShow[]> => {
+  // Returns null on a non-ok HTTP response so the caller can distinguish a real
+  // zero-result from an HTTP error (429/5xx/401) and skip the variant loop.
+  const fetchAndMap = async (term: string): Promise<TMDBTVShow[] | null> => {
     const url = new URL(`${TMDB_BASE}/search/tv`);
     url.searchParams.set('api_key', apiKey);
     url.searchParams.set('query', term);
@@ -1250,7 +1258,7 @@ export async function searchTVShows(
     url.searchParams.set('include_adult', 'false');
 
     const res = await fetchWithTimeout(url.toString(), timeoutMs);
-    if (!res.ok) return [];
+    if (!res.ok) return null;
 
     const data = await res.json();
 
@@ -1275,11 +1283,15 @@ export async function searchTVShows(
 
   try {
     const primary = await fetchAndMap(query);
+    // null means HTTP error — bail immediately, no variant loop.
+    if (primary === null) return [];
     if (primary.length > 0) return primary;
 
     // Zero-result path only: retry with cheap typo variants, first non-empty wins.
+    // A non-ok response during variants also stops the loop.
     for (const variant of typoRetryVariants(query)) {
       const retry = await fetchAndMap(variant);
+      if (retry === null) break;
       if (retry.length > 0) return retry;
     }
 
