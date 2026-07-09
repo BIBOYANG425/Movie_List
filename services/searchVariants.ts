@@ -24,7 +24,8 @@ const MAX_VARIANTS = 3;
  * (TMDB handles CJK; chopping CJK characters is nonsense).
  *
  * Variant order:
- *   1. inner-whitespace collapse — only if the query contains an inner space
+ *   1. inner-whitespace collapse — only when the LAST token is a single stray
+ *      char ("matri x" → "matrix"); two legitimate words are never merged
  *   2. last-token trailing chop by 1 then 2 chars — only while the chopped token stays ≥ 4 chars
  *   3. drop the last token entirely — only if ≥ 2 tokens and the remainder is ≥ 3 chars
  */
