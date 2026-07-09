@@ -446,9 +446,15 @@ These semantics are deliberate and documented — do not add cleanup without an 
 
 ### Re-rank emits `ranking_move`, never `ranking_remove` + `ranking_add`
 
-A re-rank (changing an existing item's tier or position) MUST emit a single `ranking_move` event with metadata `{notes?, year?}` (never `watched_with_user_ids` — the move sites do not pass it; consistent with the existing `ranking_move` sites in the `activity_events` table above). It must never emit `ranking_remove` followed by `ranking_add` — that double-emission miscounts milestones, misrepresents the feed, and was the pre-C4 bug (B3). This matches the TV/book cross-tier drop behavior that was already correct before C4.
+A web movie re-rank through the ceremony flow MUST emit a single `ranking_move` event with metadata `{notes?, year?}` (never `watched_with_user_ids` — the move sites do not pass it; consistent with the existing `ranking_move` sites in the `activity_events` table above). It must never emit `ranking_remove` followed by `ranking_add` — that double-emission miscounts milestones, misrepresents the feed, and was the pre-C4 bug (B3).
 
 A same-tier reorder with no actual position change must emit NO event (B1 no-op suppression).
+
+**Known deviations (ledgered):** Three live paths do not yet satisfy the MUST above; all are deliberately deferred and tracked in `docs/plans/2026-07-07-ios-parity-ledger.md`:
+
+1. **Web movie drag-migration** still emits `ranking_add` (the drag path was not touched in B3; Q2 standardization deferred).
+2. **Web TV/book re-rank** still emits `ranking_remove` + `ranking_add` (delete-first flow; needs the B3 treatment in a later cycle, deferred).
+3. **iOS ceremony re-rank** (upsert path shipped in B5): when the new tier differs, only the target tier is spliced/compacted — the source tier keeps a gap until its next write (self-heals) — and the emission is `ranking_add` rather than `ranking_move`. Fix planned in the iOS management-UI sub-plan.
 
 ## watchlist_items (+ tv/book variants) (since C3 web fixes, branch `fix/c3-watchlist-discover-web-blocking`)
 
