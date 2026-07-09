@@ -30,7 +30,17 @@ import SwiftUI
 ///     convention) — a failed search yields an empty result set in `.search`
 ///     mode, a failed list flips `loadFailed`.
 ///
-/// Header last reviewed: 2026-07-07
+///  4. DEBOUNCE. `search(query:)` is cancellation-debounced (`searchTask` +
+///     `Task.sleep(debounceNanos)`, default 300 ms — injectable for tests): a
+///     keystroke burst fires the RPC ONCE with the LAST query; clearing to
+///     empty cancels + returns to `.list` IMMEDIATELY (no debounce on clear).
+///     A superseded task cancelled MID-RPC surfaces cancellation as a THROWN
+///     error (supabase-swift's `Task.checkCancellation()` → `CancellationError`,
+///     URLSession → `URLError(.cancelled)`), so `performSearch`'s catch checks
+///     for cancellation and returns WITHOUT mutating — a late-landing throw
+///     must never blank a newer task's results.
+///
+/// Header last reviewed: 2026-07-09
 @MainActor
 public final class JournalListModel: ObservableObject {
 
@@ -194,15 +204,31 @@ public final class JournalListModel: ObservableObject {
 
     /// The actual RPC + result population (unchanged semantics): enters `.search`
     /// mode, runs the search, and refreshes liked-state over the result ids. A
-    /// failure yields empty results in `.search` mode (feed convention).
+    /// failure yields empty results in `.search` mode (feed convention) — but a
+    /// CANCELLED task returns without mutating anything, because a newer task
+    /// owns the state now.
     private func performSearch(trimmed: String) async {
+        // Superseded between the debounce guard and this actor hop — bail
+        // before even flipping mode.
+        guard !Task.isCancelled else { return }
         mode = .search
         do {
             let rows = try await searchIO(trimmed)
             guard !Task.isCancelled else { return }
             searchResults = rows
             await refreshLikedState(for: rows.map(\.id))
+        } catch is CancellationError {
+            // supabase-swift surfaces mid-RPC cancellation as a THROWN
+            // CancellationError (PostgrestBuilder's `try Task.checkCancellation()`),
+            // so a superseded task lands HERE, not in the guarded success path —
+            // and possibly LATE, after the newer task already populated. Never
+            // blank the newer results.
+            return
         } catch {
+            // URLSession-style cancellation surfaces as URLError(.cancelled)
+            // rather than CancellationError; `Task.isCancelled` covers that
+            // (and any other error thrown from an already-superseded task).
+            guard !Task.isCancelled else { return }
             searchResults = []
         }
     }

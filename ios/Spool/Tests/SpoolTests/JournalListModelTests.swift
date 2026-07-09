@@ -170,6 +170,9 @@ final class JournalListModelTests: XCTestCase {
             listOwnEntries: { [self.row(id: self.e1, title: "A")] },
             search: { _ in [self.searchRow(id: self.e2, title: "Portrait")] }
         )
+        // Collapse the debounce for speed. The default-300ms window keeps one
+        // live canary in testNonEmptyQuerySwitchesToSearchModeWithSearchRows.
+        model.debounceNanos = 1_000_000
         await model.load()
         await model.search(query: "portrait")
         XCTAssertEqual(model.mode, .search)
@@ -184,6 +187,8 @@ final class JournalListModelTests: XCTestCase {
     func testSearchCatchesFailureToEmptyResultsInSearchMode() async {
         struct Boom: Error {}
         let model = makeModel(search: { _ in throw Boom() })
+        // Collapse the debounce for speed (canary note above).
+        model.debounceNanos = 1_000_000
 
         await model.search(query: "x")
 
@@ -355,5 +360,61 @@ final class JournalListModelTests: XCTestCase {
 
         XCTAssertEqual(model.mode, .search)
         XCTAssertEqual(model.searchResults.map(\.id), [e2])
+    }
+
+    /// A lock-guarded flag for coordinating the fake RPC (off-actor) with the
+    /// MainActor test body.
+    private final class Flag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        func set() { lock.lock(); value = true; lock.unlock() }
+        var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    /// A task cancelled MID-RPC must not clobber a newer task's results.
+    /// Production `searchIO` (supabase-swift / URLSession) surfaces cancellation
+    /// as a THROWN error (`PostgrestBuilder`'s `try Task.checkCancellation()` →
+    /// `CancellationError`; URLSession → `URLError(.cancelled)`), so the
+    /// superseded task lands in `performSearch`'s CATCH — and that throw can
+    /// arrive LATE, after the newer search already populated. The catch must
+    /// return without blanking `searchResults`.
+    ///
+    /// Deterministic late-throw choreography: the "old" RPC holds its
+    /// CancellationError until the test releases it — strictly AFTER the "new"
+    /// search has fully populated.
+    func testCancelledMidRpcThrowDoesNotClobberNewerResults() async {
+        let oldInFlight = Flag()
+        let releaseOldThrow = Flag()
+        let model = makeModel(
+            search: { q in
+                if q == "old" {
+                    oldInFlight.set()
+                    // Hold the cancellation throw until released (Task.yield
+                    // never throws, so this loop survives being cancelled).
+                    while !releaseOldThrow.isSet { await Task.yield() }
+                    throw CancellationError()
+                }
+                return [self.searchRow(id: self.e2, title: "New")]
+            }
+        )
+        model.debounceNanos = 1_000_000   // 1 ms
+
+        // Get "old" genuinely in flight (past the debounce, inside the RPC).
+        let oldTask = Task { await model.search(query: "old") }
+        while !oldInFlight.isSet { await Task.yield() }
+
+        // Supersede it. This cancels the old task mid-RPC and fully populates
+        // the new results before returning.
+        await model.search(query: "new")
+        XCTAssertEqual(model.searchResults.map(\.id), [e2])
+
+        // NOW let the old RPC surface its cancellation — strictly after the
+        // new results landed (URLSession-style late throw).
+        releaseOldThrow.set()
+        _ = await oldTask.value
+
+        XCTAssertEqual(model.mode, .search)
+        XCTAssertEqual(model.searchResults.map(\.id), [e2],
+                       "a superseded task's late cancellation throw must not blank the newer results")
     }
 }
