@@ -254,6 +254,11 @@ const RankingAppPage = () => {
   const [activeBracket, setActiveBracket] = useState<Bracket | 'all'>('all');
   const [activeGenre, setActiveGenre] = useState<string | null>(null);
   const [migrationState, setMigrationState] = useState<{ item: RankedItem, targetTier: Tier } | null>(null);
+  // B3: the RAW (unlocalized) source item of an in-progress re-rank. Non-null ⇒
+  // ceremony completion is a non-destructive move (upsert replaces the existing
+  // (user_id,tmdb_id) row; source tier compacted only if the tier changed) that
+  // emits a single `ranking_move`, never remove+add. Cleared on completion/close.
+  const [rerankState, setRerankState] = useState<RankedItem | null>(null);
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | TMDBMovie | RankedItem | null>(null);
   const [preselectedTVItem, setPreselectedTVItem] = useState<RankedItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -475,7 +480,12 @@ const RankingAppPage = () => {
     }
   };
 
-  const addItem = async (newItem: RankedItem): Promise<boolean> => {
+  const addItem = async (
+    newItem: RankedItem,
+    // B3: a re-rank of an existing row is a MOVE, not a fresh add — the caller
+    // passes 'ranking_move' so completion never emits remove+add.
+    eventType: 'ranking_add' | 'ranking_move' = 'ranking_add',
+  ): Promise<boolean> => {
     if (!user) return false;
 
     let updatedTierList: RankedItem[] = [];
@@ -546,7 +556,7 @@ const RankingAppPage = () => {
         year: newItem.year,
         watchedWithUserIds: newItem.watchedWithUserIds,
       },
-      'ranking_add',
+      eventType,
     );
 
     // Generate ticket stub (fire-and-forget)
@@ -1337,13 +1347,22 @@ const RankingAppPage = () => {
 
   const handleAddItem = async (newItem: RankedItem) => {
     const wasMigration = !!migrationState;
-    const sourceTier = migrationState ? migrationState.item.tier : null;
-    const saveSucceeded = await addItem(newItem);
-    // B2: a cross-tier migration must ALSO compact the SOURCE tier — the moved
-    // item's old tier keeps a gap otherwise (feed score RPC then emits
-    // out-of-range scores). addItem already handled the target tier; here we
-    // rewrite the source tier's membership minus the departed id. Skip when the
-    // move stayed within the same tier (that's a reorder, target == source).
+    // B3: a re-rank (rerankState set) is non-destructive — the row already
+    // exists, so completion is a MOVE. Its source tier is the raw item's old
+    // tier; the completion upsert replaces the (user_id,tmdb_id) row in place.
+    const isRerank = !!rerankState;
+    const sourceTier = migrationState
+      ? migrationState.item.tier
+      : rerankState
+      ? rerankState.tier
+      : null;
+    const saveSucceeded = await addItem(newItem, isRerank ? 'ranking_move' : 'ranking_add');
+    // B2/B3: a cross-tier move (migration OR re-rank into a different tier) must
+    // ALSO compact the SOURCE tier — the moved item's old tier keeps a gap
+    // otherwise (feed score RPC then emits out-of-range scores). addItem already
+    // handled the target tier; here we rewrite the source tier's membership minus
+    // the departed id. Skip when old tier == new tier (a same-tier reorder — the
+    // target compaction already covered it).
     if (saveSucceeded && sourceTier && sourceTier !== newItem.tier) {
       const sourceOrder = tierOrderAfterRemoval(tierIdOrder(items, sourceTier), newItem.id);
       if (sourceOrder.length > 0) {
@@ -1354,15 +1373,22 @@ const RankingAppPage = () => {
         }
       }
     }
-    if (preselectedForRank) {
+    // A re-rank targets an already-ranked item, never a bookmark — don't touch
+    // the watchlist for it (the preselected item is the ranked row itself).
+    if (preselectedForRank && !isRerank) {
       // Delete the bookmark only when the rank actually saved (B5 data-loss fix).
       if (shouldRemoveBookmarkAfterRank(saveSucceeded)) {
         await removeFromWatchlist(preselectedForRank.id);
       }
+    }
+    if (preselectedForRank) {
       setPreselectedForRank(null);
     }
     if (migrationState) {
       setMigrationState(null);
+    }
+    if (rerankState) {
+      setRerankState(null);
     }
     setToastMessage(
       wasMigration
@@ -1677,8 +1703,15 @@ const RankingAppPage = () => {
                     setPreselectedTVItem(item);
                     setIsTVModalOpen(true);
                   } else {
-                    removeItem(item.id);
-                    setPreselectedForRank(item);
+                    // B3: non-destructive re-rank — do NOT delete first. The
+                    // ceremony completion replaces the (user_id,tmdb_id) row and
+                    // compacts both tiers; cancel = zero persistence.
+                    // B4 title-locale contract: TierRow passes LOCALIZED items,
+                    // so resolve the RAW item from `items` by id — the persisted
+                    // title must be the TMDB default-locale title, never the zh one.
+                    const rawItem = items.find((i) => i.id === item.id) ?? item;
+                    setRerankState(rawItem);
+                    setPreselectedForRank(rawItem);
                     setIsModalOpen(true);
                   }
                 }}
@@ -1723,9 +1756,12 @@ const RankingAppPage = () => {
       <AddMediaModal
         isOpen={isModalOpen}
         onClose={() => {
+          // B3: closing mid-re-rank persists NOTHING (no delete happened up
+          // front) — just clear the in-flight state.
           setIsModalOpen(false);
           setPreselectedForRank(null);
           setMigrationState(null);
+          setRerankState(null);
         }}
         onAdd={handleAddItem}
         onSaveForLater={addToWatchlist}
@@ -1811,8 +1847,13 @@ const RankingAppPage = () => {
               const newParams = new URLSearchParams(searchParams);
               newParams.delete('movieId');
               setSearchParams(newParams);
-              removeItem(item.id);
-              setPreselectedForRank(item);
+              // B3: non-destructive re-rank — the ceremony completion replaces
+              // the (user_id,tmdb_id) row and compacts both tiers; no delete-first.
+              // B4 title-locale contract: resolve the RAW item from `items` by id
+              // so the persisted title is the TMDB default-locale title.
+              const rawItem = items.find((i) => i.id === item.id) ?? item;
+              setRerankState(rawItem);
+              setPreselectedForRank(rawItem);
               setIsModalOpen(true);
             }}
           />
