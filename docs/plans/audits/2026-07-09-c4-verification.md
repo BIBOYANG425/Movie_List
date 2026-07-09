@@ -12,8 +12,20 @@ sets `local role authenticated` + a `request.jwt.claims` sub so the RPC runs und
 `security invoker` with the caller's RLS, exactly as the app calls it.
 
 The probes call the RPC as `select set_tier_order('movie', 'B', array[...]);` — the
-`p_media` branch is switchable to `'tv'`/`'book'` to exercise the other two tables
-(identical shape).
+`p_media` branch is switchable to `'tv'`/`'book'` to exercise the other two tables.
+The RPC call shape is identical, but the fixture INSERTs are NOT: `tv_rankings`
+has extra NOT NULL columns (`show_tmdb_id integer`, `season_number integer`), so a
+movie-shaped INSERT fails there. tv-shaped fixture variant:
+
+```sql
+insert into tv_rankings
+  (user_id, tmdb_id, show_tmdb_id, season_number, tier, rank_position, title)
+values
+  ('<OWNER>', 'tv_1_s1', 1, 1, 'B', 0, 'Probe Show');
+```
+
+`book_rankings` has no extra NOT NULL columns — the movie-shaped INSERT works as-is
+(use `ol_probe_a`-style tmdb_ids for realism).
 
 ---
 
@@ -226,6 +238,37 @@ begin;
 rollback;
 ```
 
+## Probe 7 — duplicate ids dedup on first occurrence
+
+A membership array that lists the same id twice (realistic: iOS re-rank splices an
+id into an array that already contains it) must rank the id at its FIRST occurrence
+and ignore the repeat — `['a','a','b']` behaves exactly like `['a','b']`. Without
+the dedup, one row would get two candidate positions and UPDATE..FROM would pick
+one arbitrarily, silently gapping the tier.
+
+```sql
+begin;
+  set local role authenticated;
+  set local request.jwt.claims to '{"sub":"<OWNER>"}';
+
+  insert into user_rankings (user_id, tmdb_id, tier, rank_position, title) values
+    ('<OWNER>', 'probe_a', 'B', 0, 'A'),
+    ('<OWNER>', 'probe_b', 'B', 1, 'B');
+
+  select set_tier_order('movie', 'B', array['probe_a','probe_a','probe_b']);
+  -- EXPECT: 2  (two rows updated — the duplicate is not a third update)
+
+  select tmdb_id, rank_position
+  from user_rankings
+  where user_id = '<OWNER>' and tmdb_id in ('probe_a','probe_b')
+  order by rank_position;
+  -- EXPECT exactly:
+  --   probe_a | 0
+  --   probe_b | 1
+  -- (probe_a ranked at its FIRST occurrence; contiguous 0..1, no gap at 2)
+rollback;
+```
+
 ---
 
 ## Corruption-detection probe (B5 baseline — REPORT counts, do NOT auto-run repair)
@@ -323,4 +366,5 @@ management UI ships.
 | 6 unknown p_media | ERROR SQLSTATE `22023` |
 | 6 (bonus) empty/NULL array | returns `0`; nothing written |
 | 6b invalid tier | ERROR SQLSTATE `23514` (table CHECK, no RPC guard) |
+| 7 duplicate ids | returns `2`; `['a','a','b']` → a=0, b=1 (first occurrence wins, no gap) |
 | corruption-detection | `user_rankings` corrupt_tiers `> 0` per B5 — report the number |

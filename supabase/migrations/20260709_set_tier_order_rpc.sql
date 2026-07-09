@@ -35,6 +35,15 @@
 -- pass a stale membership snapshot that names a since-deleted id and the result is
 -- still gap-free.
 --
+-- ── Duplicate ids: deduped on FIRST occurrence ───────────────────────────────
+-- If p_tmdb_ids lists the same id more than once (realistic input: an iOS
+-- same-tier re-rank splices an id into a membership array that already contains
+-- it — C4 Task 4), the id is ranked at its FIRST occurrence and later
+-- occurrences are ignored: ['a','a','b'] behaves exactly like ['a','b']
+-- (a -> 0, b -> 1, returns 2). Without the dedup (the min(ord) GROUP BY in each
+-- branch), a doubled id would yield two candidate positions for one row and
+-- UPDATE..FROM would pick one arbitrarily — silently gapping the tier.
+--
 -- ── Why UPDATE-only (resurrect-proof — fixes B6) ─────────────────────────────
 -- This function performs a single UPDATE per media branch and is STRUCTURALLY
 -- INCAPABLE of INSERT: it can only move rows that already exist. The old client
@@ -98,14 +107,19 @@ begin
 
   if p_media = 'movie' then
     with ordered as (
-      -- Join the requested order to the caller's EXISTING rows only. Ids that
-      -- match no row drop out here, so the row_number() over the surviving set
-      -- compacts to a contiguous 0..k-1 (delete-aware).
+      -- Dedup repeated ids on their FIRST occurrence (min(ord)), then join the
+      -- requested order to the caller's EXISTING rows only. Ids that match no
+      -- row drop out here, so the row_number() over the surviving set compacts
+      -- to a contiguous 0..k-1 (delete-aware, duplicate-safe).
       select r.id,
-             (row_number() over (order by u.ord) - 1) as new_pos
-        from unnest(p_tmdb_ids) with ordinality as u(tmdb_id, ord)
+             (row_number() over (order by d.ord) - 1) as new_pos
+        from (
+          select u.tmdb_id, min(u.ord) as ord
+            from unnest(p_tmdb_ids) with ordinality as u(tmdb_id, ord)
+           group by u.tmdb_id
+        ) d
         join user_rankings r
-          on r.tmdb_id = u.tmdb_id
+          on r.tmdb_id = d.tmdb_id
          and r.user_id = auth.uid()
     )
     update user_rankings r
@@ -119,10 +133,14 @@ begin
   elsif p_media = 'tv' then
     with ordered as (
       select r.id,
-             (row_number() over (order by u.ord) - 1) as new_pos
-        from unnest(p_tmdb_ids) with ordinality as u(tmdb_id, ord)
+             (row_number() over (order by d.ord) - 1) as new_pos
+        from (
+          select u.tmdb_id, min(u.ord) as ord
+            from unnest(p_tmdb_ids) with ordinality as u(tmdb_id, ord)
+           group by u.tmdb_id
+        ) d
         join tv_rankings r
-          on r.tmdb_id = u.tmdb_id
+          on r.tmdb_id = d.tmdb_id
          and r.user_id = auth.uid()
     )
     update tv_rankings r
@@ -136,10 +154,14 @@ begin
   elsif p_media = 'book' then
     with ordered as (
       select r.id,
-             (row_number() over (order by u.ord) - 1) as new_pos
-        from unnest(p_tmdb_ids) with ordinality as u(tmdb_id, ord)
+             (row_number() over (order by d.ord) - 1) as new_pos
+        from (
+          select u.tmdb_id, min(u.ord) as ord
+            from unnest(p_tmdb_ids) with ordinality as u(tmdb_id, ord)
+           group by u.tmdb_id
+        ) d
         join book_rankings r
-          on r.tmdb_id = u.tmdb_id
+          on r.tmdb_id = d.tmdb_id
          and r.user_id = auth.uid()
     )
     update book_rankings r
@@ -160,3 +182,9 @@ end;
 $$;
 
 grant execute on function public.set_tier_order(text, text, text[]) to authenticated;
+
+-- Hygiene: functions are executable by PUBLIC by default; this is a write
+-- primitive, so restrict execution to authenticated only. (Consequence for
+-- anon is nil anyway — auth.uid() is NULL so the join matches nothing — but
+-- prod primitives should not be PUBLIC-executable on posture alone.)
+revoke all on function public.set_tier_order(text, text, text[]) from public;
