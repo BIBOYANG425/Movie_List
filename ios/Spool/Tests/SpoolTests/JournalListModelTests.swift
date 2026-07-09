@@ -170,6 +170,9 @@ final class JournalListModelTests: XCTestCase {
             listOwnEntries: { [self.row(id: self.e1, title: "A")] },
             search: { _ in [self.searchRow(id: self.e2, title: "Portrait")] }
         )
+        // Collapse the debounce for speed. The default-300ms window keeps one
+        // live canary in testNonEmptyQuerySwitchesToSearchModeWithSearchRows.
+        model.debounceNanos = 1_000_000
         await model.load()
         await model.search(query: "portrait")
         XCTAssertEqual(model.mode, .search)
@@ -184,6 +187,8 @@ final class JournalListModelTests: XCTestCase {
     func testSearchCatchesFailureToEmptyResultsInSearchMode() async {
         struct Boom: Error {}
         let model = makeModel(search: { _ in throw Boom() })
+        // Collapse the debounce for speed (canary note above).
+        model.debounceNanos = 1_000_000
 
         await model.search(query: "x")
 
@@ -268,5 +273,148 @@ final class JournalListModelTests: XCTestCase {
         XCTAssertFalse(model.likedIDs.contains(e1))
         XCTAssertEqual(model.likeCount(for: e1), 4)
         XCTAssertEqual(toggleArgs.first?.1, true)   // pre-toggle state = liked
+    }
+
+    // MARK: - 5. Debounce (cancellation-based)
+
+    /// Build a debounce-friendly model with a tiny `debounceNanos` so the
+    /// 300 ms production window collapses to ~1 ms in tests. Records every
+    /// query the RPC actually fired for.
+    private func makeDebounceModel(
+        debounceNanos: UInt64 = 1_000_000,   // 1 ms
+        onSearch: @escaping (String) -> Void = { _ in },
+        searchRows: @escaping (String) -> [JournalSearchRow] = { _ in [] }
+    ) -> JournalListModel {
+        let model = makeModel(
+            listOwnEntries: { [self.row(id: self.e1, title: "A")] },
+            search: { q in
+                onSearch(q)
+                return searchRows(q)
+            }
+        )
+        model.debounceNanos = debounceNanos
+        return model
+    }
+
+    /// Rapid successive `search` calls (keystrokes) fire the RPC EXACTLY ONCE,
+    /// carrying the LAST query — the earlier tasks are cancelled during their
+    /// debounce sleep before they can reach the RPC.
+    func testRapidSearchesFireRpcOnceWithLastQuery() async {
+        var fired: [String] = []
+        // A wide debounce so every keystroke is still asleep when the next one
+        // arrives and cancels it — only the last survives to fire the RPC.
+        let model = makeDebounceModel(
+            debounceNanos: 50_000_000,   // 50 ms
+            onSearch: { q in fired.append(q) }
+        )
+
+        // Fire four keystrokes in order. Each is a tracked task; between them we
+        // `Task.yield()` so the call's synchronous prefix (cancel prior +
+        // register the new `searchTask`, then suspend into the debounce sleep)
+        // runs BEFORE the next keystroke cancels it. This models real typing
+        // deterministically without relying on `async let` scheduling order.
+        var pending: [Task<Void, Never>] = []
+        for q in ["p", "po", "por", "port"] {
+            pending.append(Task { await model.search(query: q) })
+            await Task.yield()
+        }
+        for t in pending { _ = await t.value }
+
+        XCTAssertEqual(fired, ["port"], "only the last query should reach the RPC")
+        XCTAssertEqual(model.mode, .search)
+    }
+
+    /// Clearing the field DURING the debounce window cancels the pending search
+    /// (zero RPC calls) and returns to list mode immediately.
+    func testClearDuringDebounceCancelsAndReturnsToListMode() async {
+        var fired: [String] = []
+        let model = makeDebounceModel(
+            debounceNanos: 50_000_000,   // 50 ms — long enough to interrupt
+            onSearch: { q in fired.append(q) }
+        )
+        await model.load()   // establishes list-mode entries
+
+        // Start a search in a detached-but-tracked task, then yield so its
+        // synchronous prefix registers `searchTask` (and begins the debounce
+        // sleep) BEFORE we clear. This makes the interleaving deterministic:
+        // the pending "portrait" task is asleep when the clear cancels it.
+        let pending = Task { await model.search(query: "portrait") }
+        await Task.yield()
+        await model.search(query: "")   // clear cancels the pending task
+        _ = await pending.value
+
+        XCTAssertTrue(fired.isEmpty, "a cleared query must never reach the RPC")
+        XCTAssertEqual(model.mode, .list)
+        XCTAssertEqual(model.entries.map(\.id), [e1], "list is untouched")
+    }
+
+    /// A search that is allowed to complete (no cancelling keystroke) still
+    /// populates `searchResults` and lands in `.search` mode.
+    func testCompletedDebouncedSearchPopulatesResults() async {
+        let model = makeDebounceModel(
+            debounceNanos: 1_000_000,   // 1 ms
+            searchRows: { _ in [self.searchRow(id: self.e2, title: "Portrait")] }
+        )
+
+        await model.search(query: "portrait")
+
+        XCTAssertEqual(model.mode, .search)
+        XCTAssertEqual(model.searchResults.map(\.id), [e2])
+    }
+
+    /// A lock-guarded flag for coordinating the fake RPC (off-actor) with the
+    /// MainActor test body.
+    private final class Flag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        func set() { lock.lock(); value = true; lock.unlock() }
+        var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    /// A task cancelled MID-RPC must not clobber a newer task's results.
+    /// Production `searchIO` (supabase-swift / URLSession) surfaces cancellation
+    /// as a THROWN error (`PostgrestBuilder`'s `try Task.checkCancellation()` →
+    /// `CancellationError`; URLSession → `URLError(.cancelled)`), so the
+    /// superseded task lands in `performSearch`'s CATCH — and that throw can
+    /// arrive LATE, after the newer search already populated. The catch must
+    /// return without blanking `searchResults`.
+    ///
+    /// Deterministic late-throw choreography: the "old" RPC holds its
+    /// CancellationError until the test releases it — strictly AFTER the "new"
+    /// search has fully populated.
+    func testCancelledMidRpcThrowDoesNotClobberNewerResults() async {
+        let oldInFlight = Flag()
+        let releaseOldThrow = Flag()
+        let model = makeModel(
+            search: { q in
+                if q == "old" {
+                    oldInFlight.set()
+                    // Hold the cancellation throw until released (Task.yield
+                    // never throws, so this loop survives being cancelled).
+                    while !releaseOldThrow.isSet { await Task.yield() }
+                    throw CancellationError()
+                }
+                return [self.searchRow(id: self.e2, title: "New")]
+            }
+        )
+        model.debounceNanos = 1_000_000   // 1 ms
+
+        // Get "old" genuinely in flight (past the debounce, inside the RPC).
+        let oldTask = Task { await model.search(query: "old") }
+        while !oldInFlight.isSet { await Task.yield() }
+
+        // Supersede it. This cancels the old task mid-RPC and fully populates
+        // the new results before returning.
+        await model.search(query: "new")
+        XCTAssertEqual(model.searchResults.map(\.id), [e2])
+
+        // NOW let the old RPC surface its cancellation — strictly after the
+        // new results landed (URLSession-style late throw).
+        releaseOldThrow.set()
+        _ = await oldTask.value
+
+        XCTAssertEqual(model.mode, .search)
+        XCTAssertEqual(model.searchResults.map(\.id), [e2],
+                       "a superseded task's late cancellation throw must not blank the newer results")
     }
 }
