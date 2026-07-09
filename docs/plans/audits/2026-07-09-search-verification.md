@@ -51,19 +51,24 @@ limit 1;
 
 ## (1) EN word still matches via tsvector — expect ≥ 1
 
-Confirms the primary English full-text path is untouched. Insert a fixture whose
-`review_text` contains a normal English word, search that word, expect the row.
+Confirms the primary English full-text path is untouched. The fixture word and
+query are chosen so that the tsvector path is the ONLY way this can match: the
+fixture `review_text` contains "running" but the query is "runs". The English
+tsvector stems both to the lexeme "run" and they match. ILIKE '%runs%' does NOT
+substring-match "running" (different string), so this probe isolates the tsvector
+branch exclusively.
 
 ```sql
 begin;
   insert into journal_entries (user_id, tmdb_id, title, rating_tier, review_text)
   values ('<OWNER>', 'tmdb_verify_en', 'Verify EN', 'S',
-          'An absolutely stunning cinematography masterpiece.');
+          'She was running through the rain.');
 
   select count(*) as hits
-  from search_journal_entries('cinematography', '<OWNER>')
+  from search_journal_entries('runs', '<OWNER>')
   where tmdb_id = 'tmdb_verify_en';
-  -- EXPECT: hits >= 1  (tsvector stems 'cinematography' -> matches)
+  -- EXPECT: hits >= 1  (tsvector stems 'running'/'runs' -> same lexeme 'run';
+  --         ILIKE '%runs%' does NOT match 'running', so only tsvector can hit)
 rollback;
 ```
 
@@ -79,12 +84,13 @@ begin;
   values ('<OWNER>', 'tmdb_verify_cjk', '验证测试', 'A',
           '这部电影让我非常难过但也很感动');
 
-  -- Substring search on a character embedded mid-string (not at a token boundary).
+  -- Two-character substring embedded mid-string (not at a token boundary).
   select count(*) as hits
   from search_journal_entries('难过', '<OWNER>')
   where tmdb_id = 'tmdb_verify_cjk';
   -- EXPECT: hits >= 1  (pre-migration this was 0 — English tsvector cannot
-  --         segment CJK; the ILIKE '%难过%' branch now matches)
+  --         segment CJK; the ILIKE '%难过%' branch now matches the two-char
+  --         substring '难过' inside the unspaced Han run)
 rollback;
 ```
 
@@ -133,16 +139,8 @@ rollback;
 The wire contract is frozen. Assert the function still returns exactly the 23-column
 table with the same names/types and no `personal_takeaway` / `search_vector`.
 
-```sql
-select count(*) as col_count
-from information_schema.columns c
-join information_schema.routines r
-  on r.specific_name = c.table_name  -- not used; see the pg_get_function_result path below
-where false;
-```
-
-Preferred (robust) form — read the declared OUT columns straight from the RPC's
-result signature:
+Robust form — read the declared OUT columns straight from the RPC's result
+signature:
 
 ```sql
 -- Column count (EXPECT: 23) and the ordered name/type list.

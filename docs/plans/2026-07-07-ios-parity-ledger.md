@@ -362,6 +362,12 @@ rank-from-watchlist with the CORRECTED B5 semantics (delete only on confirmed
 save), `SuggestionsClient` (`functions.invoke('suggestions')` per §2), and fixing
 `TasteRepository.getRecommendationsForFriend` per the B3 adjudication (Q2).
 
+### Search gaps mini-cycle (2026-07-09)
+
+- CJK and fuzzy matching via trigram fallback (pg_trgm ILIKE over `title` and `review_text`; `similarity()` tie-break) landed in `supabase/migrations/20260709_journal_search_cjk_fuzzy.sql`; iOS debounce pending controller apply.
+- Semantic / embedding search was explicitly considered and NOT chosen (owner decision); do not re-propose without a new owner trigger.
+- Migration pending controller apply (no prod deploy yet); probes in `docs/plans/audits/2026-07-09-search-verification.md`.
+
 ## C3 migration runbook (owner applies)
 
 Same precedent as the C1/C2 runbooks: agent prod-DDL is permission-gated, so the

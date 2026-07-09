@@ -277,8 +277,15 @@ they simply see the rows RLS admits.
 23-column TABLE (all contract columns EXCEPT `personal_takeaway` and
 `search_vector`). `target_user_id` is a narrowing FILTER, never a trust
 boundary: the caller's RLS decides which rows come back (by construction —
-the body is a plain select under invoker rights). `plainto_tsquery('english')`,
-`ts_rank` desc, LIMIT 50. Wire shape helper: `buildSearchRpcArgs`.
+the body is a plain select under invoker rights). Since 2026-07-09 the WHERE
+is tsvector-match OR trigram-backed ILIKE substring over `title` and
+`review_text` ONLY — CJK characters and partial-word queries now match;
+`personal_takeaway` remains unmatchable and unreturned. Ranking = `ts_rank`
+desc then trigram `similarity()` desc. Wire contract unchanged: same
+signature, same 23 returned columns, same LIMIT 50. Note: user-supplied
+`%` and `_` characters act as ILIKE wildcards and over-match, but results
+remain bounded by user scoping, RLS, and LIMIT 50. Wire shape helper:
+`buildSearchRpcArgs`.
 
 ### Likes — `journal_entry_likes` + trigger-maintained count
 

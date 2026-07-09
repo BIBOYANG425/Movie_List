@@ -45,6 +45,9 @@
 -- branches to FALSE so an empty/whitespace query does not ILIKE '%%' (which
 -- would match every row) — it falls through to the tsvector branch (also empty),
 -- yielding zero rows, matching the pre-migration behavior for an empty query.
+-- WILDCARD PASSTHROUGH: user-supplied `%` or `_` characters in search_query are
+-- passed verbatim into the ILIKE predicate and act as ILIKE wildcards (over-match
+-- only); results remain bounded by user scoping, RLS, and LIMIT 50.
 --
 -- ============================================================================
 -- TAKEAWAY-EXCLUSION INVARIANT (do not regress the C2 B5 privacy leak)
