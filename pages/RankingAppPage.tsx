@@ -554,7 +554,9 @@ const RankingAppPage = () => {
         posterUrl: newItem.posterUrl,
         notes: newItem.notes,
         year: newItem.year,
-        watchedWithUserIds: newItem.watchedWithUserIds,
+        // Contract (shared-payloads.md line ~75): ranking_move never carries
+        // watched_with_user_ids — omit it for move events, keep for add events.
+        watchedWithUserIds: eventType === 'ranking_move' ? undefined : newItem.watchedWithUserIds,
       },
       eventType,
     );
@@ -1350,11 +1352,14 @@ const RankingAppPage = () => {
     // B3: a re-rank (rerankState set) is non-destructive — the row already
     // exists, so completion is a MOVE. Its source tier is the raw item's old
     // tier; the completion upsert replaces the (user_id,tmdb_id) row in place.
-    const isRerank = !!rerankState;
+    // B3 id-guard: only treat as a re-rank when the user actually confirmed the
+    // same movie that was pre-selected — if they navigated back and chose a
+    // different movie, that movie gets a genuine first add (ranking_add).
+    const isRerank = !!rerankState && rerankState.id === newItem.id;
     const sourceTier = migrationState
       ? migrationState.item.tier
-      : rerankState
-      ? rerankState.tier
+      : isRerank
+      ? rerankState!.tier
       : null;
     const saveSucceeded = await addItem(newItem, isRerank ? 'ranking_move' : 'ranking_add');
     // B2/B3: a cross-tier move (migration OR re-rank into a different tier) must
