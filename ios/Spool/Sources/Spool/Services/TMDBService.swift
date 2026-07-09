@@ -103,36 +103,161 @@ public enum TMDBService {
 
     /// Returns at most 12 posters-only results, newest-first by TMDB's default
     /// relevance ordering. Swallow all errors into `[]` — search is best-effort.
+    ///
+    /// Zero-result typo-retry backoff (mirror of web `searchMovies` in
+    /// `services/tmdbService.ts`): when the primary query maps to no results, we
+    /// retry with the cheap deterministic variants from `typoRetryVariants`,
+    /// cheapest-first, and take the first non-empty set. An HTTP-error (non-2xx)
+    /// response does NOT trigger or continue the variant loop — that distinguishes
+    /// a real zero-result from a 429/5xx/401 so we don't hammer TMDB. Between
+    /// variant requests we honor `Task` cancellation: debounced callers cancel
+    /// stale searches, and a cancelled search must not fire more requests.
     public static func searchMovies(query: String, timeout: TimeInterval = defaultTimeout) async -> [TMDBMovie] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let key = apiKey, !key.isEmpty, !trimmed.isEmpty else { return [] }
 
-        var comps = URLComponents(string: "\(base)/search/movie")!
-        comps.queryItems = [
-            URLQueryItem(name: "api_key", value: key),
-            URLQueryItem(name: "query", value: trimmed),
-            URLQueryItem(name: "language", value: locale()),
-            URLQueryItem(name: "page", value: "1"),
-            URLQueryItem(name: "include_adult", value: "false"),
-        ]
-        guard let url = comps.url else { return [] }
+        // One fetch+map for a single query term. Reused verbatim by the retry
+        // loop so retries share the exact request/mapping path. Returns `nil` on
+        // a non-ok HTTP response so the caller can distinguish a real zero-result
+        // from an HTTP error and skip the variant loop. Throws on transport
+        // errors / cancellation, which the caller swallows to `[]`.
+        func fetchAndMap(_ term: String) async throws -> [TMDBMovie]? {
+            var comps = URLComponents(string: "\(base)/search/movie")!
+            comps.queryItems = [
+                URLQueryItem(name: "api_key", value: key),
+                URLQueryItem(name: "query", value: term),
+                URLQueryItem(name: "language", value: locale()),
+                URLQueryItem(name: "page", value: "1"),
+                URLQueryItem(name: "include_adult", value: "false"),
+            ]
+            guard let url = comps.url else { return [] }
 
-        var req = URLRequest(url: url, timeoutInterval: timeout)
-        req.httpMethod = "GET"
+            var req = URLRequest(url: url, timeoutInterval: timeout)
+            req.httpMethod = "GET"
 
-        do {
             let (data, response) = try await URLSession.shared.data(for: req)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             let wrapper = try JSONDecoder().decode(TMDBSearchResponse.self, from: data)
             return wrapper.results.compactMap(mapResult).prefix(12).map { $0 }
+        }
+
+        do {
+            let primary = try await fetchAndMap(trimmed)
+            // nil means HTTP error — bail immediately, no variant loop.
+            guard let primary else { return [] }
+            if !primary.isEmpty { return primary }
+
+            // Zero-result path only: retry with cheap typo variants, first
+            // non-empty wins. A non-ok response during variants also stops the
+            // loop. Bail immediately if the search was cancelled while awaiting.
+            for variant in typoRetryVariants(query) {
+                try Task.checkCancellation()
+                let retry = try await fetchAndMap(variant)
+                if retry == nil { break }
+                if let retry, !retry.isEmpty { return retry }
+            }
+
+            return primary
         } catch {
             return []
         }
     }
 
+    // MARK: - Typo-retry variants
+
+    // Thresholds — kept 1:1 with web `services/searchVariants.ts`.
+    private static let minQueryLen = 4
+    private static let minChopTokenLen = 4
+    private static let minDropRemainderLen = 3
+    private static let maxVariants = 3
+
+    /// Build up to 3 deduped retry variants for `q`, cheapest-first, never
+    /// including the original normalized query. Pure port of web
+    /// `services/searchVariants.ts` `typoRetryVariants` — same rules/thresholds.
+    ///
+    /// TMDB search has no typo tolerance ("shawshenk" -> 0 results) but strong
+    /// prefix matching ("shawsh" -> hits). When a primary search returns nothing,
+    /// `searchMovies` retries with these cheap deterministic variants and takes
+    /// the first non-empty result set.
+    ///
+    /// Returns `[]` for queries that are too short (< 4 chars) or contain CJK
+    /// (TMDB handles CJK; chopping CJK characters is nonsense).
+    ///
+    /// Variant order:
+    ///   1. inner-whitespace collapse — only when the last token is a single stray char
+    ///   2. last-token trailing chop by 1 then 2 chars — while the chopped token stays >= 4 chars
+    ///   3. drop the last token entirely — only if >= 2 tokens and the remainder is >= 3 chars
+    static func typoRetryVariants(_ q: String) -> [String] {
+        // Trim + collapse any run of whitespace to a single space (web: `.trim().replace(/\s+/g, ' ')`).
+        let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+
+        if normalized.count < minQueryLen { return [] }
+        if containsCJK(normalized) { return [] }
+
+        var variants: [String] = []
+        var seen: Set<String> = [normalized]
+
+        func push(_ candidate: String) {
+            if variants.count >= maxVariants { return }
+            if candidate.isEmpty || seen.contains(candidate) { return }
+            seen.insert(candidate)
+            variants.append(candidate)
+        }
+
+        let tokens = normalized.split(separator: " ").map(String.init)
+
+        // 1. Inner-whitespace collapse for the fat-finger stray-space case
+        // (e.g. "matri x" -> "matrix"). Only when the last token is a single
+        // stray character; two legitimate words ("dark knigt") must NOT be mashed.
+        if tokens.count >= 2, tokens[tokens.count - 1].count == 1 {
+            push(normalized.replacingOccurrences(of: " ", with: ""))
+        }
+
+        // 2. Progressive trailing-char chop on the last token ("shawshenk" ->
+        // "shawshen" -> "shawshe"), stopping once the chopped token would fall
+        // below 4 chars.
+        let lastToken = tokens[tokens.count - 1]
+        let prefix = tokens.dropLast().joined(separator: " ")
+        for chop in 1...2 {
+            guard lastToken.count - chop >= minChopTokenLen else { break }
+            let chopped = String(lastToken.prefix(lastToken.count - chop))
+            push(prefix.isEmpty ? chopped : "\(prefix) \(chopped)")
+        }
+
+        // 3. Drop the last token entirely, only for multi-token queries whose
+        // remainder still carries enough signal (>= 3 chars).
+        if tokens.count >= 2, prefix.count >= minDropRemainderLen {
+            push(prefix)
+        }
+
+        return Array(variants.prefix(maxVariants))
+    }
+
+    /// Matches web regex `/[぀-ヿ㐀-鿿]/`: Hiragana/Katakana (U+3040–U+30FF) or
+    /// CJK Unified Ideographs (U+3400–U+9FFF).
+    private static func containsCJK(_ s: String) -> Bool {
+        for scalar in s.unicodeScalars {
+            let v = scalar.value
+            if (0x3040...0x30FF).contains(v) || (0x3400...0x9FFF).contains(v) {
+                return true
+            }
+        }
+        return false
+    }
+
     // MARK: private
 
-    private static func locale() -> String { "en-US" }
+    /// TMDB `language=` code following the user's device locale, mirroring web
+    /// `getTmdbLocale()` (`services/tmdbService.ts`) which maps the persisted
+    /// `spool_locale` preference: Chinese -> `zh-CN`, everything else -> `en-US`.
+    /// iOS has no in-app language toggle yet, so the device's preferred language
+    /// is the source of truth for zh/en. `en-US` stays the fallback.
+    private static func locale() -> String {
+        let code = Locale.preferredLanguages.first
+            ?? Locale.current.identifier
+        return code.lowercased().hasPrefix("zh") ? "zh-CN" : "en-US"
+    }
 
     private static func mapResult(_ raw: TMDBRaw) -> TMDBMovie? {
         guard let posterPath = raw.posterPath else { return nil }
