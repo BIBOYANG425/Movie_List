@@ -9,6 +9,7 @@
 import { ALL_TMDB_GENRES, ALL_TV_GENRES, DEFAULT_POOL_SLOTS, SMART_SUGGESTION_THRESHOLD, TIER_WEIGHTS } from '../constants';
 import { TasteProfile } from '../types';
 import { supabase } from '../lib/supabase';
+import { typoRetryVariants } from './searchVariants';
 
 export const TMDB_BASE = 'https://api.themoviedb.org/3';
 export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
@@ -854,10 +855,12 @@ export async function searchMovies(
 
   if (!apiKey || !query.trim()) return [];
 
-  try {
+  // One fetch+map for a single query term. Reused verbatim by the zero-result
+  // typo-retry loop below so retries share the exact same request/mapping path.
+  const fetchAndMap = async (term: string): Promise<TMDBMovie[]> => {
     const url = new URL(`${TMDB_BASE}/search/movie`);
     url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('query', query);
+    url.searchParams.set('query', term);
     url.searchParams.set('language', getTmdbLocale());
     url.searchParams.set('page', '1');
     url.searchParams.set('include_adult', 'false');
@@ -875,6 +878,19 @@ export async function searchMovies(
       .map(mapTmdbResult)
       .filter((m): m is TMDBMovie => m !== null)
       .slice(0, 12);
+  };
+
+  try {
+    const primary = await fetchAndMap(query);
+    if (primary.length > 0) return primary;
+
+    // Zero-result path only: retry with cheap typo variants, first non-empty wins.
+    for (const variant of typoRetryVariants(query)) {
+      const retry = await fetchAndMap(variant);
+      if (retry.length > 0) return retry;
+    }
+
+    return primary;
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       console.warn(`TMDB search timed out after ${timeoutMs}ms`);
@@ -1223,10 +1239,12 @@ export async function searchTVShows(
   const apiKey = import.meta.env.VITE_TMDB_API_KEY;
   if (!apiKey || !query.trim()) return [];
 
-  try {
+  // One fetch+map for a single query term. Reused verbatim by the zero-result
+  // typo-retry loop below so retries share the exact same request/mapping path.
+  const fetchAndMap = async (term: string): Promise<TMDBTVShow[]> => {
     const url = new URL(`${TMDB_BASE}/search/tv`);
     url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('query', query);
+    url.searchParams.set('query', term);
     url.searchParams.set('language', getTmdbLocale());
     url.searchParams.set('page', '1');
     url.searchParams.set('include_adult', 'false');
@@ -1253,6 +1271,19 @@ export async function searchTVShows(
         creators: [],
         voteAverage: typeof s.vote_average === 'number' ? s.vote_average : undefined,
       }));
+  };
+
+  try {
+    const primary = await fetchAndMap(query);
+    if (primary.length > 0) return primary;
+
+    // Zero-result path only: retry with cheap typo variants, first non-empty wins.
+    for (const variant of typoRetryVariants(query)) {
+      const retry = await fetchAndMap(variant);
+      if (retry.length > 0) return retry;
+    }
+
+    return primary;
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') return [];
     console.error('TMDB TV search failed:', err);
