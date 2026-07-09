@@ -874,7 +874,11 @@ const RankingAppPage = () => {
       .eq('tmdb_id', id);
 
     if (affectedTierOrder.length > 0) {
-      await setTierOrder('tv', removedItem!.tier, affectedTierOrder);
+      const { error } = await setTierOrder('tv', removedItem!.tier, affectedTierOrder);
+      if (error) {
+        console.error('Failed to reindex TV ranks after removal:', error);
+        setToastMessage(t('ranking.failedUpdate'));
+      }
     }
 
     if (removedItem) {
@@ -904,6 +908,38 @@ const RankingAppPage = () => {
     if (!movedItem) return;
     const sourceTier = movedItem.tier;
 
+    // Same-tier container drop: reindex the tier with the moved item at the end,
+    // then persist positions-only via the RPC. The container onDrop routes here
+    // with no migration divert (unlike the movie path), so sourceTier ===
+    // targetTier is reachable and must NOT fall through to the cross-tier concat
+    // (that duplicated every tier-mate in state — Finding 1). No ranking_move
+    // event for TV (only the movie path emits, per contract).
+    if (sourceTier === targetTier) {
+      const currentOrder = tierIdOrder(tvItems, targetTier); // includes droppedId
+      const fromIndex = currentOrder.indexOf(droppedId);
+      const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, currentOrder.length - 1);
+
+      // No-op drop (already last): don't touch state, don't persist, don't emit.
+      const orderChanged = newOrder.some((id, idx) => id !== currentOrder[idx]);
+      if (!orderChanged) return;
+
+      const prevItems = [...tvItems];
+      setTvItems((prev) => {
+        const otherItems = prev.filter((i) => i.tier !== targetTier);
+        const byId = new Map(prev.map((i) => [i.id, i]));
+        const reindexed = newOrder.map((id, idx) => ({ ...byId.get(id)!, tier: targetTier, rank: idx }));
+        return [...otherItems, ...reindexed];
+      });
+
+      const { error } = await setTierOrder('tv', targetTier, newOrder);
+      if (error) {
+        console.error('Failed to save TV ranking:', error);
+        setToastMessage(t('ranking.failedSaveTV'));
+        setTvItems(prevItems);
+      }
+      return;
+    }
+
     // Cross-tier move: compact BOTH tiers via the RPC (positions-only, delete-
     // aware — was a whole-tier full-row upsert, the B6 resurrect surface). The
     // row already exists; the RPC's p_tier re-tiers it, so no row upsert here.
@@ -915,6 +951,7 @@ const RankingAppPage = () => {
       targetOrder.length, // append to end of target tier (matches prior UX)
     );
 
+    const prevItems = [...tvItems];
     setTvItems((prev) => {
       const byId = new Map(prev.map((i) => [i.id, i]));
       const otherItems = prev.filter((i) => i.tier !== sourceTier && i.tier !== targetTier);
@@ -923,11 +960,20 @@ const RankingAppPage = () => {
       return [...otherItems, ...sourceReindexed, ...targetReindexed];
     });
 
+    let moveFailed = false;
     if (newTargetOrder.length > 0) {
-      await setTierOrder('tv', targetTier, newTargetOrder);
+      const { error } = await setTierOrder('tv', targetTier, newTargetOrder);
+      if (error) moveFailed = true;
     }
-    if (sourceOrder.length > 0) {
-      await setTierOrder('tv', sourceTier, sourceOrder);
+    if (!moveFailed && sourceOrder.length > 0) {
+      const { error } = await setTierOrder('tv', sourceTier, sourceOrder);
+      if (error) moveFailed = true;
+    }
+    if (moveFailed) {
+      console.error('Failed to save TV ranking after cross-tier move');
+      setToastMessage(t('ranking.failedSaveTV'));
+      setTvItems(prevItems);
+      return;
     }
 
     if (movedItem) {
@@ -976,6 +1022,7 @@ const RankingAppPage = () => {
     if (fromIndex === -1 || toIndex === -1) return;
     const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, toIndex);
 
+    const prevItems = [...tvItems];
     setTvItems((prev) => {
       const otherItems = prev.filter(i => i.tier !== targetItem.tier);
       const byId = new Map(prev.map((i) => [i.id, i]));
@@ -984,7 +1031,12 @@ const RankingAppPage = () => {
     });
 
     if (newOrder.length > 0) {
-      await setTierOrder('tv', targetItem.tier, newOrder);
+      const { error } = await setTierOrder('tv', targetItem.tier, newOrder);
+      if (error) {
+        console.error('Failed to save TV ranking:', error);
+        setToastMessage(t('ranking.failedSaveTV'));
+        setTvItems(prevItems);
+      }
     }
   };
 
@@ -1091,7 +1143,11 @@ const RankingAppPage = () => {
     await supabase.from('book_rankings').delete().eq('user_id', user.id).eq('tmdb_id', id);
 
     if (affectedTierOrder.length > 0) {
-      await setTierOrder('book', removedItem!.tier, affectedTierOrder);
+      const { error } = await setTierOrder('book', removedItem!.tier, affectedTierOrder);
+      if (error) {
+        console.error('Failed to reindex book ranks after removal:', error);
+        setToastMessage(t('ranking.failedUpdate'));
+      }
     }
 
     if (removedItem) {
@@ -1147,6 +1203,38 @@ const RankingAppPage = () => {
     if (!movedItem) return;
     const sourceTier = movedItem.tier;
 
+    // Same-tier container drop: reindex the tier with the moved item at the end,
+    // then persist positions-only via the RPC. The container onDrop routes here
+    // with no migration divert (unlike the movie path), so sourceTier ===
+    // targetTier is reachable and must NOT fall through to the cross-tier concat
+    // (that duplicated every tier-mate in state — Finding 1). No ranking_move
+    // event for books (only the movie path emits, per contract).
+    if (sourceTier === targetTier) {
+      const currentOrder = tierIdOrder(bookItems, targetTier); // includes droppedId
+      const fromIndex = currentOrder.indexOf(droppedId);
+      const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, currentOrder.length - 1);
+
+      // No-op drop (already last): don't touch state, don't persist, don't emit.
+      const orderChanged = newOrder.some((id, idx) => id !== currentOrder[idx]);
+      if (!orderChanged) return;
+
+      const prevItems = [...bookItems];
+      setBookItems((prev) => {
+        const otherItems = prev.filter((i) => i.tier !== targetTier);
+        const byId = new Map(prev.map((i) => [i.id, i]));
+        const reindexed = newOrder.map((id, idx) => ({ ...byId.get(id)!, tier: targetTier, rank: idx }));
+        return [...otherItems, ...reindexed];
+      });
+
+      const { error } = await setTierOrder('book', targetTier, newOrder);
+      if (error) {
+        console.error('Failed to save book ranking:', error);
+        setToastMessage(t('ranking.failedSaveBook'));
+        setBookItems(prevItems);
+      }
+      return;
+    }
+
     // Cross-tier move: compact BOTH tiers via the RPC (positions-only — was a
     // whole-tier full-row upsert, B6). Row already exists; RPC p_tier re-tiers.
     const targetOrder = tierIdOrder(bookItems, targetTier);
@@ -1157,6 +1245,7 @@ const RankingAppPage = () => {
       targetOrder.length,
     );
 
+    const prevItems = [...bookItems];
     setBookItems((prev) => {
       const byId = new Map(prev.map((i) => [i.id, i]));
       const otherItems = prev.filter((i) => i.tier !== sourceTier && i.tier !== targetTier);
@@ -1165,8 +1254,21 @@ const RankingAppPage = () => {
       return [...otherItems, ...sourceReindexed, ...targetReindexed];
     });
 
-    if (newTargetOrder.length > 0) await setTierOrder('book', targetTier, newTargetOrder);
-    if (sourceOrder.length > 0) await setTierOrder('book', sourceTier, sourceOrder);
+    let moveFailed = false;
+    if (newTargetOrder.length > 0) {
+      const { error } = await setTierOrder('book', targetTier, newTargetOrder);
+      if (error) moveFailed = true;
+    }
+    if (!moveFailed && sourceOrder.length > 0) {
+      const { error } = await setTierOrder('book', sourceTier, sourceOrder);
+      if (error) moveFailed = true;
+    }
+    if (moveFailed) {
+      console.error('Failed to save book ranking after cross-tier move');
+      setToastMessage(t('ranking.failedSaveBook'));
+      setBookItems(prevItems);
+      return;
+    }
     if (movedItem) {
       await logRankingActivityEvent(user.id, { id: movedItem.id, title: movedItem.title, tier: targetTier, posterUrl: movedItem.posterUrl, notes: movedItem.notes, year: movedItem.year }, 'ranking_move');
     }
@@ -1191,6 +1293,7 @@ const RankingAppPage = () => {
     if (fromIndex === -1 || toIndex === -1) return;
     const newOrder = tierOrderAfterReorder(currentOrder, fromIndex, toIndex);
 
+    const prevItems = [...bookItems];
     setBookItems((prev) => {
       const otherItems = prev.filter(i => i.tier !== targetItem.tier);
       const byId = new Map(prev.map((i) => [i.id, i]));
@@ -1198,7 +1301,14 @@ const RankingAppPage = () => {
       return [...otherItems, ...reindexed];
     });
 
-    if (newOrder.length > 0) await setTierOrder('book', targetItem.tier, newOrder);
+    if (newOrder.length > 0) {
+      const { error } = await setTierOrder('book', targetItem.tier, newOrder);
+      if (error) {
+        console.error('Failed to save book ranking:', error);
+        setToastMessage(t('ranking.failedSaveBook'));
+        setBookItems(prevItems);
+      }
+    }
   };
 
   const handleAddBookItem = async (newItem: RankedItem) => {
