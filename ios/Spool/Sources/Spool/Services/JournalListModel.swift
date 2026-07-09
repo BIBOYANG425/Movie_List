@@ -79,6 +79,16 @@ public final class JournalListModel: ObservableObject {
     private let searchIO: Search
     private let toggleLikeIO: ToggleLike
 
+    /// The debounce window before a non-empty query fires the RPC. Injectable so
+    /// tests collapse the 300 ms production wait to ~1 ms; production keeps the
+    /// default. Empty/whitespace queries never wait — they clear immediately.
+    public var debounceNanos: UInt64 = 300_000_000
+
+    /// The in-flight (or pending-debounce) search. A new `search(query:)` cancels
+    /// this before scheduling its own, so only the LAST keystroke in a burst ever
+    /// reaches the RPC (cancellation-based debounce — no timers).
+    private var searchTask: Task<Void, Never>?
+
     public init(
         listOwnEntries: @escaping ListOwnEntries,
         likedEntryIDs: @escaping LikedEntryIDs,
@@ -147,23 +157,49 @@ public final class JournalListModel: ObservableObject {
 
     // MARK: - Search
 
-    /// A non-empty (trimmed) query runs the search RPC and enters `.search`
-    /// mode; an empty/whitespace query returns to `.list` mode (the loaded
-    /// `entries` are left intact). A search failure yields empty results in
-    /// `.search` mode (feed convention). The liked-state batch is refreshed over
-    /// the result ids so search cards render their like state too.
+    /// Debounced search entry point. A new call always cancels the prior pending
+    /// task first, so a burst of keystrokes collapses to ONE RPC on the last
+    /// query. A non-empty (trimmed) query sleeps `debounceNanos`, re-checks for
+    /// cancellation, then runs the RPC and enters `.search` mode. An
+    /// empty/whitespace query cancels + returns to `.list` mode IMMEDIATELY (no
+    /// debounce on clearing), leaving the loaded `entries` intact.
+    ///
+    /// The awaited task is stored AND awaited here so callers that `await
+    /// search(query:)` observe the settled state (used by the tests and by the
+    /// view's `.task`), while overlapping un-awaited calls still cancel each
+    /// other via `searchTask`.
     public func search(query: String) async {
+        // Cancel whatever is pending/in-flight; the last caller in a burst wins.
+        searchTask?.cancel()
+
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
+            // Clearing is instantaneous — no debounce, no RPC.
+            searchTask = nil
             mode = .list
             searchResults = []
             await refreshLikedState(for: entries.map(\.id))
             return
         }
 
+        let task = Task { [weak self] in
+            // Debounce: wait, then bail if a newer keystroke cancelled us.
+            try? await Task.sleep(nanoseconds: self?.debounceNanos ?? 0)
+            guard !Task.isCancelled else { return }
+            await self?.performSearch(trimmed: trimmed)
+        }
+        searchTask = task
+        await task.value
+    }
+
+    /// The actual RPC + result population (unchanged semantics): enters `.search`
+    /// mode, runs the search, and refreshes liked-state over the result ids. A
+    /// failure yields empty results in `.search` mode (feed convention).
+    private func performSearch(trimmed: String) async {
         mode = .search
         do {
             let rows = try await searchIO(trimmed)
+            guard !Task.isCancelled else { return }
             searchResults = rows
             await refreshLikedState(for: rows.map(\.id))
         } catch {

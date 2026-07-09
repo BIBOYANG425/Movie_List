@@ -269,4 +269,91 @@ final class JournalListModelTests: XCTestCase {
         XCTAssertEqual(model.likeCount(for: e1), 4)
         XCTAssertEqual(toggleArgs.first?.1, true)   // pre-toggle state = liked
     }
+
+    // MARK: - 5. Debounce (cancellation-based)
+
+    /// Build a debounce-friendly model with a tiny `debounceNanos` so the
+    /// 300 ms production window collapses to ~1 ms in tests. Records every
+    /// query the RPC actually fired for.
+    private func makeDebounceModel(
+        debounceNanos: UInt64 = 1_000_000,   // 1 ms
+        onSearch: @escaping (String) -> Void = { _ in },
+        searchRows: @escaping (String) -> [JournalSearchRow] = { _ in [] }
+    ) -> JournalListModel {
+        let model = makeModel(
+            listOwnEntries: { [self.row(id: self.e1, title: "A")] },
+            search: { q in
+                onSearch(q)
+                return searchRows(q)
+            }
+        )
+        model.debounceNanos = debounceNanos
+        return model
+    }
+
+    /// Rapid successive `search` calls (keystrokes) fire the RPC EXACTLY ONCE,
+    /// carrying the LAST query — the earlier tasks are cancelled during their
+    /// debounce sleep before they can reach the RPC.
+    func testRapidSearchesFireRpcOnceWithLastQuery() async {
+        var fired: [String] = []
+        // A wide debounce so every keystroke is still asleep when the next one
+        // arrives and cancels it — only the last survives to fire the RPC.
+        let model = makeDebounceModel(
+            debounceNanos: 50_000_000,   // 50 ms
+            onSearch: { q in fired.append(q) }
+        )
+
+        // Fire four keystrokes in order. Each is a tracked task; between them we
+        // `Task.yield()` so the call's synchronous prefix (cancel prior +
+        // register the new `searchTask`, then suspend into the debounce sleep)
+        // runs BEFORE the next keystroke cancels it. This models real typing
+        // deterministically without relying on `async let` scheduling order.
+        var pending: [Task<Void, Never>] = []
+        for q in ["p", "po", "por", "port"] {
+            pending.append(Task { await model.search(query: q) })
+            await Task.yield()
+        }
+        for t in pending { _ = await t.value }
+
+        XCTAssertEqual(fired, ["port"], "only the last query should reach the RPC")
+        XCTAssertEqual(model.mode, .search)
+    }
+
+    /// Clearing the field DURING the debounce window cancels the pending search
+    /// (zero RPC calls) and returns to list mode immediately.
+    func testClearDuringDebounceCancelsAndReturnsToListMode() async {
+        var fired: [String] = []
+        let model = makeDebounceModel(
+            debounceNanos: 50_000_000,   // 50 ms — long enough to interrupt
+            onSearch: { q in fired.append(q) }
+        )
+        await model.load()   // establishes list-mode entries
+
+        // Start a search in a detached-but-tracked task, then yield so its
+        // synchronous prefix registers `searchTask` (and begins the debounce
+        // sleep) BEFORE we clear. This makes the interleaving deterministic:
+        // the pending "portrait" task is asleep when the clear cancels it.
+        let pending = Task { await model.search(query: "portrait") }
+        await Task.yield()
+        await model.search(query: "")   // clear cancels the pending task
+        _ = await pending.value
+
+        XCTAssertTrue(fired.isEmpty, "a cleared query must never reach the RPC")
+        XCTAssertEqual(model.mode, .list)
+        XCTAssertEqual(model.entries.map(\.id), [e1], "list is untouched")
+    }
+
+    /// A search that is allowed to complete (no cancelling keystroke) still
+    /// populates `searchResults` and lands in `.search` mode.
+    func testCompletedDebouncedSearchPopulatesResults() async {
+        let model = makeDebounceModel(
+            debounceNanos: 1_000_000,   // 1 ms
+            searchRows: { _ in [self.searchRow(id: self.e2, title: "Portrait")] }
+        )
+
+        await model.search(query: "portrait")
+
+        XCTAssertEqual(model.mode, .search)
+        XCTAssertEqual(model.searchResults.map(\.id), [e2])
+    }
 }
