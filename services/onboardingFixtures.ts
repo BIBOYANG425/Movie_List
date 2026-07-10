@@ -6,11 +6,12 @@
  * `tmdb-proxy` — is authenticated, so a signed-out caller gets a 401 and empty
  * results. That dead-ended the anonymous signup funnel: LandingPage's "Get
  * Started" routes signed-out users to /onboarding/movies, where they must pick
- * ≥10 movies before the "Create your account" CTA appears, but the suggestion
- * grid and search both came back empty. This static pool restores the
- * try-before-signup flow: MovieOnboardingPage draws its suggestion grid from
- * here when there is no session, so a new user can pick 10 recognizable movies
- * and reach the account-creation step without ever calling the network.
+ * ≥5 movies (REQUIRED_MOVIES = MIN_MOVIES_FOR_SCORES = 5) before the "Create
+ * your account" CTA appears, but the suggestion grid and search both came back
+ * empty. This static pool restores the try-before-signup flow: MovieOnboardingPage
+ * draws its suggestion grid from here when there is no session, so a new user can
+ * pick 5 recognizable movies and reach the account-creation step without ever
+ * calling the network.
  *
  * Shape mirrors exactly what MovieOnboardingPage renders (a subset of
  * TMDBMovie): id `tmdb_{n}`, tmdbId, title, year, posterUrl, genres, overview.
