@@ -1407,7 +1407,11 @@ const RankingAppPage = () => {
         }
       }
     }
-    setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
+    // D2: only overwrite the toast when the save landed — failure toasts set
+    // inside addBookItem (ranking.failedSaveBook) must survive to the user.
+    if (saveSucceeded) {
+      setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
+    }
     // A re-rank targets an already-ranked row, never a bookmark — don't touch the
     // watchlist for it (bookItemToRank IS the ranked row itself here).
     if (bookItemToRank && !isRerank) {
@@ -1448,7 +1452,11 @@ const RankingAppPage = () => {
     }
     if (preselectedTVItem) setPreselectedTVItem(null);
     if (tvRerankState) setTvRerankState(null);
-    setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
+    // D2: only overwrite the toast when the save landed — failure toasts set
+    // inside addTVItem (ranking.failedSaveTV) must survive to the user.
+    if (saveSucceeded) {
+      setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
+    }
   };
 
   const handleAddItem = async (newItem: RankedItem) => {
@@ -1499,12 +1507,19 @@ const RankingAppPage = () => {
     if (rerankState) {
       setRerankState(null);
     }
-    setToastMessage(
-      wasMigration
-        ? t('toast.moved').replace('{tier}', newItem.tier)
-        : t('toast.ranked').replace('{tier}', newItem.tier)
-    );
-    setJournalSheetItem(newItem);
+    // D2: only overwrite the toast when the save landed — failure toasts set
+    // inside addItem (ranking.failedSave / ranking.failedSaveRanking) must
+    // survive to the user. Guard the journal sheet with the same boolean: a
+    // failed save must not pop a "write a review" prompt for a movie that never
+    // landed (audit :1507).
+    if (saveSucceeded) {
+      setToastMessage(
+        wasMigration
+          ? t('toast.moved').replace('{tier}', newItem.tier)
+          : t('toast.ranked').replace('{tier}', newItem.tier)
+      );
+      setJournalSheetItem(newItem);
+    }
   };
 
   const handleCompareLog = async (log: ComparisonLogEntry) => {
