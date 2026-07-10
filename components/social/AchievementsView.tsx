@@ -43,7 +43,7 @@ interface AchievementsViewProps {
     isOwnProfile?: boolean;
 }
 
-export const AchievementsView: React.FC<AchievementsViewProps> = ({ userId, isOwnProfile = true }) => {
+export const AchievementsView: React.FC<AchievementsViewProps> = ({ userId, isOwnProfile = false }) => {
     const [achievements, setAchievements] = useState<UserAchievement[]>([]);
     const [loading, setLoading] = useState(true);
 

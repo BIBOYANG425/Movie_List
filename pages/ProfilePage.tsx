@@ -594,15 +594,15 @@ const ProfilePage = () => {
               </ErrorBoundary>
             )}
 
-            {profileTab === 'lists' && user && (
+            {profileTab === 'lists' && profile && (
               <ErrorBoundary>
-                <MovieListView userId={user.id} />
+                <MovieListView userId={profile.id} />
               </ErrorBoundary>
             )}
 
-            {profileTab === 'achievements' && user && (
+            {profileTab === 'achievements' && profile && (
               <ErrorBoundary>
-                <AchievementsView userId={user.id} isOwnProfile={profile.isSelf} />
+                <AchievementsView userId={profile.id} isOwnProfile={profile.isSelf} />
               </ErrorBoundary>
             )}
 
