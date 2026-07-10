@@ -76,6 +76,10 @@ public enum RankPersistence {
         let genres = movie.genres.isEmpty ? ["Drama"] : movie.genres
         let director = movie.director.isEmpty ? nil : movie.director
         let year = normalizedYear(movie.year)
+        // Trim whitespace once here; use `trimmedLine` throughout so a
+        // whitespace-only one-liner is treated as empty at every gate
+        // (notes column, hasCeremonyInput, quick-write, merge).
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if await SpoolClient.currentUserID() != nil {
             let insert = RankingInsert(
@@ -88,7 +92,7 @@ public enum RankPersistence {
                 director: director,
                 tier: tier,
                 rankPosition: rank,
-                notes: line.isEmpty ? nil : line
+                notes: trimmedLine.isEmpty ? nil : trimmedLine
             )
             let outcome: RankingRepository.InsertOutcome
             do {
@@ -135,19 +139,19 @@ public enum RankPersistence {
             switch quickEntryDecision(
                 writeJournalQuickEntry: writeJournalQuickEntry,
                 outcome: outcome,
-                hasInput: Self.hasCeremonyInput(moods: moods, line: line)
+                hasInput: Self.hasCeremonyInput(moods: moods, line: trimmedLine)
             ) {
             case .skip:
                 break
             case .quickWrite:
                 await JournalQuickEntry.write(
                     tmdbId: movie.id, title: movie.title, posterUrl: movie.posterUrl,
-                    line: line, moods: moods
+                    line: trimmedLine, moods: moods
                 )
             case .probedMerge:
                 await JournalQuickEntry.writeMergingReRank(
                     tmdbId: movie.id, title: movie.title, posterUrl: movie.posterUrl,
-                    line: line, moods: moods
+                    line: trimmedLine, moods: moods
                 )
             }
             // Confirmed write landed — the caller may now run any post-save
@@ -233,10 +237,11 @@ public enum RankPersistence {
     }
 
     /// Did the ceremony capture any journal signal? True when EITHER the moods or
-    /// the one-liner is present. On a re-rank with neither, there is nothing to
-    /// merge and the write is skipped (the wipe guard).
+    /// the one-liner is present. Whitespace-only lines count as empty — a tap-through
+    /// with accidental spaces must not trigger the wipe guard. On a re-rank with
+    /// neither, there is nothing to merge and the write is skipped (the wipe guard).
     static func hasCeremonyInput(moods: [String], line: String) -> Bool {
-        !moods.isEmpty || !line.isEmpty
+        !moods.isEmpty || !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Pure gate for the C3 Task 4 watchlist-bookmark removal (tested —

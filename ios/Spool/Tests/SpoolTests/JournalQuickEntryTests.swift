@@ -157,4 +157,38 @@ final class JournalQuickEntryTests: XCTestCase {
         XCTAssertEqual(rec.probeCount, 1)
         XCTAssertTrue(rec.upsertPayloads.isEmpty, "probe failure must NOT upsert")
     }
+
+    // MARK: - Whitespace trim gates (code review round 1)
+
+    /// A whitespace-only line in a fresh quick draft must store "" in reviewText,
+    /// which nilIfEmpty coerces to nil — never "   " in review_text.
+    func testFreshDraftWhitespaceLineYieldsNilReviewText() {
+        let draft = JournalQuickEntry.draft(
+            tmdbId: "603", title: "The Matrix", posterUrl: nil,
+            line: "   ", moods: []
+        )
+        XCTAssertEqual(draft.reviewText, "", "trimmed whitespace → empty string in draft")
+        let payload = JournalEntryContract.upsertPayload(
+            userID: UUID(), ratingTier: nil, from: draft
+        )
+        XCTAssertNil(payload.review_text,
+                     "empty reviewText must coerce to nil in the upsert payload")
+    }
+
+    /// On the merge path, a whitespace-only newLine must NOT overwrite the
+    /// existing rich review_text — the merge gate trims before checking isEmpty.
+    func testMergePath_WhitespaceLinePreservesExistingReviewText() async {
+        let rec = Recorder()
+        await JournalQuickEntry.writeMerging(
+            userID: uid, tmdbId: "603", title: "The Matrix", posterUrl: "/p.jpg",
+            line: "   ", moods: ["moved"], ratingTier: "loved",
+            probe: { _ in rec.probeCount += 1; return self.richRow() },
+            upsert: { p in rec.upsertPayloads.append(p); return self.echo(p) }
+        )
+        XCTAssertEqual(rec.upsertPayloads.count, 1)
+        XCTAssertEqual(
+            rec.upsertPayloads[0].review_text,
+            "a machine dreamt of us.",
+            "whitespace-only newLine must NOT overwrite the existing rich review_text")
+    }
 }

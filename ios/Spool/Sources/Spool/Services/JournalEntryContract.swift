@@ -142,8 +142,9 @@ public enum JournalEntryContract {
     public static func merge(newMoods: [String], newLine: String, onto row: JournalRow) -> JournalDraft {
         var draft = draft(from: row)
         draft.moodTags = newMoods
-        if !newLine.isEmpty {
-            draft.reviewText = newLine
+        let trimmedLine = newLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedLine.isEmpty {
+            draft.reviewText = trimmedLine
         }
         return draft
     }

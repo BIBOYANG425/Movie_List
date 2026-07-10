@@ -6,8 +6,8 @@ public struct RankCeremonyScreen: View {
     public var onDone: (_ moods: [String], _ line: String) -> Void
     public var onBack: () -> Void
 
-    @State private var moods: [String] = ["tender", "devastating"]
-    @State private var line: String = "cried on the 6 train."
+    @State private var moods: [String] = []
+    @State private var line: String = ""
 
     public init(movie: Movie, tier: Tier,
                 onDone: @escaping (_ moods: [String], _ line: String) -> Void,

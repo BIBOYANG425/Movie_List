@@ -36,9 +36,12 @@ public enum JournalQuickEntry {
         tmdbId: String, title: String, posterUrl: String?,
         line: String, moods: [String]
     ) -> JournalDraft {
-        JournalDraft(
+        // Trim whitespace so a whitespace-only one-liner stores "" → nil via
+        // JournalEntryContract.upsertPayload's nilIfEmpty, not "   ".
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return JournalDraft(
             tmdbId: tmdbId, title: title, posterUrl: posterUrl,
-            reviewText: line, containsSpoilers: false,
+            reviewText: trimmedLine, containsSpoilers: false,
             moodTags: moods, vibeTags: [], favoriteMoments: [],
             standoutPerformances: [], watchedDate: StubWriteContract.localDateString(),
             watchedLocation: "", watchedWithUserIds: [], watchedPlatform: nil,
