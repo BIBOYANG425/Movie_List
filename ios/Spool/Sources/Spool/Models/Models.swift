@@ -4,23 +4,25 @@ public enum Tier: String, CaseIterable, Identifiable, Sendable, Codable {
     case S, A, B, C, D
     public var id: String { rawValue }
 
+    /// Display label — wired through `L10n.t` (C6-iOS Task 3). iOS-only copy
+    /// (web renders no tier sub-labels); the raw case (`rawValue`) is the data.
     public var label: String {
         switch self {
-        case .S: return "masterpiece"
-        case .A: return "loved it"
-        case .B: return "good"
-        case .C: return "meh"
-        case .D: return "no"
+        case .S: return L10n.t("tier.labelS")
+        case .A: return L10n.t("tier.labelA")
+        case .B: return L10n.t("tier.labelB")
+        case .C: return L10n.t("tier.labelC")
+        case .D: return L10n.t("tier.labelD")
         }
     }
 
     public var sub: String {
         switch self {
-        case .S: return "obsessed. tell everyone."
-        case .A: return "would rewatch."
-        case .B: return "glad i watched."
-        case .C: return "wouldn't recommend."
-        case .D: return "get it away from me."
+        case .S: return L10n.t("tier.subS")
+        case .A: return L10n.t("tier.subA")
+        case .B: return L10n.t("tier.subB")
+        case .C: return L10n.t("tier.subC")
+        case .D: return L10n.t("tier.subD")
         }
     }
 }

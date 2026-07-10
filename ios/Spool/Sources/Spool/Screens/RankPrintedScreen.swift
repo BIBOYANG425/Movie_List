@@ -44,18 +44,18 @@ public struct RankPrintedScreen: View {
                     VStack(spacing: 0) {
                         StepProgress(step: 4, total: 4)
 
-                        Text("your stub is ready.")
+                        Text(L10n.t("printed.ready"))
                             .font(SpoolFonts.script(30))
                             .foregroundStyle(t.ink)
                             .padding(.top, 14)
 
-                        Text("#0128 of your collection")
+                        Text(L10n.t("printed.collectionNo", ["no": "#0128"]))
                             .font(SpoolFonts.hand(13))
                             .foregroundStyle(t.inkSoft)
 
                         if finalScore > 0 {
                             HStack(spacing: 6) {
-                                Text("#\(finalRank + 1) in \(tier.rawValue)-tier")
+                                Text(L10n.t("printed.rankInTier", ["rank": "\(finalRank + 1)", "tier": tier.rawValue]))
                                 Text("·")
                                 Text(String(format: "%.2f", finalScore))
                                     .font(SpoolFonts.mono(13))
@@ -71,13 +71,13 @@ public struct RankPrintedScreen: View {
                             .padding(.horizontal, 8)
 
                         HStack(spacing: 8) {
-                            SpoolPill("↗ share to story")
-                            SpoolPill("save PNG")
+                            SpoolPill(L10n.t("printed.shareStory"))
+                            SpoolPill(L10n.t("printed.savePNG"))
                         }
                         .padding(.top, 22)
                         .padding(.horizontal, 8)
 
-                        SpoolPill("post to feed ✓", filled: true, action: onFinish)
+                        SpoolPill(L10n.t("printed.postToFeed"), filled: true, action: onFinish)
                             .padding(.horizontal, 8)
                             .padding(.top, 8)
 
@@ -92,7 +92,7 @@ public struct RankPrintedScreen: View {
                                 HStack(spacing: 6) {
                                     Image(systemName: "pencil.line")
                                         .font(.system(size: 13))
-                                    Text("write more about it →")
+                                    Text(L10n.t("printed.writeMore"))
                                         .font(SpoolFonts.script(18))
                                 }
                                 .foregroundStyle(t.accent)
@@ -101,7 +101,7 @@ public struct RankPrintedScreen: View {
                             .padding(.top, 12)
                         }
 
-                        Button("keep private →", action: onClose)
+                        Button(L10n.t("printed.keepPrivate"), action: onClose)
                             .font(SpoolFonts.script(17))
                             .foregroundStyle(t.inkSoft)
                             .padding(.top, 14)

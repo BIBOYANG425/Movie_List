@@ -12,7 +12,7 @@ import SwiftUI
 /// nils). A failed save shows the error inline; the sheet stays open so the
 /// user doesn't lose their edits.
 ///
-/// Header last reviewed: 2026-04-20
+/// Header last reviewed: 2026-07-10
 public struct EditProfileScreen: View {
     public var initial: ProfileRow
     public var onClose: () -> Void
@@ -42,14 +42,14 @@ public struct EditProfileScreen: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         usernameRow
-                        fieldSection(label: "DISPLAY NAME",
-                                     hint: "shown above your bio on your profile.") { t in
-                            inputField(text: $displayName, placeholder: "e.g. yurui",
+                        fieldSection(label: L10n.t("editProfile.displayName"),
+                                     hint: L10n.t("editProfile.displayNameHint")) { t in
+                            inputField(text: $displayName, placeholder: L10n.t("editProfile.displayNamePlaceholder"),
                                        multiline: false, t: t)
                         }
-                        fieldSection(label: "BIO",
-                                     hint: "two lines max. press return between them.") { t in
-                            inputField(text: $bio, placeholder: "what's your vibe?",
+                        fieldSection(label: L10n.t("editProfile.bio"),
+                                     hint: L10n.t("editProfile.bioHint")) { t in
+                            inputField(text: $bio, placeholder: L10n.t("editProfile.bioPlaceholder"),
                                        multiline: true, t: t)
                         }
 
@@ -77,7 +77,7 @@ public struct EditProfileScreen: View {
         SpoolThemeReader { t, _ in
             HStack {
                 Button(action: onClose) {
-                    Text("cancel")
+                    Text(L10n.t("editProfile.cancel"))
                         .font(SpoolFonts.mono(12))
                         .tracking(1.5)
                         .foregroundStyle(t.ink)
@@ -86,13 +86,13 @@ public struct EditProfileScreen: View {
                 }
                 .buttonStyle(.plain)
                 Spacer()
-                Text("edit profile")
+                Text(L10n.t("editProfile.title"))
                     .font(SpoolFonts.serif(22))
                     .tracking(-0.3)
                     .foregroundStyle(t.ink)
                 Spacer()
                 // Invisible balancer so the title stays centered without math.
-                Text("cancel").opacity(0).padding(.horizontal, 12).padding(.vertical, 8)
+                Text(L10n.t("editProfile.cancel")).opacity(0).padding(.horizontal, 12).padding(.vertical, 8)
             }
             .padding(.horizontal, 10)
             .padding(.top, 14)
@@ -108,13 +108,13 @@ public struct EditProfileScreen: View {
     private var usernameRow: some View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 6) {
-                Text("USERNAME").font(SpoolFonts.mono(10)).tracking(2.5).foregroundStyle(t.inkSoft)
+                Text(L10n.t("editProfile.username")).font(SpoolFonts.mono(10)).tracking(2.5).foregroundStyle(t.inkSoft)
                 HStack {
                     Text(initial.handle)
                         .font(SpoolFonts.serif(20))
                         .foregroundStyle(t.ink)
                     Spacer()
-                    Text("read-only")
+                    Text(L10n.t("editProfile.readOnly"))
                         .font(SpoolFonts.mono(10))
                         .tracking(1.5)
                         .foregroundStyle(t.inkSoft)
@@ -196,7 +196,7 @@ public struct EditProfileScreen: View {
             Button(action: save) {
                 HStack(spacing: 8) {
                     if working { ProgressView().tint(t.cream) }
-                    Text(working ? "saving…" : "save")
+                    Text(working ? L10n.t("editProfile.saving") : L10n.t("editProfile.save"))
                         .font(SpoolFonts.serif(16))
                         .tracking(0.2)
                         .foregroundStyle(t.cream)

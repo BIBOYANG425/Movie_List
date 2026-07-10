@@ -68,7 +68,7 @@ public struct RankEntryScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header
-                    Text("let's make you a stub.")
+                    Text(L10n.t("rankEntry.makeStub"))
                         .font(SpoolFonts.script(20))
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
                         .padding(.top, 4)
@@ -102,15 +102,15 @@ public struct RankEntryScreen: View {
     private var headerTitle: String {
         if case .seasonGrid(let show) = model.stage { return show.name }
         switch model.mode {
-        case .movie: return "just watched?"
-        case .tv:    return "just watched?"
-        case .book:  return "just read?"
+        case .movie: return L10n.t("rankEntry.justWatched")
+        case .tv:    return L10n.t("rankEntry.justWatched")
+        case .book:  return L10n.t("rankEntry.justRead")
         }
     }
 
     private var backOrCancelLabel: String {
-        if case .seasonGrid = model.stage { return "← back" }
-        return "cancel ✕"
+        if case .seasonGrid = model.stage { return L10n.t("rankEntry.back") }
+        return L10n.t("rankEntry.cancel")
     }
 
     private func backOrCancel() {
@@ -140,9 +140,9 @@ public struct RankEntryScreen: View {
 
     private func label(for m: RankEntryMode) -> String {
         switch m {
-        case .movie: return "movies"
-        case .tv:    return "tv"
-        case .book:  return "books"
+        case .movie: return L10n.t("rankEntry.modeMovies")
+        case .tv:    return L10n.t("rankEntry.modeTV")
+        case .book:  return L10n.t("rankEntry.modeBooks")
         }
     }
 
@@ -206,7 +206,7 @@ public struct RankEntryScreen: View {
     @ViewBuilder
     private var movieResults: some View {
         if !model.movieResults.isEmpty {
-            sectionLabel("MATCHES")
+            sectionLabel(L10n.t("rankEntry.sectionMatches"))
             ForEach(model.movieResults) { m in
                 let asMovie = Movie(
                     id: m.id, title: m.title,
@@ -223,7 +223,7 @@ public struct RankEntryScreen: View {
         } else if model.isSearching {
             searchingRow
         } else if !TMDBService.hasKey {
-            sectionLabel("DEMO RESULTS")
+            sectionLabel(L10n.t("rankEntry.sectionDemo"))
             ForEach(SpoolData.searchResults) { m in
                 MovieRow(movie: m, highlight: m.rec) { onPick(m) }
                     .padding(.top, 8)
@@ -238,7 +238,7 @@ public struct RankEntryScreen: View {
     @ViewBuilder
     private var tvResults: some View {
         if !model.tvResults.isEmpty {
-            sectionLabel("SHOWS")
+            sectionLabel(L10n.t("rankEntry.sectionShows"))
             ForEach(model.tvResults) { show in
                 ShowRow(show: show) { model.pickShow(show) }
                     .padding(.top, 8)
@@ -258,7 +258,7 @@ public struct RankEntryScreen: View {
             searchingRow
         } else if !model.tvSuggestions.isEmpty {
             HStack {
-                Text(model.tvSuggestionsHasBackfill ? "BASED ON YOUR TASTE" : "POPULAR RIGHT NOW")
+                Text((model.tvSuggestionsHasBackfill ? L10n.t("rankEntry.basedOnTaste") : L10n.t("rankEntry.popularNow")).uppercased())
                     .font(SpoolFonts.mono(10))
                     .tracking(2)
                     .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -267,7 +267,7 @@ public struct RankEntryScreen: View {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 10, weight: .semibold))
-                        Text("refresh")
+                        Text(L10n.t("rankEntry.refresh"))
                             .font(SpoolFonts.mono(10))
                     }
                     .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -287,16 +287,16 @@ public struct RankEntryScreen: View {
             .padding(.top, 12)
         } else if model.tvSuggestionsFailed {
             VStack(spacing: 10) {
-                Text("couldn't load suggestions")
+                Text(L10n.t("rankEntry.suggestionsLoadFailed"))
                     .font(SpoolFonts.hand(14))
                     .foregroundStyle(SpoolTokens.paper.inkSoft)
-                SpoolPill("retry", size: .sm) { model.loadTVSuggestions() }
+                SpoolPill(L10n.t("rankEntry.retry"), size: .sm) { model.loadTVSuggestions() }
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 24)
         } else {
             // No suggestions (fresh account / server empty) — a quiet hint to search.
-            Text("search a show to rank a season")
+            Text(L10n.t("rankEntry.searchShowHint"))
                 .font(SpoolFonts.hand(14))
                 .foregroundStyle(SpoolTokens.paper.inkSoft)
                 .frame(maxWidth: .infinity)
@@ -309,7 +309,7 @@ public struct RankEntryScreen: View {
     @ViewBuilder
     private var bookResults: some View {
         if !model.bookResults.isEmpty {
-            sectionLabel("BOOKS")
+            sectionLabel(L10n.t("rankEntry.sectionBooks"))
             ForEach(model.bookResults) { book in
                 BookRow(book: book) { onPick(model.bookMovie(for: book)) }
                     .padding(.top, 8)
@@ -328,13 +328,13 @@ public struct RankEntryScreen: View {
         if model.isLoadingSeasons {
             searchingRow
         } else if model.seasons.isEmpty {
-            Text("couldn't load seasons — go back and try again")
+            Text(L10n.t("rankEntry.seasonsLoadFailed"))
                 .font(SpoolFonts.hand(14))
                 .foregroundStyle(SpoolTokens.paper.inkSoft)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 24)
         } else {
-            sectionLabel("PICK A SEASON")
+            sectionLabel(L10n.t("rankEntry.pickSeason"))
             ForEach(model.seasons, id: \.seasonNumber) { season in
                 let ranked = model.rankedSeasonNumbers.contains(season.seasonNumber)
                 SeasonRow(season: season, alreadyRanked: ranked) {
@@ -351,7 +351,7 @@ public struct RankEntryScreen: View {
         HStack {
             Spacer()
             ProgressView().tint(SpoolTokens.paper.accent)
-            Text("searching…")
+            Text(L10n.t("rankEntry.searching"))
                 .font(SpoolFonts.mono(11))
                 .foregroundStyle(SpoolTokens.paper.inkSoft)
             Spacer()
@@ -360,7 +360,7 @@ public struct RankEntryScreen: View {
     }
 
     private var noResults: some View {
-        Text("no results")
+        Text(L10n.t("rankEntry.noResults"))
             .font(SpoolFonts.hand(14))
             .foregroundStyle(SpoolTokens.paper.inkSoft)
             .frame(maxWidth: .infinity)
@@ -371,15 +371,15 @@ public struct RankEntryScreen: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 12) {
                 Text(model.mode == .tv
-                     ? "sign in to rank shows"
-                     : "sign in to rank books")
+                     ? L10n.t("rankEntry.signInShows")
+                     : L10n.t("rankEntry.signInBooks"))
                     .font(SpoolFonts.script(20))
                     .foregroundStyle(t.ink)
-                Text("tv and books save to your account — sign in first.")
+                Text(L10n.t("rankEntry.signInHint"))
                     .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
-                SpoolPill("sign in", filled: true, action: onSignIn)
+                SpoolPill(L10n.t("rankEntry.signIn"), filled: true, action: onSignIn)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 40)
@@ -410,7 +410,7 @@ public struct RankEntryScreen: View {
     }
 
     private func sectionLabel(_ s: String) -> some View {
-        Text(s)
+        Text(s.uppercased())
             .font(SpoolFonts.mono(10))
             .tracking(2)
             .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -420,7 +420,7 @@ public struct RankEntryScreen: View {
 
 struct SearchField: View {
     @Binding var text: String
-    var placeholder: String = "search films…"
+    var placeholder: String = L10n.t("rankEntry.searchFilms")
     var body: some View {
         SpoolThemeReader { t, _ in
             HStack(spacing: 10) {
@@ -463,7 +463,7 @@ struct MovieRow: View {
                     }
                     Spacer()
                     if highlight {
-                        Text("on list")
+                        Text(L10n.t("rankEntry.onList"))
                             .font(SpoolFonts.hand(11))
                             .foregroundStyle(t.ink)
                             .padding(.horizontal, 8)
@@ -527,7 +527,7 @@ struct ShowRow: View {
 
     private var subtitle: String {
         let year = show.year.isEmpty ? "—" : show.year
-        return "TV · \(year)"
+        return L10n.t("rankEntry.tvYear", ["year": year])
     }
     private func firstWord(_ s: String) -> String {
         s.split(separator: " ").first.map(String.init) ?? s
@@ -596,13 +596,14 @@ struct SeasonRow: View {
                             .font(SpoolFonts.serif(16))
                             .foregroundStyle(t.ink)
                             .lineLimit(1)
-                        Text("\(season.episodeCount) episode\(season.episodeCount == 1 ? "" : "s")")
+                        Text(L10n.t(season.episodeCount == 1 ? "rankEntry.episodeSingular" : "rankEntry.episodePlural",
+                                    ["n": "\(season.episodeCount)"]))
                             .font(SpoolFonts.mono(10))
                             .foregroundStyle(t.inkSoft)
                     }
                     Spacer()
                     if alreadyRanked {
-                        Text("ranked")
+                        Text(L10n.t("rankEntry.ranked"))
                             .font(SpoolFonts.hand(11))
                             .foregroundStyle(t.ink)
                             .padding(.horizontal, 8)

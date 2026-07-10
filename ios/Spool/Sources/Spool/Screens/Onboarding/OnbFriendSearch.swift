@@ -8,7 +8,7 @@ import SwiftUI
 /// `friend_follows`. Errors are swallowed to stay out of the user's way; the
 /// button state reflects whatever was actually recorded.
 ///
-/// Header last reviewed: 2026-04-18
+/// Header last reviewed: 2026-07-10
 struct OnbFriendSearch: View {
     var onNext: () -> Void
 
@@ -29,13 +29,13 @@ struct OnbFriendSearch: View {
                     VStack(alignment: .leading, spacing: 0) {
                         OnbDots(step: 8)
 
-                        Text("— FIND YOUR PEOPLE —")
+                        Text(L10n.t("onb.findYourPeople"))
                             .font(SpoolFonts.mono(10))
                             .tracking(4)
                             .foregroundStyle(t.inkSoft)
                             .padding(.top, 28)
 
-                        Text("find your\npeople.")
+                        Text(L10n.t("onb.findYourPeopleTitle"))
                             .font(SpoolFonts.serif(46))
                             .tracking(-1.4)
                             .foregroundStyle(t.ink)
@@ -55,7 +55,7 @@ struct OnbFriendSearch: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                OnbFoot(label: "done →", onNext: onNext)
+                OnbFoot(label: L10n.t("onb.done"), onNext: onNext)
             }
             .task {
                 sessionUserID = await SpoolClient.currentUserID()
@@ -68,7 +68,7 @@ struct OnbFriendSearch: View {
 
     @ViewBuilder
     private func signedInBody(t: SpoolPalette) -> some View {
-        Text("search a handle to follow someone.")
+        Text(L10n.t("onb.searchHandle"))
             .font(SpoolFonts.hand(13))
             .foregroundStyle(t.inkSoft)
             .lineSpacing(3)
@@ -83,7 +83,7 @@ struct OnbFriendSearch: View {
 
     @ViewBuilder
     private func previewModeBody(t: SpoolPalette) -> some View {
-        Text("you need to be signed in to find friends.\nyou can always come back — they'll still be here.")
+        Text(L10n.t("onb.needSignInFriends"))
             .font(SpoolFonts.hand(13))
             .foregroundStyle(t.inkSoft)
             .lineSpacing(3)
@@ -112,12 +112,12 @@ struct OnbFriendSearch: View {
     @ViewBuilder
     private func handleField(t: SpoolPalette) -> some View {
         #if os(iOS)
-        TextField("handle", text: $query)
+        TextField(L10n.t("onb.handlePlaceholder"), text: $query)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .textFieldStyle(.plain)
         #else
-        TextField("handle", text: $query)
+        TextField(L10n.t("onb.handlePlaceholder"), text: $query)
             .textFieldStyle(.plain)
         #endif
     }
@@ -129,14 +129,14 @@ struct OnbFriendSearch: View {
         } else if isSearching && results.isEmpty {
             HStack(spacing: 8) {
                 ProgressView().tint(t.accent)
-                Text("searching…")
+                Text(L10n.t("onb.searching"))
                     .font(SpoolFonts.mono(11))
                     .foregroundStyle(t.inkSoft)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 12)
         } else if results.isEmpty {
-            Text("no one by that handle — yet.")
+            Text(L10n.t("onb.noHandleMatch"))
                 .font(SpoolFonts.hand(13))
                 .foregroundStyle(t.inkSoft)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,7 +168,7 @@ struct OnbFriendSearch: View {
             }
             Spacer()
             Button(action: { follow(row) }) {
-                Text(isFollowing ? "following" : (isPending ? "…" : "follow"))
+                Text(isFollowing ? L10n.t("onb.following") : (isPending ? "…" : L10n.t("onb.follow")))
                     .font(SpoolFonts.mono(11))
                     .tracking(1.5)
                     .foregroundStyle(isFollowing ? t.inkSoft : t.cream)

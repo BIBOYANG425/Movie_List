@@ -463,15 +463,24 @@ public enum TMDBService {
 
     // MARK: private
 
-    /// TMDB `language=` code following the user's device locale, mirroring web
-    /// `getTmdbLocale()` (`services/tmdbService.ts`) which maps the persisted
-    /// `spool_locale` preference: Chinese -> `zh-CN`, everything else -> `en-US`.
-    /// iOS has no in-app language toggle yet, so the device's preferred language
-    /// is the source of truth for zh/en. `en-US` stays the fallback.
-    private static func locale() -> String {
-        let code = Locale.preferredLanguages.first
-            ?? Locale.current.identifier
-        return code.lowercased().hasPrefix("zh") ? "zh-CN" : "en-US"
+    /// TMDB `language=` code, mirroring web `getTmdbLocale()`
+    /// (`services/tmdbService.ts`) which maps the persisted `spool_locale`
+    /// preference: Chinese -> `zh-CN`, everything else -> `en-US`.
+    ///
+    /// The single source of truth is `LocaleStore.current` (Task 1): the Settings
+    /// language toggle writes it, and a device-zh user's first read seeds `.zh`
+    /// there. This replaces the old duplicated `Locale.preferredLanguages.first`
+    /// device-read so the in-app toggle actually re-routes content on the next
+    /// fetch. The pure `locale(for:)` mapping is unit-tested with no store read.
+    static func locale() -> String {
+        locale(for: LocaleStore.current)
+    }
+
+    /// Pure `SpoolLocale` → TMDB `language=` mapping. `.zh` → `zh-CN`, `.en` →
+    /// `en-US`. Extracted so the mapping is asserted without a `UserDefaults` /
+    /// `Locale.preferredLanguages` read (and shared 1:1 with `SuggestionsClient`).
+    static func locale(for locale: SpoolLocale) -> String {
+        locale == .zh ? "zh-CN" : "en-US"
     }
 
     private static func mapResult(_ raw: TMDBRaw) -> TMDBMovie? {

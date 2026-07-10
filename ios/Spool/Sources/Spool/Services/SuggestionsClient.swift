@@ -118,10 +118,21 @@ public enum SuggestionsClient {
     }
 
     /// TMDB `language=`-shaped locale, mirroring `TMDBService.locale()` /
-    /// web `getTmdbLocale()`: Chinese device language → `zh-CN`, else `en-US`.
+    /// web `getTmdbLocale()`: Chinese → `zh-CN`, else `en-US`.
+    ///
+    /// Re-sourced from `LocaleStore.current` (Task 1) — the SAME single source of
+    /// truth `TMDBService.locale()` reads and the Settings toggle writes. The old
+    /// duplicated `Locale.preferredLanguages.first` device-read is gone so the
+    /// in-app toggle re-routes suggestion content on the next fetch.
     static func locale() -> String {
-        let code = Locale.preferredLanguages.first ?? Locale.current.identifier
-        return code.lowercased().hasPrefix("zh") ? "zh-CN" : "en-US"
+        locale(for: LocaleStore.current)
+    }
+
+    /// Pure `SpoolLocale` → TMDB `language=` mapping, identical to
+    /// `TMDBService.locale(for:)`. `.zh` → `zh-CN`, `.en` → `en-US`. Extracted so
+    /// the mapping is unit-tested with no store / `Locale.preferredLanguages` read.
+    static func locale(for locale: SpoolLocale) -> String {
+        locale == .zh ? "zh-CN" : "en-US"
     }
 }
 

@@ -15,7 +15,7 @@ import SwiftUI
 /// The email/password form itself is shared with OnbSignInScreen via
 /// `SignInFormBody` below so the two entry points stay in lockstep.
 ///
-/// Header last reviewed: 2026-04-18
+/// Header last reviewed: 2026-07-10
 public struct SignInSheet: View {
     public var onDone: (SignInResult) -> Void
 
@@ -43,20 +43,20 @@ public struct SignInSheet: View {
                         }
                         .padding(.top, 8)
 
-                        Text("— RESERVE YOUR SEAT —")
+                        Text(L10n.t("auth.reserveSeat"))
                             .font(SpoolFonts.mono(10))
                             .tracking(4)
                             .foregroundStyle(t.inkSoft)
                             .padding(.top, 10)
 
-                        Text("save your\nrankings.")
+                        Text(L10n.t("auth.saveRankings"))
                             .font(SpoolFonts.serif(46))
                             .tracking(-1.4)
                             .foregroundStyle(t.ink)
                             .lineSpacing(-4)
                             .padding(.top, 14)
 
-                        Text("your stubs live across devices.\nsign in to keep what you just ranked.")
+                        Text(L10n.t("auth.stubsAcrossDevices"))
                             .font(SpoolFonts.hand(13))
                             .foregroundStyle(t.inkSoft)
                             .lineSpacing(3)
@@ -66,7 +66,7 @@ public struct SignInSheet: View {
                             .padding(.top, 22)
 
                         Button(action: { onDone(.skipped) }) {
-                            Text("not now — keep previewing")
+                            Text(L10n.t("auth.notNow"))
                                 .font(SpoolFonts.hand(12))
                                 .foregroundStyle(t.inkSoft)
                                 .underline()
@@ -118,9 +118,9 @@ struct SignInFormBody: View {
                 dividerRow(theme: t)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    SignInFieldRow(label: "EMAIL", placeholder: "you@spool.co",
+                    SignInFieldRow(label: L10n.t("auth.emailLabel"), placeholder: L10n.t("auth.emailPlaceholder"),
                                    text: $email, isSecure: false)
-                    SignInFieldRow(label: "PASSCODE", placeholder: "8+ characters",
+                    SignInFieldRow(label: L10n.t("auth.passcodeLabel"), placeholder: L10n.t("auth.passcodePlaceholder"),
                                    text: $password, isSecure: true)
                 }
 
@@ -134,7 +134,7 @@ struct SignInFormBody: View {
                 Button(action: submit) {
                     HStack(spacing: 8) {
                         if working { ProgressView().tint(t.cream) }
-                        Text(working ? "working…" : primaryLabel)
+                        Text(working ? L10n.t("auth.working") : primaryLabel)
                             .font(SpoolFonts.serif(16))
                             .tracking(0.3)
                             .foregroundStyle(t.cream)
@@ -169,10 +169,10 @@ struct SignInFormBody: View {
     }
 
     private var primaryLabel: String {
-        mode == .signIn ? "sign in" : "create account"
+        mode == .signIn ? L10n.t("auth.signIn") : L10n.t("auth.createAccount")
     }
     private var toggleLabel: String {
-        mode == .signIn ? "new here? create an account" : "have an account? sign in"
+        mode == .signIn ? L10n.t("auth.newHere") : L10n.t("auth.haveAccountSignIn")
     }
 
     private var formValid: Bool {
@@ -228,7 +228,7 @@ struct SignInFormBody: View {
                         .frame(width: 22, height: 22)
                         .background(Circle().stroke(t.ink, lineWidth: 1.2))
                 }
-                Text(googleWorking ? "opening Google…" : "continue with Google")
+                Text(googleWorking ? L10n.t("auth.openingGoogle") : L10n.t("auth.continueGoogle"))
                     .font(SpoolFonts.serif(16))
                     .tracking(0.2)
                     .foregroundStyle(t.ink)
@@ -246,7 +246,7 @@ struct SignInFormBody: View {
     private func dividerRow(theme t: SpoolPalette) -> some View {
         HStack(spacing: 10) {
             Rectangle().fill(t.rule).frame(height: 1)
-            Text("or")
+            Text(L10n.t("auth.or"))
                 .font(SpoolFonts.mono(10))
                 .tracking(2)
                 .foregroundStyle(t.inkSoft)

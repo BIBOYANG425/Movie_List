@@ -58,7 +58,7 @@ public struct JournalListView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(t.inkSoft)
-                TextField("search your journal…", text: $query)
+                TextField(L10n.t("journal.searchPlaceholder"), text: $query)
                     .font(SpoolFonts.serif(15))
                     .foregroundStyle(t.ink)
                     .textFieldStyle(.plain)
@@ -131,7 +131,7 @@ public struct JournalListView: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 12) {
                 Spacer(minLength: 40)
-                Text("no entries yet — rank something and write about it")
+                Text(L10n.t("journal.listEmpty"))
                     .font(SpoolFonts.hand(14))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
@@ -147,7 +147,7 @@ public struct JournalListView: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 8) {
                 Spacer(minLength: 40)
-                Text("nothing matches")
+                Text(L10n.t("journal.nothingMatches"))
                     .font(SpoolFonts.hand(15))
                     .foregroundStyle(t.inkSoft)
                 Spacer(minLength: 20)

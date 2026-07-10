@@ -234,7 +234,7 @@ public struct FeedTicket: View {
                 // Media mute only makes sense when the event carries a title.
                 if card.mediaTmdbID != nil {
                     Button(role: .destructive) { onMuteMedia() } label: {
-                        Label("mute this title", systemImage: "film")
+                        Label(L10n.t("feed.muteTitle"), systemImage: "film")
                     }
                 }
             }
@@ -365,7 +365,7 @@ public struct FeedTicket: View {
                     Button {
                         spoilerRevealed = true
                     } label: {
-                        Text("spoilers — tap to reveal")
+                        Text(L10n.t("feed.spoilersTapReveal"))
                             .font(SpoolFonts.mono(10))
                             .tracking(1)
                             .foregroundStyle(t.cream)

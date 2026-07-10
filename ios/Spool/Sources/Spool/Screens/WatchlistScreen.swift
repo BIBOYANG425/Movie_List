@@ -41,7 +41,7 @@ public struct WatchlistScreen: View {
     public var body: some View {
         SpoolScreen {
             VStack(spacing: 0) {
-                SpoolHeader(title: "watchlist")
+                SpoolHeader(title: L10n.t("watchlist.title"))
 
                 mediaSwitcher
 
@@ -78,9 +78,9 @@ public struct WatchlistScreen: View {
 
     private func label(for media: WatchlistMediaType) -> String {
         switch media {
-        case .movie: return "movies"
-        case .tv:    return "tv"
-        case .book:  return "books"
+        case .movie: return L10n.t("rankEntry.modeMovies")
+        case .tv:    return L10n.t("rankEntry.modeTV")
+        case .book:  return L10n.t("rankEntry.modeBooks")
         }
     }
 
@@ -152,11 +152,11 @@ public struct WatchlistScreen: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 14) {
                 Spacer(minLength: 40)
-                Text("couldn't load your watchlist")
+                Text(L10n.t("watchlist.loadFailed"))
                     .font(SpoolFonts.hand(15))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
-                SpoolPill("try again", size: .sm) {
+                SpoolPill(L10n.t("watchlist.tryAgain"), size: .sm) {
                     Task { await model.reload() }
                 }
                 Spacer()
@@ -169,9 +169,9 @@ public struct WatchlistScreen: View {
     /// Per-media empty copy in the app's lowercase hand voice.
     private var emptyLine: String {
         switch model.selectedMedia {
-        case .movie: return "no movies saved yet — bookmark something to watch later"
-        case .tv:    return "no shows saved yet — bookmark a season to watch later"
-        case .book:  return "no books saved yet — bookmark one to read later"
+        case .movie: return L10n.t("watchlist.emptyMovies")
+        case .tv:    return L10n.t("watchlist.emptyShows")
+        case .book:  return L10n.t("watchlist.emptyBooks")
         }
     }
 }

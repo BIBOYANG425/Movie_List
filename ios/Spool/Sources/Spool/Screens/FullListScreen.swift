@@ -150,11 +150,11 @@ public struct FullListScreen: View {
             )
         }
         .confirmationDialog(
-            deleteTarget.map { "delete \($0.title)?" } ?? "delete?",
+            deleteTarget.map { L10n.t("shelf.deleteTitle", ["title": $0.title]) } ?? L10n.t("shelf.deleteTitleGeneric"),
             isPresented: deleteDialogBinding,
             titleVisibility: .visible
         ) {
-            Button("delete", role: .destructive) {
+            Button(L10n.t("shelf.delete"), role: .destructive) {
                 if let item = deleteTarget {
                     deleteTarget = nil
                     Task {
@@ -165,9 +165,9 @@ public struct FullListScreen: View {
                     }
                 }
             }
-            Button("cancel", role: .cancel) { deleteTarget = nil }
+            Button(L10n.t("shelf.cancel"), role: .cancel) { deleteTarget = nil }
         } message: {
-            Text("this removes it from your shelf. it won't return to your watchlist.")
+            Text(L10n.t("shelf.deleteMessage"))
         }
     }
 
@@ -222,7 +222,7 @@ public struct FullListScreen: View {
         SpoolThemeReader { t, _ in
             HStack {
                 Button(action: onClose) {
-                    Text("close")
+                    Text(L10n.t("settings.close"))
                         .font(SpoolFonts.mono(12))
                         .tracking(1.5)
                         .foregroundStyle(t.ink)
@@ -231,7 +231,7 @@ public struct FullListScreen: View {
                 }
                 .buttonStyle(.plain)
                 Spacer()
-                Text("my shelf")
+                Text(L10n.t("shelf.title"))
                     .font(SpoolFonts.serif(22))
                     .tracking(-0.3)
                     .foregroundStyle(t.ink)
@@ -270,9 +270,9 @@ public struct FullListScreen: View {
 
     private func label(for media: WatchlistMediaType) -> String {
         switch media {
-        case .movie: return "movies"
-        case .tv:    return "tv"
-        case .book:  return "books"
+        case .movie: return L10n.t("rankEntry.modeMovies")
+        case .tv:    return L10n.t("rankEntry.modeTV")
+        case .book:  return L10n.t("rankEntry.modeBooks")
         }
     }
 
@@ -311,7 +311,7 @@ public struct FullListScreen: View {
                     items = manage.flatItems
                 }
             } label: {
-                Text(manage.isEditing ? "done" : "edit")
+                Text(manage.isEditing ? L10n.t("shelf.done") : L10n.t("shelf.edit"))
                     .font(SpoolFonts.mono(12))
                     .tracking(1.5)
                     .foregroundStyle(manage.isEditing ? t.cream : t.ink)
@@ -324,7 +324,7 @@ public struct FullListScreen: View {
             .buttonStyle(.plain)
         } else {
             // Invisible balancer keeps the title centered when no toggle shows.
-            Text("edit").opacity(0).padding(.horizontal, 12).padding(.vertical, 8)
+            Text(L10n.t("shelf.edit")).opacity(0).padding(.horizontal, 12).padding(.vertical, 8)
         }
     }
 
@@ -346,7 +346,7 @@ public struct FullListScreen: View {
     private var loadingState: some View {
         VStack(spacing: 12) {
             ProgressView()
-            Text("loading your shelf…")
+            Text(L10n.t("shelf.loading"))
                 .font(SpoolFonts.hand(13))
                 .foregroundStyle(SpoolTokens.paper.inkSoft)
         }
@@ -357,10 +357,10 @@ public struct FullListScreen: View {
     private var previewState: some View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 10) {
-                Text("sign in to see your shelf")
+                Text(L10n.t("shelf.signInTitle"))
                     .font(SpoolFonts.serif(22))
                     .foregroundStyle(t.ink)
-                Text("your rankings live on your account.\nsign in from the home screen to pull them here.")
+                Text(L10n.t("shelf.signInHint"))
                     .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
@@ -373,14 +373,14 @@ public struct FullListScreen: View {
     private var emptyState: some View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 10) {
-                Text("nothing ranked yet")
+                Text(L10n.t("shelf.emptyTitle"))
                     .font(SpoolFonts.serif(22))
                     .foregroundStyle(t.ink)
-                Text("rank something from the home tab\nand it'll show up here by tier.")
+                Text(L10n.t("shelf.emptyHint"))
                     .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
-                SpoolPill("rank something →", filled: true, action: onClose)
+                SpoolPill(L10n.t("shelf.rankSomething"), filled: true, action: onClose)
                     .padding(.top, 6)
             }
             .frame(maxWidth: .infinity)
@@ -471,7 +471,7 @@ public struct FullListScreen: View {
     private func rankMenu(for item: RankedItem) -> some View {
         // Move to tier — a submenu of every tier EXCEPT the one it's in. Each
         // move appends to the target tier's tail (menu moves never pick a slot).
-        Menu("move to tier") {
+        Menu(L10n.t("shelf.moveToTier")) {
             ForEach(Tier.allCases.filter { $0 != item.tier }, id: \.self) { tier in
                 Button {
                     Task {
@@ -489,7 +489,7 @@ public struct FullListScreen: View {
         Button {
             openNotes(for: item)
         } label: {
-            Label("edit notes", systemImage: "square.and.pencil")
+            Label(L10n.t("shelf.editNotes"), systemImage: "square.and.pencil")
         }
 
         // RE-RANK — all known media (C5-T6; the media-generic ceremony routes
@@ -500,7 +500,7 @@ public struct FullListScreen: View {
             Button {
                 manage.requestRerank(item: item)
             } label: {
-                Label("re-rank", systemImage: "arrow.up.arrow.down")
+                Label(L10n.t("shelf.reRank"), systemImage: "arrow.up.arrow.down")
             }
         }
 
@@ -509,7 +509,7 @@ public struct FullListScreen: View {
         Button(role: .destructive) {
             deleteTarget = item
         } label: {
-            Label("delete", systemImage: "trash")
+            Label(L10n.t("shelf.delete"), systemImage: "trash")
         }
     }
 
@@ -659,7 +659,7 @@ public struct FullListScreen: View {
             // uses on write failures.
             NSLog("[FullListScreen] getAllRankedItems(\(media)) FAIL: \(error)")
             ToastCenter.shared.show(
-                "couldn't refresh — check connection",
+                L10n.t("shelf.refreshFailed"),
                 level: .error
             )
         }
@@ -708,13 +708,13 @@ struct RankNotesSheet: View {
             SpoolThemeReader { t, _ in
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Button("cancel", action: onCancel)
+                        Button(L10n.t("shelf.cancel"), action: onCancel)
                             .font(SpoolFonts.mono(12))
                             .tracking(1.5)
                             .foregroundStyle(t.ink)
                             .buttonStyle(.plain)
                         Spacer()
-                        Button("save") { onSave(draft) }
+                        Button(L10n.t("shelf.save")) { onSave(draft) }
                             .font(SpoolFonts.mono(12))
                             .tracking(1.5)
                             .foregroundStyle(saveBlocked ? t.inkSoft : t.ink)
@@ -740,7 +740,7 @@ struct RankNotesSheet: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 13))
                                 .foregroundStyle(SpoolTokens.paper.inkSoft)
-                            Text("couldn't load your existing note — saving may overwrite it")
+                            Text(L10n.t("toast.noteLoadFailed"))
                                 .font(SpoolFonts.hand(12))
                                 .foregroundStyle(SpoolTokens.paper.inkSoft)
                         }
@@ -749,7 +749,7 @@ struct RankNotesSheet: View {
                         .padding(.top, 12)
                     }
 
-                    Text("YOUR NOTES")
+                    Text(L10n.t("shelf.yourNotes"))
                         .font(SpoolFonts.mono(10))
                         .tracking(2.5)
                         .foregroundStyle(t.inkSoft)
@@ -786,7 +786,7 @@ struct RankNotesSheet: View {
             if loading {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text("loading your notes…")
+                    Text(L10n.t("shelf.loadingNotes"))
                         .font(SpoolFonts.hand(13))
                         .foregroundStyle(t.inkSoft)
                 }

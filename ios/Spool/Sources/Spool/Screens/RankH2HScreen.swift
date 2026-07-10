@@ -43,7 +43,7 @@ public struct RankH2HScreen: View {
         SpoolScreen {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Button("← BACK", action: onBack)
+                    Button(L10n.t("ceremony.back").uppercased(), action: onBack)
                         .font(SpoolFonts.mono(12))
                         .tracking(1)
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -91,9 +91,9 @@ public struct RankH2HScreen: View {
     @ViewBuilder
     private var header: some View {
         let roundLabel: String = {
-            if let c = comparison, !done { return "STEP 2 · MATCH \(c.round)" }
-            if done { return "STEP 2 · PLACED" }
-            return "STEP 2 · WARMING UP"
+            if let c = comparison, !done { return L10n.t("ceremony.step2Match", ["round": "\(c.round)"]).uppercased() }
+            if done { return L10n.t("ceremony.step2Placed").uppercased() }
+            return L10n.t("ceremony.step2WarmingUp").uppercased()
         }()
 
         Text(roundLabel)
@@ -111,7 +111,7 @@ public struct RankH2HScreen: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 12)
         } else if !done {
-            Text("which hit harder?")
+            Text(L10n.t("ceremony.whichHitHarder"))
                 .font(SpoolFonts.script(26))
                 .foregroundStyle(SpoolTokens.paper.ink)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -120,8 +120,8 @@ public struct RankH2HScreen: View {
 
         SpoolThemeReader { _, mode in
             HStack(spacing: 4) {
-                Text("placing within")
-                Text("\(tier.rawValue)-tier")
+                Text(L10n.t("ceremony.placingWithin"))
+                Text(L10n.t("ceremony.tierSuffix", ["tier": tier.rawValue]))
                     .foregroundStyle(tierColor(tier, mode: mode))
                     .bold()
             }
@@ -141,17 +141,17 @@ public struct RankH2HScreen: View {
             // pool means movieB is the same media as the just-watched movieA.
             H2HCard(
                 movie: h2hMovie(from: c.movieA),
-                label: "JUST WATCHED",
+                label: L10n.t("ceremony.justWatched").uppercased(),
                 tilt: -1.2
             ) { submit(winnerId: c.movieA.id) }
 
-            Text("— vs —")
+            Text(L10n.t("ceremony.vs"))
                 .font(SpoolFonts.script(26))
                 .foregroundStyle(SpoolTokens.paper.accent)
 
             H2HCard(
                 movie: h2hMovie(from: c.movieB),
-                label: "YOUR \(tier.rawValue)-TIER · #\(c.movieB.rank + 1)",
+                label: L10n.t("ceremony.yourTierRank", ["tier": tier.rawValue, "rank": "\(c.movieB.rank + 1)"]).uppercased(),
                 tilt: 1
             ) { submit(winnerId: c.movieB.id) }
         }
@@ -171,9 +171,9 @@ public struct RankH2HScreen: View {
 
     private var voteRow: some View {
         HStack(spacing: 6) {
-            SpoolPill("= tie", size: .sm) { skip() }
-            SpoolPill("? haven't seen", size: .sm) { skip() }
-            SpoolPill("skip", filled: true, size: .sm) { skip() }
+            SpoolPill(L10n.t("ceremony.tie"), size: .sm) { skip() }
+            SpoolPill(L10n.t("ceremony.haventSeen"), size: .sm) { skip() }
+            SpoolPill(L10n.t("ceremony.skip"), filled: true, size: .sm) { skip() }
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }
@@ -182,7 +182,7 @@ public struct RankH2HScreen: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 10) {
                 ProgressView().tint(t.accent)
-                Text("reading your taste…")
+                Text(L10n.t("ceremony.readingTaste"))
                     .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
             }
@@ -193,12 +193,12 @@ public struct RankH2HScreen: View {
     private var placedCelebration: some View {
         SpoolThemeReader { t, mode in
             VStack(spacing: 6) {
-                Text("placed ✓")
+                Text(L10n.t("ceremony.placed"))
                     .font(SpoolFonts.script(30))
                     .foregroundStyle(t.accent)
                 HStack(spacing: 6) {
-                    Text("#\(max(finalRank + 1, 1)) in")
-                    Text("\(tier.rawValue)-tier")
+                    Text(L10n.t("ceremony.rankIn", ["rank": "\(max(finalRank + 1, 1))"]))
+                    Text(L10n.t("ceremony.tierSuffix", ["tier": tier.rawValue]))
                         .foregroundStyle(tierColor(tier, mode: mode))
                 }
                 .font(SpoolFonts.hand(16))
@@ -367,7 +367,7 @@ struct H2HCard: View {
                         Text("\(movie.attribution) · \(String(movie.year))")
                             .font(SpoolFonts.mono(10))
                             .foregroundStyle(t.inkSoft)
-                        Text("tap to pick")
+                        Text(L10n.t("ceremony.tapToPick"))
                             .font(SpoolFonts.script(16))
                             .foregroundStyle(t.accent)
                             .padding(.top, 2)
@@ -400,7 +400,7 @@ struct TierShelf: View {
     var body: some View {
         SpoolThemeReader { t, mode in
             VStack(spacing: 6) {
-                Text("\(tier.rawValue)-TIER SHELF")
+                Text(L10n.t("ceremony.tierShelf", ["tier": tier.rawValue]).uppercased())
                     .font(SpoolFonts.mono(9))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)
@@ -417,7 +417,7 @@ struct TierShelf: View {
                                             style: StrokeStyle(lineWidth: 1.5, dash: hi ? [] : [3, 2])
                                         )
                                 )
-                            Text(hi ? (locked ? "✓" : "new") : "#\(i+1)")
+                            Text(hi ? (locked ? "✓" : L10n.t("ceremony.new")) : "#\(i+1)")
                                 .font(SpoolFonts.mono(9))
                                 .foregroundStyle(hi ? t.cream : t.inkSoft)
                         }

@@ -22,27 +22,27 @@ public struct RankCeremonyScreen: View {
         SpoolScreen {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Button("← BACK", action: onBack)
+                    Button(L10n.t("ceremony.back").uppercased(), action: onBack)
                         .font(SpoolFonts.mono(12))
                         .tracking(1)
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
 
                     StepProgress(step: 3, total: 3).padding(.top, 10)
 
-                    Text("STEP 3 OF 3 · CEREMONY")
+                    Text(L10n.t("ceremony.step3").uppercased())
                         .font(SpoolFonts.mono(10))
                         .tracking(2)
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 8)
 
-                    Text("now bottle it up.")
+                    Text(L10n.t("ceremony.bottleItUp"))
                         .font(SpoolFonts.serif(28))
                         .foregroundStyle(SpoolTokens.paper.ink)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 10)
 
-                    Text("pick up to 3 moods · one line to remember")
+                    Text(L10n.t("ceremony.pickMoodsHint"))
                         .font(SpoolFonts.script(17))
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -51,8 +51,8 @@ public struct RankCeremonyScreen: View {
                     lineBox.padding(.top, 16)
 
                     HStack(spacing: 8) {
-                        SpoolPill("← back", action: onBack)
-                        SpoolPill("print my stub →", filled: true) { onDone(moods, line) }
+                        SpoolPill(L10n.t("ceremony.backPill"), action: onBack)
+                        SpoolPill(L10n.t("ceremony.printStub"), filled: true) { onDone(moods, line) }
                     }
                     .padding(.top, 20)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -91,7 +91,7 @@ public struct RankCeremonyScreen: View {
     private var lineBox: some View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 6) {
-                Text("A LINE TO REMEMBER")
+                Text(L10n.t("ceremony.lineToRemember").uppercased())
                     .font(SpoolFonts.mono(9))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)

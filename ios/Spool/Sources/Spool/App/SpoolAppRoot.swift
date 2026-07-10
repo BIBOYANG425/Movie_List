@@ -20,6 +20,18 @@ public struct SpoolAppRoot: View {
     /// the device's light/dark mode automatically. Previous installs that set
     /// `.paper` or `.dark` keep their explicit pick.
     @AppStorage("spool.theme_preference") private var themePreferenceRaw: String = ThemePreference.system.rawValue
+    /// Persisted app language (C6-iOS Task 2). Same raw-string `@AppStorage`
+    /// contract as the theme preference, on `LocaleStore.storageKey`
+    /// (`"spool_locale"`). This property exists to make the ROOT observe the
+    /// locale so a Settings toggle re-renders every `L10n.t`-reading view:
+    /// `.id(rawLocale)` on the content forces a rebuild when the raw value
+    /// flips (the canonical Task 3 re-render pattern documented in LocaleStore).
+    ///
+    /// IMPORTANT (fresh-install ordering, LocaleStore contract): `LocaleStore.current`
+    /// is read at first launch (via `L10n.t`) BEFORE this wrapper's default would
+    /// write — and the default here is deliberately the DEVICE default, not a bare
+    /// `"en"`, so this wrapper never masks a device-zh install's `.zh` seed.
+    @AppStorage(LocaleStore.storageKey) private var rawLocale: String = LocaleStore.current.rawValue
     /// System color scheme; only used when preference is `.system`.
     @Environment(\.colorScheme) private var systemColorScheme
     @State private var tab: SpoolTab = .feed
@@ -109,6 +121,12 @@ public struct SpoolAppRoot: View {
                     mainApp
                 }
             }
+            // Re-render contract (C6-iOS Task 2, canonical LocaleStore pattern):
+            // keying the content on the raw locale forces SwiftUI to rebuild the
+            // whole tree when the Settings toggle flips the language, so every
+            // `L10n.t`-reading view (today: BottomNav labels + rank a11y label)
+            // shows the new copy live. Task 3's copy sweep rides this for free.
+            .id(rawLocale)
             // Toast overlay sits above main content but below any `.sheet`
             // (SwiftUI sheets present above overlays natively), so error
             // messages float over the UI without blocking sign-in or future
@@ -208,7 +226,7 @@ public struct SpoolAppRoot: View {
                     Image(systemName: "icloud.slash")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(t.ink)
-                    Text("preview mode — sign in to save your rankings")
+                    Text(L10n.t("app.previewBanner"))
                         .font(SpoolFonts.hand(12))
                         .foregroundStyle(t.ink)
                         .lineLimit(1)
@@ -699,7 +717,7 @@ public struct SpoolAppRoot: View {
                 // Garbage id: can't derive a show id → refuse the re-rank.
                 // Never seed a tv Movie with nil showTmdbId (would persist 0/0).
                 NSLog("[SpoolAppRoot] rerankFromShelf: corrupt tv id '\(item.id)' — re-rank refused")
-                ToastCenter.shared.show("couldn't re-rank this show — try again", level: .error)
+                ToastCenter.shared.show(L10n.t("toast.reRankFailed"), level: .error)
             }
 
         case .book:

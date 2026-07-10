@@ -55,7 +55,7 @@ public struct ProfileScreen: View {
                         .overlay(Circle().stroke(t.ink, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open settings")
+                .accessibilityLabel(L10n.t("profile.openSettings"))
             }
         }
     }
@@ -80,7 +80,7 @@ public struct ProfileScreen: View {
                     Text("\(stubsCount)")
                         .font(SpoolFonts.serif(30))
                         .foregroundStyle(t.accent)
-                    Text("STUBS")
+                    Text(L10n.t("profile.stubsLabel"))
                         .font(SpoolFonts.mono(9))
                         .tracking(2)
                         .foregroundStyle(t.inkSoft)
@@ -149,14 +149,14 @@ public struct ProfileScreen: View {
     private var obsessed: some View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 0) {
-                Text("CURRENTLY OBSESSED")
+                Text(L10n.t("profile.currentlyObsessed"))
                     .font(SpoolFonts.mono(10))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)
 
                 ZStack {
                     VStack(spacing: 4) {
-                        Text("NOW PLAYING")
+                        Text(L10n.t("profile.nowPlaying"))
                             .font(SpoolFonts.mono(10))
                             .tracking(3)
                             .foregroundStyle(t.cream.opacity(0.6))
@@ -182,14 +182,14 @@ public struct ProfileScreen: View {
     }
 
     private var obsessedTitle: String {
-        topFour.first?.title ?? (hasSession ? "nothing yet" : "Past Lives")
+        topFour.first?.title ?? (hasSession ? L10n.t("profile.nothingYet") : "Past Lives")
     }
 
     private var obsessedSub: String {
         if topFour.isEmpty {
-            return hasSession ? "rank an S-tier to light this up" : "3rd rewatch this month"
+            return hasSession ? L10n.t("profile.rankSTierHint") : "3rd rewatch this month"
         }
-        return "your top S-tier."
+        return L10n.t("profile.yourTopSTier")
     }
 
     // MARK: top 4 + recent
@@ -198,7 +198,7 @@ public struct ProfileScreen: View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("MY TOP 4 · ALL TIME")
+                    Text(L10n.t("profile.myTop4"))
                         .font(SpoolFonts.mono(10))
                         .tracking(2)
                         .foregroundStyle(t.inkSoft)
@@ -207,7 +207,7 @@ public struct ProfileScreen: View {
                     // so it reads as a soft affordance next to the marquee
                     // top-four cards, rather than a competing heading.
                     Button(action: onOpenFullList) {
-                        Text("see full shelf →")
+                        Text(L10n.t("profile.seeFullShelf"))
                             .font(SpoolFonts.hand(12))
                             .foregroundStyle(t.ink)
                             .padding(.horizontal, 10)
@@ -215,7 +215,7 @@ public struct ProfileScreen: View {
                             .background(Capsule().stroke(t.ink, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("See full shelf")
+                    .accessibilityLabel(L10n.t("profile.seeFullShelfA11y"))
                 }
 
                 HStack(spacing: 6) {
@@ -259,7 +259,7 @@ public struct ProfileScreen: View {
     private var recentSection: some View {
         SpoolThemeReader { t, mode in
             VStack(alignment: .leading, spacing: 0) {
-                Text("RECENT STUBS · \(Self.currentMonthAbbrev())")
+                Text(L10n.t("profile.recentStubs", ["month": Self.currentMonthAbbrev()]))
                     .font(SpoolFonts.mono(10))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)
@@ -318,9 +318,9 @@ public struct ProfileScreen: View {
 
     private var footerPills: some View {
         HStack(spacing: 6) {
-            SpoolPill("◉ \(friendsCount) friends", size: .sm)
+            SpoolPill(L10n.t("profile.friendsCount", ["n": "\(friendsCount)"]), size: .sm)
             if let twin = topTwin {
-                SpoolPill("taste twin \(twin.handle) · \(twin.score)%", size: .sm)
+                SpoolPill(L10n.t("profile.tasteTwin", ["handle": twin.handle, "score": "\(twin.score)"]), size: .sm)
             }
             // Recap pill hidden until the monthly-recap experience is real.
         }

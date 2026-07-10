@@ -26,8 +26,8 @@ public struct FriendsScreen: View {
     public var body: some View {
         SpoolScreen {
             VStack(spacing: 0) {
-                SpoolHeader(title: "friends") {
-                    SpoolPill("+ add", size: .sm)
+                SpoolHeader(title: L10n.t("friends.title")) {
+                    SpoolPill(L10n.t("friends.add"), size: .sm)
                 }
                 ScrollView {
                     content
@@ -68,11 +68,11 @@ public struct FriendsScreen: View {
     private var errorState: some View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 10) {
-                Text("COULDN'T LOAD FRIENDS")
+                Text(L10n.t("friends.loadFailed"))
                     .font(SpoolFonts.mono(11))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)
-                Text("pull to retry.")
+                Text(L10n.t("friends.pullToRetry"))
                     .font(SpoolFonts.hand(14))
                     .foregroundStyle(t.ink)
             }
@@ -84,8 +84,8 @@ public struct FriendsScreen: View {
     private var sectionHeader: some View {
         SpoolThemeReader { t, _ in
             Text(state == .fallback
-                 ? "DEMO TWINS · SIGN IN FOR REAL FRIENDS"
-                 : "YOUR TASTE TWINS · \(friends.count)")
+                 ? L10n.t("friends.demoTwins")
+                 : L10n.t("friends.yourTwins", ["n": "\(friends.count)"]))
                 .font(SpoolFonts.mono(10))
                 .tracking(2)
                 .foregroundStyle(t.inkSoft)
@@ -95,11 +95,11 @@ public struct FriendsScreen: View {
     private var signedInEmptyState: some View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 10) {
-                Text("NO TWINS YET")
+                Text(L10n.t("friends.noTwins"))
                     .font(SpoolFonts.mono(11))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)
-                Text("follow someone to see how your tastes compare.")
+                Text(L10n.t("friends.noTwinsHint"))
                     .font(SpoolFonts.hand(14))
                     .foregroundStyle(t.ink)
                     .multilineTextAlignment(.center)
@@ -188,7 +188,7 @@ struct FriendRow: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("View \(friend.handle) profile")
+                    .accessibilityLabel(L10n.t("friends.viewProfileA11y", ["handle": friend.handle]))
                     .accessibilityAddTraits(.isButton)
 
                     HStack(spacing: 2) {
@@ -204,7 +204,7 @@ struct FriendRow: View {
                     Text("\(friend.twin)%")
                         .font(SpoolFonts.serif(22))
                         .foregroundStyle(t.accent)
-                    Text("TWIN")
+                    Text(L10n.t("friends.twinLabel"))
                         .font(SpoolFonts.mono(9))
                         .tracking(1)
                         .foregroundStyle(t.inkSoft)
@@ -222,7 +222,7 @@ struct FriendRow: View {
             .contentShape(Rectangle())
             .onTapGesture(perform: action)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Open taste twin with \(friend.handle), \(friend.twin)% match")
+            .accessibilityLabel(L10n.t("friends.openTwinA11y", ["handle": friend.handle, "score": "\(friend.twin)"]))
             .accessibilityAddTraits(.isButton)
         }
     }

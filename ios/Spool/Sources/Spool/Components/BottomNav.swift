@@ -18,7 +18,11 @@ public enum SpoolTab: String, CaseIterable, Hashable {
 /// ceiling for this capsule at these paddings. A sixth surface should go behind
 /// a "more" affordance or into an existing tab rather than a seventh cell.
 ///
-/// Header last reviewed: 2026-07-09
+/// Localized labels: tab titles + the rank-button a11y label flow through
+/// `L10n.t` (C6-iOS Task 2). These are the first wired L10n consumers; the
+/// root's `.id(rawLocale)` re-renders them on a language toggle.
+///
+/// Header last reviewed: 2026-07-10
 public struct BottomNav: View {
     public var active: SpoolTab
     public var onTab: (SpoolTab) -> Void
@@ -49,15 +53,19 @@ public struct BottomNav: View {
     @ViewBuilder
     private func capsule(t: SpoolPalette) -> some View {
         HStack(alignment: .center, spacing: 0) {
-            tabButton(.feed, label: "feed", icon: "☆", t: t)
-            tabButton(.stubs, label: "stubs", icon: "▢", t: t)
-            tabButton(.watchlist, label: "queue", icon: "☰", t: t)
+            // Labels flow through `L10n.t` (C6-iOS Task 2): these are the FIRST
+            // wired consumers, proving the toggle → live-flip contract. The root
+            // (`SpoolAppRoot`) applies `.id(rawLocale)` so a language change
+            // re-renders this nav with the new copy.
+            tabButton(.feed, label: L10n.t("nav.feed"), icon: "☆", t: t)
+            tabButton(.stubs, label: L10n.t("nav.stubs"), icon: "▢", t: t)
+            tabButton(.watchlist, label: L10n.t("nav.queue"), icon: "☰", t: t)
             // Reserved slot for the floating +. Width matches the
             // plusOverlay circle diameter (54pt) so the five real tabs
             // stay evenly distributed and the button sits flush.
             Color.clear.frame(width: 54, height: 1)
-            tabButton(.friends, label: "friends", icon: "○", t: t)
-            tabButton(.me, label: "me", icon: "✦", t: t)
+            tabButton(.friends, label: L10n.t("nav.friends"), icon: "○", t: t)
+            tabButton(.me, label: L10n.t("nav.me"), icon: "✦", t: t)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -91,7 +99,7 @@ public struct BottomNav: View {
         // 22pt above the capsule edge, 32pt overlaps. Tweaking to -27
         // would true-center on the capsule top.
         .offset(y: -22)
-        .accessibilityLabel("Rank a new movie")
+        .accessibilityLabel(L10n.t("nav.rankNew"))
     }
 
     @ViewBuilder

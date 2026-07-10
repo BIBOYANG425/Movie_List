@@ -450,7 +450,7 @@ public final class RankManageModel: ObservableObject {
             // re-seeded; reverting onto the new list would corrupt it).
             guard media == opMedia else { return }
             tiers[tier] = current
-            toastIO("couldn't reorder \(movedItem.title) — try again", .error)
+            toastIO(L10n.t("toast.reorderFailed", ["title": movedItem.title]), .error)
         }
     }
 
@@ -505,7 +505,7 @@ public final class RankManageModel: ObservableObject {
             guard media == opMedia else { return }
             tiers[source] = priorSource
             tiers[target] = priorTarget
-            toastIO("couldn't move \(item.title) — try again", .error)
+            toastIO(L10n.t("toast.moveFailed", ["title": item.title]), .error)
         }
     }
 
@@ -537,7 +537,7 @@ public final class RankManageModel: ObservableObject {
             return .success(notes)
         } catch {
             NSLog("[RankManageModel] notes probe failed for \(item.id): \(error)")
-            toastIO("couldn't load your existing note — saving may overwrite it", .error)
+            toastIO(L10n.t("toast.noteLoadFailed"), .error)
             return .probeFailed
         }
     }
@@ -554,7 +554,7 @@ public final class RankManageModel: ObservableObject {
         do {
             try await saveNotesIO(media, item.id, normalized)
         } catch {
-            toastIO("couldn't save notes — try again", .error)
+            toastIO(L10n.t("toast.noteSaveFailed"), .error)
         }
     }
 
@@ -612,7 +612,7 @@ public final class RankManageModel: ObservableObject {
         } catch {
             guard media == opMedia else { return }
             tiers[tier] = prior
-            toastIO("couldn't delete \(item.title) — try again", .error)
+            toastIO(L10n.t("toast.deleteFailed", ["title": item.title]), .error)
         }
     }
 

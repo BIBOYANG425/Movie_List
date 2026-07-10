@@ -123,7 +123,7 @@ public struct FeedTicketBack: View {
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("ticket back for \(FeedTicketPresenter.displayTitle(card.title))")
+        .accessibilityLabel(L10n.t("feed.ticketBackFor", ["title": FeedTicketPresenter.displayTitle(card.title)]))
         .padding(.bottom, 12)
     }
 
@@ -179,9 +179,9 @@ public struct FeedTicketBack: View {
     @ViewBuilder
     private func threadSection(t: SpoolPalette) -> some View {
         if model.loadFailed {
-            emptyRow("couldn't load reactions", t: t)
+            emptyRow(L10n.t("feed.reactionsLoadFailed"), t: t)
         } else if model.thread.isEmpty {
-            emptyRow("no replies yet — be first", t: t)
+            emptyRow(L10n.t("feed.noRepliesYet"), t: t)
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -234,13 +234,13 @@ public struct FeedTicketBack: View {
                 Button(role: .destructive) {
                     Task { await model.deleteComment(id: comment.id) }
                 } label: {
-                    Label("delete", systemImage: "trash")
+                    Label(L10n.t("feed.deleteComment"), systemImage: "trash")
                 }
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(indent == 1 ? "reply: \(comment.body)" : comment.body)
-        .accessibilityHint(isMine ? "your comment, long-press to delete" : "")
+        .accessibilityLabel(indent == 1 ? L10n.t("feed.replyPrefix", ["body": comment.body]) : comment.body)
+        .accessibilityHint(isMine ? L10n.t("feed.commentDeleteHint") : "")
     }
 
     // MARK: composer
@@ -257,7 +257,7 @@ public struct FeedTicketBack: View {
                     Text(error)
                         .font(SpoolFonts.mono(10))
                         .foregroundStyle(t.accent)
-                        .accessibilityLabel("error: \(error)")
+                        .accessibilityLabel(L10n.t("feed.errorPrefix", ["error": error]))
                 }
                 Spacer()
                 // Counter appears only as the draft nears the limit.
@@ -274,7 +274,7 @@ public struct FeedTicketBack: View {
 
     @ViewBuilder
     private func composerField(t: SpoolPalette) -> some View {
-        let field = TextField("say something…", text: $model.draft, axis: .vertical)
+        let field = TextField(L10n.t("feed.composerPlaceholder"), text: $model.draft, axis: .vertical)
             .font(SpoolFonts.serif(15))
             .foregroundStyle(t.ink)
             .lineLimit(1...4)
@@ -314,7 +314,7 @@ public struct FeedTicketBack: View {
         .buttonStyle(.plain)
         .disabled(model.sending)
         .opacity(model.sending ? 0.6 : 1)
-        .accessibilityLabel("post comment")
+        .accessibilityLabel(L10n.t("feed.postComment"))
     }
 
     // MARK: footer
@@ -324,14 +324,14 @@ public struct FeedTicketBack: View {
         Button(action: onFlipBack) {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.uturn.backward").font(.system(size: 9))
-                Text("TAP TO FLIP BACK").font(SpoolFonts.mono(8)).tracking(2)
+                Text(L10n.t("feed.tapToFlipBack")).font(SpoolFonts.mono(8)).tracking(2)
             }
             .foregroundStyle(t.inkSoft)
             .frame(maxWidth: .infinity)
             .padding(.top, 12)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("flip back to the ticket front")
+        .accessibilityLabel(L10n.t("feed.flipBackA11y"))
     }
 
     // MARK: pure copy

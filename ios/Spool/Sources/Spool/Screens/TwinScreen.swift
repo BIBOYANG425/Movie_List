@@ -18,12 +18,12 @@ public struct TwinScreen: View {
         SpoolScreen {
             VStack(spacing: 0) {
                 HStack {
-                    Button("← FRIENDS", action: onClose)
+                    Button(L10n.t("friendProfile.back"), action: onClose)
                         .font(SpoolFonts.mono(12))
                         .tracking(1)
                         .foregroundStyle(SpoolTokens.paper.ink)
                     Spacer()
-                    SpoolPill("↗ share card", size: .sm)
+                    SpoolPill(L10n.t("twin.shareCard"), size: .sm)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 50)
@@ -33,7 +33,7 @@ public struct TwinScreen: View {
                     VStack(alignment: .leading, spacing: 0) {
                         tasteTwinCard
 
-                        Text("YOUR LIBRARIES")
+                        Text(L10n.t("twin.yourLibraries"))
                             .font(SpoolFonts.mono(10))
                             .tracking(2)
                             .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -54,7 +54,7 @@ public struct TwinScreen: View {
                         .frame(height: 200)
                         .padding(.top, 6)
 
-                        Text("BIGGEST FIGHTS")
+                        Text(L10n.t("twin.biggestFights"))
                             .font(SpoolFonts.mono(10))
                             .tracking(2)
                             .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -62,7 +62,7 @@ public struct TwinScreen: View {
 
                         fightsSection
 
-                        Text("RECOMMEND TO \(friend.handle.uppercased())")
+                        Text(L10n.t("twin.recommendTo", ["handle": friend.handle.uppercased()]))
                             .font(SpoolFonts.mono(10))
                             .tracking(2)
                             .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -72,7 +72,7 @@ public struct TwinScreen: View {
 
                         HStack {
                             Spacer()
-                            SpoolPill("send 3 recs →", filled: true)
+                            SpoolPill(L10n.t("twin.send3Recs"), filled: true)
                             Spacer()
                         }
                         .padding(.top, 12)
@@ -91,7 +91,7 @@ public struct TwinScreen: View {
         SpoolThemeReader { t, _ in
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    Text("SPOOL · TASTE TWIN")
+                    Text(L10n.t("twin.spoolTasteTwin"))
                         .font(SpoolFonts.mono(9))
                         .tracking(3)
                         .foregroundStyle(t.inkSoft)
@@ -163,9 +163,9 @@ public struct TwinScreen: View {
     private var twinSummaryLines: [Text] {
         guard let compat, compat.sharedCount > 0 else {
             return [
-                Text("no shared films yet."),
-                Text("rank a few more and the taste map fills in."),
-                Text("then come back — we'll do the math.")
+                Text(L10n.t("twin.noSharedFilms")),
+                Text(L10n.t("twin.rankMoreFillsIn")),
+                Text(L10n.t("twin.comeBackMath"))
             ]
         }
 
@@ -206,9 +206,9 @@ public struct TwinScreen: View {
         // "shared N films" sentence — the UI renders them stacked and a
         // duplicated line reads like a bug.
         let fillers: [Text] = [
-            Text("shared \(compat.sharedCount) films so far."),
-            Text("plenty more to compare."),
-            Text("rank a few more to see the shape.")
+            Text(L10n.t("twin.sharedSoFar", ["n": "\(compat.sharedCount)"])),
+            Text(L10n.t("twin.plentyMore")),
+            Text(L10n.t("twin.rankMoreShape"))
         ]
         var fillerIndex = 0
         while lines.count < 3, fillerIndex < fillers.count {
@@ -236,7 +236,7 @@ public struct TwinScreen: View {
             }
         } else {
             SpoolThemeReader { t, _ in
-                Text("no big disagreements yet. rank more to find friction.")
+                Text(L10n.t("twin.noDisagreements"))
                     .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
                     .padding(.vertical, 14)
@@ -280,7 +280,7 @@ public struct TwinScreen: View {
             .padding(.top, 8)
         } else {
             SpoolThemeReader { t, _ in
-                Text("nothing to recommend yet — rank more S/A films.")
+                Text(L10n.t("twin.nothingToRecommend"))
                     .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
                     .padding(.vertical, 14)
@@ -304,7 +304,7 @@ public struct TwinScreen: View {
                 }
                 Spacer()
                 TierStamp(tier: movie.viewerTier, size: 26)
-                Text("argue →").font(SpoolFonts.script(16)).foregroundStyle(t.accent)
+                Text(L10n.t("twin.argue")).font(SpoolFonts.script(16)).foregroundStyle(t.accent)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -331,7 +331,7 @@ public struct TwinScreen: View {
                 }
                 Spacer()
                 TierStamp(tier: f.yours, size: 26)
-                Text("argue →").font(SpoolFonts.script(16)).foregroundStyle(t.accent)
+                Text(L10n.t("twin.argue")).font(SpoolFonts.script(16)).foregroundStyle(t.accent)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -431,25 +431,25 @@ struct VennChart: View {
                         .overlay(Circle().stroke(t.ink, lineWidth: 1.8))
                         .position(c2)
 
-                    Text("you only")
+                    Text(L10n.t("twin.youOnly"))
                         .font(SpoolFonts.hand(14))
                         .foregroundStyle(t.ink)
                         .position(x: w * 0.18, y: h * 0.14)
-                    Text("\(viewerOnly) films")
+                    Text(L10n.t("twin.filmsCount", ["n": "\(viewerOnly)"]))
                         .font(SpoolFonts.mono(11))
                         .foregroundStyle(t.inkSoft)
                         .position(x: w * 0.18, y: h * 0.22)
 
-                    Text("\(friendHandle.replacingOccurrences(of: "@", with: "")) only")
+                    Text(L10n.t("twin.handleOnly", ["handle": friendHandle.replacingOccurrences(of: "@", with: "")]))
                         .font(SpoolFonts.hand(14))
                         .foregroundStyle(t.ink)
                         .position(x: w * 0.82, y: h * 0.14)
-                    Text("\(targetOnly) films")
+                    Text(L10n.t("twin.filmsCount", ["n": "\(targetOnly)"]))
                         .font(SpoolFonts.mono(11))
                         .foregroundStyle(t.inkSoft)
                         .position(x: w * 0.82, y: h * 0.22)
 
-                    Text("both ♡ \(shared)")
+                    Text(L10n.t("twin.bothLove", ["n": "\(shared)"]))
                         .font(SpoolFonts.script(20))
                         .foregroundStyle(t.accent)
                         .position(x: w * 0.5, y: h * 0.06)

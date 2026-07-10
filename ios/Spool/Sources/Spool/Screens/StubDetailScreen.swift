@@ -15,12 +15,12 @@ public struct StubDetailScreen: View {
         SpoolScreen {
             VStack(spacing: 0) {
                 HStack {
-                    Button("← APRIL", action: onClose)
+                    Button(L10n.t("stubDetail.back"), action: onClose)
                         .font(SpoolFonts.mono(12))
                         .tracking(1)
                         .foregroundStyle(SpoolTokens.paper.ink)
                     Spacer()
-                    Button("SHARE ↗", action: onShare)
+                    Button(L10n.t("stubDetail.share"), action: onShare)
                         .font(SpoolFonts.mono(12))
                         .tracking(1)
                         .foregroundStyle(SpoolTokens.paper.ink)
@@ -51,7 +51,7 @@ public struct StubDetailScreen: View {
                         )
                         .rotationEffect(.degrees(-1.2))
 
-                        Text("— FRIENDS WHO ALSO WATCHED —")
+                        Text(L10n.t("stubDetail.friendsWatched"))
                             .font(SpoolFonts.mono(10))
                             .tracking(2)
                             .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -64,7 +64,7 @@ public struct StubDetailScreen: View {
                         }
                         .padding(.top, 8)
 
-                        Text("— NOTES —")
+                        Text(L10n.t("stubDetail.notes"))
                             .font(SpoolFonts.mono(10))
                             .tracking(2)
                             .foregroundStyle(SpoolTokens.paper.inkSoft)

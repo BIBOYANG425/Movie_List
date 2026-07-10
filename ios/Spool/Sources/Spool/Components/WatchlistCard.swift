@@ -85,11 +85,11 @@ struct WatchlistCard: View {
     private func actions(t: SpoolPalette) -> some View {
         HStack(spacing: 8) {
             if showsRankIt {
-                actionButton("rank it", filled: true, t: t, action: onRankIt)
-                    .accessibilityLabel("Rank \(item.title)")
+                actionButton(L10n.t("watchlist.rankIt"), filled: true, t: t, action: onRankIt)
+                    .accessibilityLabel(L10n.t("watchlist.rankA11y", ["title": item.title]))
             }
-            actionButton("remove", filled: false, t: t, action: onRemove)
-                .accessibilityLabel("Remove \(item.title) from watchlist")
+            actionButton(L10n.t("watchlist.remove"), filled: false, t: t, action: onRemove)
+                .accessibilityLabel(L10n.t("watchlist.removeA11y", ["title": item.title]))
         }
     }
 
@@ -121,8 +121,9 @@ struct WatchlistCard: View {
     }
 
     /// "added apr 18" — the bookmark date in the app's lowercase hand voice.
+    /// The date string stays en-formatted; the "added" wrapper localizes.
     private var addedLine: String {
-        "added \(Self.addedFormatter.string(from: item.addedAt).lowercased())"
+        L10n.t("watchlist.added", ["date": Self.addedFormatter.string(from: item.addedAt).lowercased()])
     }
 
     private static let addedFormatter: DateFormatter = {
