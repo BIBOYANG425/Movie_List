@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import SpoolLogo from './SpoolLogo';
+import { LanguageToggle } from '../shared/LanguageToggle';
 import {
   Film, MessageSquare, Bookmark, Compass, User,
 } from 'lucide-react';
@@ -62,6 +63,12 @@ export default function AppLayout({ activeView, onViewChange, children, headerAc
               );
             })}
           </nav>
+        </div>
+
+        {/* Mobile (<768px): headerActions are hidden, but the language toggle
+            must stay reachable. The bottom tab bar carries no header slot. */}
+        <div className="flex md:hidden items-center">
+          <LanguageToggle />
         </div>
 
         {headerActions && <div className="hidden md:flex items-center gap-2">{headerActions}</div>}

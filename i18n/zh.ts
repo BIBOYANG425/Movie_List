@@ -1,4 +1,6 @@
-const zh: Record<string, string> = {
+import type { TranslationKey } from './en';
+
+const zh = {
   // ── Nav ──────────────────────────────────────────────────────────────────
   'nav.all': '全部',
   'nav.movies': '电影',
@@ -232,7 +234,7 @@ const zh: Record<string, string> = {
 
   // ── Landing Page ─────────────────────────────────────────────────────────
   'landing.tagline': '你的电影，排名并铭记',
-  'landing.subtitle': '等级排名。好友发现。个人观影日记。为真正热爱电影的人而建 —— 不是算法。',
+  'landing.subtitle': '等级排名。好友发现。个人观影日记。为真正热爱电影的人而建，由人做主，与算法无关。',
   'landing.getStarted': '立即开始',
   'landing.createAccount': '创建账号',
   'landing.logIn': '登录',
@@ -387,6 +389,6 @@ const zh: Record<string, string> = {
 
   // ── Language toggle ──────────────────────────────────────────────────────
   'lang.toggle': '中文',
-};
+} satisfies Record<TranslationKey, string>;
 
 export default zh;
