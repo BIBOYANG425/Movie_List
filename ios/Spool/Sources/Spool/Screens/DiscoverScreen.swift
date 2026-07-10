@@ -860,18 +860,25 @@ enum DiscoverCardCopy {
 
     /// Map a social "from your friends" card into a `WatchlistItem` for the
     /// save-for-later write (movie media; social Discover is movie-only).
+    ///
+    /// `normalizeTmdbId` is applied here — the B1 seam — so bare-numeric ids
+    /// from legacy `user_rankings` rows are prefix-normalized before they enter
+    /// the watchlist (web `normalizeTmdbId` parity).
     static func watchlistItem(from rec: FriendRecommendation) -> WatchlistItem {
         WatchlistItem(
-            id: rec.tmdbId, title: rec.title, year: rec.year ?? "",
+            id: normalizeTmdbId(rec.tmdbId), title: rec.title, year: rec.year ?? "",
             posterUrl: rec.posterUrl ?? "", mediaType: .movie, genres: rec.genres,
             addedAt: Date(), director: nil
         )
     }
 
     /// Map a social "trending with friends" card into a `WatchlistItem`.
+    ///
+    /// `normalizeTmdbId` applied at the B1 seam (same as the `FriendRecommendation`
+    /// variant above).
     static func watchlistItem(from movie: TrendingMovie) -> WatchlistItem {
         WatchlistItem(
-            id: movie.tmdbId, title: movie.title, year: movie.year ?? "",
+            id: normalizeTmdbId(movie.tmdbId), title: movie.title, year: movie.year ?? "",
             posterUrl: movie.posterUrl ?? "", mediaType: .movie, genres: movie.genres,
             addedAt: Date(), director: nil
         )
@@ -893,6 +900,28 @@ enum DiscoverCardCopy {
             genres: item.genres,
             posterUrl: item.posterUrl.isEmpty ? nil : item.posterUrl
         )
+    }
+
+    /// Normalizes a social-card TMDB id at the save/rank seam (B1 quirk — legacy
+    /// `user_rankings.tmdb_id` rows can be bare-numeric e.g. "27205").
+    ///
+    /// Web normalizes at this exact seam (`normalizeTmdbId`); iOS mirrors it here
+    /// so bare ids never persist into the watchlist or ranking ceremony:
+    ///   - bare digits ("27205")       → "tmdb_27205"
+    ///   - already prefixed ("tmdb_1") → unchanged
+    ///   - other formats               → unchanged (tv_…, etc.)
+    ///
+    /// Engine items (`SuggestionItem.id`) are already guaranteed prefixed by the
+    /// server; only the social-card path (FriendRecommendation / TrendingMovie)
+    /// needs this normalizer.
+    static func normalizeTmdbId(_ raw: String) -> String {
+        guard !raw.isEmpty else { return raw }
+        // Already prefixed — pass through.
+        if raw.hasPrefix("tmdb_") || raw.hasPrefix("tv_") { return raw }
+        // Bare numeric — prefix.
+        if raw.allSatisfy(\.isNumber) { return "tmdb_\(raw)" }
+        // Other format (future-proofed) — pass through unchanged.
+        return raw
     }
 
     /// Deterministic 0-19 poster seed from a `tmdb_`/`tv_` id (WatchlistCard
@@ -1135,11 +1164,16 @@ public final class DiscoverModel: ObservableObject {
     }
 
     /// Error-vs-empty split for an engine section (web outage-vs-401 contract):
-    /// `notAuthenticated` → `.empty` (the screen is auth-gated); every other
-    /// `SuggestionsClient` failure (http/transport/decoding) and any unexpected
-    /// throw → `.error` (a retry affordance).
+    /// `notAuthenticated` → `.empty` (the screen is auth-gated); a wire HTTP 401
+    /// also maps to `.empty` — the server returned 401 which is the same auth-
+    /// failure signal, and retry would simply 401 again (web maps wire 401 →
+    /// empty at the same seam); every other `SuggestionsClient` failure
+    /// (http/transport/decoding) and any unexpected throw → `.error` (retry).
     private static func sectionState(for error: Error) -> SectionState {
         if case SuggestionsClient.SuggestionsError.notAuthenticated = error {
+            return .empty
+        }
+        if case SuggestionsClient.SuggestionsError.http(401) = error {
             return .empty
         }
         return .error

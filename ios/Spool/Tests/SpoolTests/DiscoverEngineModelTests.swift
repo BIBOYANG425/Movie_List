@@ -310,4 +310,64 @@ final class DiscoverEngineModelTests: XCTestCase {
         XCTAssertEqual(model.state, .noFriends, "social is empty → no-friends")
         XCTAssertEqual(model.engineItems.count, 3, "engine still loaded")
     }
+
+    // MARK: - 7. wire-401 → empty (Important 1)
+
+    /// A wire HTTP 401 must land `.empty`, NOT `.error`. Retry would 401 again,
+    /// so the error banner + retry affordance is wrong here — web maps wire
+    /// 401 → empty at this seam. (Distinct from `notAuthenticated`, which is a
+    /// pre-network client-side throw; 401 is the server's wire response.)
+    func testEngineHttp401BecomesEmpty() async {
+        let model = makeModel(loadEngine: { _, _ in
+            throw SuggestionsClient.SuggestionsError.http(status: 401)
+        })
+        await model.loadEngineIfNeeded()
+        XCTAssertEqual(model.engineState, .empty,
+                       "wire HTTP 401 must be empty, not error — retry would 401 again")
+    }
+
+    // MARK: - 8. social card id normalization (Important 2 — B1 seam)
+
+    /// Bare-numeric ids from legacy `user_rankings.tmdb_id` rows must be
+    /// prefix-normalized to `tmdb_N` at the social-card mapper seam.
+    func testNormalizeTmdbIdBareDigits() {
+        XCTAssertEqual(DiscoverCardCopy.normalizeTmdbId("27205"), "tmdb_27205")
+        XCTAssertEqual(DiscoverCardCopy.normalizeTmdbId("1"), "tmdb_1")
+        XCTAssertEqual(DiscoverCardCopy.normalizeTmdbId("0"), "tmdb_0")
+    }
+
+    /// Already-prefixed ids must pass through unchanged.
+    func testNormalizeTmdbIdAlreadyPrefixed() {
+        XCTAssertEqual(DiscoverCardCopy.normalizeTmdbId("tmdb_27205"), "tmdb_27205")
+        XCTAssertEqual(DiscoverCardCopy.normalizeTmdbId("tv_1399"), "tv_1399")
+    }
+
+    /// A bare-numeric `FriendRecommendation.tmdbId` (B1 legacy row) must produce
+    /// a prefixed `WatchlistItem.id` at the mapper seam.
+    func testWatchlistItemFromBareIdRecNormalizes() {
+        let r = rec("27205", title: "Inception")
+        let item = DiscoverCardCopy.watchlistItem(from: r)
+        XCTAssertEqual(item.id, "tmdb_27205",
+                       "bare-numeric tmdbId must be normalized at the watchlist-item seam")
+    }
+
+    /// A bare-numeric `TrendingMovie.tmdbId` (B1 legacy row) must produce a
+    /// prefixed `WatchlistItem.id` at the mapper seam.
+    func testWatchlistItemFromBareTrendingIdNormalizes() {
+        let t = trending("872585", title: "Oppenheimer")
+        let item = DiscoverCardCopy.watchlistItem(from: t)
+        XCTAssertEqual(item.id, "tmdb_872585",
+                       "bare-numeric tmdbId must be normalized at the watchlist-item seam")
+    }
+
+    /// Rank-it on a bare-id rec maps through the same normalizer, so the
+    /// `Movie.id` that enters the rank ceremony is prefixed.
+    func testRankItOnBareIdRecNormalizesMovieId() {
+        var ranked: Movie?
+        let model = makeModel()
+        model.bindRankIt { ranked = $0 }
+        model.rankIt(rec("496243", title: "Parasite"))
+        XCTAssertEqual(ranked?.id, "tmdb_496243",
+                       "bare-numeric id must be normalized before reaching the rank ceremony")
+    }
 }
