@@ -452,13 +452,22 @@ A web re-rank through the ceremony flow on ANY of the three media verticals (mov
 
 A same-tier reorder with no actual position change must emit NO event (B1 no-op suppression).
 
-The iOS MOVIE ceremony satisfies the MUST too (tv/book ceremonies do not exist on iOS yet — C5 iOS plan): `RankingRepository.insertRanking`
+iOS ceremonies on ALL THREE media verticals (movie, TV, book) satisfy the MUST since C5-iOS: `RankingRepository.insertRanking`
 pre-reads the existing `(user_id, tmdb_id)` row; when one exists it emits a
 single `ranking_move` (`{notes?, year?}`, watched-with stripped) and, on a
 cross-tier re-rank, compacts the source tier (full membership minus the id) as
 well as the target — no gap left. A genuine fresh insert still emits
 `ranking_add`. The pure fresh-vs-re-rank decision is `CeremonyEmission.decide`
-(pinned by `TierSpliceTests`).
+(pinned by `TierSpliceTests`). iOS routes per media: movie → existing ceremony
+path; tv → `AddTVSeasonModal` flow; book → `RankingFlowModal` flow. Corrupt tv
+ids (the B1 class: `show_tmdb_id = 0` rows with a well-formed `tv_{n}` or
+`tv_{n}_s{k}` id) are healed-or-refused at the re-rank entry point:
+`TVPreselectRouter.resolve` derives the real show id from the id string; a
+season-class corrupt row self-heals (the derived show id flows into the
+ceremony and persists into `tv_rankings`); a truly unresolvable id is refused
+with a logged error (`[SpoolAppRoot] rerankFromShelf: corrupt tv id` NSLog).
+The same heal logic runs in the rank-from-watchlist path (`rankItFromWatchlist`)
+via the same router.
 
 **Event + stub gating (all three verticals):** ceremony completion MUST emit events and write stubs ONLY after a confirmed save success. A failed upsert returns false; the caller must early-return before `logRankingActivityEvent` and stub writes (movie parity landed in C4-B4; TV/book parity landed in C5-B4). iOS already enforces this via the `insertRanking` throw boundary (`RankPersistence.swift:97-110`).
 
@@ -470,6 +479,112 @@ well as the target — no gap left. A genuine fresh insert still emits
 ~~**Web TV/book re-rank**~~ — FIXED in C5 (B2): TV/book re-rank is now non-destructive (rerankState marker, upsert-on-unique-key, `set_tier_order` both tiers, single `ranking_move`). Item 2 from the C4 known-deviations list is retired.
 
 ~~**iOS ceremony re-rank**~~ — FIXED (C4 iOS management-UI sub-plan, Task 2): `insertRanking` now compacts the source tier and emits `ranking_move`; see the paragraph above.
+
+## tv_rankings / book_rankings row shapes (since C5-iOS, branch `feat/ios-parity-c5-tv-books`)
+
+The two vertical ranking tables share most columns with `user_rankings` but add
+per-media fields. Reference DDL:
+`supabase/migrations/supabase_tv_rankings.sql:6-27`;
+`supabase/migrations/supabase_book_rankings.sql:6-28`.
+All three tables share the position-integrity invariant and the `set_tier_order`
+RPC contract documented in `## user_rankings ordering` above.
+
+### Row shapes (verified against DDL)
+
+All three key on `UNIQUE(user_id, tmdb_id)`. `id` uuid PK is DB-default.
+`rank_position integer NOT NULL`, `tier text NOT NULL CHECK (tier IN ('S','A','B','C','D'))`,
+`notes text`, `bracket text`, `primary_genre text`, `created_at`/`updated_at` are
+shared across all three tables.
+
+| | `user_rankings` | `tv_rankings` | `book_rankings` |
+|---|---|---|---|
+| id-format of `tmdb_id` | `tmdb_{n}` | `tv_{showId}_s{n}` (season) | `ol_{workKey}` (e.g. `ol_OL27448W`) |
+| `type` default | `'movie'` | `'tv_season'` | `'book'` |
+| shared media cols | `title` (NOT NULL), `year`, `poster_url`, `genres` (NOT NULL DEFAULT '{}') | same | same |
+| vertical media cols | `director` | `show_tmdb_id integer NOT NULL`, `season_number integer NOT NULL`, `season_title`, `creator`, `episode_count integer` | `author`, `page_count integer`, `isbn`, `ol_work_key`, `ol_ratings_average real`, `watched_with_user_ids uuid[]` |
+
+**Key column notes:**
+
+- `show_tmdb_id` and `season_number` are NOT NULL in `tv_rankings` (unlike `tv_watchlist_items`
+  where `season_number` is nullable for whole-show bookmarks). Every ranked season row
+  MUST carry both fields.
+- `episode_count` is on `tv_rankings` (NOT on watchlist — D3 decision recorded here: rankings
+  carry it to let the feed score use it; the watchlist never needs it, so the column is absent there).
+- `ol_ratings_average real` seeds the book's "global score" for tier placement (Q7 adjudication:
+  never call TMDB for `ol_` ids — `ol_ratings_average` is the only score source). iOS:
+  `OpenLibraryService` populates it from the OL search response field `ratings_average`.
+- `director` is MOVIE-ONLY — sending a non-null `director` key to `tv_rankings` or
+  `book_rankings` causes a Postgres error (column does not exist). The iOS `RankingPayload`
+  is split per media: `TVRankingPayload` (no director), `BookRankingPayload` (no director,
+  no show fields), `RankingPayload` (movies, no show/book fields).
+
+### H2H pool is SAME-MEDIA [client]
+
+The H2H comparison pool MUST contain only items from the same media vertical as
+the item being ranked. Web reference: `AddTVSeasonModal.tsx:399` (tv_rankings
+pool), `RankingFlowModal.tsx:106` (book_rankings pool). iOS: the pool is sourced
+from `RankingRepository.getTierItems(tier:media:)` with the ceremony's active
+media — a tv ceremony never reads from `user_rankings`, and vice versa. Cross-media
+H2H comparisons would produce semantically meaningless results and must not occur.
+
+### TV preselect router [client]
+
+When a TV watchlist bookmark is ranked or re-ranked, the flow must decide whether
+to open the season grid first (whole-show bookmarks) or jump straight to the
+ceremony (season bookmarks). Both platforms implement this decision as a pure
+function of the preselect fields (`resolveTVPreselectRoute` on web;
+`TVPreselectRouter.resolve` on iOS):
+
+| Preselect shape | Condition | Route |
+|---|---|---|
+| Whole-show bookmark | `tv_{n}` id (no `_s{k}`), `seasonNumber` absent/0, show id resolvable | season grid |
+| Season bookmark | `tv_{n}_s{k}` id, `seasonNumber` set | straight to ceremony (tier step) |
+| Corrupt row — `show_tmdb_id = 0` but well-formed `tv_{n}` id | Derives show id from id string; whole-show shape → season grid | season grid (healed) |
+| Corrupt row — `show_tmdb_id = 0`, `tv_{n}_s{k}` id | Derives show id from id string; routes to ceremony with healed show id | ceremony (healed) |
+| Unresolvable (no parseable show id from any source) | `nil` / refuse | refused with log |
+
+The heal logic (`healTVPreselect` on web; `TVPreselectRouter.heal` on iOS) stamps
+the derived show id back onto the item before seeding the ceremony, so a legacy
+corrupt row self-heals on the next re-rank. The re-ranked row in `tv_rankings` then
+carries the correct `show_tmdb_id` going forward.
+
+**Notes prefill on season preselect:** the web season-preselect path carries the
+existing notes into the tier step. iOS `WatchlistItem` has no `notes` column, so the
+iOS season-preselect path opens the ceremony with no prefill — a deliberate parity
+gap noted in `TVPreselectRouter.swift` header.
+
+**Ranked seasons disabled in the season grid:** `TVPreselectRouter.rankedSeasonNumbers`
+computes the set of already-ranked seasons for a show from the shelf ids
+(`tv_{showId}_s{n}` → `seasonNumber`). The season grid disables these rows (web
+parity: a ranked season re-ranks from the shelf, not the season grid).
+
+### D6 Specials / sentinel invariant [client]
+
+TMDB `season_number = 0` is the "Specials" pseudo-season. Both clients MUST filter
+it out of the season grid before rendering:
+
+- Web: `getTVShowDetails` filters seasons where `season_number === 0`
+  (`services/tmdbService.ts`; confirmed in C5 web task 3).
+- iOS: `TMDBService.getTVShowDetails` filters `season.seasonNumber == 0` before
+  returning the seasons array (C5-iOS Task 3, `fdc2848`).
+
+This is a display-only filter — a Specials row that somehow exists in `tv_rankings`
+(e.g. from an older build) is NOT filtered from the shelf. Filtering only applies
+at season-selection time.
+
+Additionally, the `tv_watchlist_items` contract documents `season_number = 0` as the
+"whole show bookmark" sentinel (web actually writes `0` not NULL for
+`season_number` on whole-show bookmarks: `RankingAppPage.tsx:679` `?? 0`). Readers
+MUST treat `season_number` equal to 0 OR NULL as "whole show" and never attempt to
+rank such a row directly as a season.
+
+### episode_count decision (D3, recorded here)
+
+`episode_count integer` exists on `tv_rankings` but NOT on `tv_watchlist_items`
+(D3 from the C5 web audit). The decision: rankings carry it (the feed scoring and
+ceremony context can display it); the watchlist never needs it (a bookmark is
+pre-rank, so episode count is not yet user-relevant). No column will be added to
+`tv_watchlist_items`; this asymmetry is intentional.
 
 ## watchlist_items (+ tv/book variants) (since C3 web fixes, branch `fix/c3-watchlist-discover-web-blocking`)
 
