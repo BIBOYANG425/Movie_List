@@ -162,4 +162,36 @@ final class TVPreselectRouterTests: XCTestCase {
         XCTAssertEqual(TVPreselectRouter.rankedSeasonNumbers(showTmdbId: 1399, rankedTVIds: ids),
                        [2])
     }
+
+    // MARK: - showAndSeason re-rank routing (rerankFromShelf guard, Fix round 1)
+
+    /// A well-formed season shelf id `tv_{n}_s{k}` yields both show+season so
+    /// the re-rank goes straight to the ceremony (existing behaviour pinned).
+    func testWellFormedSeasonIdYieldsShowAndSeasonForCeremonyDirect() {
+        let split = TVPreselectRouter.showAndSeason(fromSeasonId: "tv_123_s2")
+        XCTAssertNotNil(split, "well-formed season id must parse")
+        XCTAssertEqual(split?.show, 123)
+        XCTAssertEqual(split?.season, 2)
+    }
+
+    /// A corrupt whole-show shelf id `tv_{n}` (no `_s{k}`) returns nil from
+    /// `showAndSeason`, so the caller falls through to `showTmdbIdFromTVId` which
+    /// DOES derive the show id → the re-rank routes to the SEASON GRID.
+    func testCorruptWholeShowShelfIdRoutesDerivedToSeasonGrid() {
+        // showAndSeason returns nil for a whole-show id.
+        XCTAssertNil(TVPreselectRouter.showAndSeason(fromSeasonId: "tv_123"),
+                     "whole-show id has no season component — showAndSeason must return nil")
+        // But showTmdbIdFromTVId CAN derive the show id from it.
+        XCTAssertEqual(TVPreselectRouter.showTmdbIdFromTVId("tv_123"), 123,
+                       "show id derivable from whole-show shelf id → route to season grid")
+    }
+
+    /// A garbage tv id (neither a valid season nor a whole-show id) yields nil
+    /// from BOTH parsing helpers → the re-rank is refused (no 0/0 row minted).
+    func testGarbageTVIdRefusedByBothParsers() {
+        XCTAssertNil(TVPreselectRouter.showAndSeason(fromSeasonId: "tv_bad"),
+                     "garbage id: showAndSeason must return nil")
+        XCTAssertNil(TVPreselectRouter.showTmdbIdFromTVId("tv_bad"),
+                     "garbage id: showTmdbIdFromTVId must return nil → re-rank refused")
+    }
 }

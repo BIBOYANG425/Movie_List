@@ -259,8 +259,8 @@ public extension Movie {
     }
 
     /// Deterministic 0-999 poster-palette seed, stable across launches — mirrors
-    /// `RankEntryScreen.stableSeed`. Parses a trailing integer from the id when
-    /// present, else a djb2 digest. NEVER `hashValue` (process-seeded).
+    /// `RankEntryScreen.stableSeed`. Pure djb2 hash of the id's UTF-8 bytes
+    /// modulo 1000. NEVER `hashValue` (process-seeded).
     static func stableSeed(_ id: String) -> Int {
         var h: UInt64 = 5381
         for b in id.utf8 { h = (h &* 33) &+ UInt64(b) }

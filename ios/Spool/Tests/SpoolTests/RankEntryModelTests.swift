@@ -228,6 +228,23 @@ final class RankEntryModelTests: XCTestCase {
         XCTAssertTrue(m.seasons.isEmpty)
     }
 
+    // MARK: - live sign-in gate (Fix round 1)
+
+    /// After signing in the live isSignedIn closure re-evaluates: requiresSignIn
+    /// flips from true to false without the flow being re-entered. This tests the
+    /// root cause of the dead-end after sign-in (frozen Bool vs live closure).
+    func testLiveSignInGateReEvaluatesAfterSignIn() {
+        var signedIn = false
+        let m = RankEntryModel(isSignedIn: { signedIn })
+        m.setMode(.tv)
+        XCTAssertTrue(m.requiresSignIn, "signed-out user sees the nudge")
+        // Simulate signing in externally (SpoolClient session becomes non-nil,
+        // previewMode cleared) — the closure now returns true.
+        signedIn = true
+        XCTAssertFalse(m.requiresSignIn,
+                       "requiresSignIn must re-evaluate immediately after sign-in")
+    }
+
     // MARK: - media inference (shelf re-rank routing)
 
     func testMediaForRankingIdInfersVertical() {

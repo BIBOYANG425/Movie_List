@@ -248,8 +248,9 @@ public final class RankEntryModel: ObservableObject {
     /// whole-show path, C5-iOS Task 6). Unlike `pickShow`, the caller has only the
     /// numeric show id + a fallback name (from the bookmark), so we fetch the full
     /// detail first, THEN enter the grid stage with the real `TMDBTVShow`. On a
-    /// failed detail load the stage is left at search-with-no-show (the screen
-    /// shows an error / back). Used by `SeasonSelectScreen`.
+    /// failed detail load the stage enters `.seasonGrid` with a minimal placeholder
+    /// show (name from `fallbackName`, seasons empty) so the screen shows the
+    /// empty/back state rather than hanging. Used by `SeasonSelectScreen`.
     public func loadSeasonGrid(forShowId showId: Int, fallbackName: String) {
         seasonLoadTask?.cancel()
         mode = .tv

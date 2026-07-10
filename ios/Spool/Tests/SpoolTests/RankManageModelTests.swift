@@ -758,6 +758,29 @@ final class RankManageModelTests: XCTestCase {
         XCTAssertEqual(emitCount, 1, "a same-media move emits as normal")
     }
 
+    /// An in-tier drag (`moveRow`) whose RPC is in flight while the shelf switches
+    /// media must NOT write its (old-media) result onto the new media's tiers.
+    /// The reorder IO flips `setMedia` mid-op, so the post-await tier write +
+    /// emission are skipped and the new media's list is left untouched.
+    func testMoveRowSkipsEmissionWhenMediaSwitchesMidFlight() async {
+        var emitCount = 0
+        let box = ModelBox()
+        let model = RankManageModel(
+            reorder: { _, _, _ in box.model?.setMedia("tv") },  // switch mid-await
+            emit: { _ in emitCount += 1 },
+            toast: { _, _ in }
+        )
+        box.model = model
+        model.setMedia("movie")
+        model.setItems([item("a", rank: 0), item("b", rank: 1), item("c", rank: 2)])
+
+        await model.moveRow(tier: .A, from: IndexSet(integer: 2), to: 0)
+
+        XCTAssertEqual(emitCount, 0,
+                       "a moveRow whose media switched mid-flight emits nothing")
+        XCTAssertEqual(model.media, "tv", "the switch itself still took effect")
+    }
+
     /// A delete whose media switches mid-flight likewise skips its emission.
     func testDeleteSkipsEmissionWhenMediaSwitchesMidFlight() async {
         var removeEmitCount = 0

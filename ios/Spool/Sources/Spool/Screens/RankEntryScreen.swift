@@ -31,14 +31,20 @@ public struct RankEntryScreen: View {
         onPick: @escaping (Movie) -> Void,
         onClose: @escaping () -> Void,
         onSignIn: @escaping () -> Void = {},
-        signedIn: Bool = SpoolClient.shared != nil
+        /// A LIVE closure that reads the current auth/preview state each time it
+        /// is called. Must NOT be frozen to a value at init time: after signing in
+        /// via the nudge the model's gate re-evaluates immediately (no flow
+        /// re-entry required). Mirror the pattern `SpoolAppRoot` uses for
+        /// previewMode/SpoolClient (checked at call time, not captured as a Bool).
+        isSignedIn: @escaping () -> Bool = { SpoolClient.shared != nil }
     ) {
         self.onPick = onPick
         self.onClose = onClose
         self.onSignIn = onSignIn
-        // Capture the signed-in flag ONCE at flow entry (the model reads it via a
-        // closure). tv/book modes gate their results on it; movie mode ignores it.
-        _model = StateObject(wrappedValue: RankEntryModel(isSignedIn: { signedIn }))
+        // Pass the LIVE closure through to the model so requiresSignIn re-reads
+        // the current session after the user signs in from the nudge. Previously
+        // a Bool was captured once at init and the gate froze permanently.
+        _model = StateObject(wrappedValue: RankEntryModel(isSignedIn: isSignedIn))
     }
 
     /// Test / preview seam — inject a fixture-loaded model.

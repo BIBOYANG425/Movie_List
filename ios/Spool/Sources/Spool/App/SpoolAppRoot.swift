@@ -336,9 +336,12 @@ public struct SpoolAppRoot: View {
                     // sign-in sheet (the whole flow stays up behind it).
                     showSignInSheet = true
                 },
-                // A user in preview mode (onboarded without signing in) is treated
-                // as signed-out for the tv/book gate even if the client exists.
-                signedIn: !previewMode && SpoolClient.shared != nil
+                // LIVE closure — reads previewMode + SpoolClient at call time so
+                // the model's gate re-evaluates immediately after the user signs in
+                // via the nudge without requiring a flow re-entry. A preview-mode
+                // user (onboarded without signing in) is treated as signed-out for
+                // the tv/book gate even if a SpoolClient session exists.
+                isSignedIn: { !previewMode && SpoolClient.shared != nil }
             )
         case .seasonGrid:
             if let showId = rankSeasonShowId {
@@ -664,23 +667,39 @@ public struct SpoolAppRoot: View {
             }
 
         case .tv:
-            // Derive the show/season split from the composite id; the season is
-            // real so we skip the grid and seed the ceremony directly.
-            let split = TVPreselectRouter.showAndSeason(fromSeasonId: item.id)
-            rankMovie = Movie(
-                id: item.id, title: item.title, year: item.year ?? 0,
-                director: item.director,          // = attribution (creator)
-                seed: item.seed, genres: item.genres, posterUrl: item.posterUrl,
-                voteAverage: nil, mediaType: .tv,
-                showTmdbId: split?.show, seasonNumber: split?.season,
-                seasonTitle: item.seasonTitle, creator: item.director)
-            flow = .tier
-            if let showId = split?.show {
+            // Derive the show/season split from the composite id.
+            // A WELL-FORMED season id `tv_{n}_s{k}` → direct ceremony (season real).
+            // A LEGACY whole-show id `tv_{n}` (no `_s{k}`) — split is nil:
+            //   derive the real show id from the id via showTmdbIdFromTVId;
+            //   if derivable → route to the SEASON GRID (whole-show semantics);
+            //   if not derivable → refuse the re-rank (would mint showTmdbId=0).
+            if let split = TVPreselectRouter.showAndSeason(fromSeasonId: item.id) {
+                // Well-formed season id — skip the grid, seed ceremony directly.
+                rankMovie = Movie(
+                    id: item.id, title: item.title, year: item.year ?? 0,
+                    director: item.director,          // = attribution (creator)
+                    seed: item.seed, genres: item.genres, posterUrl: item.posterUrl,
+                    voteAverage: nil, mediaType: .tv,
+                    showTmdbId: split.show, seasonNumber: split.season,
+                    seasonTitle: item.seasonTitle, creator: item.director)
+                flow = .tier
                 Task {
-                    let score = await TMDBService.tvShowGlobalScore(showId: showId)
+                    let score = await TMDBService.tvShowGlobalScore(showId: split.show)
                     guard let score else { return }
                     if rankMovie?.id == item.id { rankMovie?.voteAverage = score }
                 }
+            } else if let derivedShowId = TVPreselectRouter.showTmdbIdFromTVId(item.id) {
+                // Legacy whole-show shelf row `tv_{n}` — route to the season grid
+                // so the user picks a season before the ceremony. The grid's
+                // completion builds a proper composite id with a real season number.
+                rankSeasonShowId = derivedShowId
+                rankSeasonShowName = item.title
+                flow = .seasonGrid
+            } else {
+                // Garbage id: can't derive a show id → refuse the re-rank.
+                // Never seed a tv Movie with nil showTmdbId (would persist 0/0).
+                NSLog("[SpoolAppRoot] rerankFromShelf: corrupt tv id '\(item.id)' — re-rank refused")
+                ToastCenter.shared.show("couldn't re-rank this show — try again", level: .error)
             }
 
         case .book:
