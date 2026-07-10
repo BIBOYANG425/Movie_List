@@ -267,6 +267,8 @@ public struct SpoolAppRoot: View {
                     onOpenDetail: { stubDetail = $0 },
                     onOpenJournalEntry: { tmdbId in presentComposerForEntry(tmdbId: tmdbId) }
                 )
+            case .watchlist:
+                WatchlistScreen(onRankIt: { item in rankItFromWatchlist(item) })
             case .friends:
                 FriendsScreen(
                     onOpenTwin: { twinOpen = $0 },
@@ -425,6 +427,27 @@ public struct SpoolAppRoot: View {
             // one frame before the probe resolves (composer is .loading anyway).
             await model.openForEntry(tmdbId: tmdbId, title: "journal entry", posterUrl: nil, seed: nil)
         }
+    }
+
+    /// Rank It from the Watchlist tab (C3 Task 3 seam; Task 4 owns the ceremony
+    /// polish — pre-fill signals, post-rank watchlist removal, etc). A movie
+    /// watchlist item is already chosen, so this skips the search entry screen
+    /// and drops the user straight into the tier pick with the movie seeded.
+    /// Only movie items reach here (the card gates Rank It to `.movie`).
+    private func rankItFromWatchlist(_ item: WatchlistItem) {
+        rankMovie = Movie(
+            id: item.id,
+            title: item.title,
+            year: Int(item.year) ?? 0,
+            director: item.director ?? "—",
+            seed: abs(item.id.hashValue) % 20,
+            genres: item.genres,
+            posterUrl: item.posterUrl.isEmpty ? nil : item.posterUrl
+        )
+        rankTier = nil
+        rankMoods = []
+        rankLine = ""
+        flow = .tier
     }
 
     private func onTab(_ t: SpoolTab) {

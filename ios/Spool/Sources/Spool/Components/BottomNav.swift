@@ -1,12 +1,12 @@
 import SwiftUI
 
 public enum SpoolTab: String, CaseIterable, Hashable {
-    case feed, stubs, rank, friends, me
+    case feed, stubs, watchlist, rank, friends, me
 }
 
-/// Bottom nav — capsule with four equal-weight tabs (feed, stubs, friends, me)
-/// and a floating "+" rank button that sits as a true overlay on top of the
-/// capsule rather than breaking out from inside the tab row.
+/// Bottom nav — capsule with five equal-weight tabs (feed, stubs, watchlist,
+/// friends, me) and a floating "+" rank button that sits as a true overlay on
+/// top of the capsule rather than breaking out from inside the tab row.
 ///
 /// Why not a 5-cell HStack with `.offset(y: -14)` on the middle cell (the old
 /// layout)? The capsule clips anything outside its bounds, and a negative
@@ -14,7 +14,11 @@ public enum SpoolTab: String, CaseIterable, Hashable {
 /// ZStack layer lets it float cleanly above the capsule — no clipping, and
 /// the visual weight reads as "primary action," which is what tapping + does.
 ///
-/// Header last reviewed: 2026-04-20
+/// Capacity note (C3, watchlist): five tabs + the floating + is the practical
+/// ceiling for this capsule at these paddings. A sixth surface should go behind
+/// a "more" affordance or into an existing tab rather than a seventh cell.
+///
+/// Header last reviewed: 2026-07-09
 public struct BottomNav: View {
     public var active: SpoolTab
     public var onTab: (SpoolTab) -> Void
@@ -38,23 +42,24 @@ public struct BottomNav: View {
         }
     }
 
-    /// The pill with the four tabs. The + slot is reserved by a transparent
+    /// The pill with the five tabs. The + slot is reserved by a transparent
     /// spacer view of the same width so the other tabs don't shift when the
     /// overlay is added, removing the visual jitter you'd get if we just
-    /// laid out 4 items and centered them.
+    /// laid out 5 items and centered them.
     @ViewBuilder
     private func capsule(t: SpoolPalette) -> some View {
         HStack(alignment: .center, spacing: 0) {
             tabButton(.feed, label: "feed", icon: "☆", t: t)
             tabButton(.stubs, label: "stubs", icon: "▢", t: t)
+            tabButton(.watchlist, label: "queue", icon: "☰", t: t)
             // Reserved slot for the floating +. Width matches the
-            // plusOverlay circle diameter (54pt) so the four real tabs
+            // plusOverlay circle diameter (54pt) so the five real tabs
             // stay evenly distributed and the button sits flush.
             Color.clear.frame(width: 54, height: 1)
             tabButton(.friends, label: "friends", icon: "○", t: t)
             tabButton(.me, label: "me", icon: "✦", t: t)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(t.cream)
         .clipShape(Capsule())
