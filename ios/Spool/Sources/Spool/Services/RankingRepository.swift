@@ -30,7 +30,7 @@ import Supabase
 /// When `SpoolClient.shared` is nil (no credentials configured) every method
 /// throws `.notConfigured` and the caller is expected to fall back to fixtures.
 ///
-/// Header last reviewed: 2026-07-09
+/// Header last reviewed: 2026-07-10
 public actor RankingRepository {
 
     public static let shared = RankingRepository()
