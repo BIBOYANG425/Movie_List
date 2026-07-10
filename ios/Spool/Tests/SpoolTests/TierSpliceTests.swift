@@ -128,4 +128,101 @@ final class TierSpliceTests: XCTestCase {
         let json = String(decoding: data, as: UTF8.self)
         XCTAssertEqual(json, #"{"notes":null}"#)
     }
+
+    // MARK: - CeremonyEmission (fresh-vs-re-rank emission decision seam)
+    //
+    // The ledgered C4 deviation: an iOS ceremony re-rank emitted `ranking_add`
+    // and only spliced the target tier. The corrected contract
+    // (docs/contracts/shared-payloads.md `## user_rankings ordering`) requires
+    // a SINGLE `ranking_move` on a re-rank (metadata `{notes?, year?}`, never
+    // watched-with) and `ranking_add` only on a genuine fresh insert. These
+    // pin the pure decision seam that `insertRanking` drives off its pre-read.
+
+    private static let uidW = UUID(uuidString: "CCCCCCCC-1111-2222-3333-444444444444")!
+
+    private func emissionMetadataObject(_ decision: CeremonyEmission.Decision) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(decision.metadata)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    /// FRESH insert (no prior row) → `ranking_add`, and watched-with is CARRIED
+    /// (add sites keep it, per the contract).
+    func testFreshInsertEmitsRankingAddKeepingWatchedWith() throws {
+        let decision = CeremonyEmission.decide(
+            outcome: .inserted, notes: "great", year: "2001",
+            watchedWithUserIds: [Self.uidW]
+        )
+        XCTAssertEqual(decision.eventType, "ranking_add")
+        let obj = try emissionMetadataObject(decision)
+        XCTAssertEqual(Set(obj.keys), ["notes", "year", "watched_with_user_ids"],
+                       "a fresh add carries all three metadata keys")
+    }
+
+    /// RE-RANK (prior row existed) → a SINGLE `ranking_move`, metadata is
+    /// `{notes?, year?}` only, and watched-with is STRIPPED even when the caller
+    /// passed some (the move sites never carry it — contract line ~75).
+    func testReRankEmitsRankingMoveStrippingWatchedWith() throws {
+        let decision = CeremonyEmission.decide(
+            outcome: .moved(fromTier: "A"), notes: "even better", year: "2001",
+            watchedWithUserIds: [Self.uidW]
+        )
+        XCTAssertEqual(decision.eventType, "ranking_move",
+                       "a re-rank is a MOVE, never a fresh add")
+        let obj = try emissionMetadataObject(decision)
+        XCTAssertEqual(Set(obj.keys), ["notes", "year"],
+                       "ranking_move metadata is {notes?, year?} — watched-with stripped")
+        XCTAssertNil(obj["watched_with_user_ids"],
+                     "watched_with_user_ids must NEVER appear on a move")
+    }
+
+    /// Same-tier vs cross-tier re-rank both emit `ranking_move` — the source
+    /// tier differs only in whether the compaction call fires, not the event.
+    func testSameTierReRankStillEmitsRankingMove() {
+        let sameTier = CeremonyEmission.decide(
+            outcome: .moved(fromTier: "S"), notes: nil, year: nil, watchedWithUserIds: nil
+        )
+        XCTAssertEqual(sameTier.eventType, "ranking_move")
+    }
+
+    /// A re-rank with no notes/year encodes an EMPTY metadata object (the
+    /// omit-empty rule still applies to a move) — never a stray watched-with.
+    func testReRankWithNoMetadataEncodesEmptyObject() throws {
+        let decision = CeremonyEmission.decide(
+            outcome: .moved(fromTier: "B"), notes: nil, year: nil,
+            watchedWithUserIds: [Self.uidW]
+        )
+        let obj = try emissionMetadataObject(decision)
+        XCTAssertTrue(obj.isEmpty,
+                      "no notes/year and stripped watched-with → {} , got \(obj)")
+    }
+
+    // MARK: - InsertOutcome mapping (pre-read → outcome the caller observes)
+
+    /// The pre-read maps a nil prior tier to `.inserted` and a present prior
+    /// tier to `.moved(fromTier:)` — the exact expression `insertRanking` uses
+    /// to turn the DB pre-read into the outcome + emission driver.
+    func testInsertOutcomeMapsNilPriorTierToInserted() {
+        let existingTier: String? = nil
+        let outcome = existingTier.map(RankingRepository.InsertOutcome.moved) ?? .inserted
+        XCTAssertEqual(outcome, .inserted)
+    }
+
+    func testInsertOutcomeMapsPresentPriorTierToMoved() {
+        let existingTier: String? = "A"
+        let outcome = existingTier.map(RankingRepository.InsertOutcome.moved) ?? .inserted
+        XCTAssertEqual(outcome, .moved(fromTier: "A"))
+    }
+
+    // MARK: - source-tier compaction math (cross-tier re-rank leaves no gap)
+
+    /// A cross-tier re-rank compacts the SOURCE tier via
+    /// `TierOrder.tierOrderAfterRemoval` — the departed id is dropped and the
+    /// survivors keep order (the RPC then renumbers them 0..k-1). This is the
+    /// membership-minus-id array `insertRanking` step 5 sends for the source.
+    func testSourceTierCompactionDropsDepartedId() {
+        let sourceMembership = ["a", "x", "b", "c"]   // "x" is re-ranking away
+        let compacted = TierOrder.tierOrderAfterRemoval(sourceMembership, removedId: "x")
+        XCTAssertEqual(compacted, ["a", "b", "c"],
+                       "source tier keeps survivors in order, minus the moved id")
+    }
 }

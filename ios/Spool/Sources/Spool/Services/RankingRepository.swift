@@ -11,9 +11,19 @@ import Supabase
 /// reference) stays isolated. Reads/writes all go through supabase-swift, RLS
 /// enforces scoping at the DB layer.
 ///
-/// Event emission is NOT this file's job: the management ops here are pure data
-/// ops. Callers (the C4 UI + the corrected ceremony re-rank) wire the
-/// `ranking_move` / `ranking_remove` activity events on top of these primitives.
+/// Event emission is NOT the C4 management ops' job: `reorderTier` /
+/// `moveRanking` / `updateNotes` / `deleteRanking` are pure data ops and the
+/// C4 UI wires their `ranking_move` / `ranking_remove` events on top.
+/// `insertRanking` is the ONE exception — it owns the ceremony's
+/// `ranking_add` / `ranking_move` emission because the fresh-vs-re-rank
+/// decision is a DB fact only it observes (the pre-read of the existing
+/// `(user_id, tmdb_id)` row). It pre-reads that row's tier, and on a re-rank
+/// into a DIFFERENT tier ALSO compacts the source tier (membership minus the
+/// id) so no gap is left, mirroring web `handleAddItem`'s source-tier
+/// compaction (`pages/RankingAppPage.tsx`). The event type + metadata flow
+/// from the pure `CeremonyEmission.decide` seam so the branch is unit-tested
+/// with zero network; the method returns an `InsertOutcome` (`.inserted` vs
+/// `.moved(fromTier:)`) so callers can observe what happened.
 ///
 /// When `SpoolClient.shared` is nil (no credentials configured) every method
 /// throws `.notConfigured` and the caller is expected to fall back to fixtures.
@@ -26,6 +36,17 @@ public actor RankingRepository {
     public enum RepoError: Error {
         case notConfigured
         case notAuthenticated
+    }
+
+    /// What `insertRanking` actually did, observable by the caller.
+    /// - `.inserted`: no prior `(user_id, tmdb_id)` row existed — a FRESH rank,
+    ///   emitted as `ranking_add`.
+    /// - `.moved(fromTier:)`: a row already existed — a RE-RANK, emitted as
+    ///   `ranking_move`. `fromTier` is the row's tier BEFORE this write; when it
+    ///   differs from the target tier the source tier was compacted.
+    public enum InsertOutcome: Sendable, Equatable {
+        case inserted
+        case moved(fromTier: String)
     }
 
     // MARK: reads
@@ -108,35 +129,72 @@ public actor RankingRepository {
     // itself serialize the read-splice-upsert-RPC sequence. Do not parallelize flush.
 
     /// Insert (or re-rank) a `user_rankings` row with SPLICE semantics, then an
-    /// accompanying `activity_events` row.
+    /// accompanying `activity_events` row. Returns an `InsertOutcome` so the
+    /// caller can observe whether this was a fresh add or a re-rank.
     ///
     /// B5 fix (audit): the old path wrote the new row at `ranking.rankPosition`
     /// WITHOUT renumbering the rest of the tier, so every iOS rank minted a
     /// duplicate position and the tier's `rank_position` column drifted out of
-    /// the contiguous-0..n-1 invariant. The new flow splices the tier through
-    /// the `set_tier_order` RPC:
+    /// the contiguous-0..n-1 invariant. The flow splices the tier through the
+    /// `set_tier_order` RPC:
+    ///   0. PRE-READ the existing `(user_id, tmdb_id)` row (its tier). Its
+    ///      presence is the fresh-vs-re-rank fact that drives the emission and
+    ///      the source-tier compaction below — nothing else can observe it.
     ///   1. fetch the target tier's ordered `tmdb_id`s (existing membership),
     ///   2. pure-splice the new id at the clamped `rankPosition`
     ///      (`spliceTierOrder` — re-ranks move the existing id, no duplicate),
     ///   3. UPSERT the new/re-ranked row on `(user_id, tmdb_id)` — the row must
     ///      exist BEFORE the RPC, which is UPDATE-only and skips unknown ids,
     ///   4. `rpc('set_tier_order', p_media, tier, splicedIds)` to renumber the
-    ///      WHOLE tier to a gap-free, dup-free 0..n-1.
+    ///      WHOLE tier to a gap-free, dup-free 0..n-1,
+    ///   5. RE-RANK CROSS-TIER ONLY: compact the SOURCE tier (its full
+    ///      membership minus the departed id) via a second `set_tier_order`, so
+    ///      the old tier is left gap-free instead of self-healing later. This
+    ///      closes the ledgered C4 deviation (source-gap + wrong event type);
+    ///      mirrors web `handleAddItem` (`pages/RankingAppPage.tsx`).
+    ///   6. emit ONE activity event: `ranking_move` on a re-rank (metadata
+    ///      `{notes?, year?}`, NEVER watched-with), `ranking_add` on a fresh
+    ///      insert (metadata may carry watched-with). The event type + metadata
+    ///      come from the pure `CeremonyEmission.decide` seam.
     ///
     /// Failure posture: a failed RPC AFTER a successful upsert logs loudly but
     /// does NOT throw the ceremony into failure — the row landed, so the rank
     /// is saved; the tier's positions self-heal on the next tier write (any
     /// add/re-rank re-splices the whole membership). Throwing here would surface
-    /// a "save failed" toast for a rank that actually persisted.
+    /// a "save failed" toast for a rank that actually persisted. Same posture on
+    /// the source-tier compaction (step 5) and the pre-read (step 0): a pre-read
+    /// hiccup degrades to "treat as fresh" — worst case an over-broad
+    /// `ranking_add` and a self-healing source gap, never a lost save.
     ///
-    /// Both writes run sequentially, not in a transaction — the DB considers
+    /// All writes run sequentially, not in a transaction — the DB considers
     /// them independent. RLS enforces `auth.uid() = user_id` on every table.
-    public func insertRanking(_ ranking: RankingInsert) async throws -> RankingRow {
+    @discardableResult
+    public func insertRanking(_ ranking: RankingInsert) async throws -> InsertOutcome {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
         guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
 
         let table = Self.rankingsTable(forType: ranking.type)
         let pMedia = Self.pMedia(forType: ranking.type)
+
+        // Step 0: PRE-READ the existing row for (user_id, tmdb_id). Its tier (if
+        // any) is the fresh-vs-re-rank fact that drives BOTH the emission
+        // (add vs move) and the source-tier compaction. A read hiccup degrades
+        // to nil = "treat as fresh" — never blocks the save.
+        let existingTier: String?
+        do {
+            let priorRows: [TierIdRow] = try await client
+                .from(table)
+                .select("tmdb_id,tier")
+                .eq("user_id", value: userID.uuidString)
+                .eq("tmdb_id", value: ranking.tmdbId)
+                .limit(1)
+                .execute()
+                .value
+            existingTier = priorRows.first?.tier
+        } catch {
+            print("[RankingRepository] prior-row read failed for \(pMedia)/\(ranking.tmdbId); treating as fresh insert: \(error)")
+            existingTier = nil
+        }
 
         // Step 1: read the target tier's current membership (best-first). Empty
         // when the tier is fresh or on a read hiccup — the splice then yields a
@@ -204,19 +262,47 @@ public actor RankingRepository {
             print("[RankingRepository] set_tier_order failed after insert (\(pMedia)/\(ranking.tier.rawValue)); positions self-heal on next tier write: \(error)")
         }
 
+        // Step 5: RE-RANK CROSS-TIER — compact the SOURCE tier so it is left
+        // gap-free (full membership minus the departed id). Only when a prior
+        // row existed in a DIFFERENT tier; a same-tier re-rank was already
+        // fully compacted by step 4, and a fresh insert has no source tier.
+        // Reads the source tier's LIVE membership (best-first) so a stale caller
+        // snapshot can't orphan rows. Same fire-and-forget posture as step 4.
+        if let fromTier = existingTier, fromTier != ranking.tier.rawValue {
+            do {
+                let sourceIds = try await Self.tierMembership(
+                    client: client, table: table, userID: userID, tier: fromTier
+                )
+                let compacted = TierOrder.tierOrderAfterRemoval(sourceIds, removedId: ranking.tmdbId)
+                _ = try await Self.callSetTierOrder(
+                    client: client, media: pMedia, tier: fromTier, ids: compacted
+                )
+            } catch {
+                print("[RankingRepository] source-tier compaction failed after re-rank (\(pMedia)/\(fromTier)); positions self-heal on next tier write: \(error)")
+            }
+        }
+
+        // Step 6: emit ONE activity event. `CeremonyEmission.decide` is the pure
+        // fresh-vs-re-rank seam: a re-rank (prior row existed) emits
+        // `ranking_move` with `{notes?, year?}` (watched-with STRIPPED, matching
+        // web's move sites); a fresh insert emits `ranking_add` and may carry
+        // watched-with. The event type flows solely from the pre-read.
+        let outcome: InsertOutcome = existingTier.map(InsertOutcome.moved) ?? .inserted
+        let emission = CeremonyEmission.decide(
+            outcome: outcome,
+            notes: ranking.notes,
+            year: ranking.year,
+            watchedWithUserIds: ranking.watchedWithUserIds
+        )
         let event = ActivityEventPayload(
             actor_id: userID,
-            event_type: "ranking_add",
+            event_type: emission.eventType,
             target_user_id: nil,
             media_tmdb_id: ranking.tmdbId,
             media_title: ranking.title,
             media_tier: ranking.tier.rawValue,
             media_poster_url: ranking.posterURL,
-            metadata: ActivityMetadata(
-                notes: ranking.notes,
-                year: ranking.year,
-                watchedWithUserIds: ranking.watchedWithUserIds
-            )
+            metadata: emission.metadata
         )
         // Fire-and-forget telemetry — the ranking itself already landed, so
         // we don't want a feed-insert hiccup to surface a user-facing toast.
@@ -227,7 +313,8 @@ public actor RankingRepository {
             print("activity_events insert failed: \(error)")
         }
 
-        return inserted
+        _ = inserted   // row landed (upsert return); outcome captures add-vs-move
+        return outcome
     }
 
     // MARK: management ops (C4)
@@ -548,10 +635,13 @@ public struct StubRow: Codable, Sendable, Hashable {
 
 // MARK: - Decodable helper rows
 
-/// Projection of a single `tmdb_id` cell — used by `insertRanking`'s
-/// tier-membership read (`select("tmdb_id")`).
+/// Projection used by two reads: `insertRanking`'s tier-membership read
+/// (`select("tmdb_id")` — `tier` absent, decodes nil) and its prior-row
+/// pre-read (`select("tmdb_id,tier")` — `tier` present). `tier` is optional so
+/// one struct serves both without a second DTO.
 private struct TierIdRow: Decodable {
     let tmdb_id: String
+    let tier: String?
 }
 
 // MARK: - Encodable payloads (snake_case fields for PostgREST)
@@ -605,6 +695,50 @@ private struct ActivityEventPayload: Encodable {
     let media_tier: String?
     let media_poster_url: String?
     let metadata: ActivityMetadata
+}
+
+/// Pure fresh-vs-re-rank emission seam for `insertRanking` (tested —
+/// `CeremonyEmissionTests`). Given the `InsertOutcome` (whether a prior
+/// `(user_id, tmdb_id)` row existed) it picks the ONE activity event a ceremony
+/// completion may fire and its metadata, mirroring web `handleAddItem`
+/// (`pages/RankingAppPage.tsx`): a re-rank emits `ranking_move` with
+/// `{notes?, year?}` and NEVER `watched_with_user_ids` (the move sites strip
+/// it, per `docs/contracts/shared-payloads.md` `## activity_events`); a fresh
+/// insert emits `ranking_add` and may carry watched-with. Contract-shaped
+/// omit-empty is `ActivityMetadata`'s job — this seam only decides the KEYS
+/// that flow in (nils watched-with on a move).
+public enum CeremonyEmission {
+
+    public struct Decision: Equatable {
+        public let eventType: String
+        public let metadata: ActivityMetadata
+    }
+
+    public static func decide(
+        outcome: RankingRepository.InsertOutcome,
+        notes: String?,
+        year: String?,
+        watchedWithUserIds: [UUID]?
+    ) -> Decision {
+        switch outcome {
+        case .inserted:
+            return Decision(
+                eventType: "ranking_add",
+                metadata: ActivityMetadata(
+                    notes: notes, year: year, watchedWithUserIds: watchedWithUserIds
+                )
+            )
+        case .moved:
+            // Re-rank = MOVE: `{notes?, year?}` only; watched-with STRIPPED
+            // (contract — the move sites never carry it).
+            return Decision(
+                eventType: "ranking_move",
+                metadata: ActivityMetadata(
+                    notes: notes, year: year, watchedWithUserIds: nil
+                )
+            )
+        }
+    }
 }
 
 /// `activity_events.metadata` for `ranking_add` — contract object
