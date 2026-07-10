@@ -523,6 +523,7 @@ public enum EN {
         "rankEntry.suggestionsLoadFailed": "couldn't load suggestions",
         "rankEntry.retry": "retry",
         "rankEntry.searchShowHint": "search a show to rank a season",
+        "rankEntry.searchFilmHint": "search a film to rank it",
         "rankEntry.seasonsLoadFailed": "couldn't load seasons — go back and try again",
         "rankEntry.pickSeason": "pick a season",
         "rankEntry.whichSeason": "which season?",

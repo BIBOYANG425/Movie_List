@@ -265,16 +265,20 @@ final class RankEntryModelTests: XCTestCase {
     }
 
     /// A recording fake for the suggestions fetch — returns per-mode/page fixtures
-    /// and records every (mode, page, excludes) call for choreography assertions.
+    /// and records every (media, mode, page, excludes) call for choreography
+    /// assertions. The `media` arg was added by the C7-iOS Task 3 media-parameterized
+    /// seam (the closure widened from `(mode,page,excludes)` to `(media,mode,page,
+    /// excludes)`); the tv choreography tests read the same `mode/page/excludes`
+    /// fields and are otherwise unchanged.
     @MainActor
     final class SuggestionsFake {
         var suggestionsByPage: [Int: [SuggestionItem]] = [:]
         var backfillByPage: [Int: [SuggestionItem]] = [:]
         var suggestionsError: Error? = nil
-        private(set) var calls: [(mode: SuggestionMode, page: Int, excludes: [String])] = []
+        private(set) var calls: [(media: SuggestionMediaType, mode: SuggestionMode, page: Int, excludes: [String])] = []
 
-        func fetch(_ mode: SuggestionMode, _ page: Int, _ excludes: [String]) async throws -> [SuggestionItem] {
-            calls.append((mode, page, excludes))
+        func fetch(_ media: SuggestionMediaType, _ mode: SuggestionMode, _ page: Int, _ excludes: [String]) async throws -> [SuggestionItem] {
+            calls.append((media, mode, page, excludes))
             switch mode {
             case .suggestions:
                 if let e = suggestionsError { throw e }
@@ -490,6 +494,219 @@ final class RankEntryModelTests: XCTestCase {
 
         m.setMode(.book)
         XCTAssertTrue(m.tvSuggestions.isEmpty, "leaving tv clears the grid")
+    }
+
+    // MARK: - Movie suggestions grid (C7-iOS Task 3)
+    //
+    // The SAME media-parameterized machinery drives the movie grid. These mirror
+    // the tv choreography tests above (consume/refill/refresh/excludes/error+401)
+    // for the movie path: a picked movie goes STRAIGHT to the ceremony (no season
+    // grid), threading voteAverage; excludes are movie ids `tmdb_{n}`; signed-out
+    // movie fires NO request (fixtures posture) despite requiresSignIn == false.
+
+    /// A movie `SuggestionItem` fixture (`tmdb_{n}` movie id, mediaType .movie).
+    private func movieSuggestion(_ n: Int, title: String? = nil, vote: Double? = 8.0) -> SuggestionItem {
+        SuggestionItem(
+            id: "tmdb_\(n)", tmdbId: n, title: title ?? "Movie \(n)", year: "2020",
+            posterUrl: "http://p/\(n).jpg", backdropUrl: nil, mediaType: .movie,
+            genres: ["Drama"], overview: "", voteAverage: vote, seasonCount: 0,
+            pool: .trending)
+    }
+
+    func testEnteringMovieLoadsSuggestionsGridAndPrefetchesBackfill() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...5).map { movieSuggestion($0) }
+        fake.backfillByPage[1] = (100...104).map { movieSuggestion($0) }
+        // Start in tv (so setMode(.movie) is a real switch that loads the grid).
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+        m.setMode(.movie)
+        await settle()
+
+        XCTAssertEqual(m.movieSuggestions.map(\.tmdbId), [1, 2, 3, 4, 5])
+        XCTAssertFalse(m.isLoadingTVSuggestions)
+        // Both calls fired under the MOVIE media.
+        XCTAssertTrue(fake.calls.contains { $0.media == .movie && $0.mode == .suggestions && $0.page == 1 })
+        XCTAssertTrue(fake.calls.contains { $0.media == .movie && $0.mode == .backfill && $0.page == 1 })
+    }
+
+    func testSignedOutMovieLoadsNoSuggestions() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = [movieSuggestion(1)]
+        let m = RankEntryModel(isSignedIn: { false }, fetchTVSuggestions: fake.fetch)
+        // Movie is the default mode; force a reload path the way the view would.
+        m.loadTVSuggestions()
+        await settle()
+
+        XCTAssertTrue(m.movieSuggestions.isEmpty)
+        XCTAssertFalse(m.requiresSignIn, "movie mode never requires sign-in (fixtures)")
+        XCTAssertTrue(fake.calls.isEmpty, "signed-out movie fires no engine request")
+    }
+
+    func testMovieConsumeSplicesOutAndRefillsFromBackfill() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...3).map { movieSuggestion($0) }
+        fake.backfillByPage[1] = (100...105).map { movieSuggestion($0) }
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+
+        let picked = m.movieSuggestions.first { $0.tmdbId == 2 }!
+        _ = m.pickSuggestedMovie(picked)
+
+        XCTAssertFalse(m.movieSuggestions.contains { $0.tmdbId == 2 })
+        XCTAssertEqual(m.movieSuggestions.map(\.tmdbId), [1, 3, 100])
+        XCTAssertTrue(m.tvSuggestionsHasBackfill, "a backfill item mixed in flips the header flag")
+    }
+
+    func testMovieRefreshAdvancesSuggestionsPage() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = [movieSuggestion(1)]
+        fake.suggestionsByPage[2] = [movieSuggestion(2)]
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+        XCTAssertEqual(m.movieSuggestions.map(\.tmdbId), [1])
+
+        m.refreshTVSuggestions()
+        await settle()
+
+        XCTAssertEqual(m.movieSuggestions.map(\.tmdbId), [2], "Refresh = suggestions page+1, whole swap")
+        XCTAssertTrue(fake.calls.contains { $0.media == .movie && $0.mode == .suggestions && $0.page == 2 })
+    }
+
+    func testMovieBackfillRefetchWhenPoolDropsBelowThreshold() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...5).map { movieSuggestion($0) }
+        fake.backfillByPage[1] = (100...102).map { movieSuggestion($0) }   // exactly 3
+        fake.backfillByPage[2] = (200...205).map { movieSuggestion($0) }
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+
+        _ = m.pickSuggestedMovie(m.movieSuggestions.first!)
+        await settle()
+
+        XCTAssertTrue(fake.calls.contains { $0.media == .movie && $0.mode == .backfill && $0.page == 2 },
+                      "pool dropping below 3 re-requests backfill at page+1")
+    }
+
+    func testMovieSessionExcludesAccumulateConsumedMovieIds() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...3).map { movieSuggestion($0) }
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+
+        _ = m.pickSuggestedMovie(m.movieSuggestions.first { $0.tmdbId == 1 }!)
+        _ = m.pickSuggestedMovie(m.movieSuggestions.first { $0.tmdbId == 2 }!)
+        m.refreshTVSuggestions()
+        await settle()
+
+        let refreshCall = fake.calls.last { $0.media == .movie && $0.mode == .suggestions }
+        XCTAssertEqual(Set(refreshCall?.excludes ?? []), ["tmdb_1", "tmdb_2"],
+                       "consumed MOVIE ids forwarded as session excludes")
+    }
+
+    func testMovieSessionExcludesCappedAt200() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...205).map { movieSuggestion($0) }
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+
+        for movie in m.movieSuggestions { m.consumeForTest(movie) }
+        m.refreshTVSuggestions()
+        await settle()
+
+        let refreshCall = fake.calls.last { $0.media == .movie && $0.mode == .suggestions }
+        XCTAssertEqual(refreshCall?.excludes.count, 200, "session excludes cap at 200")
+        XCTAssertFalse(refreshCall!.excludes.contains("tmdb_1"))
+        XCTAssertTrue(refreshCall!.excludes.contains("tmdb_205"))
+    }
+
+    func testMovieSuggestions401MapsToSilentEmpty() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsError = SuggestionsClient.SuggestionsError.http(status: 401)
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+
+        XCTAssertTrue(m.movieSuggestions.isEmpty)
+        XCTAssertFalse(m.tvSuggestionsFailed, "401 → silent empty, no retry affordance")
+    }
+
+    func testMovieSuggestionsOtherErrorFlagsRetry() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsError = SuggestionsClient.SuggestionsError.http(status: 502)
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+
+        XCTAssertTrue(m.movieSuggestions.isEmpty)
+        XCTAssertTrue(m.tvSuggestionsFailed, "a 502 → retry affordance")
+    }
+
+    func testPickSuggestedMovieRoutesToCeremonyWithVoteAverage() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = [movieSuggestion(603, title: "The Matrix", vote: 8.2)]
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+
+        let picked = m.movieSuggestions.first!
+        let movie = m.pickSuggestedMovie(picked)
+
+        // Straight to the ceremony — NO season-grid transition; stage stays search.
+        XCTAssertEqual(m.stage, .search, "a picked movie never enters the season grid")
+        XCTAssertNotNil(movie)
+        XCTAssertEqual(movie?.id, "tmdb_603")
+        XCTAssertEqual(movie?.mediaType, .movie)
+        XCTAssertEqual(movie?.title, "The Matrix")
+        XCTAssertEqual(movie?.voteAverage, 8.2, "voteAverage threads through so the prediction seeds")
+        XCTAssertEqual(movie?.rankGlobalScore, 8.2, "movie seeds the engine from voteAverage")
+    }
+
+    func testLeavingMovieForBookTearsSuggestionsDown() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = [movieSuggestion(1)]
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+        XCTAssertFalse(m.movieSuggestions.isEmpty)
+
+        m.setMode(.book)
+        XCTAssertTrue(m.movieSuggestions.isEmpty, "leaving movie clears the grid")
+    }
+
+    func testModeSwitchResetsCrossMediaExcludesAndPage() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...3).map { movieSuggestion($0) }
+        fake.suggestionsByPage[2] = (10...12).map { suggestion($0) }
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
+
+        // Consume movies + refresh (advances the movie page to 2, excludes tmdb_).
+        _ = m.pickSuggestedMovie(m.movieSuggestions.first!)
+        m.refreshTVSuggestions()
+        await settle()
+
+        // Switch back to tv — a mode switch resets the shared page + excludes so the
+        // tv grid loads page 1 with a clean (no tmdb_) exclude set.
+        m.setMode(.tv)
+        await settle()
+
+        let tvCall = fake.calls.last { $0.media == .tv && $0.mode == .suggestions }
+        XCTAssertEqual(tvCall?.page, 1, "mode switch resets the shared suggestions page")
+        XCTAssertEqual(tvCall?.excludes ?? [], [], "mode switch drops cross-media excludes")
     }
 
     // MARK: - media inference (shelf re-rank routing)

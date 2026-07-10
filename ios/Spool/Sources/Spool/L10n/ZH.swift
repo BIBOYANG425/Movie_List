@@ -480,6 +480,7 @@ public enum ZH {
         "rankEntry.suggestionsLoadFailed": "推荐没加载出来",
         "rankEntry.retry": "重试",
         "rankEntry.searchShowHint": "搜索一部剧来给某一季排名",
+        "rankEntry.searchFilmHint": "搜索一部电影来排名",
         "rankEntry.seasonsLoadFailed": "分季没加载出来，返回重试",
         "rankEntry.pickSeason": "选一季",
         "rankEntry.whichSeason": "哪一季？",

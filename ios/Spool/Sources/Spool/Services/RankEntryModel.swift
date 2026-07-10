@@ -39,20 +39,28 @@ public enum RankEntryStage: Equatable, Sendable {
 /// movie-shaped, and tv/book ranks write to Supabase). The model exposes
 /// `requiresSignIn` per mode so the view shows the nudge instead of results.
 ///
-/// TV SUGGESTIONS (C5-iOS Task 7): the tv search stage carries a suggestions grid
-/// (SHOWS, not seasons) below the empty search field, consuming
-/// `SuggestionsClient.fetch(mediaType: .tv)`. It replicates the web
-/// `AddTVSeasonModal` choreography (suggestions(12) + backfill(≤20) prefetch,
-/// consume-splice on pick with refill from the backfill pool, re-request backfill
-/// page+1 when the pool drops below 3, Refresh = suggestions page+1, session
-/// excludes = consumed SHOW ids `tv_{n}` capped 200). Tapping a suggested show
-/// routes into the SAME season-grid flow as a search pick (`pickShow`).
+/// IN-FLOW SUGGESTIONS GRID (C5-iOS Task 7 for tv; C7-iOS Task 3 for movie): the
+/// movie/tv search stage carries a suggestions grid below the empty search field,
+/// consuming `SuggestionsClient.fetch(mediaType:)`. ONE media-parameterized
+/// implementation drives both verticals (the `suggestionMediaType` seam maps the
+/// mode → `.movie`/`.tv`). It replicates the web `AddMediaModal`/`AddTVSeasonModal`
+/// choreography (suggestions + backfill prefetch, consume-splice on pick with
+/// refill from the backfill pool, re-request backfill page+1 when the pool drops
+/// below 3, Refresh = suggestions page+1, session excludes = consumed ids capped
+/// 200). Divergence is only at the PICK and the render:
+///   * tv — a picked SHOW routes into the season-grid flow (`pickShow`); the
+///     excludes are SHOW ids `tv_{n}`.
+///   * movie — a picked MOVIE goes STRAIGHT to the ceremony (`onPick`, no season
+///     grid); `voteAverage` rides along so the ceremony's prediction seeds
+///     (`Movie.movie(from:)`); the excludes are movie ids `tmdb_{n}`.
 ///
-/// MOVIE-MODE ASYMMETRY: iOS movie mode surfaces suggestions on the separate
-/// Discover screen (whole-set-swap Refresh), NOT in this rank-entry screen — so
-/// only tv mode gets an in-flow suggestions grid here. That mirrors the web
-/// parity target (the tv MODAL), and a movie-mode in-flow grid is its own
-/// follow-up. Book mode is search-only (no engine).
+/// The generic store is `[SuggestionItem]`; `tvSuggestions`/`movieSuggestions`
+/// are typed projections over it so each render surface reads its own DTO and the
+/// C5 tv tests keep their exact `tvSuggestions`/`pickSuggestedShow` API.
+///
+/// MEDIA ASYMMETRY: book mode is search-only (no engine). Movie mode ALSO keeps
+/// its Discover-screen suggestions surface; this in-flow grid is the web-modal
+/// parity surface (a picked movie → ceremony), independent of Discover.
 ///
 /// Header last reviewed: 2026-07-10
 @MainActor
@@ -71,10 +79,12 @@ public final class RankEntryModel: ObservableObject {
     public typealias LoadRankedTVIds = () async -> [String]
     /// Whether the user is signed in (tv/book require it).
     public typealias IsSignedIn = () -> Bool
-    /// Fetch a page of tv suggestions/backfill for the grid (Task 7). Throws so
-    /// the model can map 401→empty vs other→error (Discover/T6 conventions).
-    public typealias FetchTVSuggestions =
-        (_ mode: SuggestionMode, _ page: Int, _ sessionExcludeIds: [String]) async throws -> [SuggestionItem]
+    /// Fetch a page of suggestions/backfill for the in-flow grid (Task 7 tv;
+    /// C7-iOS Task 3 movie). Media-parameterized so ONE closure serves both
+    /// verticals. Throws so the model can map 401→empty vs other→error
+    /// (Discover/T6 conventions).
+    public typealias FetchSuggestions =
+        (_ media: SuggestionMediaType, _ mode: SuggestionMode, _ page: Int, _ sessionExcludeIds: [String]) async throws -> [SuggestionItem]
 
     private let searchMoviesIO: SearchMovies
     private let searchTVIO: SearchTV
@@ -83,7 +93,7 @@ public final class RankEntryModel: ObservableObject {
     private let loadShowGlobalScoreIO: LoadShowGlobalScore
     private let loadRankedTVIdsIO: LoadRankedTVIds
     private let isSignedInIO: IsSignedIn
-    private let fetchTVSuggestionsIO: FetchTVSuggestions
+    private let fetchSuggestionsIO: FetchSuggestions
 
     // MARK: Published state
 
@@ -105,12 +115,23 @@ public final class RankEntryModel: ObservableObject {
     /// True while the season grid is loading its detail.
     @Published public private(set) var isLoadingSeasons: Bool = false
 
-    // MARK: TV suggestions grid (Task 7)
+    // MARK: In-flow suggestions grid (Task 7 tv; C7-iOS Task 3 movie)
 
-    /// The visible tv suggestions grid (SHOWS). Consumed shows are spliced out and
-    /// refilled from `backfillPool`. Empty when signed out / not yet loaded / no
-    /// suggestions returned.
-    @Published public private(set) var tvSuggestions: [TMDBTVShow] = []
+    /// The generic visible-grid store — raw engine items for the CURRENT mode's
+    /// media. Consumed items are spliced out and refilled from `backfillPool`.
+    /// Empty when signed out / not yet loaded / no suggestions returned. The typed
+    /// `tvSuggestions`/`movieSuggestions` projections read off this so each render
+    /// surface gets its own DTO without a second store.
+    @Published public private(set) var suggestionItems: [SuggestionItem] = []
+
+    /// The visible tv suggestions grid (SHOWS) — a typed projection of
+    /// `suggestionItems` for the tv render + the C5 test API. Only meaningful in
+    /// tv mode; empty otherwise.
+    public var tvSuggestions: [TMDBTVShow] { suggestionItems.map(Self.show(from:)) }
+    /// The visible movie suggestions grid — a typed projection of `suggestionItems`
+    /// for the movie render + tests. Only meaningful in movie mode; empty otherwise.
+    public var movieSuggestions: [TMDBMovie] { suggestionItems.map(Self.movieDTO(from:)) }
+
     /// True while the initial suggestions page is loading (skeleton state).
     @Published public private(set) var isLoadingTVSuggestions: Bool = false
     /// True once a backfill item has been mixed into the grid (web `hasBackfillMixed`
@@ -121,9 +142,11 @@ public final class RankEntryModel: ObservableObject {
     @Published public private(set) var tvSuggestionsFailed: Bool = false
 
     /// Prefetched backfill pool — the reservoir the consume-splice refills from.
-    private var backfillPool: [TMDBTVShow] = []
-    /// Session-consumed SHOW ids (`tv_{n}` form) this session; the server excludes
-    /// on show ids. Ordered so the cap keeps the most recent 200 (web parity).
+    /// Generic items (media matches the current grid).
+    private var backfillPool: [SuggestionItem] = []
+    /// Session-consumed ids this session (`tv_{n}` shows in tv mode, `tmdb_{n}`
+    /// movies in movie mode); the server excludes on these ids. Ordered so the cap
+    /// keeps the most recent 200 (web parity).
     private var sessionExcludeIds: [String] = []
     /// The current suggestions page (Refresh advances it — web `page+1`).
     private var suggestionsPage = 1
@@ -156,9 +179,9 @@ public final class RankEntryModel: ObservableObject {
             (try? await RankingRepository.shared.getAllRankedItems(media: "tv"))?.map(\.id) ?? []
         },
         isSignedIn: @escaping IsSignedIn = { SpoolClient.shared != nil },
-        fetchTVSuggestions: @escaping FetchTVSuggestions = { mode, page, excludes in
+        fetchTVSuggestions: @escaping FetchSuggestions = { media, mode, page, excludes in
             try await SuggestionsClient.fetch(
-                mode: mode, mediaType: .tv, page: page, sessionExcludeIds: excludes
+                mode: mode, mediaType: media, page: page, sessionExcludeIds: excludes
             ).items
         }
     ) {
@@ -169,7 +192,7 @@ public final class RankEntryModel: ObservableObject {
         self.loadShowGlobalScoreIO = loadShowGlobalScore
         self.loadRankedTVIdsIO = loadRankedTVIds
         self.isSignedInIO = isSignedIn
-        self.fetchTVSuggestionsIO = fetchTVSuggestions
+        self.fetchSuggestionsIO = fetchTVSuggestions
     }
 
     // MARK: Derived
@@ -181,6 +204,30 @@ public final class RankEntryModel: ObservableObject {
         case .movie: return false
         case .tv, .book: return !isSignedInIO()
         }
+    }
+
+    /// The engine media the in-flow suggestions grid fetches for the current mode.
+    /// Movie and tv each have a grid; book has none (the caller gates on
+    /// `modeHasSuggestionGrid` before reading this).
+    var suggestionMediaType: SuggestionMediaType {
+        mode == .movie ? .movie : .tv
+    }
+
+    /// Whether the current mode surfaces an in-flow suggestions grid. Movie + tv
+    /// do (each maps to a `suggestionMediaType`); book is search-only. The grid
+    /// ALSO requires a signed-in session (the engine 401s signed-out) — the view
+    /// checks `suggestionsGateOpen`.
+    var modeHasSuggestionGrid: Bool {
+        mode == .movie || mode == .tv
+    }
+
+    /// Whether the suggestions grid may load for the current mode: the mode has a
+    /// grid AND the caller is signed in. Movie mode's `requiresSignIn` is always
+    /// false (it has a fixtures search fallback), so the grid can NOT gate on
+    /// `requiresSignIn` — it gates on the raw session instead. tv mode's grid
+    /// happens to coincide with `!requiresSignIn`, preserved byte-identically.
+    var suggestionsGateOpen: Bool {
+        modeHasSuggestionGrid && isSignedInIO()
     }
 
     /// The placeholder for the current mode's search field.
@@ -213,10 +260,19 @@ public final class RankEntryModel: ObservableObject {
         showGlobalScore = nil
         isSearching = false
         isLoadingSeasons = false
-        // Leaving tv tears the suggestions grid down; entering tv (signed in)
-        // loads it fresh. Book/movie never show a grid here.
+        // Leaving a grid mode tears the suggestions grid down; entering a grid
+        // mode (movie/tv, signed in) loads it fresh. Book never shows a grid.
+        // A mode switch crosses media (tv_ ↔ tmdb_ ids), so the per-session page
+        // counter + excludes are media-specific — reset them so the new media's
+        // grid starts at page 1 with a clean exclude set (web has separate modals
+        // ⇒ separate refs; the shared model mirrors that by resetting on switch).
+        // Within a mode, resetTVSuggestions still PRESERVES page/excludes so a
+        // Refresh keeps advancing and re-entered picks keep their excludes.
+        suggestionsPage = 1
+        backfillPage = 1
+        sessionExcludeIds = []
         resetTVSuggestions()
-        if newMode == .tv { loadTVSuggestions() }
+        loadTVSuggestions()
     }
 
     // MARK: Search (debounced by the view; the model runs the fetch)
@@ -319,7 +375,10 @@ public final class RankEntryModel: ObservableObject {
     /// silent reservoir consume-splice refills from. A `notAuthenticated`/401 error
     /// lands an empty grid (no retry); any other error flips `tvSuggestionsFailed`.
     public func loadTVSuggestions() {
-        guard mode == .tv, !requiresSignIn else { resetTVSuggestions(); return }
+        // Movie + tv modes have a grid; the engine requires a session (movie's
+        // requiresSignIn is always false, so gate on the raw session via
+        // suggestionsGateOpen — signed-out movie shows fixtures, no engine grid).
+        guard suggestionsGateOpen else { resetTVSuggestions(); return }
         suggestionsTask?.cancel()
         backfillTask?.cancel()
         suggestionsGeneration &+= 1
@@ -332,12 +391,13 @@ public final class RankEntryModel: ObservableObject {
         backfillPage = 1
         backfillPool = []
 
+        let media = suggestionMediaType
         let page = suggestionsPage
         let excludes = sessionExcludeIds
         suggestionsTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let items = try await self.fetchTVSuggestionsIO(.suggestions, page, excludes)
+                let items = try await self.fetchSuggestionsIO(media, .suggestions, page, excludes)
                 self.applySuggestions(items, gen: gen)
             } catch {
                 self.applySuggestionsError(error, gen: gen)
@@ -347,14 +407,14 @@ public final class RankEntryModel: ObservableObject {
             guard let self else { return }
             // A backfill failure is silent — the reservoir just stays empty; the
             // visible grid degrades to fewer refills, never an error banner.
-            let items = (try? await self.fetchTVSuggestionsIO(.backfill, 1, excludes)) ?? []
+            let items = (try? await self.fetchSuggestionsIO(media, .backfill, 1, excludes)) ?? []
             self.applyBackfill(items, gen: gen)
         }
     }
 
     private func applySuggestions(_ items: [SuggestionItem], gen: Int) {
         guard gen == suggestionsGeneration else { return }
-        tvSuggestions = items.map(Self.show(from:))
+        suggestionItems = items
         isLoadingTVSuggestions = false
         tvSuggestionsFailed = false
     }
@@ -362,7 +422,7 @@ public final class RankEntryModel: ObservableObject {
     private func applySuggestionsError(_ error: Error, gen: Int) {
         guard gen == suggestionsGeneration else { return }
         isLoadingTVSuggestions = false
-        tvSuggestions = []
+        suggestionItems = []
         // 401 / not-authenticated → silent empty (retry would 401 again); every
         // other failure → a retry affordance (Discover/T6 outage-vs-401 contract).
         switch error {
@@ -376,14 +436,14 @@ public final class RankEntryModel: ObservableObject {
 
     private func applyBackfill(_ items: [SuggestionItem], gen: Int) {
         guard gen == suggestionsGeneration else { return }
-        backfillPool = items.map(Self.show(from:))
+        backfillPool = items
     }
 
     /// Refresh the suggestions grid — advance the page and reload (web
     /// `handleRefreshSuggestions`: `suggestionPageRef += 1`). Both the visible grid
     /// and the backfill reservoir re-request under the new page.
     public func refreshTVSuggestions() {
-        guard mode == .tv, !requiresSignIn else { return }
+        guard suggestionsGateOpen else { return }
         suggestionsPage += 1
         loadTVSuggestions()
     }
@@ -393,20 +453,59 @@ public final class RankEntryModel: ObservableObject {
     /// SAME season-grid flow as a search pick (`pickShow`). Mirrors web
     /// `handleSelectSuggestion`.
     public func pickSuggestedShow(_ show: TMDBTVShow) {
-        consumeSuggestion(show)
+        consumeSuggestion(id: show.id)
         pickShow(show)
     }
 
-    /// Splice a consumed show out of the grid, refill one slot from the backfill
-    /// pool (skipping ids already present), note the SHOW id in the session
+    /// The user tapped a SUGGESTED movie (C7-iOS Task 3). Consume it (splice out +
+    /// refill + note the movie id `tmdb_{n}` in the excludes) and return the
+    /// rankable `Movie` — a picked movie goes STRAIGHT to the ceremony (no season
+    /// grid). `voteAverage` rides along via `Movie.movie(from:)` so the ceremony's
+    /// prediction seeds (the C3A concern class). Mirrors web `handleSelectMovie`
+    /// with `fromSuggestion=true`. Returns nil if the id isn't in the current grid
+    /// (a stale tap after a mode switch / refresh).
+    public func pickSuggestedMovie(_ movie: TMDBMovie) -> Movie? {
+        guard let item = suggestionItems.first(where: { $0.id == movie.id }) else { return nil }
+        consumeSuggestion(id: movie.id)
+        return Self.rankMovie(from: item)
+    }
+
+    /// Mint the rankable `Movie` for a picked movie suggestion. Threads
+    /// `voteAverage` so the ceremony's prediction seeds (the C3A concern class) —
+    /// the exact construction the Discover grid uses (`DiscoverCardCopy.movie`),
+    /// kept local so `RankEntryModel` doesn't depend on a screen helper.
+    static func rankMovie(from item: SuggestionItem) -> Movie {
+        Movie(
+            id: item.id,
+            title: item.title,
+            year: Int(item.year) ?? 0,
+            director: "—",
+            seed: Self.stableSeed(item.id),
+            genres: item.genres,
+            posterUrl: (item.posterUrl?.isEmpty == false) ? item.posterUrl : nil,
+            voteAverage: item.voteAverage
+        )
+    }
+
+    /// djb2 seed for a stable poster placeholder from an id (mirrors the view's
+    /// per-row seed + `DiscoverCardCopy.stableSeed`).
+    static func stableSeed(_ id: String) -> Int {
+        var h: UInt64 = 5381
+        for b in id.utf8 { h = (h &* 33) &+ UInt64(b) }
+        return Int(h % 1000)
+    }
+
+    /// Splice a consumed item out of the grid by id, refill one slot from the
+    /// backfill pool (skipping ids already present), note the id in the session
     /// excludes (capped 200), and re-request the backfill pool when it drops below
-    /// the refill threshold. Mirrors web `consumeSuggestion`.
-    private func consumeSuggestion(_ show: TMDBTVShow) {
-        noteConsumed(show.id)
-        var without = tvSuggestions.filter { $0.id != show.id }
+    /// the refill threshold. Media-generic — mirrors web `consumeSuggestion` in
+    /// both the movie modal (`AddMediaModal`) and the tv modal.
+    private func consumeSuggestion(id consumedId: String) {
+        noteConsumed(consumedId)
+        var without = suggestionItems.filter { $0.id != consumedId }
         if !backfillPool.isEmpty {
             let present = Set(without.map(\.id))
-            var fill: TMDBTVShow? = nil
+            var fill: SuggestionItem? = nil
             while !backfillPool.isEmpty {
                 let candidate = backfillPool.removeFirst()
                 if !present.contains(candidate.id) { fill = candidate; break }
@@ -419,7 +518,7 @@ public final class RankEntryModel: ObservableObject {
                 requestBackfillNextPage()
             }
         }
-        tvSuggestions = without
+        suggestionItems = without
     }
 
     /// Re-request the backfill pool at the next page and REPLACE the reservoir
@@ -427,13 +526,14 @@ public final class RankEntryModel: ObservableObject {
     /// the current suggestions generation so a stale Refresh/mode-switch drops it.
     private func requestBackfillNextPage() {
         backfillPage += 1
+        let media = suggestionMediaType
         let page = backfillPage
         let excludes = sessionExcludeIds
         let gen = suggestionsGeneration
         backfillTask?.cancel()
         backfillTask = Task { [weak self] in
             guard let self else { return }
-            let items = (try? await self.fetchTVSuggestionsIO(.backfill, page, excludes)) ?? []
+            let items = (try? await self.fetchSuggestionsIO(media, .backfill, page, excludes)) ?? []
             self.applyBackfill(items, gen: gen)
         }
     }
@@ -441,11 +541,15 @@ public final class RankEntryModel: ObservableObject {
     /// Test seam — run the consume-splice choreography without the `pickShow`
     /// stage transition (so the exclude-cap accumulation can be exercised over many
     /// shows without the grid re-rendering into the season-grid stage each time).
-    func consumeForTest(_ show: TMDBTVShow) { consumeSuggestion(show) }
+    func consumeForTest(_ show: TMDBTVShow) { consumeSuggestion(id: show.id) }
+    /// Movie-mode analogue of `consumeForTest` — exercises the exclude-cap
+    /// accumulation over many movies without routing to the ceremony each time.
+    func consumeForTest(_ movie: TMDBMovie) { consumeSuggestion(id: movie.id) }
 
-    /// Note a consumed SHOW id in the session excludes, de-duped and capped at 200
-    /// keeping the most recent (web `noteConsumed`). Show ids are already `tv_{n}`
-    /// (search + suggestions mint them that way); the server excludes on show ids.
+    /// Note a consumed id in the session excludes, de-duped and capped at 200
+    /// keeping the most recent (web `noteConsumed`). The id is already the media's
+    /// stub form (`tv_{n}` shows in tv mode, `tmdb_{n}` movies in movie mode);
+    /// the server excludes on these ids.
     private func noteConsumed(_ id: String) {
         guard !sessionExcludeIds.contains(id) else { return }
         sessionExcludeIds.append(id)
@@ -461,7 +565,7 @@ public final class RankEntryModel: ObservableObject {
         suggestionsTask?.cancel()
         backfillTask?.cancel()
         suggestionsGeneration &+= 1
-        tvSuggestions = []
+        suggestionItems = []
         backfillPool = []
         isLoadingTVSuggestions = false
         tvSuggestionsHasBackfill = false
@@ -489,6 +593,25 @@ public final class RankEntryModel: ObservableObject {
             creators: [],
             voteAverage: item.voteAverage,
             seasons: nil
+        )
+    }
+
+    /// Build a `TMDBMovie` from a movie `SuggestionItem` so the movie grid can
+    /// render a search-result-shaped row (C7-iOS Task 3). The id is the
+    /// suggestion's `tmdb_{n}` movie id; `voteAverage` is preserved so the picked
+    /// `Movie` seeds the ceremony's prediction. This DTO is a render/tap key only —
+    /// the picked `Movie` is minted from the raw `SuggestionItem` via
+    /// `Movie.movie(from:)`, which threads `voteAverage` directly.
+    static func movieDTO(from item: SuggestionItem) -> TMDBMovie {
+        TMDBMovie(
+            id: item.id,
+            tmdbId: item.tmdbId,
+            title: item.title,
+            year: item.year,
+            posterUrl: item.posterUrl,
+            genres: item.genres,
+            overview: item.overview,
+            voteAverage: item.voteAverage
         )
     }
 
