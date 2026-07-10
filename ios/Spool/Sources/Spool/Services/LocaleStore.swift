@@ -18,14 +18,16 @@ public enum SpoolLocale: String, CaseIterable, Sendable {
     }
 
     /// The locale to seed a fresh install with, derived from the device's
-    /// ordered preferred languages. First `zh*` entry wins; otherwise `.en`.
+    /// ordered preferred languages. FIRST entry only: if the first language
+    /// starts with `zh*` the result is `.zh`, otherwise `.en`. Matches
+    /// `TMDBService` / `SuggestionsClient` first-entry semantics exactly so
+    /// an en-primary / zh-secondary device is consistently treated as `.en`,
+    /// not silently flipped to `.zh` on first read (which would persist via
+    /// `LocaleStore.current`'s write-back).
     /// Pure over its input so it is unit-tested with ZERO `UserDefaults` /
     /// `Locale.preferredLanguages` reads.
     public static func deviceDefault(preferredLanguages: [String]) -> SpoolLocale {
-        for identifier in preferredLanguages where from(languageCode: identifier) == .zh {
-            return .zh
-        }
-        return .en
+        from(languageCode: preferredLanguages.first ?? "")
     }
 }
 
@@ -42,6 +44,25 @@ public enum SpoolLocale: String, CaseIterable, Sendable {
 /// is stable forever after (a later OS-language change never silently flips an
 /// existing install). `resolve` is the pure decision the persisting `current`
 /// getter and its tests share.
+///
+/// ## Contract for Task 2 (TMDBService / SuggestionsClient)
+/// Read `LocaleStore.current` BEFORE any `@AppStorage("spool_locale") = "en"`
+/// default assignment on a fresh install. An `@AppStorage` default writes the
+/// value into UserDefaults the moment the property wrapper is initialised, which
+/// would overwrite the device-default `.zh` (derived and persisted on first read
+/// here) with `"en"` — masking the device preference permanently. Always let
+/// `LocaleStore.current` pin the default first; only then attach `@AppStorage`
+/// consumers.
+///
+/// ## Contract for Task 3 (view re-render)
+/// Any view that calls `L10n.t` MUST also observe the locale so it re-renders on
+/// language change. The one canonical pattern: declare a root-level
+/// `@AppStorage("spool_locale") var rawLocale: String` (same key as
+/// `LocaleStore.storageKey`) and apply `.id(rawLocale)` on the root content
+/// view, or read `@AppStorage("spool_locale")` in each affected view. Do NOT
+/// read `LocaleStore.current` inside a View body without an `@AppStorage`
+/// observation — that bypasses SwiftUI's dependency tracking and the view will
+/// NOT re-render on locale switch.
 public enum LocaleStore {
     /// UserDefaults key. Bare (no `spool.` dot prefix) to match the web
     /// `STORAGE_KEY` (`'spool_locale'`, LanguageContext.tsx) so a shared
@@ -68,6 +89,23 @@ public enum LocaleStore {
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: storageKey)
         }
+    }
+
+    /// Testable overload of `current`'s read-side logic. Accepts an injected
+    /// `UserDefaults` suite (e.g. `UserDefaults(suiteName: UUID().uuidString)`)
+    /// and preferred-language list so tests exercise the persist write-back path
+    /// without touching `UserDefaults.standard` or `Locale.preferredLanguages`.
+    @discardableResult
+    static func readCurrent(
+        defaults: UserDefaults,
+        preferredLanguages: [String]
+    ) -> SpoolLocale {
+        let stored = defaults.string(forKey: storageKey)
+        let (locale, shouldPersist) = resolve(stored: stored, preferredLanguages: preferredLanguages)
+        if shouldPersist {
+            defaults.set(locale.rawValue, forKey: storageKey)
+        }
+        return locale
     }
 
     /// Pure resolution for `current`. Returns the locale to use and whether the

@@ -29,7 +29,8 @@ public enum EN {
         // 'ranking.resetConfirm').
         "ranking.resetConfirm": "Reset your {label} list? This cannot be undone.",
 
-        // A generic failure toast (mirrors web 'ranking.failedSave').
-        "toast.saveFailed": "Failed to save, please try again",
+        // A generic failure toast — verbatim web 'ranking.failedSave' en copy
+        // (i18n/en.ts). Em-dash ban is zh-only; en value is faithful to web.
+        "toast.saveFailed": "Failed to save — please try again",
     ]
 }

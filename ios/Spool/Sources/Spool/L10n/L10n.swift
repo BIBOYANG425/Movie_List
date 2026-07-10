@@ -26,7 +26,22 @@ public enum L10n {
     /// Pure lookup used by both public overloads and the tests. `locale` is
     /// explicit so fallback semantics are asserted with no `UserDefaults` read.
     static func t(_ key: String, locale: SpoolLocale) -> String {
-        table(for: locale)[key] ?? EN.table[key] ?? key
+        t(key, locale: locale, zhTable: ZH.table, enTable: EN.table)
+    }
+
+    /// Injectable-table overload. Accepts caller-supplied zh/en dictionaries so
+    /// tests can drive the fallback chain (zh-missing → en; both-missing → key;
+    /// interpolation on the fixture path) without touching the real tables and
+    /// without parity constraints forcing every key to exist in both tables.
+    /// The public `t(_:locale:)` delegates here with the real tables.
+    static func t(
+        _ key: String,
+        locale: SpoolLocale,
+        zhTable: [String: String],
+        enTable: [String: String]
+    ) -> String {
+        let primary: [String: String] = locale == .zh ? zhTable : enTable
+        return primary[key] ?? enTable[key] ?? key
     }
 
     /// Pure `{token}` substitution. Unknown tokens in the string are left

@@ -97,17 +97,62 @@ final class L10nParityTests: XCTestCase {
         XCTAssertEqual(L10n.t("nav.me", locale: .en), "me")
     }
 
+    // MARK: - Injectable-table fallback tests (real coverage of zh→en→key chain)
+
+    // Fixture tables: only the injectable-table overload can drive missing-key
+    // scenarios without violating parity (the real tables are always in parity,
+    // so testFallsBackToEnWhenZhMissing iterates zero times against them).
+
+    private let fixtureEn: [String: String] = [
+        "fixture.onlyEn": "English only",
+        "fixture.both": "Both present",
+        "fixture.interpolated": "Hello {name}",
+    ]
+    private let fixtureZh: [String: String] = [
+        // "fixture.onlyEn" deliberately absent → should fall back to en value
+        "fixture.both": "两者都有",
+        "fixture.interpolated": "你好{name}",
+    ]
+
     func testFallsBackToEnWhenZhMissing() {
-        // Seeded tables are in parity, so simulate an en-only key by looking up
-        // one that exists in en but (in this fixture) is missing from zh: assert
-        // the fallback CHAIN via every en key — a zh request must never surface
-        // the raw key when en backstops it.
-        for (key, enValue) in EN.table where ZH.table[key] == nil {
-            XCTAssertEqual(L10n.t(key, locale: .zh), enValue, "zh-missing '\(key)' should fall back to en")
-        }
-        // And directly: an en-only key resolves to its en value under zh.
-        // (Uses the private table via a key we know is canonical.)
-        XCTAssertNotEqual(L10n.t("nav.feed", locale: .zh), "nav.feed")
+        // zh table is missing "fixture.onlyEn" → must return the en value, not the key
+        let result = L10n.t("fixture.onlyEn", locale: .zh, zhTable: fixtureZh, enTable: fixtureEn)
+        XCTAssertEqual(result, "English only", "zh-missing key must fall back to en value")
+    }
+
+    func testReturnsBothPresentZhValue() {
+        XCTAssertEqual(
+            L10n.t("fixture.both", locale: .zh, zhTable: fixtureZh, enTable: fixtureEn),
+            "两者都有"
+        )
+    }
+
+    func testReturnsBothPresentEnValue() {
+        XCTAssertEqual(
+            L10n.t("fixture.both", locale: .en, zhTable: fixtureZh, enTable: fixtureEn),
+            "Both present"
+        )
+    }
+
+    func testReturnsBothMissingAsKey() {
+        // key absent from BOTH fixture tables → raw key is the result
+        let key = "fixture.totally.absent"
+        XCTAssertEqual(L10n.t(key, locale: .zh, zhTable: fixtureZh, enTable: fixtureEn), key)
+        XCTAssertEqual(L10n.t(key, locale: .en, zhTable: fixtureZh, enTable: fixtureEn), key)
+    }
+
+    func testInterpolationOnFixtureFallbackPath() {
+        // zh missing "fixture.interpolated" is NOT tested here (it exists in fixtureZh).
+        // This tests interpolation after the zh→en fallback: only-en key resolved under zh.
+        // "fixture.onlyEn" has no placeholder; use the injectable overload to
+        // verify interpolation composes correctly on a plain fallback result.
+        let resolved = L10n.t("fixture.onlyEn", locale: .zh, zhTable: fixtureZh, enTable: fixtureEn)
+        XCTAssertEqual(L10n.interpolate(resolved, ["unused": "x"]), "English only")
+    }
+
+    func testInterpolationOnFixtureZhPath() {
+        let resolved = L10n.t("fixture.interpolated", locale: .zh, zhTable: fixtureZh, enTable: fixtureEn)
+        XCTAssertEqual(L10n.interpolate(resolved, ["name": "世界"]), "你好世界")
     }
 
     func testReturnsKeyWhenMissingFromBothTables() {
@@ -134,16 +179,30 @@ final class L10nParityTests: XCTestCase {
 
     // MARK: - Device-default logic (pure)
 
-    func testDeviceDefaultPicksZhForChinesePreferred() {
+    func testDeviceDefaultPicksZhWhenZhIsFirstEntry() {
+        // zh first → .zh (first-entry rule)
         XCTAssertEqual(SpoolLocale.deviceDefault(preferredLanguages: ["zh-Hans-CN", "en-US"]), .zh)
     }
 
-    func testDeviceDefaultPicksEnForNonChinese() {
+    func testDeviceDefaultPicksEnWhenEnIsFirstEntry() {
+        // en first → .en regardless of other entries
         XCTAssertEqual(SpoolLocale.deviceDefault(preferredLanguages: ["en-US", "fr-FR"]), .en)
     }
 
-    func testDeviceDefaultPrefersChineseAnywhereInList() {
-        XCTAssertEqual(SpoolLocale.deviceDefault(preferredLanguages: ["en-US", "zh-Hant-TW"]), .zh)
+    func testDeviceDefaultEnPrimaryZhSecondaryIsEn() {
+        // en-primary / zh-secondary device must be treated as .en — not flipped
+        // to .zh by a zh entry further down the list (first-entry only semantics,
+        // matching TMDBService / SuggestionsClient).
+        XCTAssertEqual(SpoolLocale.deviceDefault(preferredLanguages: ["en-US", "zh-Hant-TW"]), .en)
+    }
+
+    func testDeviceDefaultZhHantFirstEntryIsZh() {
+        // zh-Hant / zh-HK first entry must resolve as .zh
+        XCTAssertEqual(SpoolLocale.deviceDefault(preferredLanguages: ["zh-Hant-TW", "en-US"]), .zh)
+    }
+
+    func testDeviceDefaultZhHKFirstEntryIsZh() {
+        XCTAssertEqual(SpoolLocale.deviceDefault(preferredLanguages: ["zh-HK", "en-US"]), .zh)
     }
 
     func testDeviceDefaultEmptyListIsEn() {
@@ -173,5 +232,37 @@ final class L10nParityTests: XCTestCase {
         let (locale, persist) = LocaleStore.resolve(stored: "de", preferredLanguages: ["en-US"])
         XCTAssertEqual(locale, .en)
         XCTAssertTrue(persist)
+    }
+
+    // MARK: - LocaleStore.current persistence (injectable UserDefaults)
+
+    func testCurrentWritesDeviceDefaultOnFreshInstall() {
+        // A fresh suite has no "spool_locale" key. readCurrent must derive the
+        // device default AND write it back so every subsequent read is stable.
+        let suite = UserDefaults(suiteName: "test.\(UUID().uuidString)")!
+        XCTAssertNil(suite.string(forKey: LocaleStore.storageKey), "suite must start empty")
+
+        let result = LocaleStore.readCurrent(defaults: suite, preferredLanguages: ["zh-Hans"])
+
+        XCTAssertEqual(result, .zh, "device-default for zh-first must be .zh")
+        // The write-back is the critical assertion: a dropped defaults.set
+        // would leave the suite empty here, making this fail.
+        XCTAssertEqual(
+            suite.string(forKey: LocaleStore.storageKey), "zh",
+            "fresh-install default must be persisted so later reads are stable"
+        )
+    }
+
+    func testCurrentDoesNotOverwriteExistingStoredValue() {
+        // A suite with a pre-existing "en" value must NOT be overwritten even
+        // if the device language is zh.
+        let suite = UserDefaults(suiteName: "test.\(UUID().uuidString)")!
+        suite.set("en", forKey: LocaleStore.storageKey)
+
+        let result = LocaleStore.readCurrent(defaults: suite, preferredLanguages: ["zh-Hans"])
+
+        XCTAssertEqual(result, .en, "stored value wins over device default")
+        XCTAssertEqual(suite.string(forKey: LocaleStore.storageKey), "en",
+                       "stored value must not be overwritten")
     }
 }
