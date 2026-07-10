@@ -678,6 +678,8 @@ async function loadMovieData(
     userClient.from('user_rankings').select('tmdb_id, title, year, genres, tier, director'),
     userClient.from('watchlist_items').select('tmdb_id, title'),
   ])
+  if (rankingsRes.error) throw new Error('db read failed: user_rankings')
+  if (watchlistRes.error) throw new Error('db read failed: watchlist_items')
   const rankings = (rankingsRes.data ?? []) as any[]
   const watchlist = (watchlistRes.data ?? []) as any[]
 
@@ -710,6 +712,8 @@ async function loadTVData(
       .select('tmdb_id, show_tmdb_id, season_number, title, year, genres, tier, creator'),
     userClient.from('tv_watchlist_items').select('show_tmdb_id, title'),
   ])
+  if (rankingsRes.error) throw new Error('db read failed: tv_rankings')
+  if (watchlistRes.error) throw new Error('db read failed: tv_watchlist_items')
   const rankings = (rankingsRes.data ?? []) as any[]
   const watchlist = (watchlistRes.data ?? []) as any[]
 
@@ -846,7 +850,7 @@ Deno.serve(async (req: Request) => {
       }
     } catch (err) {
       console.error('suggestions upstream error:', err)
-      return json({ error: 'TMDB upstream error' }, 502)
+      return json({ error: 'upstream error' }, 502)
     }
 
     return json({ items: items.map(toResponseItem), totalRanked }, 200)
