@@ -79,9 +79,13 @@ import SwiftUI
 ///     read-only render (which sorts by `rank`) shows the right order when
 ///     edit mode exits.
 ///
-/// Movies only: the ranked-list surface reads `user_rankings` exclusively
-/// (`RankingRepository.getAllRankedItems`), so every row is a movie and the
-/// reorder write hardcodes `media: "movie"`.
+/// Per-vertical (C5 Task 2): the model carries a `media` key (`"movie" | "tv" |
+/// "book"`, default `"movie"`) that the shelf sets on each media-segment switch.
+/// Every management IO — reorder / cross-tier move / notes probe+save / delete —
+/// threads that key so a tv/book shelf reorders/moves/deletes on its own table
+/// (`RankingRepository`'s ops already take a `media:` param since C4-UI). Only
+/// re-rank stays movie-gated (`showsRerank(forMedia:)` — the tv/book ceremony
+/// doesn't exist until Task 5/6), so tv/book cards offer move/notes/delete only.
 ///
 /// Header last reviewed: 2026-07-10
 @MainActor
@@ -141,24 +145,25 @@ public final class RankManageModel: ObservableObject {
     /// FULL new membership. Args: `(media, tier, ids)`. Throws so the optimistic
     /// reorder can revert.
     public typealias ReorderIO = (String, String, [String]) async throws -> Void
-    /// `RankingRepository.moveRanking(tmdbId:fromTier:toTier:atIndex:)` — cross-
-    /// tier move. Args: `(tmdbId, fromTier, toTier, atIndex)`. The menu always
-    /// APPENDS to the target tail, so `atIndex` is always nil here. Throws so the
-    /// optimistic regroup can revert.
-    public typealias MoveIO = (String, String, String, Int?) async throws -> Void
-    /// `RankingRepository.getNotes(tmdbId:)` — fetch-before-edit probe for the
-    /// notes sheet. Args: `(tmdbId)`. Throws; the model degrades a throw to nil
-    /// (open the editor blank) rather than surfacing it.
-    public typealias NotesProbeIO = (String) async throws -> String?
-    /// `RankingRepository.updateNotes(tmdbId:notes:)` — single-column notes
-    /// write. Args: `(tmdbId, notes)`; nil clears the column. Throws so a save
-    /// failure can toast. Emits NOTHING (web has no standalone notes-edit event).
-    public typealias SaveNotesIO = (String, String?) async throws -> Void
-    /// `RankingRepository.deleteRanking(tmdbId:tier:)` — DESTRUCTIVE row delete +
-    /// tier compaction. Args: `(tmdbId, tier)`. Throws so the optimistic removal
-    /// can revert. The confirmation DIALOG is view-level; the model API takes the
-    /// already-confirmed action.
-    public typealias DeleteIO = (String, String) async throws -> Void
+    /// `RankingRepository.moveRanking(tmdbId:fromTier:toTier:atIndex:media:)` —
+    /// cross-tier move. Args: `(media, tmdbId, fromTier, toTier, atIndex)`. The
+    /// menu always APPENDS to the target tail, so `atIndex` is always nil here.
+    /// Throws so the optimistic regroup can revert.
+    public typealias MoveIO = (String, String, String, String, Int?) async throws -> Void
+    /// `RankingRepository.getNotes(tmdbId:media:)` — fetch-before-edit probe for
+    /// the notes sheet. Args: `(media, tmdbId)`. Throws; the model surfaces a
+    /// throw as `.probeFailed` rather than degrading silently to nil.
+    public typealias NotesProbeIO = (String, String) async throws -> String?
+    /// `RankingRepository.updateNotes(tmdbId:notes:media:)` — single-column notes
+    /// write. Args: `(media, tmdbId, notes)`; nil clears the column. Throws so a
+    /// save failure can toast. Emits NOTHING (web has no standalone notes-edit
+    /// event).
+    public typealias SaveNotesIO = (String, String, String?) async throws -> Void
+    /// `RankingRepository.deleteRanking(tmdbId:tier:media:)` — DESTRUCTIVE row
+    /// delete + tier compaction. Args: `(media, tmdbId, tier)`. Throws so the
+    /// optimistic removal can revert. The confirmation DIALOG is view-level; the
+    /// model API takes the already-confirmed action.
+    public typealias DeleteIO = (String, String, String) async throws -> Void
     /// Request the re-rank ceremony for the RAW item, preseeded, NO watchlist
     /// origin (bound in `SpoolAppRoot` to dismiss the shelf sheet + enter the
     /// Task-2-corrected `.tier` flow). Synchronous hand-off — the ceremony owns
@@ -178,6 +183,12 @@ public final class RankManageModel: ObservableObject {
 
     /// Whether the list is in edit mode (drag handles visible, `.onMove` live).
     @Published public private(set) var isEditing: Bool = false
+    /// The vertical this model manages (`"movie" | "tv" | "book"`). Threaded into
+    /// EVERY management IO (reorder / move / notes probe+save / delete) so a
+    /// tv/book shelf reorders/moves/deletes on its own table. Defaults to `"movie"`
+    /// so the C4 movie shelf is unchanged until the screen sets a media. The shelf
+    /// (`FullListScreen`) calls `setMedia` on each media-segment switch.
+    @Published public private(set) var media: String = "movie"
     /// The in-memory per-tier membership, best-first. The single source of truth
     /// the view renders while editing; `setItems` seeds it from the loaded shelf.
     @Published public private(set) var tiers: [Tier: [RankedItem]] = [:]
@@ -232,10 +243,10 @@ public final class RankManageModel: ObservableObject {
     ) {
         self.init(
             reorder: reorder,
-            move: { _, _, _, _ in },
-            notesProbe: { _ in nil },
-            saveNotes: { _, _ in },
-            delete: { _, _ in },
+            move: { _, _, _, _, _ in },
+            notesProbe: { _, _ in nil },
+            saveNotes: { _, _, _ in },
+            delete: { _, _, _ in },
             rerank: { _ in },
             emit: emit,
             emitRemove: { _ in },
@@ -253,19 +264,20 @@ public final class RankManageModel: ObservableObject {
             reorder: { media, tier, ids in
                 _ = try await RankingRepository.shared.reorderTier(media: media, tier: tier, ids: ids)
             },
-            move: { tmdbId, fromTier, toTier, atIndex in
+            move: { media, tmdbId, fromTier, toTier, atIndex in
                 try await RankingRepository.shared.moveRanking(
-                    tmdbId: tmdbId, fromTier: fromTier, toTier: toTier, atIndex: atIndex
+                    tmdbId: tmdbId, fromTier: fromTier, toTier: toTier, atIndex: atIndex,
+                    media: media
                 )
             },
-            notesProbe: { tmdbId in
-                try await RankingRepository.shared.getNotes(tmdbId: tmdbId)
+            notesProbe: { media, tmdbId in
+                try await RankingRepository.shared.getNotes(tmdbId: tmdbId, media: media)
             },
-            saveNotes: { tmdbId, notes in
-                try await RankingRepository.shared.updateNotes(tmdbId: tmdbId, notes: notes)
+            saveNotes: { media, tmdbId, notes in
+                try await RankingRepository.shared.updateNotes(tmdbId: tmdbId, notes: notes, media: media)
             },
-            delete: { tmdbId, tier in
-                try await RankingRepository.shared.deleteRanking(tmdbId: tmdbId, tier: tier)
+            delete: { media, tmdbId, tier in
+                try await RankingRepository.shared.deleteRanking(tmdbId: tmdbId, tier: tier, media: media)
             },
             rerank: { _ in },
             emit: { event in
@@ -291,6 +303,26 @@ public final class RankManageModel: ObservableObject {
 
     /// Set by `bindRerank`; takes precedence over the injected `rerankIO`.
     private var rerankOverride: RerankIO?
+
+    // MARK: - Media
+
+    /// Set the vertical this model manages. The shelf calls this on each media-
+    /// segment switch (before re-seeding via `setItems`) so every subsequent
+    /// reorder / move / notes / delete routes to the right table. Ending edit
+    /// mode on a switch is the SCREEN's job (it also re-seeds), so this only
+    /// updates the routing key.
+    public func setMedia(_ media: String) {
+        self.media = media
+    }
+
+    /// Whether the long-press "re-rank" menu action is offered for `media`.
+    /// MOVIE-ONLY this cycle: the tv/book re-rank ceremony doesn't exist until
+    /// Task 5/6, so tv/book cards show move / notes / delete but NOT re-rank.
+    /// TODO(C5-T6): drop this gate once the tv/book ceremony lands and route
+    /// re-rank per media.
+    public static func showsRerank(forMedia media: String) -> Bool {
+        media == "movie"
+    }
 
     // MARK: - Seeding
 
@@ -378,7 +410,7 @@ public final class RankManageModel: ObservableObject {
         defer { isReordering = false }
 
         do {
-            try await reorderIO("movie", tier.rawValue, after)
+            try await reorderIO(media, tier.rawValue, after)
             // Confirmed change → renumber ranks 0-based so #n badges and the
             // read-only render (sorted by rank) stay consistent mid-edit and
             // after edit mode exits.
@@ -412,7 +444,7 @@ public final class RankManageModel: ObservableObject {
     /// to their exact prior membership and toasts; no emission on failure.
     ///
     /// A move to the tier the item already lives in is a no-op (the submenu hides
-    /// the current tier, but we guard defensively). Movies only.
+    /// the current tier, but we guard defensively). Routes to `self.media`'s table.
     public func moveTo(tier target: Tier, item: RankedItem) async {
         let source = item.tier
         guard target != source else { return }
@@ -430,7 +462,7 @@ public final class RankManageModel: ObservableObject {
         tiers[target] = newTarget
 
         do {
-            try await moveIO(item.id, source.rawValue, target.rawValue, nil)
+            try await moveIO(media, item.id, source.rawValue, target.rawValue, nil)
             // ONE ranking_move for the moved item, carrying the TARGET tier.
             await emitIO(MoveEvent(
                 tmdbId: item.id,
@@ -471,7 +503,7 @@ public final class RankManageModel: ObservableObject {
     /// if the sheet is already open.
     public func fetchNotes(item: RankedItem) async -> NotesFetchResult {
         do {
-            let notes = try await notesProbeIO(item.id)
+            let notes = try await notesProbeIO(media, item.id)
             return .success(notes)
         } catch {
             NSLog("[RankManageModel] notes probe failed for \(item.id): \(error)")
@@ -490,7 +522,7 @@ public final class RankManageModel: ObservableObject {
         let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized: String? = trimmed.isEmpty ? nil : trimmed
         do {
-            try await saveNotesIO(item.id, normalized)
+            try await saveNotesIO(media, item.id, normalized)
         } catch {
             toastIO("couldn't save notes — try again", .error)
         }
@@ -514,7 +546,7 @@ public final class RankManageModel: ObservableObject {
     /// semantics — watchlist is never restored). A confirmed delete emits ONE
     /// `ranking_remove` (`{notes?, year?}`, the tier it was removed FROM). A
     /// throw REVERTS the tier to its exact prior order + ranks and toasts; no
-    /// emission on failure. Movies only.
+    /// emission on failure. Routes to `self.media`'s table.
     public func delete(item: RankedItem) async {
         let tier = item.tier
         let prior = tiers[tier] ?? []
@@ -523,7 +555,7 @@ public final class RankManageModel: ObservableObject {
         tiers[tier] = Self.renumbered(prior.filter { $0.id != item.id })
 
         do {
-            try await deleteIO(item.id, tier.rawValue)
+            try await deleteIO(media, item.id, tier.rawValue)
             await emitRemoveIO(RemoveEvent(
                 tmdbId: item.id,
                 title: item.title,

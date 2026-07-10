@@ -40,11 +40,18 @@ public struct RankedItem: Identifiable, Hashable, Sendable {
     public var globalScore: Double?
     public var seed: Int
     public var posterUrl: String?
+    /// The TV season line (e.g. "Season 1") for a `tv_rankings` row — `title` is
+    /// the SHOW name, so the shelf needs this to render the season identity. Nil
+    /// on movie/book items (they carry no season). C5 Task 2's per-media read
+    /// (`RankingRepository.rankedItem(from:)`) fills it from `season_title`; the
+    /// `director` slot carries the media-generic attribution
+    /// (director → creator → author).
+    public var seasonTitle: String?
 
     public init(id: String, title: String, year: Int? = nil, director: String = "—",
                 genres: [String] = [], tier: Tier, rank: Int,
                 bracket: Bracket? = nil, globalScore: Double? = nil, seed: Int = 0,
-                posterUrl: String? = nil) {
+                posterUrl: String? = nil, seasonTitle: String? = nil) {
         self.id = id
         self.title = title
         self.year = year
@@ -56,6 +63,7 @@ public struct RankedItem: Identifiable, Hashable, Sendable {
         self.globalScore = globalScore
         self.seed = seed
         self.posterUrl = posterUrl
+        self.seasonTitle = seasonTitle
     }
 }
 

@@ -40,8 +40,16 @@ import SwiftUI
 /// (NO watchlist origin) via the `onRerank` hand-off wired in `SpoolAppRoot`.
 /// When edit mode exits the screen syncs its read-only `items` from
 /// `manage.flatItems` (local copy, no network) so `#rank` badges reflect the
-/// dragged order immediately. Movies only — the shelf reads `user_rankings`
-/// exclusively, so every card is a movie and the menu needs no media-kind guard.
+/// dragged order immediately.
+///
+/// Per-vertical (C5 Task 2): a `movie | tv | books` segmented switch (the
+/// WatchlistScreen media-pill idiom) sits under the header, movie the default
+/// leftmost segment. Switching re-seeds `RankManageModel` with the picked media
+/// (`setMedia` + a fresh `getAllRankedItems(media:)` read) so drag / cross-tier
+/// move / notes / delete all route to that vertical's table. RE-RANK stays
+/// MOVIE-ONLY this cycle (`RankManageModel.showsRerank(forMedia:)`): the tv/book
+/// re-rank ceremony doesn't exist until Task 5/6, so tv/book cards show
+/// move/notes/delete only — TODO(C5-T6) restores re-rank once routed per media.
 ///
 /// Header last reviewed: 2026-07-10
 public struct FullListScreen: View {
@@ -55,6 +63,9 @@ public struct FullListScreen: View {
     @State private var items: [RankedItem] = []
     @State private var hasSession: Bool = false
     @State private var loading: Bool = true
+    /// The vertical currently shown (movie default, leftmost segment). Each
+    /// switch re-seeds the manage model and refetches that media's shelf.
+    @State private var selectedMedia: WatchlistMediaType = .movie
     /// Tracks the in-flight reload so a rapid pull-to-refresh can cancel its
     /// predecessor before mutating state. We also snapshot `hasSession` at
     /// fetch start and reject late responses whose session context changed.
@@ -92,6 +103,8 @@ public struct FullListScreen: View {
         SpoolScreen {
             VStack(spacing: 0) {
                 header
+
+                mediaSwitcher
 
                 if manage.isEditing {
                     // Editable list: a `List` with per-tier `Section`s so
@@ -231,6 +244,51 @@ public struct FullListScreen: View {
                 Rectangle().fill(t.rule).frame(height: 1).padding(.horizontal, 18)
             }
         }
+    }
+
+    // MARK: media switcher
+
+    /// movie ⇄ tv ⇄ books segmented control — the WatchlistScreen `SpoolPill`
+    /// idiom. Movie is the primary/leftmost segment. A switch re-seeds the manage
+    /// model with the picked media and refetches that vertical's shelf.
+    private var mediaSwitcher: some View {
+        HStack(spacing: 6) {
+            ForEach(WatchlistMediaType.allCases, id: \.self) { media in
+                SpoolPill(label(for: media),
+                          active: selectedMedia == media,
+                          size: .sm) {
+                    select(media: media)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+    }
+
+    private func label(for media: WatchlistMediaType) -> String {
+        switch media {
+        case .movie: return "movies"
+        case .tv:    return "tv"
+        case .book:  return "books"
+        }
+    }
+
+    /// Switch the shown vertical: drop any edit state, point the manage model at
+    /// the new media (so its next reorder/move/notes/delete routes to that
+    /// table), clear the visible list, and refetch. A no-op when the media is
+    /// already selected.
+    private func select(media: WatchlistMediaType) {
+        guard media != selectedMedia else { return }
+        selectedMedia = media
+        manage.endEditing()
+        manage.setMedia(media.rawValue)
+        // Clear the stale vertical's rows immediately so the empty/loading state
+        // renders while the new media's shelf loads (no cross-media flash).
+        items = []
+        manage.setItems([])
+        triggerReload()
     }
 
     /// The edit affordance. Only shown once the signed-in shelf has rows —
@@ -400,10 +458,12 @@ public struct FullListScreen: View {
     // MARK: long-press context menu (Task 4)
 
     /// The long-press management menu for one ranked card: move to another tier,
-    /// edit notes, re-rank, delete. Every shelf row is a movie (the surface reads
-    /// `user_rankings` exclusively), so the movies-only rule is satisfied by
-    /// construction — no media-kind branch is needed here. All actions route
-    /// through the injected-closure `RankManageModel` (optimistic + revert +
+    /// edit notes, re-rank, delete. Move / notes / delete work for EVERY vertical
+    /// (they route through the media-parameterized `RankManageModel`); RE-RANK is
+    /// gated to MOVIE-ONLY this cycle (`RankManageModel.showsRerank(forMedia:)`)
+    /// because the tv/book re-rank ceremony doesn't land until Task 5/6 —
+    /// TODO(C5-T6): show re-rank for tv/book once routed per media. All actions
+    /// route through the injected-closure `RankManageModel` (optimistic + revert +
     /// toast, tested); this builder only shapes the menu.
     @ViewBuilder
     private func rankMenu(for item: RankedItem) -> some View {
@@ -430,14 +490,19 @@ public struct FullListScreen: View {
             Label("edit notes", systemImage: "square.and.pencil")
         }
 
-        Button {
-            manage.requestRerank(item: item)
-        } label: {
-            Label("re-rank", systemImage: "arrow.up.arrow.down")
+        // RE-RANK — movie-only until the tv/book ceremony lands (C5-T6). The
+        // gate keys on the shelf's current media, not the item, so a whole
+        // vertical's cards share one rule.
+        if RankManageModel.showsRerank(forMedia: selectedMedia.rawValue) {
+            Button {
+                manage.requestRerank(item: item)
+            } label: {
+                Label("re-rank", systemImage: "arrow.up.arrow.down")
+            }
         }
 
         // Destructive delete — the actual removal waits on the confirmation
-        // dialog (which names the movie); this only opens it.
+        // dialog (which names the item); this only opens it.
         Button(role: .destructive) {
             deleteTarget = item
         } label: {
@@ -521,11 +586,22 @@ public struct FullListScreen: View {
         .padding(.vertical, 8)
     }
 
+    /// The card's subtitle line. `director` carries the media-generic attribution
+    /// (director for movies, creator for tv, author for books — the `RankingRow`
+    /// mapping). The `DIR.` prefix is movie-only; tv/book attribution renders
+    /// bare. A tv row's `seasonTitle` leads the line so the season identity shows
+    /// (its `title` is the SHOW name).
     private func metaLine(for item: RankedItem) -> String {
         var parts: [String] = []
+        if let season = item.seasonTitle?.trimmingCharacters(in: .whitespaces), !season.isEmpty {
+            parts.append(season)
+        }
         if let y = item.year { parts.append(String(y)) }
-        let dir = item.director.trimmingCharacters(in: .whitespaces)
-        if !dir.isEmpty, dir != "—" { parts.append("DIR. \(dir.uppercased())") }
+        let attribution = item.director.trimmingCharacters(in: .whitespaces)
+        if !attribution.isEmpty, attribution != "—" {
+            let prefix = selectedMedia == .movie ? "DIR. " : ""
+            parts.append("\(prefix)\(attribution.uppercased())")
+        }
         return parts.joined(separator: " · ")
     }
 
@@ -542,6 +618,11 @@ public struct FullListScreen: View {
         hasSession = sessionAtStart
         NSLog("[FullListScreen] reload: hasSession=\(sessionAtStart)")
 
+        // Point the model at the current vertical BEFORE the read so a fetch
+        // failure still leaves subsequent management ops routed correctly.
+        let media = selectedMedia.rawValue
+        manage.setMedia(media)
+
         guard sessionAtStart else {
             if !Task.isCancelled {
                 items = []
@@ -555,8 +636,10 @@ public struct FullListScreen: View {
         }
 
         do {
-            let fetched = try await RankingRepository.shared.getAllRankedItems()
-            if Task.isCancelled { return }
+            let fetched = try await RankingRepository.shared.getAllRankedItems(media: media)
+            // Reject a late response whose media context changed mid-flight
+            // (the user switched segments after this fetch started).
+            if Task.isCancelled || selectedMedia.rawValue != media { return }
             items = fetched
             // Re-seed the edit model's per-tier membership from the fresh shelf.
             // Editing ends on a reload so a refetched order never fights an
@@ -564,14 +647,14 @@ public struct FullListScreen: View {
             // editing anyway; this covers the initial load + session flips).
             manage.endEditing()
             manage.setItems(fetched)
-            NSLog("[FullListScreen] loaded \(fetched.count) items")
+            NSLog("[FullListScreen] loaded \(fetched.count) \(media) items")
         } catch {
             if Task.isCancelled { return }
             // Keep the previously-displayed shelf intact — a pull-to-refresh
             // that fails shouldn't wipe the user's visible list. Surface
             // the failure via a toast instead, same pattern RankPersistence
             // uses on write failures.
-            NSLog("[FullListScreen] getAllRankedItems FAIL: \(error)")
+            NSLog("[FullListScreen] getAllRankedItems(\(media)) FAIL: \(error)")
             ToastCenter.shared.show(
                 "couldn't refresh — check connection",
                 level: .error

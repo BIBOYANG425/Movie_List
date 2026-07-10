@@ -1,10 +1,16 @@
 import Foundation
 import Supabase
 
-/// End-to-end ranking writes: `user_rankings` + `activity_events`, plus the
-/// C4 management ops (reorder / cross-tier move / notes edit / delete) and the
-/// `getNotes` fetch-before-edit read the long-press "edit notes" sheet probes
-/// (the shelf's `RankedItem` projection carries no notes column). All
+/// End-to-end ranking writes: the three vertical tables (`user_rankings` /
+/// `tv_rankings` / `book_rankings`) + `activity_events`, plus the C4 management
+/// ops (reorder / cross-tier move / notes edit / delete) and the `getNotes`
+/// fetch-before-edit read the long-press "edit notes" sheet probes (the shelf's
+/// `RankedItem` projection carries no notes column). C5 Task 2 media-parameterized
+/// the READS: `getTierItems(tier:media:)` / `getAllRankedItems(media:)` route by
+/// the same `rankingsTable(forType:)` mapping the writes use, so the H2H engine
+/// walk, the shelf, and the management layer all operate on ONE selected vertical.
+/// Rows map to per-media `RankedItem`s via `rankedItem(from:)` (attribution +
+/// season line). All
 /// tier-position writes go through the `set_tier_order` RPC on a FULL intended
 /// membership computed by the pure `TierOrder` helpers (source of truth:
 /// `docs/contracts/shared-payloads.md` § `user_rankings ordering`; web
@@ -53,12 +59,17 @@ public actor RankingRepository {
 
     // MARK: reads
 
-    public func getTierItems(tier: Tier) async throws -> [RankingRow] {
+    /// The ordered rows in one tier for the given media. `media` routes the read
+    /// to the SAME table `insertRanking` writes (`rankingsTable(forType:)`), so a
+    /// read and a write for one vertical can never disagree. Defaults to `"movie"`
+    /// (the `user_rankings` surface) so existing movie callers are unchanged.
+    public func getTierItems(tier: Tier, media: String = "movie") async throws -> [RankingRow] {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
         guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+        let table = Self.rankingsTable(forType: media)
 
         let rows: [RankingRow] = try await client
-            .from("user_rankings")
+            .from(table)
             .select()
             .eq("user_id", value: userID.uuidString)
             .eq("tier", value: tier.rawValue)
@@ -76,21 +87,27 @@ public actor RankingRepository {
         await TMDBService.searchMovies(query: query)
     }
 
-    /// All rankings for the signed-in user, across every tier. Used by the
-    /// `SpoolRankingEngine` so it can compute prediction signals (genre +
-    /// bracket averages) and walk the in-tier comparison graph.
-    public func getAllRankedItems() async throws -> [RankedItem] {
+    /// All rankings for the signed-in user in one vertical, across every tier.
+    /// Used by the `SpoolRankingEngine` (prediction signals + in-tier comparison
+    /// walk) and the shelf (`FullListScreen`). `media` routes to the matching
+    /// table (`rankingsTable(forType:)`), so the engine walk / shelf / management
+    /// layer all operate on the SAME vertical the caller selected. Defaults to
+    /// `"movie"` for the unchanged movie callers. Rows map to per-media
+    /// `RankedItem`s via `rankedItem(from:)` — `attribution` fills the subtitle
+    /// slot (director/creator/author) and a tv row's `season_title` rides along.
+    public func getAllRankedItems(media: String = "movie") async throws -> [RankedItem] {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
         guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+        let table = Self.rankingsTable(forType: media)
 
         let rows: [RankingRow] = try await client
-            .from("user_rankings")
+            .from(table)
             .select()
             .eq("user_id", value: userID.uuidString)
             .order("rank_position", ascending: true)
             .execute()
             .value
-        return rows.compactMap(Self.rowToRankedItem)
+        return rows.compactMap(Self.rankedItem)
     }
 
     /// Read the freeform `notes` currently stored on a ranking row, keyed on
@@ -117,16 +134,27 @@ public actor RankingRepository {
         return rows.first?.notes
     }
 
-    private static func rowToRankedItem(_ row: RankingRow) -> RankedItem? {
+    /// Map a decoded `RankingRow` (from ANY of the three tables) into the shelf +
+    /// engine `RankedItem`. MEDIA-GENERIC by construction: `attribution`
+    /// (`director ?? creator ?? author`) fills the subtitle slot so a movie shows
+    /// its director, a tv season its creator, a book its author — no media branch
+    /// needed, the `RankingRow` already carries all three columns (only one is
+    /// non-nil per table). A tv row's `season_title` rides through as
+    /// `seasonTitle` for the season line (`title` stays the SHOW name); movie/book
+    /// rows leave it nil. A row whose `tier` isn't a valid `Tier` is DROPPED
+    /// (returns nil — the `compactMap` contract), matching the movie behaviour.
+    /// Internal (not private) so Task 2's read-routing tests can pin the mapping
+    /// without a live client.
+    static func rankedItem(from row: RankingRow) -> RankedItem? {
         guard let tier = Tier(rawValue: row.tier) else { return nil }
         let yearInt = row.year.flatMap { Int($0) }
         let bracket = RankingAlgorithm.classifyBracket(genres: row.genres)
         return RankedItem(
             id: row.tmdb_id, title: row.title, year: yearInt,
-            director: row.director ?? "—",
+            director: row.attribution ?? "—",
             genres: row.genres, tier: tier, rank: row.rank_position,
             bracket: bracket, globalScore: nil, seed: 0,
-            posterUrl: row.poster_url
+            posterUrl: row.poster_url, seasonTitle: row.season_title
         )
     }
 
