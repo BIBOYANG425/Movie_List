@@ -44,6 +44,9 @@ public enum ZH {
         // Generic failure toast — reuse web 'ranking.failedSave'.
         "toast.saveFailed": "保存失败，请重试",
 
+        // Deep-link profile resolution failed (iOS-only). New zh, dash-free.
+        "toast.profileNotFound": "找不到那个用户",
+
         // ── Feed (FeedScreen, FeedTicket, FeedTicketBack) ─────────────────────
         "nav.discover": "发现",                    // web nav.discover
         "feed.modeFriends": "好友",                // iOS-short (web feed.friendsFeed=好友动态)

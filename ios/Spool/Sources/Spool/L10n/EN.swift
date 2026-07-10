@@ -50,6 +50,11 @@ public enum EN {
         // (i18n/en.ts). Em-dash ban is zh-only; en value is faithful to web.
         "toast.saveFailed": "Failed to save — please try again",
 
+        // Deep-link profile resolution failed (C7-iOS Task 5): a spool://u/…
+        // or rankspool.com/u/… link named a username with no matching profile,
+        // or the lookup failed. iOS-only surface. New zh below.
+        "toast.profileNotFound": "couldn't find that profile",
+
         // ── Feed (FeedScreen, FeedTicket, FeedTicketBack) ─────────────────────
         // Discover header a11y reuses web nav.discover. Mode switcher: the
         // friends pill is iOS-short "friends" (feed.modeFriends, new zh); explore

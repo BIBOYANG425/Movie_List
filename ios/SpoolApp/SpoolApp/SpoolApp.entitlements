@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Universal Links (C7-iOS Task 5). Claims https links on rankspool.com so
+	     the OS opens them in-app when the AASA served at
+	     https://rankspool.com/.well-known/apple-app-site-association lists this
+	     app's appID (J5FN3M53L4.com.yangb.spool). The www. variant is listed so
+	     both rankspool.com and www.rankspool.com resolve. Keep this in sync with
+	     ProfileDeepLink.universalLinkHosts and the AASA components. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:rankspool.com</string>
+		<string>applinks:www.rankspool.com</string>
+	</array>
+</dict>
+</plist>
