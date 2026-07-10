@@ -760,37 +760,63 @@ final class RankEntryModelTests: XCTestCase {
         XCTAssertEqual(item.creator, "David Benioff")
     }
 
-    /// Saving a movie suggestion writes the mapped item + toasts + marks it
-    /// saved (optimistic, the Discover pattern).
-    func testSaveMovieSuggestionAddsAndToastsAndMarksSaved() async {
+    /// Saving a movie suggestion writes the mapped item, toasts success, and
+    /// CONSUMES the card (web parity: `AddMediaModal.tsx:330` calls
+    /// `consumeSuggestion(movie.id)` when `fromSuggestion`). The card is spliced
+    /// out of the visible grid; `savedIds` retains the id for the dedup guard.
+    func testSaveMovieSuggestionAddsAndToastsAndConsumes() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...3).map { movieSuggestion($0) }
+        fake.backfillByPage[1] = (100...105).map { movieSuggestion($0) }
         var saved: WatchlistItem?
         var toastLevel: ToastLevel?
         let m = RankEntryModel(
+            isSignedIn: { true },
+            fetchTVSuggestions: fake.fetch,
             saveForLater: { item in saved = item; return true },
             toast: { _, level in toastLevel = level }
         )
-        let movie = RankEntryModel.movieDTO(from: movieSuggestion(603, title: "The Matrix"))
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
 
+        let movie = m.movieSuggestions.first { $0.tmdbId == 2 }!
         await m.saveMovieSuggestion(movie)
 
-        XCTAssertEqual(saved?.id, "tmdb_603")
+        XCTAssertEqual(saved?.id, "tmdb_2")
         XCTAssertEqual(saved?.mediaType, .movie)
         XCTAssertEqual(toastLevel, .success)
-        XCTAssertTrue(m.isSaved("tmdb_603"), "the grid card shows the saved affordance")
+        // Card consumed — spliced out and replaced by a backfill item.
+        XCTAssertFalse(m.movieSuggestions.contains { $0.tmdbId == 2 },
+                       "a successful save consumes the card (web parity)")
+        XCTAssertEqual(m.movieSuggestions.map(\.tmdbId), [1, 3, 100])
+        // savedIds still set — dedup guard keeps a second tap from re-firing.
+        XCTAssertTrue(m.isSaved("tmdb_2"), "savedIds dedup guard remains after consume")
     }
 
-    /// Saving a show suggestion writes the WHOLE-SHOW item.
-    func testSaveShowSuggestionAddsWholeShowItem() async {
+    /// Saving a show suggestion writes the WHOLE-SHOW item and CONSUMES the card
+    /// (web `handleBookmarkSuggestion` calls `consumeSuggestion` first).
+    func testSaveShowSuggestionAddsWholeShowItemAndConsumes() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...3).map { suggestion($0) }
+        fake.backfillByPage[1] = (100...105).map { suggestion($0) }
         var saved: WatchlistItem?
-        let m = RankEntryModel(saveForLater: { item in saved = item; return true })
-        let s = show(1399, name: "Game of Thrones", seasons: [])
+        let m = RankEntryModel(
+            isSignedIn: { true },
+            fetchTVSuggestions: fake.fetch,
+            saveForLater: { item in saved = item; return true }
+        )
+        m.setMode(.tv); await settle()
 
-        await m.saveShowSuggestion(s)
+        let picked = m.tvSuggestions.first { $0.tmdbId == 2 }!
+        await m.saveShowSuggestion(picked)
 
-        XCTAssertEqual(saved?.id, "tv_1399")
+        XCTAssertEqual(saved?.id, "tv_2")
         XCTAssertEqual(saved?.mediaType, .tv)
         XCTAssertNil(saved?.seasonNumber, "whole show — no season")
-        XCTAssertTrue(m.isSaved("tv_1399"))
+        // Card consumed.
+        XCTAssertFalse(m.tvSuggestions.contains { $0.tmdbId == 2 },
+                       "a successful show save consumes the card (web parity)")
+        XCTAssertTrue(m.isSaved("tv_2"), "savedIds dedup guard remains after consume")
     }
 
     /// A second save of the same suggestion is a no-op (de-dup via `savedIds`,
@@ -806,19 +832,29 @@ final class RankEntryModelTests: XCTestCase {
         XCTAssertEqual(calls, 1, "the optimistic saved-set suppresses the duplicate write")
     }
 
-    /// A failed save reverts the optimistic saved-mark and toasts an error, so
-    /// the user can retry.
-    func testFailedSaveRevertsMarkAndToastsError() async {
+    /// A failed save reverts the optimistic saved-mark and toasts an error; the
+    /// card is NOT consumed (stays in the grid so the user can retry).
+    func testFailedSaveRevertsMarkAndCardStaysAndToastsError() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...3).map { movieSuggestion($0) }
+        fake.backfillByPage[1] = []
         var toastLevel: ToastLevel?
         let m = RankEntryModel(
+            isSignedIn: { true },
+            fetchTVSuggestions: fake.fetch,
             saveForLater: { _ in false },
             toast: { _, level in toastLevel = level }
         )
-        let movie = RankEntryModel.movieDTO(from: movieSuggestion(1))
+        m.setMode(.tv); await settle()
+        m.setMode(.movie); await settle()
 
+        let movie = m.movieSuggestions.first { $0.tmdbId == 1 }!
         await m.saveMovieSuggestion(movie)
 
         XCTAssertEqual(toastLevel, .error)
         XCTAssertFalse(m.isSaved("tmdb_1"), "a failed save reverts the mark so a retry can fire")
+        // Card NOT consumed — stays in the grid for the retry.
+        XCTAssertTrue(m.movieSuggestions.contains { $0.tmdbId == 1 },
+                      "a failed save does not consume the card")
     }
 }

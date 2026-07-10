@@ -80,7 +80,8 @@ public struct FullListScreen: View {
 
     /// The row whose notes the "edit notes" sheet is editing (nil = closed). The
     /// sheet seeds its draft from a `fetchNotes` probe of the LIVE row so an edit
-    /// never blanks an existing note (the shelf item carries no notes column).
+    /// never blanks an existing note that a concurrent edit may have updated since
+    /// the shelf loaded.
     @State private var notesTarget: RankedItem? = nil
     @State private var notesDraft: String = ""
     @State private var notesLoading: Bool = false

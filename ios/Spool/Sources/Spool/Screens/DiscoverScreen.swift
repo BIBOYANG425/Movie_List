@@ -240,14 +240,22 @@ public struct DiscoverScreen: View {
         case .ready:
             // Render the LIVE-filtered projection so an item ranked/saved this
             // session vanishes from the grid immediately (C7-iOS Task 4).
-            LazyVGrid(columns: engineColumns, spacing: 12) {
-                ForEach(model.visibleEngineItems) { item in
-                    SuggestionGridCard(
-                        item: item,
-                        saved: model.isSaved(item.id),
-                        onSave: { Task { await model.saveForLater(item) } },
-                        onRankIt: { model.rankIt(item) }
-                    )
+            // Count VISIBLE items for the empty-state decision: if every fetched
+            // card has been ranked/saved this session the grid would render blank
+            // under the header — show the empty state instead.
+            let visible = model.visibleEngineItems
+            if visible.isEmpty {
+                sectionEmpty(L10n.t("discover.engineEmpty"))
+            } else {
+                LazyVGrid(columns: engineColumns, spacing: 12) {
+                    ForEach(visible) { item in
+                        SuggestionGridCard(
+                            item: item,
+                            saved: model.isSaved(item.id),
+                            onSave: { Task { await model.saveForLater(item) } },
+                            onRankIt: { model.rankIt(item) }
+                        )
+                    }
                 }
             }
         case .empty:

@@ -64,12 +64,17 @@ public enum RankEntryStage: Equatable, Sendable {
 ///
 /// SUGGESTION-GRID SAVE AFFORDANCE (C7-iOS Task 4): each movie/tv suggestion card
 /// carries a small bookmark → `saveMovieSuggestion`/`saveShowSuggestion`
-/// (optimistic + toast + `savedIds` de-dup, the `DiscoverModel` pattern). Web
+/// (optimistic + toast + `savedIds` de-dup + CONSUME, the web pattern). Web
 /// parity: the movie modal bookmarks the WHOLE MOVIE; the tv modal's grid
 /// bookmark saves the WHOLE SHOW (`tv_{showId}`, `season_number` NULL), not a
-/// season (`AddTVSeasonModal.handleBookmarkSuggestion`). A save does NOT consume
-/// the suggestion — the card stays with a filled bookmark (only ranked/owned
-/// items are filtered by the web `isAlreadyOwned` seam, not saved ones).
+/// season (`AddTVSeasonModal.handleBookmarkSuggestion`). On SUCCESSFUL save the
+/// suggestion is consumed (splice + refill from backfill + session-exclude) so
+/// the card leaves the grid — mirroring `AddMediaModal.tsx:330` (`if
+/// (fromSuggestion) consumeSuggestion(movie.id)`) and `AddTVSeasonModal`'s
+/// `handleBookmarkSuggestion` (calls consumeSuggestion first). On failure the
+/// revert keeps the card visible (no consume) so the user can retry. `savedIds`
+/// is still kept for the toast/dedup guard; the filled-bookmark state on a
+/// visible card is effectively unreachable after a successful save.
 ///
 /// Header last reviewed: 2026-07-10
 @MainActor
@@ -543,33 +548,39 @@ public final class RankEntryModel: ObservableObject {
     /// Save a suggested MOVIE for later (the grid card's bookmark). Maps the
     /// suggestion → a movie `WatchlistItem` and writes optimistically. Mirrors web
     /// `AddMediaModal.handleBookmark` (a whole-movie bookmark). De-dups a second
-    /// tap via `savedIds`. Does NOT consume the suggestion — the card stays in the
-    /// grid with a saved mark (web keeps a bookmarked movie visible; only ranked/
-    /// owned items are filtered by `isAlreadyOwned`).
+    /// tap via `savedIds`. On success, consumes the suggestion so the card leaves
+    /// the grid (web `AddMediaModal.tsx:330` calls `consumeSuggestion(movie.id)`
+    /// when `fromSuggestion`). On failure, reverts the saved mark (no consume) so
+    /// the user can retry.
     public func saveMovieSuggestion(_ movie: TMDBMovie) async {
-        await performSave(Self.movieWatchlistItem(from: movie))
+        await performSave(id: movie.id, item: Self.movieWatchlistItem(from: movie))
     }
 
     /// Save a suggested SHOW for later. Per web `AddTVSeasonModal.handleBookmark
     /// Suggestion`, the grid bookmark saves the WHOLE SHOW (`tv_{showId}`,
     /// `season_number` NULL = whole show — `WatchlistItem.showTmdbId` set, no
-    /// season), NOT a single season. The season-level bookmark is a different web
-    /// seam (the season-select step), out of scope for the suggestion grid.
+    /// season), NOT a single season. On success, consumes the suggestion (web
+    /// `handleBookmarkSuggestion` calls `consumeSuggestion` first). On failure,
+    /// reverts the saved mark (no consume).
     public func saveShowSuggestion(_ show: TMDBTVShow) async {
-        await performSave(Self.showWatchlistItem(from: show))
+        await performSave(id: show.id, item: Self.showWatchlistItem(from: show))
     }
 
     /// Shared optimistic save: mark the id saved (so a rapid second tap is a
-    /// no-op + the card shows saved state immediately), write, then toast success
-    /// or revert + toast failure. Mirrors `DiscoverModel.performSave`.
-    private func performSave(_ item: WatchlistItem) async {
-        guard !savedIds.contains(item.id) else { return }
-        savedIds.insert(item.id)
+    /// no-op + the card shows saved state immediately), write, then on success
+    /// consume the suggestion (splice out + refill from backfill + note the id in
+    /// session excludes) and toast; on failure revert the mark and toast error.
+    /// The consume-on-success mirrors web's bookmark path in both modal grids
+    /// (`AddMediaModal` and `AddTVSeasonModal`).
+    private func performSave(id: String, item: WatchlistItem) async {
+        guard !savedIds.contains(id) else { return }
+        savedIds.insert(id)
         let ok = await saveForLaterIO(item)
         if ok {
+            consumeSuggestion(id: id)
             toastIO(L10n.t("rankEntry.savedToast", ["title": item.title]), .success)
         } else {
-            savedIds.remove(item.id)
+            savedIds.remove(id)
             toastIO(L10n.t("rankEntry.saveFailedToast", ["title": item.title]), .error)
         }
     }
