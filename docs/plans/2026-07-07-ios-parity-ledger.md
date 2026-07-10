@@ -12,7 +12,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | C3 | Watchlist + Discover | FULLY COMPLETE (Parts A + B) — edge functions deployed, both clients migrated off direct TMDB key, TMDB key DoD met, merged Discover on both platforms (chips + New Releases + card actions), journal wipe fix T0, anon onboarding fixtures | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (Part A: branch `fix/c3-watchlist-discover-web-blocking`; Part B: `feat/c3-part-b-suggestions`) | `feat/ios-parity-c3-watchlist` (Part A) + `feat/c3-part-b-suggestions` (Part B) |
 | C4 | Ranking management | COMPLETE — web fixes PR #39 + iOS management UI SHIPPED on `feat/ios-parity-c4-mgmt-ui` (PR pending): edit-mode drag-to-reorder (FullListScreen shelf), long-press menu (move tier / edit notes w/ probe-before-edit + wipe guard / re-rank via corrected ceremony / delete w/ confirm + ranking_remove); ceremony re-rank correction landed (Task 2 — deviation retired) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | #39 | `feat/ios-parity-c4-mgmt-ui` (PR pending) |
 | C5 | TV seasons + books | COMPLETE — web fixes PR #46 + iOS 8-task branch `feat/ios-parity-c5-tv-books` (PR pending): per-media payloads/reads, TMDB TV endpoints, OpenLibrary client, media-generic ceremony (same-media H2H), TV season UI + preselect router + coordinator whole-show identity fix, TV suggestions grid, contracts | audits/2026-07-10-c5-tv-books-web-audit.md | #46 | `feat/ios-parity-c5-tv-books` (PR pending) |
-| C6 | zh localization | web fixes on `fix/c6-zh-web-blocking` (PR pending); C6-iOS next | audits/2026-07-10-c6-zh-web-audit.md | (branch `fix/c6-zh-web-blocking`) | (pending) |
+| C6 | zh localization | COMPLETE (both halves) — web PR #48 merged; iOS on `feat/ios-parity-c6-zh` (PR pending) | audits/2026-07-10-c6-zh-web-audit.md | #48 | `feat/ios-parity-c6-zh` (PR pending) |
 | C7 | Smaller items | pending | — | — | — |
 | — | iOS design-check | queued after C5–C7 (owner, 2026-07-10); screenshot seed list in progress ledger | — | — | — |
 
@@ -93,6 +93,18 @@ Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
 - [C6] [adjudication] iOS zh toggle = `SettingsScreen` row (NOT the web header placement) — owner-reviewable; the web mobile placement (top-header slot) does not translate literally to iOS nav conventions.
 - [C6] [adjudication] `LocaleStore` defaults to DEVICE language (deviation from web's `en` default) — preserves Part B content behavior (TMDB/OL locale follows device; switching the in-app toggle also re-sources `locale()`) — owner-reviewable.
 - [C6] [adjudication] web zh copy ported verbatim to iOS; iOS-only strings (Settings labels, native affordances) get new zh following the register + voice rules (no 不是…而是, no em dashes, no negation-contrast) — owner-reviewable.
+- [C6-iOS] [shipped] LocaleStore + L10n: `LocaleStore` (enum, pure `resolve`, `current` getter with first-entry persist, `@AppStorage`-compatible raw-string slot `spool_locale`); `L10n.t(key)` / `L10n.t(key, replacements:)` with zh→en→key fallback chain; 423-key EN + ZH tables (88 web-reused zh values cited inline; 335 new zh values for iOS-only and adapted strings — owner-reviewable in PR body). `L10nParityTests`: bidirectional key parity + no-empty-values + no em/en dash in zh values. `LocalePlumbingTests`: device-default zh seed, persist-once semantics, toggle round-trip. Baseline 741 iOS tests; final 782 (+41: parity + plumbing + locale-wired screen logic).
+- [C6-iOS] [shipped] Settings language toggle: `languageSection` in `SettingsScreen` — paper-capsule EN/中文 chips, `@AppStorage(LocaleStore.storageKey)` binding with `LocaleStore.current.rawValue` as the default expression (no bare `"en"` — device default wins on fresh install).
+- [C6-iOS] [shipped] Root `.id(rawLocale)` re-render: `SpoolAppRoot` holds `@AppStorage("spool_locale") var rawLocale` and applies `.id(rawLocale)` on the content view; a locale switch fully re-renders the tree so every `L10n.t` call sees the new locale without any extra `@Published` plumbing.
+- [C6-iOS] [shipped] Locale plumbing re-sourced: `TMDBService.locale()` and `SuggestionsClient` now read `LocaleStore.current` (was device `Locale.preferredLanguages`-only on TMDB and unconsumed on Suggestions); in-app toggle switch now immediately re-sources TMDB/OL search locale for subsequent calls.
+- [C6-iOS] [shipped] TMDB id allowlist replicated: `fetchLocalizedTitle` on iOS skips any id that does NOT start with `tmdb_` or `tv_` (mirrors the web `tmdb_`/`tv_` ALLOWLIST from B4 — not an `ol_`-only check; closes proxy quota burn on book ids).
+- [C6-iOS] [deferred] Localized-title display twin — when the user switches locale, already-rendered shelf items show the prior locale's title until next load (a display-only lag; owner question: re-fetch on locale change or leave to natural reload). No behavioral contract impact.
+- [C6-iOS] [deferred] Settings-sheet-inside-.id-boundary risk — the root `.id(rawLocale)` re-render closes and re-opens any presented sheet. Device smoke must verify the Settings sheet survives a locale toggle within itself (it should, because the toggle writes the key and the `.id` is on the CONTENT view, not the sheet's own `.id`; but if the sheet is inside the boundary it will drop). Hoist the `rawLocale` `@AppStorage` above the sheet boundary if it drops.
+- [C6-iOS] [deferred] zh typography verdict — `SpoolFonts` declares four Latin-only custom faces (Gloock serif, Kalam hand, Caveat script, DM Mono) with system-font fallbacks. zh text is NOT served by any of those faces; SwiftUI's `.system(size:weight:design:)` fallbacks resolve to the system font, which uses PingFang SC/TC on iOS (the OS-bundled CJK face). This is acceptable-for-now: PingFang is legible and correct for zh body copy; typographic pairing with the Latin display faces (Gloock titles over PingFang body) is a design-cycle item, not a data-contract issue. Do NOT change fonts in the parity program.
+- [C6-iOS] [deferred] iOS EN chip copy no longer literal-pinned vs web `en.ts` — the iOS EN table is the web en.ts content ported to Swift; any future web en.ts edits must be manually reflected in `EN.swift`. The parity test enforces iOS zh↔en key parity but does NOT diff against the web en.ts source. A CI cross-check script is a follow-up item.
+- [C6-iOS] [deferred] Chip 14pt misalignment — the paper-capsule language chips in `SettingsScreen` use `SpoolFonts.mono(14)` for the label; at 14pt DM Mono (or the monospaced system fallback) the chip height does not align with the appearance/privacy chip row at the same size in zh mode (CJK glyphs are taller). Visual only; not a data-contract issue. Design-cycle fix.
+- [C6-iOS] [deferred] Landing/Auth web toggle tail (web B1 deferred) — web toggle absent on Landing/Auth/Public pages (outside `AppLayout`). iOS has no equivalent landing/auth flow gap since the Settings toggle is always reachable post sign-in; pre-sign-in locale is device-default only.
+- [C6-iOS] [corrected] False `@AppStorage`-write-premise comment in `LocaleStore.swift` (Task 1 doc text claimed `@AppStorage` defaults write into `UserDefaults` on init — incorrect; `@AppStorage` defaults are in-memory fallbacks only; the persist happens via `LocaleStore.current`'s explicit `defaults.set(_:forKey:)` write) — corrected in `LocaleStore.swift` `## Contract for Task 2` block on this commit.
 - [C4→shipped] MOVIE SEARCH: owner reported fuzzy movie search not working — shipped on branch `fix/movie-search-fuzzy` (PR #41). (1) Zero-result typo-retry backoff in `services/tmdbService.ts` via pure `services/searchVariants.ts`; covers UniversalSearch, AddMediaModal, AddTVSeasonModal, onboarding. (2) Letterboxd import's private `searchTMDB` wired through the same variants (the initial investigation claim that `searchMovies` covered the import was wrong — the import never called it; fix round added). (3) HTTP-error responses (non-2xx) do NOT trigger or continue the variant loop. (4) Local fuzzy layer repaired in `services/fuzzySearch.ts`: leading-article strip both sides, word-start windows, best-window scoring in `getBestCorrectedQuery`, 2-char non-ASCII gate. (5) iOS mirror in `ios/Spool/Sources/Spool/Services/TMDBService.swift`: Swift `typoRetryVariants` 1:1 port + Task-cancellation between variants + non-2xx bail; `locale()` now follows device language (zh→zh-CN, en-US fallback) for search + discover seeds, matching web's `getTmdbLocale` surfaces. Tests: web 382 vitest, iOS 381 swift. Migrations: none (client-only). Deferred (unchanged from investigation, plus review finds): no-results-vs-error UX distinction; "already in your list" hint when a correction resolves to an owned title; onboarding stale-request guard; TMDB proxy edge function; OpenLibrary book fuzz; letterboxd non-429 HTTP errors now join MAX_RETRIES backoff (was fail-fast — split-sentinel follow-up); 0.3-threshold boundary test for fuzzySearch; iOS in-app locale toggle would need `locale()` re-sourcing.
 
 ## C1 adjudications (controller, 2026-07-07 — recorded verbatim, do not relitigate)
@@ -615,10 +627,39 @@ zh correctness before the iOS port. 5 blocking findings fixed; no migrations (cl
 - B1 tail: toggle absent on Landing/Auth/Public pages (outside `AppLayout`).
 - D-items: see `audits/2026-07-10-c6-zh-web-audit.md` for the full list. Notable: EN casing nits (reset-confirm button, watchlist-tv label); en-dash guard gap in parity test (the test currently checks for em-dash `—` only; en-dash `–` would pass); zh retry label for zero-result typo-retry path (shows EN "no results" in zh mode — deferred from C3-B3 fix-round `c662e67` note).
 
-**Cycle next steps:**
+**Cycle next steps (now completed):**
 
-- Merge `fix/c6-zh-web-blocking` → C6-iOS plan (LocaleStore + table port + toggle + `locale()` re-source + zh for iOS-only strings).
-- After C6-iOS: C7 smaller items + iOS design-check.
+- `fix/c6-zh-web-blocking` merged (PR #48) — C6-iOS shipped on `feat/ios-parity-c6-zh`.
+- After C6: C7 smaller items + iOS design-check.
+
+### C6-iOS notes (2026-07-10, branch `feat/ios-parity-c6-zh`)
+
+zh on iOS. 4 tasks, plan at `docs/plans/eb0eab9-c6-ios-zh-plan.md` (commit `eb0eab9`). Baselines: 741 iOS tests. Final: 782 iOS tests (+41: `L10nParityTests`, `LocalePlumbingTests`, locale-wired screen-logic pins).
+
+**What shipped:**
+
+- **T1 (LocaleStore + L10n):** `SpoolLocale` (`en`/`zh`, `from(languageCode:)`, `deviceDefault(preferredLanguages:)`). `LocaleStore` (pure `resolve`, `current` getter persists device-default on first read, `storageKey = "spool_locale"`). `L10n.t(key)` / `L10n.t(key, replacements:)` — zh→en→key fallback. `L10nParityTests`: bidirectional key parity, no empty zh values, no em/en dash in zh. `LocalePlumbingTests`: device-default seeding, persist-once, toggle round-trip.
+- **T2 (Tables + locale plumbing):** 423-key `EN.table` + `ZH.table` (88 web-reused zh; 335 new iOS zh — owner-reviewable). TMDB id allowlist: `fetchLocalizedTitle` skips non-`tmdb_`/`tv_` ids (books, manual, unknown shapes). `TMDBService.locale()` + `SuggestionsClient` re-sourced to `LocaleStore.current`; in-app toggle re-sources TMDB/OL search locale immediately.
+- **T3 (App copy sweep):** all call sites across 20+ screens/components wired through `L10n.t`. No hard-coded user-visible EN strings in zh-targeted code paths.
+- **T4 (Settings toggle + root `.id` re-render):** `languageSection` in `SettingsScreen` — EN/中文 paper-capsule chips, `@AppStorage(LocaleStore.storageKey)` bound to `LocaleStore.current.rawValue` default. `SpoolAppRoot` `@AppStorage("spool_locale") var rawLocale` + `.id(rawLocale)` on content view = full tree re-render on locale switch.
+
+**Corrections caught during build:**
+
+- `@AppStorage` default-write premise in `LocaleStore.swift` Task-2 contract block was wrong (claimed `@AppStorage` defaults auto-persist into `UserDefaults` — they do not). Corrected in `LocaleStore.swift` `## Contract for Task 2` on this commit.
+
+**Owner-reviewable items (PR body carries the 335-entry zh table for review):**
+
+- 335 new zh strings for iOS-only and adapted surfaces — confirm register + voice per entry.
+- Device-default behavior: fresh install on a zh-primary device opens in zh; en-primary opens in en.
+
+**Known deferred items:**
+
+- Localized-title display twin: shelf items show prior locale's title until next load after a toggle — product question (re-fetch vs natural reload).
+- Settings-sheet-inside-`.id`-boundary risk: device smoke must verify the Settings sheet survives a locale toggle (the `.id` is on the content view, not the sheet; should be safe). Hoist `rawLocale` above the sheet boundary if it drops.
+- zh typography: `SpoolFonts` is Latin-only (Gloock / Kalam / Caveat / DM Mono + system fallbacks); zh text renders via PingFang SC/TC (system CJK face via SwiftUI's `.system` fallback). Acceptable-for-now; typographic pairing is a design-cycle item.
+- iOS EN table divergence from web `en.ts` over time: no CI cross-check script written yet.
+- Chip 14pt height misalignment in zh mode (CJK glyph height vs DM Mono at 14pt): design-cycle fix.
+- Pre-sign-in locale: device-default only (no in-app toggle until Settings is reachable post auth). Web has the top-header toggle on Landing/Auth pages; iOS does not need an equivalent given the Settings-row placement.
 
 ## C3 migration runbook (owner applies)
 

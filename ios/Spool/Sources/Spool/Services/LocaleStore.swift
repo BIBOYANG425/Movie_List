@@ -46,13 +46,12 @@ public enum SpoolLocale: String, CaseIterable, Sendable {
 /// getter and its tests share.
 ///
 /// ## Contract for Task 2 (TMDBService / SuggestionsClient)
-/// Read `LocaleStore.current` BEFORE any `@AppStorage("spool_locale") = "en"`
-/// default assignment on a fresh install. An `@AppStorage` default writes the
-/// value into UserDefaults the moment the property wrapper is initialised, which
-/// would overwrite the device-default `.zh` (derived and persisted on first read
-/// here) with `"en"` — masking the device preference permanently. Always let
-/// `LocaleStore.current` pin the default first; only then attach `@AppStorage`
-/// consumers.
+/// `@AppStorage` defaults are NOT auto-persisted — they act as in-memory
+/// fallbacks and do NOT write into UserDefaults on initialisation. The device
+/// default is pinned by `LocaleStore.current`'s explicit `defaults.set(_:forKey:)`
+/// call on first read. Use `LocaleStore.current.rawValue` as the `@AppStorage`
+/// default expression (as `SettingsScreen` does) so the wrapper reads the
+/// already-persisted slot and the in-memory fallback is never reached.
 ///
 /// ## Contract for Task 3 (view re-render)
 /// Any view that calls `L10n.t` MUST also observe the locale so it re-renders on
