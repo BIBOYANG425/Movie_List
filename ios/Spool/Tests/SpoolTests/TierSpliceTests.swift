@@ -87,4 +87,45 @@ final class TierSpliceTests: XCTestCase {
         )
         XCTAssertEqual(out, ["tv_1_s1", "tv_9_s2", "tv_2_s3"])
     }
+
+    // MARK: - reindexWithinTier (same-tier move decision seam)
+
+    /// `moveRanking` degenerates to a same-tier reorder when from == to; the
+    /// index is resolved from the id's CURRENT position, then clamped/spliced.
+    func testReindexWithinTierMovesToNewSlot() {
+        let out = RankingRepository.reindexWithinTier(["a", "b", "c"], movedId: "a", to: 2)
+        XCTAssertEqual(out, ["b", "c", "a"])
+    }
+
+    /// An id already absent from the tier yields an unchanged copy — the op
+    /// never throws on a stale membership snapshot.
+    func testReindexWithinTierAbsentIdIsNoOp() {
+        let out = RankingRepository.reindexWithinTier(["a", "b"], movedId: "z", to: 0)
+        XCTAssertEqual(out, ["a", "b"])
+    }
+
+    /// A beyond-end target clamps to the tail (a nil `atIndex` resolves to
+    /// count, which must append rather than crash).
+    func testReindexWithinTierBeyondEndClampsToTail() {
+        let out = RankingRepository.reindexWithinTier(["a", "b", "c"], movedId: "a", to: 99)
+        XCTAssertEqual(out, ["b", "c", "a"])
+    }
+
+    // MARK: - NotesUpdatePayload (single-column encode seam)
+
+    /// A present note encodes as a JSON string under the `notes` key.
+    func testNotesPayloadEncodesString() throws {
+        let data = try JSONEncoder().encode(NotesUpdatePayload(notes: "loved it"))
+        let json = String(decoding: data, as: UTF8.self)
+        XCTAssertEqual(json, #"{"notes":"loved it"}"#)
+    }
+
+    /// A nil note encodes as an EXPLICIT JSON null (never an omitted key) so
+    /// the single-column UPDATE CLEARS the column rather than preserving a
+    /// stale value (PostgREST treats a missing key as "don't touch").
+    func testNotesPayloadEncodesExplicitNullWhenNil() throws {
+        let data = try JSONEncoder().encode(NotesUpdatePayload(notes: nil))
+        let json = String(decoding: data, as: UTF8.self)
+        XCTAssertEqual(json, #"{"notes":null}"#)
+    }
 }

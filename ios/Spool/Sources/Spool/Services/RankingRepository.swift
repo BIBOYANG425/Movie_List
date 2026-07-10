@@ -1,14 +1,24 @@
 import Foundation
 import Supabase
 
-/// End-to-end ranking writes: `user_rankings` + `activity_events`.
-/// (`movie_stubs` writes live in `StubWriter`; the read side keeps `StubRow`
-/// defined below.) Actor so state (the client reference) stays isolated.
-/// Reads/writes all go through supabase-swift, RLS enforces scoping at the
-/// DB layer.
+/// End-to-end ranking writes: `user_rankings` + `activity_events`, plus the
+/// C4 management ops (reorder / cross-tier move / notes edit / delete). All
+/// tier-position writes go through the `set_tier_order` RPC on a FULL intended
+/// membership computed by the pure `TierOrder` helpers (source of truth:
+/// `docs/contracts/shared-payloads.md` § `user_rankings ordering`; web
+/// `services/tierOrder.ts`). (`movie_stubs` writes live in `StubWriter`; the
+/// read side keeps `StubRow` defined below.) Actor so state (the client
+/// reference) stays isolated. Reads/writes all go through supabase-swift, RLS
+/// enforces scoping at the DB layer.
+///
+/// Event emission is NOT this file's job: the management ops here are pure data
+/// ops. Callers (the C4 UI + the corrected ceremony re-rank) wire the
+/// `ranking_move` / `ranking_remove` activity events on top of these primitives.
 ///
 /// When `SpoolClient.shared` is nil (no credentials configured) every method
 /// throws `.notConfigured` and the caller is expected to fall back to fixtures.
+///
+/// Header last reviewed: 2026-07-09
 public actor RankingRepository {
 
     public static let shared = RankingRepository()
@@ -220,6 +230,202 @@ public actor RankingRepository {
         return inserted
     }
 
+    // MARK: management ops (C4)
+
+    // These four ops are PURE DATA ops — they persist positions/notes/deletion
+    // and never emit activity events (callers own emission, per this file's
+    // header). Every position write obeys the FULL-MEMBERSHIP rule: it sends the
+    // tier's ENTIRE intended membership to `set_tier_order`, computed by the
+    // `TierOrder` helpers. A partial array would orphan unlisted rows.
+
+    /// Persist a same-tier reorder. `ids` MUST be the tier's ENTIRE intended
+    /// membership in the desired order (the caller computes it with
+    /// `TierOrder.tierOrderAfterReorder` over the current UI order). Thin: one
+    /// `set_tier_order` RPC, whose return value (rows actually renumbered) is
+    /// passed straight back. The row already exists — this is UPDATE-only.
+    ///
+    /// `tier` is passed as the RPC's `p_tier`; `media` selects the media branch
+    /// (`"movie" | "tv" | "book"`). Errors throw so the caller can revert the
+    /// optimistic UI and toast.
+    @discardableResult
+    public func reorderTier(media: String = "movie", tier: String, ids: [String]) async throws -> Int {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard await SpoolClient.currentUserID() != nil else { throw RepoError.notAuthenticated }
+
+        return try await Self.callSetTierOrder(
+            client: client, media: Self.pMedia(forType: media), tier: tier, ids: ids
+        )
+    }
+
+    /// Move a ranking from `fromTier` to `toTier`. The row's `tier` column is
+    /// re-tiered by the TARGET `set_tier_order` call: that RPC UPDATEs every
+    /// listed row's `tier` to `p_tier` (and its position), so listing `tmdbId`
+    /// in the target array both re-tiers the row and slots it. Two RPCs, TARGET
+    /// FIRST (mirroring `insertRanking`'s target-then-source order): the id must
+    /// be re-tiered/positioned in the destination before the source tier is
+    /// compacted without it. Full-membership on both sides — the caller passes
+    /// the current UI order for each tier via `TierOrder.ordersAfterCrossTierMove`,
+    /// but this op reads the live membership itself so a stale UI snapshot cannot
+    /// orphan rows.
+    ///
+    /// `atIndex` nil ⇒ append to the target tier's tail. A same-tier call
+    /// (`fromTier == toTier`) degenerates to a single reorder.
+    public func moveRanking(
+        tmdbId: String, fromTier: String, toTier: String, atIndex: Int?, media: String = "movie"
+    ) async throws {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+        let table = Self.rankingsTable(forType: media)
+        let pMedia = Self.pMedia(forType: media)
+
+        // Read BOTH tiers' live membership (best-first) so the persisted order
+        // is authoritative regardless of a stale UI snapshot.
+        let sourceIds = try await Self.tierMembership(
+            client: client, table: table, userID: userID, tier: fromTier
+        )
+
+        // Same-tier "move" is just a reorder within one membership.
+        if fromTier == toTier {
+            let clamped = atIndex ?? sourceIds.count
+            let reordered = Self.reindexWithinTier(sourceIds, movedId: tmdbId, to: clamped)
+            _ = try await Self.callSetTierOrder(
+                client: client, media: pMedia, tier: toTier, ids: reordered
+            )
+            return
+        }
+
+        let targetIds = try await Self.tierMembership(
+            client: client, table: table, userID: userID, tier: toTier
+        )
+        let index = atIndex ?? targetIds.filter { $0 != tmdbId }.count
+        let orders = TierOrder.ordersAfterCrossTierMove(
+            source: sourceIds, target: targetIds, movedId: tmdbId, targetIndex: index
+        )
+
+        // TARGET FIRST — re-tiers + positions the row in the destination (the
+        // RPC sets `tier = p_tier` for every listed id), THEN compact the source
+        // minus the departed id. Both are full-membership calls.
+        _ = try await Self.callSetTierOrder(
+            client: client, media: pMedia, tier: toTier, ids: orders.target
+        )
+        _ = try await Self.callSetTierOrder(
+            client: client, media: pMedia, tier: fromTier, ids: orders.source
+        )
+    }
+
+    /// Edit a ranking's freeform `notes`. SINGLE-COLUMN update keyed on
+    /// `(user_id, tmdb_id)` — nothing else on the row is touched, no RPC, no
+    /// event. `notes == nil` clears the column (the payload encodes an EXPLICIT
+    /// JSON null; PostgREST treats a missing key as "don't touch", so omission
+    /// would silently preserve the old note). Throws on failure so the caller
+    /// can surface a save error.
+    public func updateNotes(tmdbId: String, notes: String?, media: String = "movie") async throws {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+        let table = Self.rankingsTable(forType: media)
+
+        _ = try await client
+            .from(table)
+            .update(NotesUpdatePayload(notes: notes))
+            .eq("user_id", value: userID.uuidString)
+            .eq("tmdb_id", value: tmdbId)
+            .execute()
+    }
+
+    /// Delete a ranking, then compact its tier. Sequence:
+    ///   1. DELETE the row by `(user_id, tmdb_id)` — this THROWS on failure
+    ///      (nothing was removed; the caller reverts + toasts).
+    ///   2. Read the tier's surviving membership and `set_tier_order` it so the
+    ///      remaining rows compact to a contiguous `0..k-1`.
+    /// A `set_tier_order` failure AFTER a successful DELETE logs LOUDLY but does
+    /// NOT throw — the row is gone, so the delete succeeded; positions self-heal
+    /// on the next tier write. (The RPC is delete-aware anyway: even a
+    /// membership snapshot that still names the deleted id compacts correctly,
+    /// since a missing row is silently skipped.)
+    ///
+    /// Orphan semantics (contract): ONLY the ranking row + compaction. Stubs,
+    /// journal, activity history, comparison logs, and watchlist are NOT touched.
+    public func deleteRanking(tmdbId: String, tier: String, media: String = "movie") async throws {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+        let table = Self.rankingsTable(forType: media)
+        let pMedia = Self.pMedia(forType: media)
+
+        // Step 1: DELETE the ranking row. Throws on failure — nothing removed.
+        _ = try await client
+            .from(table)
+            .delete()
+            .eq("user_id", value: userID.uuidString)
+            .eq("tmdb_id", value: tmdbId)
+            .execute()
+
+        // Step 2: compact the tier via the surviving membership (minus the
+        // deleted id, defensively — the RPC skips a missing id regardless). A
+        // failure here self-heals on the next tier write; do NOT throw.
+        do {
+            let survivors: [String]
+            do {
+                survivors = try await Self.tierMembership(
+                    client: client, table: table, userID: userID, tier: tier
+                )
+            } catch {
+                // A read hiccup falls back to an empty membership: the RPC then
+                // renumbers nothing (no-op), and the tier self-heals on the next
+                // successful tier write. Still logged for triage.
+                print("[RankingRepository] tier membership read failed after delete (\(pMedia)/\(tier)); positions self-heal on next tier write: \(error)")
+                return
+            }
+            let compacted = TierOrder.tierOrderAfterRemoval(survivors, removedId: tmdbId)
+            _ = try await Self.callSetTierOrder(
+                client: client, media: pMedia, tier: tier, ids: compacted
+            )
+        } catch {
+            print("[RankingRepository] set_tier_order failed after delete (\(pMedia)/\(tier)); positions self-heal on next tier write: \(error)")
+        }
+    }
+
+    // MARK: - management-op helpers (I/O seams, private)
+
+    /// Read a tier's current membership as an ordered `tmdb_id[]` (best-first).
+    /// Mirrors `insertRanking`'s membership read; throws so callers decide how
+    /// to degrade.
+    private static func tierMembership(
+        client: SupabaseClient, table: String, userID: UUID, tier: String
+    ) async throws -> [String] {
+        let rows: [TierIdRow] = try await client
+            .from(table)
+            .select("tmdb_id")
+            .eq("user_id", value: userID.uuidString)
+            .eq("tier", value: tier)
+            .order("rank_position", ascending: true)
+            .execute()
+            .value
+        return rows.map(\.tmdb_id)
+    }
+
+    /// The single `set_tier_order` RPC call shape shared by every management op.
+    /// Returns the RPC's updated-row count. Errors propagate to the caller.
+    @discardableResult
+    private static func callSetTierOrder(
+        client: SupabaseClient, media: String, tier: String, ids: [String]
+    ) async throws -> Int {
+        let count: Int = try await client
+            .rpc("set_tier_order", params: SetTierOrderParams(
+                p_media: media, p_tier: tier, p_tmdb_ids: ids
+            ))
+            .execute()
+            .value
+        return count
+    }
+
+    /// Same-tier reindex: move `movedId` to the clamped `to` index within the
+    /// tier's own membership. Wraps `TierOrder.tierOrderAfterReorder` by first
+    /// resolving the id's current index (absent id ⇒ unchanged copy).
+    static func reindexWithinTier(_ ids: [String], movedId: String, to: Int) -> [String] {
+        guard let from = ids.firstIndex(of: movedId) else { return ids }
+        return TierOrder.tierOrderAfterReorder(ids, from: from, to: to)
+    }
+
     // MARK: - splice + media mapping (pure, testable — no client, no I/O)
 
     /// Compute the target tier's FULL intended membership after inserting (or
@@ -358,6 +564,22 @@ private struct SetTierOrderParams: Encodable {
     let p_media: String
     let p_tier: String
     let p_tmdb_ids: [String]
+}
+
+/// Single-column `user_rankings.notes` UPDATE body. `notes` encodes an
+/// EXPLICIT JSON null when nil (parity with the web `notes ?? null`) so the
+/// update CLEARS the column rather than leaving a stale value; synthesized
+/// Encodable omits nil, and PostgREST reads a missing key as "don't touch",
+/// hence the custom `encode(to:)`.
+struct NotesUpdatePayload: Encodable, Equatable {
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey { case notes }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(notes, forKey: .notes)   // explicit null when nil
+    }
 }
 
 private struct RankingPayload: Encodable {
