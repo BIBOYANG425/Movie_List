@@ -33,6 +33,8 @@ import SwiftUI
 /// tested); the read-only list renders from `manage.items(in:)` so those
 /// optimistic mutations reflect instantly. Edit-notes opens `RankNotesSheet`
 /// seeded from a live-row `getNotes` probe (the shelf item has no notes column);
+/// on a probe failure the sheet shows a warning and blocks blank saves so a
+/// whitespace commit can never wipe a real note whose contents are unknown;
 /// delete first opens a destructive confirmation dialog NAMING the movie;
 /// re-rank closes this sheet and enters the ceremony preseeded with the RAW item
 /// (NO watchlist origin) via the `onRerank` hand-off wired in `SpoolAppRoot`.
@@ -41,7 +43,7 @@ import SwiftUI
 /// dragged order immediately. Movies only — the shelf reads `user_rankings`
 /// exclusively, so every card is a movie and the menu needs no media-kind guard.
 ///
-/// Header last reviewed: 2026-07-09
+/// Header last reviewed: 2026-07-10
 public struct FullListScreen: View {
     public var onClose: () -> Void
     /// Re-rank hand-off (Task 4): the long-press "re-rank" action needs to close
@@ -70,6 +72,10 @@ public struct FullListScreen: View {
     @State private var notesTarget: RankedItem? = nil
     @State private var notesDraft: String = ""
     @State private var notesLoading: Bool = false
+    /// True when the most recent `fetchNotes` probe returned `.probeFailed`. The
+    /// sheet shows a warning banner and blocks blank saves so a whitespace commit
+    /// can never wipe a real note whose contents are unknown.
+    @State private var notesProbeFailed: Bool = false
     /// The row a destructive delete is confirming (nil = no dialog). The
     /// confirmation dialog names the movie before anything is removed.
     @State private var deleteTarget: RankedItem? = nil
@@ -120,6 +126,7 @@ public struct FullListScreen: View {
                 title: target.title,
                 initialNotes: notesDraft,
                 loading: notesLoading,
+                probeFailed: notesProbeFailed,
                 onSave: { text in
                     let item = target
                     notesTarget = nil
@@ -164,17 +171,29 @@ public struct FullListScreen: View {
     /// Open the "edit notes" sheet for `item`: set the target, then probe the
     /// LIVE row's notes so the editor seeds from the real value (never blanks an
     /// existing note). A slow probe shows the sheet in a loading state.
+    ///
+    /// On a `.probeFailed` result the sheet enters a warning state: it shows a
+    /// banner ("couldn't load your existing note — saving may overwrite it") and
+    /// blocks the save button until the user types something non-empty, so a
+    /// blank commit can never fire on the failed-probe path and wipe a real note.
     private func openNotes(for item: RankedItem) {
         notesTarget = item
         notesDraft = ""
         notesLoading = true
+        notesProbeFailed = false
         Task {
-            let existing = await manage.fetchNotes(item: item)
+            let result = await manage.fetchNotes(item: item)
             // Only apply if the user hasn't closed / switched targets meanwhile.
-            if notesTarget?.id == item.id {
-                notesDraft = existing ?? ""
-                notesLoading = false
+            guard notesTarget?.id == item.id else { return }
+            switch result {
+            case .success(let text):
+                notesDraft = text ?? ""
+                notesProbeFailed = false
+            case .probeFailed:
+                notesDraft = ""
+                notesProbeFailed = true
             }
+            notesLoading = false
         }
     }
 
@@ -573,15 +592,30 @@ public struct FullListScreen: View {
 /// probe is in flight. `onSave` hands the raw draft up — trimming and nil-
 /// normalization happen in `RankManageModel.saveNotes` (tested), keeping the
 /// view dumb.
+///
+/// When `probeFailed` is true the probe threw and the existing note is unknown.
+/// The sheet shows a warning banner and blocks the save button until the user
+/// types something non-empty, so a blank commit can never fire on the failed-
+/// probe path and wipe a real note.
 struct RankNotesSheet: View {
     let title: String
     let initialNotes: String
     let loading: Bool
+    /// True when the live-row probe failed. Triggers the warning banner and
+    /// blocks blank saves so a whitespace commit can't wipe an unseen note.
+    let probeFailed: Bool
     var onSave: (String) -> Void
     var onCancel: () -> Void
 
     @State private var draft: String = ""
     @State private var seeded: Bool = false
+
+    /// Save is blocked when: (a) the probe is still loading, OR (b) the probe
+    /// failed AND the draft is empty/whitespace (the user hasn't typed anything
+    /// that could safely replace the unseen note).
+    private var saveBlocked: Bool {
+        loading || (probeFailed && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
 
     var body: some View {
         SpoolScreen {
@@ -597,9 +631,9 @@ struct RankNotesSheet: View {
                         Button("save") { onSave(draft) }
                             .font(SpoolFonts.mono(12))
                             .tracking(1.5)
-                            .foregroundStyle(loading ? t.inkSoft : t.ink)
+                            .foregroundStyle(saveBlocked ? t.inkSoft : t.ink)
                             .buttonStyle(.plain)
-                            .disabled(loading)
+                            .disabled(saveBlocked)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 16)
@@ -611,6 +645,23 @@ struct RankNotesSheet: View {
                         .lineLimit(2)
                         .padding(.horizontal, 16)
                         .padding(.top, 14)
+
+                    // Probe-failure warning: the existing note is unknown so we
+                    // warn the user before they save over it. Shown above the
+                    // editor label so it's visible before the user starts typing.
+                    if probeFailed && !loading {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(SpoolTokens.paper.inkSoft)
+                            Text("couldn't load your existing note — saving may overwrite it")
+                                .font(SpoolFonts.hand(12))
+                                .foregroundStyle(SpoolTokens.paper.inkSoft)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                    }
 
                     Text("YOUR NOTES")
                         .font(SpoolFonts.mono(10))

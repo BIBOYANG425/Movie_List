@@ -111,6 +111,47 @@ final class TierSpliceTests: XCTestCase {
         XCTAssertEqual(out, ["b", "c", "a"])
     }
 
+    // MARK: - RankingPayload.notes omit-on-nil (re-rank preservation seam)
+    //
+    // WHY THIS MATTERS: `RankingPayload` uses synthesized Encodable, so
+    // `notes: String?` goes through `encodeIfPresent`. A nil notes value OMITS
+    // the key entirely. PostgREST interprets a missing key as "don't touch
+    // this column", so a menu re-rank that passes `notes: nil` PRESERVES the
+    // user's existing `user_rankings.notes` value on the server. This is the
+    // ONLY thing stopping context-menu re-ranks from silently wiping notes that
+    // were written via the "edit notes" sheet. Pinned here so a refactor that
+    // adds a custom `encode(to:)` can't accidentally regress the omission.
+
+    /// `RankingPayload` with `notes: nil` → the JSON must NOT contain a `"notes"`
+    /// key. PostgREST omit-key semantics preserve the existing column on re-rank.
+    func testRankingPayloadNilNotesOmitsKey() throws {
+        let payload = RankingPayload(
+            user_id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            tmdb_id: "tt1234", title: "Some Film", year: nil, poster_url: nil,
+            type: "movie", genres: [], director: nil, tier: "A",
+            rank_position: 0, notes: nil
+        )
+        let data = try JSONEncoder().encode(payload)
+        let json = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(json.contains("\"notes\""),
+                       "nil notes must OMIT the key so PostgREST preserves the existing column on re-rank; got: \(json)")
+    }
+
+    /// `RankingPayload` with a non-nil `notes` → the JSON MUST contain the key
+    /// so an intentional notes write reaches the server.
+    func testRankingPayloadPresentNotesIncludesKey() throws {
+        let payload = RankingPayload(
+            user_id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            tmdb_id: "tt1234", title: "Some Film", year: "2000", poster_url: nil,
+            type: "movie", genres: [], director: nil, tier: "A",
+            rank_position: 1, notes: "a tight second act"
+        )
+        let data = try JSONEncoder().encode(payload)
+        let json = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(json.contains("\"notes\":\"a tight second act\""),
+                      "present notes must encode the key so the write reaches the server; got: \(json)")
+    }
+
     // MARK: - NotesUpdatePayload (single-column encode seam)
 
     /// A present note encodes as a JSON string under the `notes` key.

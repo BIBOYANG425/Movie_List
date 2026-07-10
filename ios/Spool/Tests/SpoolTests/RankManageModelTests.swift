@@ -422,26 +422,50 @@ final class RankManageModelTests: XCTestCase {
 
     // MARK: - edit notes (fetch-before-edit)
 
-    func testFetchNotesReturnsProbeResult() async {
+    func testFetchNotesReturnsSuccessWithProbeResult() async {
         let model = makeMenuModel(
             items: [item("a", rank: 0)],
             notesProbe: { id in id == "a" ? "loved the third act" : nil }
         )
 
-        let notes = await model.fetchNotes(item: item("a", rank: 0))
-        XCTAssertEqual(notes, "loved the third act", "sheet seeds from the live row's notes")
+        let result = await model.fetchNotes(item: item("a", rank: 0))
+        XCTAssertEqual(result, .success("loved the third act"),
+                       "sheet seeds from the live row's notes on a successful probe")
     }
 
-    func testFetchNotesReturnsNilOnProbeThrow() async {
-        struct Boom: Error {}
+    func testFetchNotesSuccessNilWhenColumnEmpty() async {
         let model = makeMenuModel(
             items: [item("a", rank: 0)],
-            notesProbe: { _ in throw Boom() }
+            notesProbe: { _ in nil }   // column is empty
         )
 
-        // A probe hiccup degrades to nil (open the editor blank) — never crashes.
-        let notes = await model.fetchNotes(item: item("a", rank: 0))
-        XCTAssertNil(notes)
+        let result = await model.fetchNotes(item: item("a", rank: 0))
+        XCTAssertEqual(result, .success(nil),
+                       "nil column value is a successful probe — not a failure")
+    }
+
+    // RED-first (must fix): probe throws → result is .probeFailed, save blocked
+    // for empty draft, toast fired. This is the silent-wipe guard.
+    func testFetchNotesReturnsProbeFailedOnThrow() async {
+        struct Boom: Error {}
+        var toasts: [(String, ToastLevel)] = []
+        let model = makeMenuModel(
+            items: [item("a", rank: 0)],
+            notesProbe: { _ in throw Boom() },
+            toast: { t, l in toasts.append((t, l)) }
+        )
+
+        let result = await model.fetchNotes(item: item("a", rank: 0))
+
+        // Result must be .probeFailed, not .success(nil).
+        XCTAssertEqual(result, .probeFailed,
+                       "probe throw must return .probeFailed, not degrade silently to nil")
+        // A toast must fire so the failure is surfaced even before the sheet renders.
+        XCTAssertEqual(toasts.count, 1)
+        XCTAssertEqual(toasts.first?.1, .error,
+                       "probe failure must toast at error level")
+        XCTAssert(toasts.first?.0.contains("couldn't load") == true,
+                  "toast message must mention inability to load the note, got: \(toasts.first?.0 ?? "")")
     }
 
     func testSaveNotesTrimsAndCallsUpdateNoEmission() async {
@@ -479,7 +503,7 @@ final class RankManageModelTests: XCTestCase {
         XCTAssertNil(saveCalls.first?.1, "whitespace-only notes normalize to nil (clears the column)")
     }
 
-    func testSaveNotesTogglesOnThrow() async {
+    func testSaveNotesToastsOnThrow() async {
         struct Boom: Error {}
         var toasts: [(String, ToastLevel)] = []
         let model = makeMenuModel(

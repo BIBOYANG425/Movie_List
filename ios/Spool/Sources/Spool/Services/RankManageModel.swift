@@ -25,8 +25,12 @@ import SwiftUI
 ///     the TARGET tier on success; revert both tiers + toast on throw.
 ///  B. EDIT NOTES (`fetchNotes` + `saveNotes`). `fetchNotes` PROBES the live
 ///     row's notes so the sheet never blanks an existing note (the shelf's
-///     `RankedItem` has no notes column). `saveNotes` trims / nil-normalizes and
-///     calls `updateNotes` — emits NOTHING (web has no standalone notes event).
+///     `RankedItem` has no notes column). Returns `.success(notes?)` on a clean
+///     probe or `.probeFailed` on a throw — the sheet shows a warning and blocks
+///     blank saves on the failed-probe path so a whitespace commit can never wipe
+///     a real note. A toast also fires on probe failure. `saveNotes` trims /
+///     nil-normalizes and calls `updateNotes` — emits NOTHING (web has no
+///     standalone notes event).
 ///  C. RE-RANK (`requestRerank`). Fires the injected hand-off with the RAW item,
 ///     NO watchlist origin — the ceremony owns the event + compaction.
 ///  D. DELETE (`delete`). View-confirmed (destructive dialog). Optimistic
@@ -79,7 +83,7 @@ import SwiftUI
 /// (`RankingRepository.getAllRankedItems`), so every row is a movie and the
 /// reorder write hardcodes `media: "movie"`.
 ///
-/// Header last reviewed: 2026-07-09
+/// Header last reviewed: 2026-07-10
 @MainActor
 public final class RankManageModel: ObservableObject {
 
@@ -443,17 +447,36 @@ public final class RankManageModel: ObservableObject {
         }
     }
 
+    /// The outcome of a `fetchNotes` probe. The sheet uses this to distinguish
+    /// a confirmed-nil note (no warning, save enabled) from a probe failure
+    /// (warning shown, save blocked until the user types something non-empty —
+    /// so a blank save can never fire on the failed-probe path and wipe a real note).
+    public enum NotesFetchResult: Equatable, Sendable {
+        /// Probe succeeded. `value` is the live note (nil = column empty).
+        case success(String?)
+        /// Probe threw. The existing note is unknown; the sheet must warn the
+        /// user and block blank saves so it can't overwrite an unseen note.
+        case probeFailed
+    }
+
     /// FETCH the row's current notes so the "edit notes" sheet seeds from the
     /// live value (the shelf's `RankedItem` has no notes column — probe-before-
-    /// edit, the journal lesson, so a save never blanks an existing note). A
-    /// probe throw degrades to nil (open the editor blank) rather than blocking
-    /// the edit; the subsequent save re-reads intent from what the user types.
-    public func fetchNotes(item: RankedItem) async -> String? {
+    /// edit, the journal lesson, so a save never blanks an existing note).
+    ///
+    /// On success returns `.success(notes)` where `notes` is the live column
+    /// value (nil = empty). On a probe throw returns `.probeFailed` instead of
+    /// degrading silently to nil: the sheet must warn the user that the existing
+    /// note is unknown and block blank saves so a whitespace commit can never
+    /// wipe a real note. A toast is also fired so the failure is surfaced even
+    /// if the sheet is already open.
+    public func fetchNotes(item: RankedItem) async -> NotesFetchResult {
         do {
-            return try await notesProbeIO(item.id)
+            let notes = try await notesProbeIO(item.id)
+            return .success(notes)
         } catch {
-            NSLog("[RankManageModel] notes probe failed for \(item.id); opening editor blank: \(error)")
-            return nil
+            NSLog("[RankManageModel] notes probe failed for \(item.id): \(error)")
+            toastIO("couldn't load your existing note — saving may overwrite it", .error)
+            return .probeFailed
         }
     }
 

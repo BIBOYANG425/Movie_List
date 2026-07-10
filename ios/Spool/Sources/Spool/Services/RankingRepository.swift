@@ -705,7 +705,12 @@ struct NotesUpdatePayload: Encodable, Equatable {
     }
 }
 
-private struct RankingPayload: Encodable {
+/// Upsert body for `user_rankings`. Uses synthesized `Encodable` which maps
+/// `Optional` properties via `encodeIfPresent` — a nil `notes` OMITS the key
+/// so PostgREST preserves the existing column on a re-rank (the ceremony only
+/// touches the columns it explicitly sets). Tests pin this contract in
+/// `TierSpliceTests.testRankingPayloadNilNotesOmitsKey`.
+struct RankingPayload: Encodable {
     let user_id: UUID
     let tmdb_id: String
     let title: String
