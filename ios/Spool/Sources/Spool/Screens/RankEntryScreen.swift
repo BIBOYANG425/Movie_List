@@ -258,7 +258,7 @@ public struct RankEntryScreen: View {
             searchingRow
         } else if !model.tvSuggestions.isEmpty {
             HStack {
-                Text(model.tvSuggestionsHasBackfill ? L10n.t("rankEntry.basedOnTaste") : L10n.t("rankEntry.popularNow"))
+                Text((model.tvSuggestionsHasBackfill ? L10n.t("rankEntry.basedOnTaste") : L10n.t("rankEntry.popularNow")).uppercased())
                     .font(SpoolFonts.mono(10))
                     .tracking(2)
                     .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -410,7 +410,7 @@ public struct RankEntryScreen: View {
     }
 
     private func sectionLabel(_ s: String) -> some View {
-        Text(s)
+        Text(s.uppercased())
             .font(SpoolFonts.mono(10))
             .tracking(2)
             .foregroundStyle(SpoolTokens.paper.inkSoft)

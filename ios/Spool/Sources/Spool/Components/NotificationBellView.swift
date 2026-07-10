@@ -137,7 +137,7 @@ private struct NotificationSheet: View {
     private var header: some View {
         SpoolThemeReader { t, _ in
             HStack {
-                Text(L10n.t("notifications.title"))
+                Text(L10n.t("notifications.title").lowercased())
                     .font(SpoolFonts.serif(22))
                     .tracking(-0.3)
                     .foregroundStyle(t.ink)

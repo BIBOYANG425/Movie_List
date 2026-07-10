@@ -204,7 +204,7 @@ public struct SettingsScreen: View {
     /// `.id(rawLocale)`, re-renders every `L10n.t`-reading view live. The row
     /// label + option labels come from `L10n.t` so the row localizes itself.
     private var languageSection: some View {
-        section(title: L10n.t("settings.language").uppercased()) { t in
+        section(title: L10n.t("settings.language")) { t in
             HStack(spacing: 8) {
                 ForEach(Self.languageOptions, id: \.raw) { option in
                     LanguageChip(
@@ -375,7 +375,7 @@ public struct SettingsScreen: View {
                                         @ViewBuilder content: @escaping (SpoolPalette) -> Content) -> some View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 10) {
-                Text(title)
+                Text(title.uppercased())
                     .font(SpoolFonts.mono(10))
                     .tracking(2.5)
                     .foregroundStyle(t.inkSoft)

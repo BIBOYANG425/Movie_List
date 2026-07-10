@@ -15,14 +15,14 @@ public struct RankTierScreen: View {
         SpoolScreen {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Button(L10n.t("ceremony.back"), action: onBack)
+                    Button(L10n.t("ceremony.back").uppercased(), action: onBack)
                         .font(SpoolFonts.mono(12))
                         .tracking(1)
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
 
                     StepProgress(step: 1, total: 3).padding(.top, 10)
 
-                    Text(L10n.t("ceremony.step1"))
+                    Text(L10n.t("ceremony.step1").uppercased())
                         .font(SpoolFonts.mono(10))
                         .tracking(2)
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -59,7 +59,7 @@ public struct RankTierScreen: View {
                             posterUrl: movie.posterUrl)
                     .frame(width: 72)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(L10n.t("ceremony.justWatched"))
+                    Text(L10n.t("ceremony.justWatched").uppercased())
                         .font(SpoolFonts.mono(9))
                         .tracking(2)
                         .foregroundStyle(t.inkSoft)

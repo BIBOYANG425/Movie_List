@@ -436,8 +436,10 @@ public enum EN {
         "tier.subD": "get it away from me.",
 
         // ── Ranking ceremony (RankTier/H2H/Ceremony screens) ──────────────────
-        // Chrome caps uppercased at the call site → stored lowercase. Reuses web
-        // ceremony.skip; the rest is iOS ceremony flow copy (new zh). The H2H
+        // Chrome labels are stored lowercase; .uppercased() is applied at every
+        // call site that renders them (verified in RankTierScreen / RankH2HScreen
+        // / RankCeremonyScreen). Reuses web ceremony.skip; the rest is iOS
+        // ceremony flow copy (new zh). The H2H
         // comparison PROMPTS themselves stay EN (engine parity, SpoolPrompts —
         // web's spoolPrompts.ts is not localized either). {tier}/{round}/{rank}
         // carry dynamic content.
@@ -482,8 +484,9 @@ public enum EN {
 
         // ── Rank entry (RankEntryScreen + RankEntryModel search) ──────────────
         // Search-flow entry. Reuses web ceremony.* where the copy matches (cited);
-        // section labels + iOS-lowercase mode pills are new zh. Chrome caps are
-        // uppercased at the call site so stored values stay lowercase.
+        // section labels + iOS-lowercase mode pills are new zh. Section-header
+        // chrome is stored lowercase; .uppercased() is applied at the call sites
+        // in RankEntryScreen (sectionLabel helper + basedOnTaste/popularNow).
         "rankEntry.makeStub": "let's make you a stub.",
         "rankEntry.justWatched": "just watched?",
         "rankEntry.justRead": "just read?",
@@ -538,8 +541,8 @@ public enum EN {
 
         // Settings sheet chrome + rows (SettingsScreen). iOS-only surface (web
         // routes these through Profile/menus, no settings.* keys). Lowercase
-        // hand-voice register throughout; section titles are uppercased at the
-        // call site, so the stored value stays lowercase.
+        // hand-voice register throughout; section titles are uppercased inside
+        // the section(title:) helper, so stored values stay lowercase.
         "settings.close": "close",
         "settings.title": "settings",
         "settings.sectionAccount": "account",

@@ -43,7 +43,7 @@ public struct RankH2HScreen: View {
         SpoolScreen {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Button(L10n.t("ceremony.back"), action: onBack)
+                    Button(L10n.t("ceremony.back").uppercased(), action: onBack)
                         .font(SpoolFonts.mono(12))
                         .tracking(1)
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -91,9 +91,9 @@ public struct RankH2HScreen: View {
     @ViewBuilder
     private var header: some View {
         let roundLabel: String = {
-            if let c = comparison, !done { return L10n.t("ceremony.step2Match", ["round": "\(c.round)"]) }
-            if done { return L10n.t("ceremony.step2Placed") }
-            return L10n.t("ceremony.step2WarmingUp")
+            if let c = comparison, !done { return L10n.t("ceremony.step2Match", ["round": "\(c.round)"]).uppercased() }
+            if done { return L10n.t("ceremony.step2Placed").uppercased() }
+            return L10n.t("ceremony.step2WarmingUp").uppercased()
         }()
 
         Text(roundLabel)
@@ -141,7 +141,7 @@ public struct RankH2HScreen: View {
             // pool means movieB is the same media as the just-watched movieA.
             H2HCard(
                 movie: h2hMovie(from: c.movieA),
-                label: L10n.t("ceremony.justWatched"),
+                label: L10n.t("ceremony.justWatched").uppercased(),
                 tilt: -1.2
             ) { submit(winnerId: c.movieA.id) }
 
@@ -151,7 +151,7 @@ public struct RankH2HScreen: View {
 
             H2HCard(
                 movie: h2hMovie(from: c.movieB),
-                label: L10n.t("ceremony.yourTierRank", ["tier": tier.rawValue, "rank": "\(c.movieB.rank + 1)"]),
+                label: L10n.t("ceremony.yourTierRank", ["tier": tier.rawValue, "rank": "\(c.movieB.rank + 1)"]).uppercased(),
                 tilt: 1
             ) { submit(winnerId: c.movieB.id) }
         }
@@ -400,7 +400,7 @@ struct TierShelf: View {
     var body: some View {
         SpoolThemeReader { t, mode in
             VStack(spacing: 6) {
-                Text(L10n.t("ceremony.tierShelf", ["tier": tier.rawValue]))
+                Text(L10n.t("ceremony.tierShelf", ["tier": tier.rawValue]).uppercased())
                     .font(SpoolFonts.mono(9))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)

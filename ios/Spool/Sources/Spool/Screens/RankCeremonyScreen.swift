@@ -22,14 +22,14 @@ public struct RankCeremonyScreen: View {
         SpoolScreen {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Button(L10n.t("ceremony.back"), action: onBack)
+                    Button(L10n.t("ceremony.back").uppercased(), action: onBack)
                         .font(SpoolFonts.mono(12))
                         .tracking(1)
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
 
                     StepProgress(step: 3, total: 3).padding(.top, 10)
 
-                    Text(L10n.t("ceremony.step3"))
+                    Text(L10n.t("ceremony.step3").uppercased())
                         .font(SpoolFonts.mono(10))
                         .tracking(2)
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -91,7 +91,7 @@ public struct RankCeremonyScreen: View {
     private var lineBox: some View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.t("ceremony.lineToRemember"))
+                Text(L10n.t("ceremony.lineToRemember").uppercased())
                     .font(SpoolFonts.mono(9))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)

@@ -24,7 +24,7 @@ public enum ZH {
 
         // Rank flow toasts — recast without em dashes.
         "toast.rankSaveFailed": "排名没保存成功，检查一下网络",
-        "toast.reRankFailed": "这部剧重新排名失败了，再试一次",
+        "toast.reRankFailed": "没能给这部剧重新排名，再试一次",
         // Preview-mode queue refused a tv/book rank (iOS-only). New zh, dash-free.
         "toast.rankSaveSignIn": "排名没保存成功，登录后再试一次",
 
