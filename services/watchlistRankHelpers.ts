@@ -4,7 +4,11 @@
 // be removed ONLY after the ranking save is confirmed. Deleting the bookmark on
 // a failed save loses the item entirely (it ends up in neither list) — the B5
 // data-loss bug. This helper pins the corrected contract so every call site
-// (and the iOS C3 port) shares one source of truth.
+// (and the iOS C3 port) shares one source of truth. Its sibling
+// `shouldEmitRankingEventAfterSave` (audit B4) pins the same "only after a
+// confirmed save" gate for the broadcast side effects (the ranking_add/
+// ranking_move activity event and the tv_season stub), so a failed TV/book save
+// can never emit a phantom feed card or an orphan stub.
 //
 // It also owns the shape of a TV watchlist bookmark minted from a search result
 // (B2/D5): a whole-show bookmark MUST carry the numeric showTmdbId and normalized
@@ -43,6 +47,27 @@ import type { MediaType, RankedItem, WatchlistItem } from '../types';
  * bookmark intact.
  */
 export function shouldRemoveBookmarkAfterRank(saveSucceeded: boolean): boolean {
+  return saveSucceeded;
+}
+
+/**
+ * Decide whether the post-rank side effects that broadcast a ranking — the
+ * `ranking_add`/`ranking_move` activity event and the tv_season ticket stub —
+ * should fire after a rank attempt (audit B4). They fire ONLY when the save
+ * actually landed, mirroring the movie path (`addItem` returns false BEFORE the
+ * event/stub on any upsert- or RPC-order failure). Gating here kills the C4
+ * minor where addTVItem/addBookItem emitted `ranking_add` (and minted an orphan
+ * tv stub) on a silently-failed save: friends would see a phantom feed card for
+ * a rank the owner never persisted, while the watchlist bookmark correctly
+ * stayed (shouldRemoveBookmarkAfterRank keys on the same boolean). Books never
+ * write a stub (movie_stubs.media_type CHECK excludes 'book') — this gate covers
+ * only the event for the book path.
+ *
+ * Intentionally the same shape as shouldRemoveBookmarkAfterRank: every
+ * broadcast-a-rank side effect shares one "only after confirmed save" decision
+ * so the three verticals (and the iOS port) can never drift.
+ */
+export function shouldEmitRankingEventAfterSave(saveSucceeded: boolean): boolean {
   return saveSucceeded;
 }
 

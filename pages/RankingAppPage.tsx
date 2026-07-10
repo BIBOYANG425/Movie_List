@@ -25,7 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 import { createStub } from '../services/stubService';
-import { shouldRemoveBookmarkAfterRank, tvWatchlistItemFromShow, tvRankPreselectFromShow, rerankMediaTarget, isRerankCompletion } from '../services/watchlistRankHelpers';
+import { shouldRemoveBookmarkAfterRank, shouldEmitRankingEventAfterSave, tvWatchlistItemFromShow, tvRankPreselectFromShow, rerankMediaTarget, isRerankCompletion } from '../services/watchlistRankHelpers';
 import {
   tierOrderAfterReorder,
   tierOrderAfterRemoval,
@@ -842,7 +842,24 @@ const RankingAppPage = () => {
     let saveSucceeded = await persistTVRankings([{ ...newItem, rank: newRankPosition }]);
     if (saveSucceeded && targetOrder.length > 0) {
       const { error } = await setTierOrder('tv', newItem.tier, targetOrder);
-      if (error) saveSucceeded = false;
+      if (error) {
+        // RPC-order failure is a failed save too (movie parity: addItem toasts +
+        // returns false on setTierOrder error). persistTVRankings already toasted
+        // the upsert branch; toast here so the order-write failure is never silent.
+        console.error('Failed to save TV ranking:', error);
+        setToastMessage(t('ranking.failedSaveTV'));
+        saveSucceeded = false;
+      }
+    }
+
+    // B4: the ranking_add/ranking_move event AND the tv_season stub emit ONLY
+    // after a confirmed save (movie parity — addItem returns false before the
+    // event/stub). A failed save must not spawn a phantom feed card or an orphan
+    // stub while the bookmark correctly stays (friends would see a rank the owner
+    // does not have). The bookmark-removal / source-tier-compaction gates in
+    // handleAddTVItem already key on this same returned boolean.
+    if (!shouldEmitRankingEventAfterSave(saveSucceeded)) {
+      return false;
     }
 
     await logRankingActivityEvent(
@@ -870,7 +887,7 @@ const RankingAppPage = () => {
       tier: newItem.tier,
     }).catch(() => {});
 
-    return saveSucceeded;
+    return true;
   };
 
   const removeTVItem = async (id: string) => {
@@ -1134,7 +1151,24 @@ const RankingAppPage = () => {
     let saveSucceeded = await persistBookRankings([{ ...newItem, rank: newRankPosition }]);
     if (saveSucceeded && targetOrder.length > 0) {
       const { error } = await setTierOrder('book', newItem.tier, targetOrder);
-      if (error) saveSucceeded = false;
+      if (error) {
+        // RPC-order failure is a failed save too (movie parity: addItem toasts +
+        // returns false on setTierOrder error). persistBookRankings already
+        // toasted the upsert branch; toast here so the order-write failure is
+        // never silent.
+        console.error('Failed to save book ranking:', error);
+        setToastMessage(t('ranking.failedSaveBook'));
+        saveSucceeded = false;
+      }
+    }
+
+    // B4: the ranking_add/ranking_move event emits ONLY after a confirmed save
+    // (movie parity — addItem returns false before the event). Books never write
+    // a stub (movie_stubs.media_type CHECK excludes 'book'), so the only gated
+    // side effect here is the event. A failed save must not spawn a phantom feed
+    // card while the bookmark correctly stays.
+    if (!shouldEmitRankingEventAfterSave(saveSucceeded)) {
+      return false;
     }
 
     await logRankingActivityEvent(
@@ -1153,7 +1187,7 @@ const RankingAppPage = () => {
       eventType,
     );
 
-    return saveSucceeded;
+    return true;
   };
 
   const removeBookItem = async (id: string) => {

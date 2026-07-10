@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   shouldRemoveBookmarkAfterRank,
+  shouldEmitRankingEventAfterSave,
   tvWatchlistItemFromShow,
   tvRankPreselectFromShow,
   rerankMediaTarget,
@@ -24,6 +25,33 @@ describe('shouldRemoveBookmarkAfterRank', () => {
 
   it('keeps the bookmark when the save failed', () => {
     expect(shouldRemoveBookmarkAfterRank(false)).toBe(false);
+  });
+});
+
+// Pins the B4 broadcast gate: the ranking_add/ranking_move activity event and
+// the tv_season stub emit ONLY after a confirmed save. addTVItem/addBookItem
+// used to run logRankingActivityEvent (and createStub for TV) unconditionally,
+// so a silently-failed upsert or set_tier_order RPC error still spawned a
+// phantom feed card (and orphan tv stub) for a rank that never landed — while
+// the watchlist bookmark correctly stayed (shouldRemoveBookmarkAfterRank keys on
+// the same boolean). The movie path (addItem) returns false BEFORE the event/
+// stub; this seam pins that parity for tv/book and for the iOS port.
+describe('shouldEmitRankingEventAfterSave', () => {
+  it('emits the event/stub when the save succeeded', () => {
+    expect(shouldEmitRankingEventAfterSave(true)).toBe(true);
+  });
+
+  it('suppresses the event/stub when the save failed (no phantom feed card / orphan stub)', () => {
+    expect(shouldEmitRankingEventAfterSave(false)).toBe(false);
+  });
+
+  it('agrees with the bookmark-removal gate for the same save outcome (one confirmed-save decision)', () => {
+    // Both broadcast-a-rank side effects share one "only after confirmed save"
+    // decision so the three verticals can never drift: a failed save keeps the
+    // bookmark AND suppresses the event; a succeeded save removes the bookmark
+    // AND emits the event.
+    expect(shouldEmitRankingEventAfterSave(true)).toBe(shouldRemoveBookmarkAfterRank(true));
+    expect(shouldEmitRankingEventAfterSave(false)).toBe(shouldRemoveBookmarkAfterRank(false));
   });
 });
 
