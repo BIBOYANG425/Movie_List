@@ -15,8 +15,11 @@ import Supabase
 ///
 /// The 5-pool suggestion engine (getGenericSuggestions + discover pools) moved
 /// server-side into the `suggestions` edge function (see `SuggestionsClient`).
-/// Only the seams that still have client callers remain here: search + movie
-/// details (`vote_average` enrichment).
+/// Only the seams that still have client callers remain here: movie search +
+/// movie details (`vote_average` enrichment), and the C5 TV seams — TV search
+/// (shared typo-retry loop), show details (season-0 "Specials" filtered, D6),
+/// season details, and the TV global score. TV genre normalization lives in
+/// `TMDBTVGenres` (web-parity port).
 ///
 /// Header last reviewed: 2026-07-10
 public enum TMDBService {

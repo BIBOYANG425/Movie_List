@@ -73,8 +73,9 @@ final class SearchVariantsTests: XCTestCase {
     /// function as `searchMovies`) inside its zero-result retry loop, mirroring
     /// web where both `searchMovies` and `searchTVShows` call the same
     /// `typoRetryVariants`. There is no TV-specific variant generator, so the TV
-    /// retry backoff produces byte-identical variants for the same query. This
-    /// pins that shared-code contract so a future TV-only fork would be caught.
+    /// retry backoff produces byte-identical variants for the same query. NOTE:
+    /// this pins the generator's OUTPUT only — the single-call-site fact was
+    /// verified by review; a future TV-only fork function would not fail here.
     func testTVSearchUsesTheSameVariantGeneratorAsMovieSearch() {
         XCTAssertEqual(
             TMDBService.typoRetryVariants("shawshenk"),
