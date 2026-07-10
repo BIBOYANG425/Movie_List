@@ -4,7 +4,7 @@ import { X, Search, ArrowLeft, Loader2, Tv, Check, ChevronRight, Bookmark, Refre
 import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry, ComparisonRequest } from '../../types';
 import {
   searchTVShows, getTVShowDetails, normalizeTVGenres, getTVShowGlobalScore,
-  buildTVTasteProfile, getSmartTVSuggestions, getSmartTVBackfill, hasTmdbKey,
+  fetchTVSuggestions, hasTmdbKey,
   TMDBTVShow, TMDBTVSeasonSummary,
 } from '../../services/tmdbService';
 import { fuzzyFilterLocal, getBestCorrectedQuery } from '../../services/fuzzySearch';
@@ -63,6 +63,18 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
   const suggestionPageRef = useRef(1);
   const backfillPoolRef = useRef<TMDBTVShow[]>([]);
   const backfillPageRef = useRef(1);
+  // Session-local consumed show ids (cap 200); server owns ranking/watchlist
+  // exclusions under the caller's JWT.
+  const sessionExcludeRef = useRef<string[]>([]);
+
+  const noteConsumed = (id: string) => {
+    if (!sessionExcludeRef.current.includes(id)) {
+      sessionExcludeRef.current.push(id);
+      if (sessionExcludeRef.current.length > 200) {
+        sessionExcludeRef.current = sessionExcludeRef.current.slice(-200);
+      }
+    }
+  };
 
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestIdRef = useRef(0);
@@ -89,27 +101,17 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
     })
   );
 
-  const getExcludeIds = () => new Set<string>([
-    ...rankedIds,
-    ...rankedShowIds,
-    ...watchlistShowIds,
-  ]);
-
-  const getExcludeTitles = () => new Set<string>(
-    currentItems.filter(i => i.type === 'tv_season').map(i => i.title.toLowerCase()),
-  );
-
   const isAlreadyOwned = (s: TMDBTVShow) =>
     rankedShowIds.has(s.id) || watchlistShowIds.has(s.id);
 
-  const prefetchBackfillPool = (excludeIds: Set<string>, excludeTitles: Set<string>, page?: number) => {
-    const profile = buildTVTasteProfile(currentItems.filter(i => i.type === 'tv_season'));
-    getSmartTVBackfill(profile, excludeIds, page ?? backfillPageRef.current, excludeTitles).then((results) => {
+  const prefetchBackfillPool = (page?: number) => {
+    fetchTVSuggestions('backfill', page ?? backfillPageRef.current, sessionExcludeRef.current).then((results) => {
       backfillPoolRef.current = results;
     });
   };
 
   const consumeSuggestion = (showId: string) => {
+    noteConsumed(showId);
     setSuggestions(prev => {
       const without = prev.filter(s => s.id !== showId);
       if (backfillPoolRef.current.length > 0) {
@@ -128,7 +130,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
         }
         if (backfillPoolRef.current.length < 3) {
           backfillPageRef.current += 1;
-          prefetchBackfillPool(getExcludeIds(), getExcludeTitles(), backfillPageRef.current);
+          prefetchBackfillPool(backfillPageRef.current);
         }
       }
       return without;
@@ -140,18 +142,14 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
     setSuggestionsLoading(true);
     setHasBackfillMixed(false);
 
-    const excludeIds = getExcludeIds();
-    const excludeTitles = getExcludeTitles();
-    const profile = buildTVTasteProfile(currentItems.filter(i => i.type === 'tv_season'));
-
-    getSmartTVSuggestions(profile, excludeIds, page, excludeTitles, user?.id ?? undefined).then((results) => {
+    fetchTVSuggestions('suggestions', page, sessionExcludeRef.current).then((results) => {
       setSuggestions(results);
       setSuggestionsLoading(false);
     });
 
     backfillPageRef.current = 1;
     backfillPoolRef.current = [];
-    getSmartTVBackfill(profile, excludeIds, 1, excludeTitles).then((results) => {
+    fetchTVSuggestions('backfill', 1, sessionExcludeRef.current).then((results) => {
       backfillPoolRef.current = results;
     });
   };
@@ -236,6 +234,7 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
 
     // Load suggestions
     suggestionPageRef.current = 1;
+    sessionExcludeRef.current = [];
     loadInitialTVSuggestions(1);
 
     return () => {

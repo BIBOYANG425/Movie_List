@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { RankedItem, Tier, MediaType, Bracket } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES } from '../constants';
-import { getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { fetchMovieSuggestions, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
 import { classifyBracket } from '../services/rankingAlgorithm';
 import { RankingSession } from '../services/rankingSession';
 import { ComparisonRequest } from '../types';
@@ -39,6 +39,8 @@ const MovieOnboardingPage: React.FC = () => {
     const suggestionPageRef = useRef(1);
     const backfillPoolRef = useRef<TMDBMovie[]>([]);
     const backfillPageRef = useRef(1);
+    // Session-local consumed ids (cap 200); server owns ranking exclusions.
+    const sessionExcludeRef = useRef<string[]>([]);
 
     // Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -148,29 +150,33 @@ const MovieOnboardingPage: React.FC = () => {
 
     // ── Suggestions loading ─────────────────────────────────────────────────────
 
-    const getExcludeIds = useCallback(() => rankedIds, [rankedIds]);
-    const getExcludeTitles = useCallback(() => rankedTitles, [rankedTitles]);
+    const noteConsumed = useCallback((id: string) => {
+        if (!sessionExcludeRef.current.includes(id)) {
+            sessionExcludeRef.current.push(id);
+            if (sessionExcludeRef.current.length > 200) {
+                sessionExcludeRef.current = sessionExcludeRef.current.slice(-200);
+            }
+        }
+    }, []);
 
     const prefetchBackfill = useCallback((page?: number) => {
         const p = page ?? backfillPageRef.current;
-        const profile = buildTasteProfile(rankedItems);
-        getSmartBackfill(profile, getExcludeIds(), p, getExcludeTitles()).then(results => {
+        fetchMovieSuggestions('backfill', p, sessionExcludeRef.current).then(results => {
             backfillPoolRef.current = results;
         });
-    }, [getExcludeIds, getExcludeTitles, rankedItems]);
+    }, []);
 
     const loadSuggestions = useCallback((page: number) => {
         if (!hasTmdbKey()) return;
         setSuggestionsLoading(true);
-        const profile = buildTasteProfile(rankedItems);
-        getSmartSuggestions(profile, getExcludeIds(), page, getExcludeTitles(), user?.id ?? undefined).then(results => {
+        fetchMovieSuggestions('suggestions', page, sessionExcludeRef.current).then(results => {
             setSuggestions(results);
             setSuggestionsLoading(false);
         });
         backfillPageRef.current = 1;
         backfillPoolRef.current = [];
         prefetchBackfill(1);
-    }, [getExcludeIds, getExcludeTitles, prefetchBackfill, rankedItems, user?.id]);
+    }, [prefetchBackfill]);
 
     useEffect(() => {
         if (!loading) {
@@ -185,6 +191,7 @@ const MovieOnboardingPage: React.FC = () => {
     };
 
     const consumeSuggestion = (movieId: string) => {
+        noteConsumed(movieId);
         setSuggestions(prev => {
             const without = prev.filter(m => m.id !== movieId);
             if (backfillPoolRef.current.length > 0) {

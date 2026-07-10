@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import FocusTrap from 'focus-trap-react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
 import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry, ComparisonRequest } from '../../types';
-import { searchMovies, searchPeople, getPersonFilmography, getSmartSuggestions, getSmartBackfill, buildTasteProfile, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../../services/tmdbService';
+import { searchMovies, searchPeople, getPersonFilmography, fetchMovieSuggestions, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../../services/tmdbService';
 import { fuzzyFilterLocal, getBestCorrectedQuery, mergeAndDedupSearchResults } from '../../services/fuzzySearch';
 import { classifyBracket } from '../../services/rankingAlgorithm';
 import { RankingSession } from '../../services/rankingSession';
@@ -45,11 +45,23 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [isRatingFetching, setIsRatingFetching] = useState(false);
   const [correctedQuery, setCorrectedQuery] = useState<string | null>(null);
 
-  // Two-pool suggestion system
+  // Two-pool suggestion system. The server engine owns ranking/watchlist
+  // exclusions (RLS-scoped); the client only tracks session-local consumed ids
+  // (cap 200) so within-session picks/bookmarks don't reappear on refill.
   const suggestionPageRef = useRef(1);
   const backfillPoolRef = useRef<TMDBMovie[]>([]);
   const backfillPageRef = useRef(1);
+  const sessionExcludeRef = useRef<string[]>([]);
   const [hasBackfillMixed, setHasBackfillMixed] = useState(false);
+
+  const noteConsumed = (id: string) => {
+    if (!sessionExcludeRef.current.includes(id)) {
+      sessionExcludeRef.current.push(id);
+      if (sessionExcludeRef.current.length > 200) {
+        sessionExcludeRef.current = sessionExcludeRef.current.slice(-200);
+      }
+    }
+  };
 
   // Notes state
   const [notes, setNotes] = useState('');
@@ -64,23 +76,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestIdRef = useRef(0);
 
-  const getExcludeIds = () => new Set<string>([
-    ...currentItems.map(i => i.id),
-    ...(watchlistIds ?? []),
-  ]);
-
-  const getExcludeTitles = () => new Set<string>(
-    currentItems.map(i => i.title.toLowerCase()),
-  );
-
-  const prefetchBackfillPool = (excludeIds: Set<string>, excludeTitles: Set<string>, page?: number) => {
-    const profile = buildTasteProfile(currentItems);
-    getSmartBackfill(profile, excludeIds, page ?? backfillPageRef.current, excludeTitles).then((results) => {
+  const prefetchBackfillPool = (page?: number) => {
+    fetchMovieSuggestions('backfill', page ?? backfillPageRef.current, sessionExcludeRef.current).then((results) => {
       backfillPoolRef.current = results;
     }).catch(() => {});
   };
 
   const consumeSuggestion = (movieId: string) => {
+    noteConsumed(movieId);
     setSuggestions(prev => {
       const without = prev.filter(m => m.id !== movieId);
       if (backfillPoolRef.current.length > 0) {
@@ -99,7 +102,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         }
         if (backfillPoolRef.current.length < 3) {
           backfillPageRef.current += 1;
-          prefetchBackfillPool(getExcludeIds(), getExcludeTitles(), backfillPageRef.current);
+          prefetchBackfillPool(backfillPageRef.current);
         }
       }
       return without;
@@ -111,18 +114,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
     setSuggestionsLoading(true);
     setHasBackfillMixed(false);
 
-    const excludeIds = getExcludeIds();
-    const excludeTitles = getExcludeTitles();
-    const profile = buildTasteProfile(currentItems);
-
-    getSmartSuggestions(profile, excludeIds, page, excludeTitles, user?.id ?? undefined).then((results) => {
+    fetchMovieSuggestions('suggestions', page, sessionExcludeRef.current).then((results) => {
       setSuggestions(results);
       setSuggestionsLoading(false);
     }).catch(() => { setSuggestionsLoading(false); });
 
     backfillPageRef.current = 1;
     backfillPoolRef.current = [];
-    getSmartBackfill(profile, excludeIds, 1, excludeTitles).then((results) => {
+    fetchMovieSuggestions('backfill', 1, sessionExcludeRef.current).then((results) => {
       backfillPoolRef.current = results;
     }).catch(() => {});
   };
@@ -195,8 +194,9 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         setStep('search');
       }
 
-      // Reset page counters and load fresh suggestions + prefetch backfill
+      // Reset page counters + session exclusions and load fresh suggestions
       suggestionPageRef.current = 1;
+      sessionExcludeRef.current = [];
       loadInitialSuggestions(1);
     }
   }, [isOpen, preselectedItem, preselectedTier]);
@@ -445,12 +445,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         </p>
       )}
 
-      {/* No API key warning */}
+      {/* Backend-not-configured warning (Supabase env missing) */}
       {!hasTmdbKey() && (
         <div className="bg-gold/10 border border-yellow-500/20 rounded-xl p-4 text-sm text-yellow-300">
-          <p className="font-semibold mb-1">TMDB API key not configured</p>
+          <p className="font-semibold mb-1">Search backend not configured</p>
           <p className="text-gold/70 text-xs">
-            Add <code className="bg-black/30 px-1 rounded">VITE_TMDB_API_KEY</code> to your Vercel environment variables to enable live search.
+            Set <code className="bg-black/30 px-1 rounded">VITE_SUPABASE_URL</code> and{' '}
+            <code className="bg-black/30 px-1 rounded">VITE_SUPABASE_ANON_KEY</code> to enable live search.
           </p>
         </div>
       )}

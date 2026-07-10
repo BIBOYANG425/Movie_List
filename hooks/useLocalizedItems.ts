@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { RankedItem, WatchlistItem } from '../types';
+import { fetchLocalizedTitle } from '../services/tmdbService';
 
-const TMDB_BASE = 'https://api.themoviedb.org/3';
 const CACHE_KEY = 'spool_title_zh';
 const BATCH_SIZE = 10;
 
@@ -24,38 +24,22 @@ function writeCache(cache: Record<string, TitleEntry>) {
 }
 
 async function fetchChineseTitles(tmdbIds: string[]): Promise<Record<string, TitleEntry>> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey || tmdbIds.length === 0) return {};
+  if (tmdbIds.length === 0) return {};
 
   const cache = readCache();
   const missing = tmdbIds.filter((id) => !cache[id]);
   if (missing.length === 0) return cache;
 
-  // Fetch in batches to avoid rate limits
+  // Fetch in batches to avoid rate limits. Each item routes through the proxy
+  // via fetchLocalizedTitle (zh-CN); a null result (miss / signed-out) is skipped
+  // so we simply fall back to the original title.
   for (let i = 0; i < missing.length; i += BATCH_SIZE) {
     const batch = missing.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async (id) => {
-        // Handle TV IDs: "tv_{showId}_s{seasonNum}" or "tv_{showId}" → fetch /tv/{showId}
-        const tvMatch = id.match(/^tv_(\d+)(?:_s\d+)?$/);
-        if (tvMatch) {
-          const showId = tvMatch[1];
-          const res = await fetch(
-            `${TMDB_BASE}/tv/${showId}?api_key=${apiKey}&language=zh-CN`,
-          );
-          if (!res.ok) return null;
-          const data = await res.json();
-          return { id, title: data.name as string, overview: data.overview as string | undefined };
-        }
-
-        // Handle movie IDs: "tmdb_{id}" → fetch /movie/{id}
-        const numericId = id.replace('tmdb_', '');
-        const res = await fetch(
-          `${TMDB_BASE}/movie/${numericId}?api_key=${apiKey}&language=zh-CN`,
-        );
-        if (!res.ok) return null;
-        const data = await res.json();
-        return { id, title: data.title as string, overview: data.overview as string | undefined };
+        const entry = await fetchLocalizedTitle(id, 'zh-CN');
+        if (!entry) return null;
+        return { id, title: entry.title, overview: entry.overview };
       }),
     );
 

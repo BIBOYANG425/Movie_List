@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Search, X } from 'lucide-react';
 import { StandoutPerformance } from '../../types';
-import { getExtendedMovieDetails } from '../../services/tmdbService';
+import { getMovieCredits } from '../../services/tmdbService';
 
 interface CastSelectorProps {
   tmdbId: number;
@@ -34,19 +34,11 @@ export const CastSelector: React.FC<CastSelectorProps> = ({ tmdbId, selected, on
     let cancelled = false;
     setLoading(true);
 
-    // Fetch credits via the TMDB API directly since getExtendedMovieDetails doesn't expose cast
-    const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-    if (!apiKey) {
-      setLoading(false);
-      return;
-    }
-
-    fetch(`https://api.themoviedb.org/3/movie/${tmdbId}/credits?api_key=${apiKey}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled && data.cast) {
-          setCast(data.cast.slice(0, 30));
-        }
+    // Credits come via the proxy-routed movie detail (append_to_response=credits);
+    // the proxy allowlist rejects the /credits sub-path, so we read data.credits.cast.
+    getMovieCredits(tmdbId)
+      .then((members) => {
+        if (!cancelled) setCast(members.slice(0, 30));
       })
       .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
