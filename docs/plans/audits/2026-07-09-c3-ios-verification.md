@@ -16,9 +16,19 @@ reads a friend's movie watchlist) and closes the three-table RLS asymmetry.
 Every probe below is a READ (or a write that must be RLS-denied), and each is
 wrapped in `begin; … rollback;` — nothing persists. Each probe sets
 `local role authenticated` + a `request.jwt.claims` sub so RLS runs under the
-caller's identity, exactly as the app calls it. The write probes (4) additionally
-seed a followee row inside the transaction so the denial is observable on a real
-target row; all of it rolls back.
+caller's identity, exactly as the app calls it.
+
+> **PROBE-HARNESS RULE (learned 2026-07-09, first run):** the jwt claims MUST
+> include `"role":"authenticated"`, i.e.
+> `set local request.jwt.claims to '{"sub":"<UUID>","role":"authenticated"}';`
+> — `friend_follows`' SELECT policy checks `auth.role()`, which reads the JWT's
+> `role` claim (NOT the Postgres role). A sub-only claim makes the follower
+> EXISTS silently fail and probe 2 false-negatives to 0. Real app tokens always
+> carry the role claim. This applies to any probe touching a policy that joins
+> `friend_follows` (tv/book watchlist probes included).
+
+The write probes (4) additionally seed a followee row inside the transaction so
+the denial is observable on a real target row; all of it rolls back.
 
 ---
 
@@ -68,7 +78,7 @@ watchlist in full.
 ```sql
 begin;
   set local role authenticated;
-  set local request.jwt.claims to '{"sub":"<FOLLOWEE>"}';
+  set local request.jwt.claims to '{"sub":"<FOLLOWEE>","role":"authenticated"}';
 
   select count(*) as own_rows
   from watchlist_items
@@ -86,7 +96,7 @@ Twin-exclusion blocker.
 ```sql
 begin;
   set local role authenticated;
-  set local request.jwt.claims to '{"sub":"<FOLLOWER>"}';
+  set local request.jwt.claims to '{"sub":"<FOLLOWER>","role":"authenticated"}';
 
   select count(*) as followee_rows_visible
   from watchlist_items
@@ -104,7 +114,7 @@ policy only opens the read to actual followers.
 ```sql
 begin;
   set local role authenticated;
-  set local request.jwt.claims to '{"sub":"<NON_FOLLOWER>"}';
+  set local request.jwt.claims to '{"sub":"<NON_FOLLOWER>","role":"authenticated"}';
 
   select count(*) as leaked_rows
   from watchlist_items
@@ -123,7 +133,7 @@ under the owner-only write policies.
 -- 4a. INSERT another user's row -> RLS WITH CHECK violation.
 begin;
   set local role authenticated;
-  set local request.jwt.claims to '{"sub":"<FOLLOWER>"}';
+  set local request.jwt.claims to '{"sub":"<FOLLOWER>","role":"authenticated"}';
 
   insert into watchlist_items (user_id, tmdb_id, title, type)
   values ('<FOLLOWEE>', 'c3_probe_insert', 'Probe Insert', 'movie');
@@ -136,13 +146,13 @@ rollback;
 -- Seed a real followee row inside the txn so there IS a target to (not) update.
 begin;
   set local role authenticated;
-  set local request.jwt.claims to '{"sub":"<FOLLOWEE>"}';   -- FOLLOWEE seeds it
+  set local request.jwt.claims to '{"sub":"<FOLLOWEE>","role":"authenticated"}';   -- FOLLOWEE seeds it
   insert into watchlist_items (user_id, tmdb_id, title, type)
   values ('<FOLLOWEE>', 'c3_probe_upd', 'Probe Upd', 'movie');
   reset role;                                                -- back to superuser
 
   set local role authenticated;
-  set local request.jwt.claims to '{"sub":"<FOLLOWER>"}';   -- FOLLOWER attempts write
+  set local request.jwt.claims to '{"sub":"<FOLLOWER>","role":"authenticated"}';   -- FOLLOWER attempts write
   with upd as (
     update watchlist_items
        set title = 'HIJACKED'
@@ -157,13 +167,13 @@ rollback;
 -- 4c. DELETE a followee row -> 0 rows affected (owner-only DELETE policy).
 begin;
   set local role authenticated;
-  set local request.jwt.claims to '{"sub":"<FOLLOWEE>"}';   -- FOLLOWEE seeds it
+  set local request.jwt.claims to '{"sub":"<FOLLOWEE>","role":"authenticated"}';   -- FOLLOWEE seeds it
   insert into watchlist_items (user_id, tmdb_id, title, type)
   values ('<FOLLOWEE>', 'c3_probe_del', 'Probe Del', 'movie');
   reset role;
 
   set local role authenticated;
-  set local request.jwt.claims to '{"sub":"<FOLLOWER>"}';   -- FOLLOWER attempts delete
+  set local request.jwt.claims to '{"sub":"<FOLLOWER>","role":"authenticated"}';   -- FOLLOWER attempts delete
   with del as (
     delete from watchlist_items
      where user_id = '<FOLLOWEE>' and tmdb_id = 'c3_probe_del'
