@@ -39,3 +39,6 @@ ios/SpoolApp/SpoolApp.xcodeproj/project.xcworkspace/xcuserdata/
 # Xcode user-specific (IDE window state, scheme ordering)
 **/xcuserdata/
 **/UserInterfaceState.xcuserstate
+
+# Agent working artifacts (task briefs, reports, review packages, progress ledger)
+.superpowers/
