@@ -8,6 +8,7 @@ import {
   TMDBTVShow, TMDBTVSeasonSummary,
 } from '../../services/tmdbService';
 import { fuzzyFilterLocal, getBestCorrectedQuery } from '../../services/fuzzySearch';
+import { resolveTVPreselectRoute } from '../../services/watchlistRankHelpers';
 import { classifyBracket } from '../../services/rankingAlgorithm';
 import { RankingSession } from '../../services/rankingSession';
 import { useAuth } from '../../contexts/AuthContext';
@@ -201,26 +202,33 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
     setSessionId(crypto.randomUUID());
     sessionRef.current = null;
 
-    if (preselectedItem && preselectedItem.showTmdbId && !preselectedItem.seasonNumber) {
-      // Show-level bookmark — send user through season selection first.
+    // B1 defense-in-depth: route via the hardened pure predicate. It derives the
+    // real show id FROM THE ID (`tv_{n}` / `tv_{n}_s{k}`) when showTmdbId is
+    // 0/absent, so a whole-show preselect with a well-formed id still reaches the
+    // season grid (never mints a season-less `tv_{n}` row) and a legacy corrupt
+    // season row (show_tmdb_id=0) feeds the global-score fetch the REAL id instead
+    // of re-minting 0. See services/watchlistRankHelpers.resolveTVPreselectRoute.
+    const route = resolveTVPreselectRoute(preselectedItem);
+    if (route?.route === 'season-grid') {
+      // Show-level preselect — send user through season selection first.
       setSelectedItem(null);
       setShowLoading(true);
       setStep('search');
-      void getTVShowDetails(preselectedItem.showTmdbId).then((details) => {
+      void getTVShowDetails(route.showTmdbId!).then((details) => {
         if (cancelled || !details) { setShowLoading(false); return; }
         setSelectedShow(details);
         setShowLoading(false);
         setStep('show_detail');
       });
     } else if (preselectedItem) {
-      // Full season bookmark — go directly to tier selection.
+      // Full season preselect — go directly to tier selection.
       setSelectedItem(preselectedItem);
       if (preselectedItem.notes) setNotes(preselectedItem.notes);
       if (preselectedItem.watchedWithUserIds?.length) setWatchedWithUserIds(preselectedItem.watchedWithUserIds);
       setStep('tier');
 
-      if (preselectedItem.showTmdbId) {
-        void getTVShowGlobalScore(preselectedItem.showTmdbId).then((globalScore) => {
+      if (route?.showTmdbId) {
+        void getTVShowGlobalScore(route.showTmdbId).then((globalScore) => {
           if (cancelled || globalScore === undefined) return;
           setSelectedItem((prev) => (
             prev && prev.id === preselectedItem.id ? { ...prev, globalScore } : prev

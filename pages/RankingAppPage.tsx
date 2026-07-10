@@ -25,7 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 import { createStub } from '../services/stubService';
-import { shouldRemoveBookmarkAfterRank, tvWatchlistItemFromShow, tvRankPreselectFromShow, rerankMediaTarget } from '../services/watchlistRankHelpers';
+import { shouldRemoveBookmarkAfterRank, tvWatchlistItemFromShow, tvRankPreselectFromShow, rerankMediaTarget, isRerankCompletion } from '../services/watchlistRankHelpers';
 import {
   tierOrderAfterReorder,
   tierOrderAfterRemoval,
@@ -259,6 +259,13 @@ const RankingAppPage = () => {
   // (user_id,tmdb_id) row; source tier compacted only if the tier changed) that
   // emits a single `ranking_move`, never remove+add. Cleared on completion/close.
   const [rerankState, setRerankState] = useState<RankedItem | null>(null);
+  // B2/B3: the RAW source items of in-progress TV / book re-ranks — the same
+  // non-destructive marker the movie path uses (id-guarded via isRerankCompletion;
+  // non-null ⇒ completion upserts the existing (user_id,tmdb_id) row in place,
+  // compacts the source tier only when the tier changed, and emits a single
+  // `ranking_move`). Cleared on EVERY exit (complete/close). No delete-first.
+  const [tvRerankState, setTvRerankState] = useState<RankedItem | null>(null);
+  const [bookRerankState, setBookRerankState] = useState<RankedItem | null>(null);
   const [preselectedForRank, setPreselectedForRank] = useState<WatchlistItem | TMDBMovie | RankedItem | null>(null);
   const [preselectedTVItem, setPreselectedTVItem] = useState<RankedItem | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -737,6 +744,8 @@ const RankingAppPage = () => {
         tier: Tier.B,
         rank: 0,
       };
+      // Plain-add entry (rank a bookmark): clear any stale re-rank marker.
+      setBookRerankState(null);
       setBookItemToRank(bookItem);
       setIsBookModalOpen(true);
     } else if (item.type === 'tv_season') {
@@ -756,9 +765,12 @@ const RankingAppPage = () => {
         tier: Tier.B,
         rank: 0,
       };
+      // Plain-add entry (rank a bookmark): clear any stale re-rank marker.
+      setTvRerankState(null);
       setPreselectedTVItem(tvItem);
       setIsTVModalOpen(true);
     } else {
+      setRerankState(null);
       setPreselectedForRank(item);
       setIsModalOpen(true);
     }
@@ -798,7 +810,12 @@ const RankingAppPage = () => {
     return true;
   };
 
-  const addTVItem = async (newItem: RankedItem): Promise<boolean> => {
+  const addTVItem = async (
+    newItem: RankedItem,
+    // B2/B3: a re-rank of an existing tv_rankings row is a MOVE — the caller
+    // passes 'ranking_move' so completion never emits remove+add (mirrors addItem).
+    eventType: 'ranking_add' | 'ranking_move' = 'ranking_add',
+  ): Promise<boolean> => {
     if (!user) return false;
 
     let updatedTierList: RankedItem[] = [];
@@ -816,9 +833,10 @@ const RankingAppPage = () => {
       return [...otherItems, ...updatedTierList];
     });
 
-    // Full-row upsert of ONLY the new item's OWN row (genuine insert on
-    // (user_id,tmdb_id)); tier ORDER then via the RPC (audit B6 — no whole-tier
-    // full-row upsert).
+    // Full-row upsert of ONLY the new item's OWN row (genuine insert-or-replace on
+    // the (user_id,tmdb_id) composite id — a re-rank replaces the same row in
+    // place); tier ORDER then via the RPC (audit B6 — no whole-tier full-row
+    // upsert).
     const targetOrder = updatedTierList.map((i) => i.id);
     const newRankPosition = targetOrder.indexOf(newItem.id);
     let saveSucceeded = await persistTVRankings([{ ...newItem, rank: newRankPosition }]);
@@ -836,9 +854,11 @@ const RankingAppPage = () => {
         posterUrl: newItem.posterUrl,
         notes: newItem.notes,
         year: newItem.year,
-        watchedWithUserIds: newItem.watchedWithUserIds,
+        // Contract (shared-payloads.md): ranking_move never carries
+        // watched_with_user_ids — omit it for moves, keep for first adds.
+        watchedWithUserIds: eventType === 'ranking_move' ? undefined : newItem.watchedWithUserIds,
       },
-      'ranking_add',
+      eventType,
     );
 
     // Generate ticket stub (fire-and-forget)
@@ -1086,7 +1106,12 @@ const RankingAppPage = () => {
     return true;
   };
 
-  const addBookItem = async (newItem: RankedItem): Promise<boolean> => {
+  const addBookItem = async (
+    newItem: RankedItem,
+    // B2/B3: a re-rank of an existing book_rankings row is a MOVE — the caller
+    // passes 'ranking_move' so completion never emits remove+add (mirrors addItem).
+    eventType: 'ranking_add' | 'ranking_move' = 'ranking_add',
+  ): Promise<boolean> => {
     if (!user) return false;
     let updatedTierList: RankedItem[] = [];
 
@@ -1101,8 +1126,9 @@ const RankingAppPage = () => {
       return [...otherItems, ...updatedTierList];
     });
 
-    // Full-row upsert of ONLY the new item's OWN row; tier ORDER via the RPC
-    // (audit B6 — no whole-tier full-row upsert).
+    // Full-row upsert of ONLY the new item's OWN row (insert-or-replace on the
+    // (user_id,tmdb_id) `ol_` composite id — a re-rank replaces the same row in
+    // place); tier ORDER via the RPC (audit B6 — no whole-tier full-row upsert).
     const targetOrder = updatedTierList.map((i) => i.id);
     const newRankPosition = targetOrder.indexOf(newItem.id);
     let saveSucceeded = await persistBookRankings([{ ...newItem, rank: newRankPosition }]);
@@ -1120,9 +1146,11 @@ const RankingAppPage = () => {
         posterUrl: newItem.posterUrl,
         notes: newItem.notes,
         year: newItem.year,
-        watchedWithUserIds: newItem.watchedWithUserIds,
+        // Contract (shared-payloads.md): ranking_move never carries
+        // watched_with_user_ids — omit it for moves, keep for first adds.
+        watchedWithUserIds: eventType === 'ranking_move' ? undefined : newItem.watchedWithUserIds,
       },
-      'ranking_add',
+      eventType,
     );
 
     return saveSucceeded;
@@ -1324,26 +1352,66 @@ const RankingAppPage = () => {
   };
 
   const handleAddBookItem = async (newItem: RankedItem) => {
-    const saveSucceeded = await addBookItem(newItem);
+    // B2/B3 id-guard (movie lesson ported): a completion is a non-destructive
+    // MOVE only when the book re-rank marker matches the confirmed item. A stale
+    // marker for a different id → a genuine first add (ranking_add).
+    const isRerank = isRerankCompletion(bookRerankState, newItem);
+    const sourceTier = isRerank ? bookRerankState!.tier : null;
+    const saveSucceeded = await addBookItem(newItem, isRerank ? 'ranking_move' : 'ranking_add');
+    // Cross-tier re-rank: compact the SOURCE tier too (addBookItem already
+    // compacted the target). Skip when the tier didn't change (target compaction
+    // covered it). Mirrors the movie source-tier compaction.
+    if (saveSucceeded && isRerank && sourceTier && sourceTier !== newItem.tier) {
+      const sourceOrder = tierOrderAfterRemoval(tierIdOrder(bookItems, sourceTier), newItem.id);
+      if (sourceOrder.length > 0) {
+        const { error } = await setTierOrder('book', sourceTier, sourceOrder);
+        if (error) {
+          console.error('Failed to compact source tier after book re-rank:', error);
+          setToastMessage(t('ranking.failedUpdate'));
+        }
+      }
+    }
     setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
-    if (bookItemToRank) {
+    // A re-rank targets an already-ranked row, never a bookmark — don't touch the
+    // watchlist for it (bookItemToRank IS the ranked row itself here).
+    if (bookItemToRank && !isRerank) {
       // Delete the bookmark only when the rank actually saved (B5 data-loss fix).
       if (shouldRemoveBookmarkAfterRank(saveSucceeded)) {
         await removeBookFromWatchlist(bookItemToRank.id);
       }
-      setBookItemToRank(null);
     }
+    if (bookItemToRank) setBookItemToRank(null);
+    if (bookRerankState) setBookRerankState(null);
   };
 
   const handleAddTVItem = async (newItem: RankedItem) => {
-    const saveSucceeded = await addTVItem(newItem);
-    if (preselectedTVItem) {
+    // B2/B3 id-guard (movie lesson ported): a completion is a non-destructive
+    // MOVE only when the tv re-rank marker matches the confirmed item. A stale
+    // marker for a different id → a genuine first add (ranking_add).
+    const isRerank = isRerankCompletion(tvRerankState, newItem);
+    const sourceTier = isRerank ? tvRerankState!.tier : null;
+    const saveSucceeded = await addTVItem(newItem, isRerank ? 'ranking_move' : 'ranking_add');
+    // Cross-tier re-rank: compact the SOURCE tier too (addTVItem already compacted
+    // the target). Skip when the tier didn't change. Mirrors the movie path.
+    if (saveSucceeded && isRerank && sourceTier && sourceTier !== newItem.tier) {
+      const sourceOrder = tierOrderAfterRemoval(tierIdOrder(tvItems, sourceTier), newItem.id);
+      if (sourceOrder.length > 0) {
+        const { error } = await setTierOrder('tv', sourceTier, sourceOrder);
+        if (error) {
+          console.error('Failed to compact source tier after TV re-rank:', error);
+          setToastMessage(t('ranking.failedUpdate'));
+        }
+      }
+    }
+    // A re-rank targets an already-ranked row, never a bookmark.
+    if (preselectedTVItem && !isRerank) {
       // Delete the bookmark only when the rank actually saved (B5 data-loss fix).
       if (shouldRemoveBookmarkAfterRank(saveSucceeded)) {
         await removeTVFromWatchlist(preselectedTVItem.id);
       }
-      setPreselectedTVItem(null);
     }
+    if (preselectedTVItem) setPreselectedTVItem(null);
+    if (tvRerankState) setTvRerankState(null);
     setToastMessage(t('toast.ranked').replace('{tier}', newItem.tier));
   };
 
@@ -1487,6 +1555,9 @@ const RankingAppPage = () => {
 
   // Universal search handlers
   const handleSearchRankMovie = (movie: TMDBMovie) => {
+    // Plain-add entry: clear any stale re-rank marker so this fresh add is never
+    // misclassified as a move against a prior re-rank's tier (id-guard lesson).
+    setRerankState(null);
     setPreselectedForRank(movie);
     setIsModalOpen(true);
   };
@@ -1496,6 +1567,8 @@ const RankingAppPage = () => {
     // routes through the season grid. Without showTmdbId the ceremony would mint
     // a `tv_{showId}` row with show_tmdb_id=0 / season_number=0 (the C3 corruption
     // class). Mirrors the Save path's tvWatchlistItemFromShow.
+    // Plain-add entry: clear any stale TV re-rank marker (id-guard lesson).
+    setTvRerankState(null);
     setPreselectedTVItem(tvRankPreselectFromShow(show));
     setIsTVModalOpen(true);
   };
@@ -1517,6 +1590,8 @@ const RankingAppPage = () => {
       tier: Tier.B,
       rank: 0,
     };
+    // Plain-add entry: clear any stale book re-rank marker (id-guard lesson).
+    setBookRerankState(null);
     setBookItemToRank(asRankedItem);
     setIsBookModalOpen(true);
   };
@@ -1695,21 +1770,24 @@ const RankingAppPage = () => {
                   if (ranked) setJournalSheetItem(ranked);
                 }}
                 onRerank={(item) => {
+                  // B2/B3: non-destructive re-rank at ALL three verticals — do NOT
+                  // delete first. Completion upserts the existing (user_id,tmdb_id)
+                  // row in place and compacts both tiers; cancel = zero persistence.
+                  // B3 title-locale contract: TierRow passes LOCALIZED items, so
+                  // resolve the RAW item from the *_Items collection by id — the
+                  // persisted title must be the TMDB/OpenLibrary default-locale
+                  // title, never the zh one.
                   if (mediaMode === 'books') {
-                    removeBookItem(item.id);
-                    setBookItemToRank(item);
+                    const rawItem = bookItems.find((i) => i.id === item.id) ?? item;
+                    setBookRerankState(rawItem);
+                    setBookItemToRank(rawItem);
                     setIsBookModalOpen(true);
                   } else if (mediaMode === 'tv') {
-                    removeTVItem(item.id);
-                    setPreselectedTVItem(item);
+                    const rawItem = tvItems.find((i) => i.id === item.id) ?? item;
+                    setTvRerankState(rawItem);
+                    setPreselectedTVItem(rawItem);
                     setIsTVModalOpen(true);
                   } else {
-                    // B3: non-destructive re-rank — do NOT delete first. The
-                    // ceremony completion replaces the (user_id,tmdb_id) row and
-                    // compacts both tiers; cancel = zero persistence.
-                    // B4 title-locale contract: TierRow passes LOCALIZED items,
-                    // so resolve the RAW item from `items` by id — the persisted
-                    // title must be the TMDB default-locale title, never the zh one.
                     const rawItem = items.find((i) => i.id === item.id) ?? item;
                     setRerankState(rawItem);
                     setPreselectedForRank(rawItem);
@@ -1778,7 +1856,14 @@ const RankingAppPage = () => {
       <ErrorBoundary>
       <AddTVSeasonModal
         isOpen={isTVModalOpen}
-        onClose={() => { setIsTVModalOpen(false); setPreselectedTVItem(null); }}
+        onClose={() => {
+          // B2: closing mid-re-rank persists NOTHING (no delete happened up
+          // front) — clear the in-flight preselect AND the re-rank marker so a
+          // stale marker can't misclassify a later unrelated add.
+          setIsTVModalOpen(false);
+          setPreselectedTVItem(null);
+          setTvRerankState(null);
+        }}
         onAdd={handleAddTVItem}
         onSaveForLater={addToTVWatchlist}
         currentItems={tvItems}
@@ -1793,7 +1878,13 @@ const RankingAppPage = () => {
         <ErrorBoundary>
         <RankingFlowModal
           isOpen={isBookModalOpen}
-          onClose={() => { setIsBookModalOpen(false); setBookItemToRank(null); }}
+          onClose={() => {
+            // B2: closing mid-re-rank persists NOTHING (no delete happened up
+            // front) — clear the in-flight selection AND the re-rank marker.
+            setIsBookModalOpen(false);
+            setBookItemToRank(null);
+            setBookRerankState(null);
+          }}
           onAdd={handleAddBookItem}
           selectedItem={bookItemToRank}
           currentItems={bookItems}
@@ -1831,6 +1922,8 @@ const RankingAppPage = () => {
               const newParams = new URLSearchParams(searchParams);
               newParams.delete('movieId');
               setSearchParams(newParams);
+              // Plain-add entry: clear any stale re-rank marker (id-guard lesson).
+              setRerankState(null);
               setPreselectedForRank(movie);
               setIsModalOpen(true);
             }}
@@ -1850,21 +1943,26 @@ const RankingAppPage = () => {
               setSearchParams(newParams);
               // B5: dispatch by the item's OWN media type — the deep-link modal
               // resolves items across all three collections, so re-rank must route
-              // to the matching ceremony. Routing ONLY here; the movie rerankState
-              // marker must NOT be set for tv/book (that path upserts into
-              // user_rankings). tv/book keep their delete-first behavior until
-              // Task 2 makes them non-destructive.
-              switch (rerankMediaTarget(item.type)) {
+              // to the matching ceremony. Each vertical is now non-destructive
+              // (B2/B3, Task 2): set the vertical's re-rank marker + preselect the
+              // RAW item, never delete-first. The exhaustive switch keeps each
+              // marker scoped to its own table (movie→user_rankings,
+              // tv→tv_rankings, book→book_rankings).
+              // Capture the target in a const so the `default` narrows it to
+              // `never` — the exhaustiveness guard below is what enforces a new
+              // RerankTarget be handled (tsconfig isn't strict; fold-in #1).
+              const target = rerankMediaTarget(item.type);
+              switch (target) {
                 case 'tv': {
-                  removeTVItem(item.id);
                   const rawTV = tvItems.find((i) => i.id === item.id) ?? item;
+                  setTvRerankState(rawTV);
                   setPreselectedTVItem(rawTV);
                   setIsTVModalOpen(true);
                   break;
                 }
                 case 'book': {
-                  removeBookItem(item.id);
                   const rawBook = bookItems.find((i) => i.id === item.id) ?? item;
+                  setBookRerankState(rawBook);
                   setBookItemToRank(rawBook);
                   setIsBookModalOpen(true);
                   break;
@@ -1872,13 +1970,19 @@ const RankingAppPage = () => {
                 case 'movie': {
                   // B3: non-destructive re-rank — the ceremony completion replaces
                   // the (user_id,tmdb_id) row and compacts both tiers; no delete-first.
-                  // B4 title-locale contract: resolve the RAW item from `items` by id
+                  // B3 title-locale contract: resolve the RAW item from `items` by id
                   // so the persisted title is the TMDB default-locale title.
                   const rawItem = items.find((i) => i.id === item.id) ?? item;
                   setRerankState(rawItem);
                   setPreselectedForRank(rawItem);
                   setIsModalOpen(true);
                   break;
+                }
+                default: {
+                  // Fold-in #1: exhaustiveness compiler-enforced (tsconfig isn't
+                  // strict, so this never-guard is what catches a new RerankTarget).
+                  const _exhaustive: never = target;
+                  return _exhaustive;
                 }
               }
             }}

@@ -19,6 +19,14 @@
 // preselect router (AddTVSeasonModal:204) skips the season grid and the ceremony
 // mints a `tv_{showId}` tv_rankings row with show_tmdb_id=0 / season_number=0.
 //
+// It also owns two C5-Task-2 seams: `isRerankCompletion` — the id-guarded
+// re-rank-vs-first-add decision the tv/book completion handlers share with the
+// movie path (a stale marker for a different id must never misclassify an add);
+// and `resolveTVPreselectRoute`/`showTmdbIdFromTVId` — the hardened preselect
+// router (audit B1 defense-in-depth) that derives the real show id from a
+// `tv_{n}` / `tv_{n}_s{k}` id when showTmdbId is 0/absent so legacy corrupt rows
+// self-heal instead of re-minting a 0 show id.
+//
 // Header last reviewed: 2026-07-10
 
 import type { TMDBTVShow } from './tmdbService';
@@ -57,6 +65,76 @@ export function rerankMediaTarget(type: MediaType): RerankTarget {
     case 'movie':
       return 'movie';
   }
+}
+
+/**
+ * Id-guarded re-rank completion decision (C4 movie lesson, ported to tv/book for
+ * B2/B3). A completion is a re-rank MOVE only when a marker is set AND its id
+ * matches the item the user actually confirmed. A stale marker for a DIFFERENT
+ * id (user navigated back and picked another item) must classify as a first add,
+ * never a move — otherwise the ranking_add is suppressed and a source tier is
+ * wrongly compacted against the departed marker. Mirrors the movie handler's
+ * `!!rerankState && rerankState.id === newItem.id` guard verbatim so all three
+ * verticals share one decision and one set of tests.
+ */
+export function isRerankCompletion(
+  rerankState: { id: string } | null | undefined,
+  completedItem: { id: string },
+): boolean {
+  return !!rerankState && rerankState.id === completedItem.id;
+}
+
+/**
+ * Extract the numeric TMDB show id embedded in a tv ranking id. Accepts both the
+ * whole-show form `tv_{n}` and the season form `tv_{n}_s{k}`; returns undefined
+ * for any other shape. Pure — used to DERIVE the real show id when a legacy row
+ * carries showTmdbId=0/absent (see resolveTVPreselectRoute).
+ */
+export function showTmdbIdFromTVId(id: string): number | undefined {
+  const m = id.match(/^tv_(\d+)(?:_s\d+)?$/);
+  return m ? Number(m[1]) : undefined;
+}
+
+export type TVPreselectRoute = {
+  // 'season-grid' → open the show detail / season picker first (whole-show
+  // preselect). 'tier' → the season is already chosen, go straight to tier.
+  route: 'season-grid' | 'tier';
+  // The real numeric show id to fetch details/global-score with. Derived FROM
+  // THE ID when the field is 0/absent so legacy corrupt rows are self-healing
+  // and never re-mint a 0 show id.
+  showTmdbId: number | undefined;
+};
+
+/**
+ * Hardened AddTVSeasonModal preselect router (audit B1 defense-in-depth). Pure
+ * seam extracted so the routing predicate is compiler- and test-enforced.
+ *
+ * - A whole-show preselect (no `seasonNumber`) routes to the season grid. The
+ *   show id is taken from `showTmdbId` when valid, else DERIVED from a `tv_{n}`
+ *   id — so a preselect with showTmdbId=0/absent but a well-formed id still
+ *   reaches the season grid instead of minting a season-less `tv_{n}` row.
+ * - A season preselect (`seasonNumber` set) routes straight to tier, but its
+ *   show id is likewise derived from a `tv_{n}_s{k}` id when the field is
+ *   0/absent, so re-ranking a legacy corrupt row (show_tmdb_id=0) feeds the
+ *   global-score fetch the REAL id and never re-mints more corruption.
+ */
+export function resolveTVPreselectRoute(
+  preselect: { id: string; showTmdbId?: number; seasonNumber?: number } | null | undefined,
+): TVPreselectRoute | null {
+  if (!preselect) return null;
+  const derived = showTmdbIdFromTVId(preselect.id);
+  const showTmdbId = preselect.showTmdbId && preselect.showTmdbId > 0 ? preselect.showTmdbId : derived;
+
+  // A whole-show preselect has no season yet. Treat a `tv_{n}` id (no `_s{k}`)
+  // with a resolvable show id as whole-show even if the showTmdbId field was
+  // 0/absent — the B1 corrupt-row case the old `preselectedItem.showTmdbId`
+  // truthiness check missed.
+  const isWholeShow = !preselect.seasonNumber && showTmdbId !== undefined && /^tv_\d+$/.test(preselect.id);
+
+  return {
+    route: isWholeShow ? 'season-grid' : 'tier',
+    showTmdbId,
+  };
 }
 
 /**

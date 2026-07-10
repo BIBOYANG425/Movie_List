@@ -6,8 +6,12 @@ import {
   tvRankPreselectFromShow,
   rerankMediaTarget,
   canonicalMovieTmdbId,
+  isRerankCompletion,
+  resolveTVPreselectRoute,
 } from '../watchlistRankHelpers';
 import type { TMDBTVShow } from '../tmdbService';
+import { Tier } from '../../types';
+import type { RankedItem } from '../../types';
 
 // Pins the CORRECTED rank-from-watchlist contract (B5 data-loss fix): the
 // bookmark is removed only when the ranking save succeeded. iOS C3 must copy
@@ -166,5 +170,90 @@ describe('canonicalMovieTmdbId', () => {
     // validates the payload, so a non-numeric raw id is prefixed verbatim rather
     // than rejected. This helper reproduces that exact guard.
     expect(canonicalMovieTmdbId('abc')).toBe('tmdb_abc');
+  });
+});
+
+// Pins the id-guarded re-rank completion decision (C4 movie lesson ported to
+// tv/book, B2/B3): a completion is a re-rank MOVE only when a marker is set AND
+// its id matches the item the user actually confirmed. A stale marker for a
+// DIFFERENT id must never misclassify a fresh first-add as a move (which would
+// suppress the ranking_add + wrongly compact a source tier). No marker → add.
+describe('isRerankCompletion', () => {
+  const mk = (id: string): RankedItem => ({
+    id,
+    title: 't',
+    year: '2020',
+    posterUrl: '',
+    type: 'tv_season',
+    genres: [],
+    tier: Tier.B,
+    rank: 0,
+  });
+
+  it('is false when no marker is set (plain first add)', () => {
+    expect(isRerankCompletion(null, mk('tv_1_s1'))).toBe(false);
+  });
+
+  it('is true when the marker id matches the completed item', () => {
+    expect(isRerankCompletion(mk('tv_1_s1'), mk('tv_1_s1'))).toBe(true);
+  });
+
+  it('is false when a stale marker points at a DIFFERENT id', () => {
+    // User navigated back and ranked a different item — that item gets a genuine
+    // first add (ranking_add), not a move against the stale marker's tier.
+    expect(isRerankCompletion(mk('tv_1_s1'), mk('tv_2_s1'))).toBe(false);
+  });
+});
+
+// Pins the hardened AddTVSeasonModal preselect router (audit B1 defense-in-depth):
+// a whole-show preselect (`^tv_\d+$`, no seasonNumber) routes to the season grid
+// with the show id DERIVED FROM THE ID even when showTmdbId is 0/absent (legacy
+// corrupt rows). A season preselect (`^tv_\d+_s\d+$`) with showTmdbId=0 derives
+// the show id from the id too, so re-ranking a corrupt row never mints MORE
+// corruption (show_tmdb_id must be the real numeric show id, never 0).
+describe('resolveTVPreselectRoute', () => {
+  it('returns null for no preselect', () => {
+    expect(resolveTVPreselectRoute(null)).toBeNull();
+    expect(resolveTVPreselectRoute(undefined)).toBeNull();
+  });
+
+  it('routes a whole-show preselect (showTmdbId set, no season) to the season grid', () => {
+    const r = resolveTVPreselectRoute({ id: 'tv_1399', showTmdbId: 1399 });
+    expect(r).toEqual({ route: 'season-grid', showTmdbId: 1399 });
+  });
+
+  it('derives showTmdbId FROM a `tv_{n}` id when the field is absent', () => {
+    const r = resolveTVPreselectRoute({ id: 'tv_1399' });
+    expect(r).toEqual({ route: 'season-grid', showTmdbId: 1399 });
+  });
+
+  it('derives showTmdbId FROM a `tv_{n}` id when the field is 0 (legacy corrupt)', () => {
+    const r = resolveTVPreselectRoute({ id: 'tv_1399', showTmdbId: 0 });
+    expect(r).toEqual({ route: 'season-grid', showTmdbId: 1399 });
+  });
+
+  it('routes a full season preselect (season set) directly to tier', () => {
+    const r = resolveTVPreselectRoute({ id: 'tv_1399_s2', showTmdbId: 1399, seasonNumber: 2 });
+    expect(r).toEqual({ route: 'tier', showTmdbId: 1399 });
+  });
+
+  it('derives showTmdbId from a `tv_{n}_s{k}` id when showTmdbId is 0 (no more corruption)', () => {
+    // A legacy corrupt season row (show_tmdb_id=0) still routes to tier, but the
+    // derived show id feeds the global-score fetch instead of 0 — re-ranking it
+    // never re-mints a 0 show id.
+    const r = resolveTVPreselectRoute({ id: 'tv_1399_s2', showTmdbId: 0, seasonNumber: 2 });
+    expect(r).toEqual({ route: 'tier', showTmdbId: 1399 });
+  });
+
+  it('routes a season preselect with a valid showTmdbId directly to tier', () => {
+    const r = resolveTVPreselectRoute({ id: 'tv_1399_s2', showTmdbId: 1399, seasonNumber: 2 });
+    expect(r?.route).toBe('tier');
+  });
+
+  it('leaves showTmdbId undefined when a season preselect id is not derivable and field is absent', () => {
+    // Non-`tv_`-shaped id with no showTmdbId: nothing to derive; route to tier
+    // with no show id (the global-score fetch is skipped, as before).
+    const r = resolveTVPreselectRoute({ id: 'legacy_weird_id', seasonNumber: 2 });
+    expect(r).toEqual({ route: 'tier', showTmdbId: undefined });
   });
 });
