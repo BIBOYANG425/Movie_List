@@ -27,12 +27,15 @@ import Supabase
 /// Error posture: HTTP errors surface as `SuggestionsError.http(status:)` so the
 /// Task 6 UI can distinguish 401 (empty state) from 429/502 (error banner),
 /// mirroring web `fetchMovieSuggestionsWithProvenance`. Decode failures surface
-/// as `.decoding`. Cancellation propagates (never swallowed here).
+/// as `.decoding`. Transport/network errors (offline, DNS, timeout — any
+/// URLError or unexpected throw) surface as `.transport(Error)` so Task 6 can
+/// distinguish connectivity failures from auth/http failures without catching
+/// raw URLError. Cancellation propagates (never swallowed here).
 ///
 /// Header last reviewed: 2026-07-10
 public enum SuggestionsClient {
 
-    public enum SuggestionsError: Error, Equatable {
+    public enum SuggestionsError: Error {
         /// No client configured (missing SUPABASE_URL / anon key).
         case notConfigured
         /// No signed-in session — the caller must gate on auth (Task 6).
@@ -41,6 +44,10 @@ public enum SuggestionsClient {
         case http(status: Int)
         /// The response body could not be decoded to `SuggestionsResponse`.
         case decoding
+        /// A transport-level failure (URLError offline, DNS, timeout, etc.).
+        /// The wrapped error is the original so callers can inspect if needed,
+        /// but `.transport` as a case is enough to distinguish from `http`/`decoding`.
+        case transport(Error)
     }
 
     /// Invoke the `suggestions` edge function and decode its response.
@@ -100,6 +107,12 @@ public enum SuggestionsClient {
             throw SuggestionsError.decoding
         } catch is CancellationError {
             throw CancellationError()
+        } catch {
+            // Transport failure (URLError offline, DNS, timeout, TLS, …).
+            // Wrap in .transport so Task 6 can distinguish connectivity errors
+            // from auth/http/decode errors without catching raw URLError.
+            NSLog("[SuggestionsClient] fetch: transport error (\(error))")
+            throw SuggestionsError.transport(error)
         }
     }
 

@@ -141,6 +141,14 @@ public enum TMDBService {
         func fetchAndMap(_ term: String) async throws -> [TMDBMovie]? {
             // Pack the TMDB query into the proxy `path` param (buildProxyURL
             // handles encoding). api_key is never sent — the proxy injects it.
+            //
+            // `+` encoding note: URLComponents.percentEncodedQuery leaves `+`
+            // unencoded (RFC 3986 allows `+` in query strings as a literal
+            // `+`). However, the proxy uses web `URLSearchParams` to decode
+            // the inner query, which maps `+` → space (application/x-www-form-
+            // urlencoded convention). Force-encode `+` → `%2B` so that a title
+            // like "9+1" arrives at the proxy intact. Mirrors web's
+            // `encodeURIComponent` which always emits `%2B` for `+`.
             var comps = URLComponents()
             comps.queryItems = [
                 URLQueryItem(name: "query", value: term),
@@ -148,7 +156,8 @@ public enum TMDBService {
                 URLQueryItem(name: "page", value: "1"),
                 URLQueryItem(name: "include_adult", value: "false"),
             ]
-            let tmdbQuery = comps.percentEncodedQuery ?? ""
+            let tmdbQuery = (comps.percentEncodedQuery ?? "")
+                .replacingOccurrences(of: "+", with: "%2B")
             let path = "search/movie?\(tmdbQuery)"
 
             let (data, http) = try await proxyFetch(path, timeout: timeout)

@@ -413,19 +413,75 @@ struct OnbGrid: View {
         .buttonStyle(.plain)
     }
 
+    // Injected at init for testing; production code uses `SuggestionsClient.fetch`.
+    var fetchSuggestions: (
+        _ mode: SuggestionMode, _ mediaType: SuggestionMediaType,
+        _ page: Int, _ sessionExcludeIds: [String], _ limit: Int?
+    ) async throws -> SuggestionsResponse = { mode, mediaType, page, ids, limit in
+        try await SuggestionsClient.fetch(
+            mode: mode, mediaType: mediaType, page: page,
+            sessionExcludeIds: ids, limit: limit
+        )
+    }
+
     private func load() async {
         if !suggestions.isEmpty { return }
         loading = true
-        // Onboarding runs PRE-AUTH: the `suggestions` edge function requires a
-        // session, and the TMDB key no longer ships in the bundle, so the generic
-        // seed pool that `getGenericSuggestions` used to fetch is unreachable here.
-        // The curated fixture pool is the signed-out seed (same titles the demo
-        // path always showed). Once signed in, the Discover grid (Task 6) draws
-        // live suggestions via `SuggestionsClient`.
+        let hasSession = (try? await SpoolClient.shared?.auth.session) != nil
+        let pool = await Self.resolvePool(
+            hasSession: hasSession,
+            fallbackPool: Self.fallbackPool,
+            fetchSuggestions: fetchSuggestions
+        )
         await MainActor.run {
-            suggestions = Self.fallbackPool
+            suggestions = pool
             loading = false
         }
+    }
+
+    /// Package-internal: the decision seam for which pool to show.
+    ///
+    /// When `hasSession` is true, calls `fetchSuggestions` to get a live generic
+    /// pool from the server (0 rankings → threshold fallback). On error or an empty
+    /// response, falls through to `fallbackPool`. When `hasSession` is false, skips
+    /// the network call entirely and returns `fallbackPool` so synthetic negative-id
+    /// fixture rows are never persisted into `user_rankings` for signed-in users.
+    ///
+    /// Sign-in is step 1; the grid is step 3, so the user IS signed in by the
+    /// time they reach this screen for the normal new-user path. Fixtures are kept
+    /// only as the signed-out and error fallback.
+    static func resolvePool(
+        hasSession: Bool,
+        fallbackPool: [TMDBMovie],
+        fetchSuggestions: (
+            _ mode: SuggestionMode, _ mediaType: SuggestionMediaType,
+            _ page: Int, _ sessionExcludeIds: [String], _ limit: Int?
+        ) async throws -> SuggestionsResponse
+    ) async -> [TMDBMovie] {
+        if hasSession {
+            do {
+                let response = try await fetchSuggestions(.suggestions, .movie, 1, [], nil)
+                let live: [TMDBMovie] = response.items.map { item in
+                    TMDBMovie(
+                        id: item.id,
+                        tmdbId: item.tmdbId,
+                        title: item.title,
+                        year: item.year,
+                        posterUrl: item.posterUrl,
+                        genres: item.genres,
+                        overview: item.overview,
+                        voteAverage: item.voteAverage
+                    )
+                }
+                if !live.isEmpty { return live }
+            } catch {
+                NSLog("[OnbGrid] live fetch failed, falling back to fixtures: \(error)")
+            }
+        }
+        // Signed-out or fetch error: use static fixture pool so the grid
+        // always shows something (no real posters, synthetic ids never persisted
+        // because finish() is only called on signedIn=true path in OnboardingFlow).
+        return fallbackPool
     }
 
     private func finish() {
