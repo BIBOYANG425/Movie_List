@@ -73,7 +73,10 @@ public struct AdmitStub: View {
                 .padding(.top, 6)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("\(movie.director.uppercased()) · \(movie.year)")
+            // Media-generic attribution: director (movie) / creator (tv) / author
+            // (book). Byte-identical to `movie.director` for a movie item, so every
+            // existing movie stub renders unchanged (C5-iOS Task 5).
+            Text("\(movie.attribution.uppercased()) · \(movie.year)")
                 .font(SpoolFonts.mono(10))
                 .tracking(1)
                 .foregroundStyle(t.inkSoft)

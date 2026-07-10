@@ -134,13 +134,13 @@ public struct RankH2HScreen: View {
     @ViewBuilder
     private func matchCards(for c: ComparisonRequest) -> some View {
         VStack(spacing: 10) {
+            // Both cards inherit the ceremony's media so the H2HCard shows the
+            // right attribution (director/creator/author) + a tv season line. The
+            // pool item's `director` is already the media attribution
+            // (`rankedItem(from:)`), and `seasonTitle` rides through — a same-media
+            // pool means movieB is the same media as the just-watched movieA.
             H2HCard(
-                movie: Movie(
-                    id: c.movieA.id, title: c.movieA.title,
-                    year: c.movieA.year ?? 0, director: c.movieA.director,
-                    seed: c.movieA.seed,
-                    posterUrl: c.movieA.posterUrl
-                ),
+                movie: h2hMovie(from: c.movieA),
                 label: "JUST WATCHED",
                 tilt: -1.2
             ) { submit(winnerId: c.movieA.id) }
@@ -150,16 +150,23 @@ public struct RankH2HScreen: View {
                 .foregroundStyle(SpoolTokens.paper.accent)
 
             H2HCard(
-                movie: Movie(
-                    id: c.movieB.id, title: c.movieB.title,
-                    year: c.movieB.year ?? 0, director: c.movieB.director,
-                    seed: c.movieB.seed,
-                    posterUrl: c.movieB.posterUrl
-                ),
+                movie: h2hMovie(from: c.movieB),
                 label: "YOUR \(tier.rawValue)-TIER · #\(c.movieB.rank + 1)",
                 tilt: 1
             ) { submit(winnerId: c.movieB.id) }
         }
+    }
+
+    /// Map a pool `RankedItem` into the display `Movie` for an H2H card, carrying
+    /// the ceremony's `mediaType` + the item's `seasonTitle` so a tv card renders
+    /// its season line and a book card shows the author. `director` on the item is
+    /// already the media attribution (from `rankedItem(from:)`).
+    private func h2hMovie(from item: RankedItem) -> Movie {
+        Movie(
+            id: item.id, title: item.title, year: item.year ?? 0,
+            director: item.director, seed: item.seed, posterUrl: item.posterUrl,
+            mediaType: movie.mediaType, seasonTitle: item.seasonTitle
+        )
     }
 
     private var voteRow: some View {
@@ -222,16 +229,17 @@ public struct RankH2HScreen: View {
         let bracket = RankingAlgorithm.classifyBracket(genres: genres)
         let newItem = RankedItem(
             id: movie.id, title: movie.title, year: movie.year,
-            director: movie.director, genres: genres,
+            director: movie.attribution, genres: genres,
             tier: tier, rank: 0, bracket: bracket,
-            // TMDB vote_average (0-10) becomes the engine's globalScore.
-            // Web's RankingFlowModal does the same. Weight 0.35 inside
-            // predictScore, and the sole signal for new users below
-            // NEW_USER_THRESHOLD — iOS was dropping it (always nil)
-            // which meant every new iOS user's prediction landed at
-            // tier midpoint.
-            globalScore: movie.voteAverage, seed: movie.seed,
-            posterUrl: movie.posterUrl
+            // PER-MEDIA global-score seed (C5-iOS Task 5): a movie/tv seeds from
+            // TMDB `vote_average` (tv via Task 3 `tvShowGlobalScore`), a book from
+            // OpenLibrary `ratings_average` scaled 0-5 → 0-10 (NEVER TMDB for an
+            // ol_ id). `movie.rankGlobalScore` owns that per-media choice. Feeds
+            // the engine's predictScore (weight 0.35, sole signal for new users
+            // below NEW_USER_THRESHOLD). Web's RankingFlowModal does the same.
+            globalScore: movie.rankGlobalScore, seed: movie.seed,
+            posterUrl: movie.posterUrl,
+            seasonTitle: movie.seasonTitle
         )
 
         loading = false
@@ -296,7 +304,13 @@ public struct RankH2HScreen: View {
     private func loadAllItems() async -> [RankedItem] {
         let hasSession = await SpoolClient.currentUserID() != nil
         do {
-            return try await RankingRepository.shared.getAllRankedItems()
+            // SAME-MEDIA POOL (C5-iOS Task 5): route the pool read to the SAME
+            // vertical the new item belongs to (`movie.mediaType.mediaParam` →
+            // `getAllRankedItems(media:)`), so a tv rank compares only against
+            // tv_rankings and a book against book_rankings. Web parity:
+            // AddTVSeasonModal / RankingFlowModal never cross media in the H2H
+            // pool. A movie stays on `user_rankings` (the default), unchanged.
+            return try await RankingRepository.shared.getAllRankedItems(media: movie.mediaType.mediaParam)
         } catch {
             if hasSession {
                 // Bail rather than mix fixtures into a real shelf. Returning
@@ -333,7 +347,7 @@ struct H2HCard: View {
             Button(action: onTap) {
                 HStack(spacing: 14) {
                     PosterBlock(title: firstWord(movie.title), year: movie.year,
-                                director: movie.director, seed: movie.seed,
+                                director: movie.attribution, seed: movie.seed,
                                 posterUrl: movie.posterUrl)
                         .frame(width: 76)
                     VStack(alignment: .leading, spacing: 3) {
@@ -345,7 +359,12 @@ struct H2HCard: View {
                             .font(SpoolFonts.serif(20))
                             .foregroundStyle(t.ink)
                             .tracking(-0.3)
-                        Text("\(movie.director) · \(String(movie.year))")
+                        if movie.mediaType == .tv, let season = movie.seasonTitle, !season.isEmpty {
+                            Text(season)
+                                .font(SpoolFonts.hand(11))
+                                .foregroundStyle(t.inkSoft)
+                        }
+                        Text("\(movie.attribution) · \(String(movie.year))")
                             .font(SpoolFonts.mono(10))
                             .foregroundStyle(t.inkSoft)
                         Text("tap to pick")

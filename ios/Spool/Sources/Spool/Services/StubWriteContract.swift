@@ -76,6 +76,22 @@ public enum StubWriteContract {
         tier == .S ? "s_tier_gold" : "default"
     }
 
+    /// The `movie_stubs.media_type` value for a rankable media, or `nil` when NO
+    /// stub is written. The `movie_stubs` CHECK constraint only allows
+    /// `('movie', 'tv_season')` (`20260325_movie_stubs.sql:11`), so:
+    ///   - `.movie` → `"movie"` stub
+    ///   - `.tv`    → `"tv_season"` stub (web `createStub({mediaType:'tv_season'})`)
+    ///   - `.book`  → `nil` — BOOKS WRITE NO STUB. Web `handleAddBookItem` never
+    ///     calls `createStub`, and a `'book'` media_type would 400 on the CHECK.
+    /// Pure so the stub-decision matrix is unit-tested with zero network.
+    public static func stubMediaType(for media: RankMedia) -> String? {
+        switch media {
+        case .movie: return "movie"
+        case .tv:    return "tv_season"
+        case .book:  return nil
+        }
+    }
+
     /// User-local calendar day. Deliberately NOT a GMT-pinned yyyy-MM-dd
     /// formatter — the exact bug PR #30 fixed on web (evening ranks
     /// landing on tomorrow's date).
@@ -85,12 +101,19 @@ public enum StubWriteContract {
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
+    /// `mediaType` is the resolved `movie_stubs.media_type` string
+    /// (`"movie" | "tv_season"`), defaulting to `"movie"` for the existing movie
+    /// call sites. `StubWriter` resolves it via `stubMediaType(for:)` — books are
+    /// filtered out BEFORE this builder (no `nil` reaches it). `tmdb_id` is
+    /// `movie.id` verbatim: for a tv item that is the composite `tv_{id}_s{n}`,
+    /// matching the ranking row's `tmdb_id` (web `createStub({tmdbId:newItem.id})`).
     public static func insertPayload(userID: UUID, movie: Movie, tier: Tier,
+                                     mediaType: String = "movie",
                                      now: Date = Date(),
                                      calendar: Calendar = .current) -> StubInsertPayload {
         StubInsertPayload(
             user_id: userID,
-            media_type: "movie",
+            media_type: mediaType,
             tmdb_id: movie.id,
             title: movie.title,
             poster_path: movie.posterUrl,

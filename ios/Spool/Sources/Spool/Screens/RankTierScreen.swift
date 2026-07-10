@@ -55,7 +55,7 @@ public struct RankTierScreen: View {
         SpoolThemeReader { t, _ in
             HStack(spacing: 14) {
                 PosterBlock(title: firstWord(movie.title), year: movie.year,
-                            director: movie.director, seed: movie.seed,
+                            director: movie.attribution, seed: movie.seed,
                             posterUrl: movie.posterUrl)
                     .frame(width: 72)
                 VStack(alignment: .leading, spacing: 3) {
@@ -67,7 +67,16 @@ public struct RankTierScreen: View {
                         .font(SpoolFonts.serif(22))
                         .foregroundStyle(t.ink)
                         .tracking(-0.3)
-                    Text("\(movie.director) · \(String(movie.year))")
+                    // Season line for a tv item (under the SHOW name); movie/book
+                    // omit it. Media-generic display via `Movie.seasonTitle`.
+                    if movie.mediaType == .tv, let season = movie.seasonTitle, !season.isEmpty {
+                        Text(season)
+                            .font(SpoolFonts.hand(12))
+                            .foregroundStyle(t.inkSoft)
+                    }
+                    // Attribution is media-keyed: director (movie), creator (tv),
+                    // author (book).
+                    Text("\(movie.attribution) · \(String(movie.year))")
                         .font(SpoolFonts.mono(10))
                         .foregroundStyle(t.inkSoft)
                 }

@@ -687,13 +687,21 @@ public struct RankingInsert: Sendable {
 
     /// Back-compat movie init — the historical shape (`type:` + `director:`).
     /// Existing movie call sites (`RankPersistence`, onboarding) compile
-    /// unchanged; `type` is accepted for source compatibility but the media is
-    /// always `.movie`, so a stray `type:"tv"` here can't mint a movie-shaped
-    /// tv row.
+    /// unchanged; the media is ALWAYS `.movie`.
+    ///
+    /// FOLD-IN (C5-iOS Task 5, from Task 1 review): the `type:` param used to be
+    /// silently IGNORED — a `type:"tv"` here quietly built a movie-shaped row and
+    /// mis-routed the write. A `precondition` now traps any non-`"movie"` value:
+    /// a tv/book insert MUST go through the `.tv`/`.book` factories (or the
+    /// media-generic designated init), so nothing can misroute during the C5
+    /// media-generic wiring. Movie call sites (which pass `"movie"` or the
+    /// default) are unaffected.
     public init(tmdbId: String, title: String, year: String?, posterURL: String?,
                 type: String = "movie", genres: [String] = [], director: String? = nil,
                 tier: Tier, rankPosition: Int, notes: String? = nil,
                 watchedWithUserIds: [UUID]? = nil) {
+        precondition(type == "movie",
+                     "RankingInsert(type:) is movie-only; use the .tv/.book factories for other media (got type=\(type))")
         self.init(tmdbId: tmdbId, title: title, year: year, posterURL: posterURL,
                   genres: genres, media: .movie(director: director),
                   tier: tier, rankPosition: rankPosition, notes: notes,
