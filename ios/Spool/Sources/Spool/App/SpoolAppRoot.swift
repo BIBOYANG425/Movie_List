@@ -304,10 +304,20 @@ public struct SpoolAppRoot: View {
         case .entry:
             RankEntryScreen(
                 onPick: { m in
+                    // The user chose a movie from search — this is now a PLAIN
+                    // add, not a watchlist-origin rank. Clear any stale origin
+                    // that survived a Watchlist → tier → back → search detour;
+                    // without this, a different movie's bookmark gets deleted.
+                    rankWatchlistOrigin = nil
                     rankMovie = m
                     flow = .tier
                 },
-                onClose: { flow = nil }
+                onClose: {
+                    // Closing the search entry screen cancels the flow entirely;
+                    // clear any stale origin the same way.
+                    rankWatchlistOrigin = nil
+                    flow = nil
+                }
             )
         case .tier:
             if let m = rankMovie {

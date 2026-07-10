@@ -146,7 +146,51 @@ final class RankFromWatchlistTests: XCTestCase {
         XCTAssertEqual(spies.reloadCalls, 1)
     }
 
-    // MARK: - 6. the watchlist→Movie mapping guards media + carries the seed
+    // MARK: - 6. stale-origin mismatch guard (defense-in-depth)
+
+    /// Watchlist → tier → back → search detour: user initially tapped "Rank It"
+    /// on movie X (origin = X), backed out to the search entry screen, and then
+    /// picked a DIFFERENT movie Y. SpoolAppRoot clears origin on onPick, but the
+    /// coordinator's own guard is the last line of defense. When origin.id != movie.id
+    /// the remove must NOT fire, and the rank result must still be true.
+    func testFinishStaleOriginMismatchSkipsRemoveAndStillReturnsSuccess() async {
+        let (coord, spies) = makeCoordinator(saveSucceeds: true)
+
+        // Origin = movie X (tmdb_603), actual ranked movie = movie Y (tmdb_27205)
+        let movieY = fixtureMovie(id: "tmdb_27205")
+        let originX = fixtureItem(id: "tmdb_603")
+
+        let outcome = await coord.finish(
+            movie: movieY, tier: .A, rank: 1, moods: [], line: "",
+            watchlistOrigin: originX
+        )
+
+        XCTAssertTrue(outcome, "rank outcome must be unaffected by the stale-origin skip")
+        XCTAssertEqual(spies.saveCalls, 1)
+        XCTAssertTrue(spies.removeCalls.isEmpty, "stale origin must NOT remove any bookmark")
+        XCTAssertEqual(spies.reloadCalls, 0, "no reload when remove is skipped")
+    }
+
+    /// Matching-origin happy path: origin.id == movie.id → remove fires as normal.
+    /// Pins that the guard does not break the expected watchlist-origin flow.
+    func testFinishMatchingOriginStillRemovesBookmark() async {
+        let (coord, spies) = makeCoordinator(saveSucceeds: true)
+
+        let movie = fixtureMovie(id: "tmdb_603")
+        let origin = fixtureItem(id: "tmdb_603")
+
+        let outcome = await coord.finish(
+            movie: movie, tier: .A, rank: 1, moods: [], line: "",
+            watchlistOrigin: origin
+        )
+
+        XCTAssertTrue(outcome)
+        XCTAssertEqual(spies.removeCalls.count, 1, "matching origin must trigger remove")
+        XCTAssertEqual(spies.removeCalls.first?.0, "tmdb_603")
+        XCTAssertEqual(spies.reloadCalls, 1)
+    }
+
+    // MARK: - 8. the watchlist→Movie mapping guards media + carries the seed
 
     /// Non-movie items must never map into a Movie / enter the ceremony — a
     /// data-integrity invariant (the ceremony is movie-only until C5). The
@@ -172,7 +216,7 @@ final class RankFromWatchlistTests: XCTestCase {
         XCTAssertNil(movie?.voteAverage)
     }
 
-    // MARK: - 7. tmdb-id parsing for the enrichment fetch
+    // MARK: - 9. tmdb-id parsing for the enrichment fetch
 
     func testNumericTmdbIdParsedFromMovieId() {
         XCTAssertEqual(RankFromWatchlistCoordinator.numericTmdbId("tmdb_603"), 603)

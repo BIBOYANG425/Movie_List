@@ -26,6 +26,10 @@ import Foundation
 /// the watchlist tab's reload seam.
 ///
 /// Header last reviewed: 2026-07-09
+///
+/// Defense-in-depth: `finish` now also guards `origin.id == movie.id` before
+/// removing the bookmark; a stale origin (from a Watchlist→tier→back→search
+/// detour) logs loudly and skips the remove without affecting the rank result.
 @MainActor
 public final class RankFromWatchlistCoordinator {
 
@@ -75,6 +79,17 @@ public final class RankFromWatchlistCoordinator {
         // bookmark. A plain add (origin == nil) never deletes anything.
         guard RankPersistence.shouldRemoveBookmarkAfterRank(saveSucceeded: saved),
               let origin = watchlistOrigin else {
+            return saved
+        }
+
+        // Defense-in-depth: if a stale origin survived a Watchlist → tier →
+        // back → search detour and the user ranked a DIFFERENT movie, the ids
+        // diverge. Removing origin.id here would delete the wrong bookmark and
+        // leave the original item in neither list — the exact data-loss class
+        // C3 Task 4 prevents. Log loudly and skip the remove; the rank result
+        // is unaffected.
+        guard origin.id == movie.id else {
+            NSLog("[RankFromWatchlist] stale origin detected — origin.id '\(origin.id)' != movie.id '\(movie.id)'; skipping bookmark remove to prevent data loss")
             return saved
         }
 
