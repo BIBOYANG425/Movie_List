@@ -17,16 +17,24 @@ public struct WatchlistScreen: View {
 
     @StateObject private var model: WatchlistModel
 
+    /// A monotonic reload signal owned by the app root (C3 Task 4). The root
+    /// bumps it after a confirmed rank+bookmark-remove so the just-ranked item
+    /// drops out of the queue when the user returns to the tab. `0` (the default)
+    /// never fires the `.onChange` reload.
+    private let reloadToken: Int
+
     /// Production entry — the app root passes the Rank It routing closure. The
     /// model binds its list/remove/toast closures to the real repository.
-    public init(onRankIt: @escaping (WatchlistItem) -> Void = { _ in }) {
+    public init(onRankIt: @escaping (WatchlistItem) -> Void = { _ in }, reloadToken: Int = 0) {
         _model = StateObject(wrappedValue: WatchlistModel(onRankIt: onRankIt))
+        self.reloadToken = reloadToken
     }
 
     /// Test/preview seam — inject a pre-built model (fixture-loaded) so previews
     /// render populated / empty / error states without a live client.
-    init(model: WatchlistModel) {
+    init(model: WatchlistModel, reloadToken: Int = 0) {
         _model = StateObject(wrappedValue: model)
+        self.reloadToken = reloadToken
     }
 
     public var body: some View {
@@ -40,6 +48,11 @@ public struct WatchlistScreen: View {
             }
         }
         .task { await model.loadCurrent() }
+        // Root bumped the token after a rank+remove — refetch so the ranked item
+        // disappears from the queue. Skipped on the initial `0 → 0` render.
+        .onChange(of: reloadToken) { _ in
+            Task { await model.reload() }
+        }
     }
 
     // MARK: media switcher

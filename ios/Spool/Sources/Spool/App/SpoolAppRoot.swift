@@ -56,6 +56,16 @@ public struct SpoolAppRoot: View {
     @State private var rankLine: String = ""
     @State private var rankFinalRank: Int = 0
     @State private var rankFinalScore: Double = 0
+    /// The watchlist item this rank flow ENTERED FROM, when the user tapped
+    /// "Rank It" on a watchlist card (nil for a plain search→rank). Tracked
+    /// through the whole flow so the B5-corrected bookmark removal fires ONLY
+    /// for watchlist-origin ranks — a plain add must never delete a bookmark.
+    /// Cleared on cancel and on flow entry so a stale origin can't leak into a
+    /// later plain rank (C3 Task 4).
+    @State private var rankWatchlistOrigin: WatchlistItem? = nil
+    /// Monotonic reload signal for the Watchlist tab. Bumped after a confirmed
+    /// rank+bookmark-remove so the ranked item drops out of the queue.
+    @State private var watchlistReloadToken: Int = 0
 
     // Stub modals
     @State private var stubDetail: WatchedDay? = nil
@@ -268,7 +278,10 @@ public struct SpoolAppRoot: View {
                     onOpenJournalEntry: { tmdbId in presentComposerForEntry(tmdbId: tmdbId) }
                 )
             case .watchlist:
-                WatchlistScreen(onRankIt: { item in rankItFromWatchlist(item) })
+                WatchlistScreen(
+                    onRankIt: { item in rankItFromWatchlist(item) },
+                    reloadToken: watchlistReloadToken
+                )
             case .friends:
                 FriendsScreen(
                     onOpenTwin: { twinOpen = $0 },
@@ -338,26 +351,31 @@ public struct SpoolAppRoot: View {
                     finalRank: rankFinalRank, finalScore: rankFinalScore,
                     // Close = abandon the whole rank flow without saving.
                     // RankH2HScreen no longer persists mid-flow, so this
-                    // is a true abort — user_rankings gets nothing.
-                    onClose: { flow = nil },
-                    // Finish = commit. RankPersistence.save handles signed-in
-                    // users (direct DB insert) and preview mode (queue +
-                    // open the sign-in sheet via spool.show_signin_sheet).
+                    // is a true abort — user_rankings gets nothing. A watchlist
+                    // origin is dropped WITHOUT deleting the bookmark (B5: no
+                    // save → the item stays queued).
+                    onClose: {
+                        rankWatchlistOrigin = nil
+                        flow = nil
+                    },
+                    // Finish = commit. Routes through the coordinator so a
+                    // CONFIRMED save on a watchlist-origin rank ALSO deletes the
+                    // bookmark (B5-corrected); a plain rank deletes nothing.
                     onFinish: {
                         let movieToSave = m
                         let tierToSave = t
                         let rankToSave = rankFinalRank
                         let moodsToSave = rankMoods
                         let lineToSave = rankLine
+                        let origin = rankWatchlistOrigin
                         Task {
-                            await RankPersistence.save(
-                                movie: movieToSave,
-                                tier: tierToSave,
-                                rank: rankToSave,
-                                moods: moodsToSave,
-                                line: lineToSave
+                            await finishRank(
+                                movie: movieToSave, tier: tierToSave,
+                                rank: rankToSave, moods: moodsToSave, line: lineToSave,
+                                origin: origin
                             )
                         }
+                        rankWatchlistOrigin = nil
                         flow = nil
                         tab = .feed
                     },
@@ -378,14 +396,17 @@ public struct SpoolAppRoot: View {
                         let rankToSave = rankFinalRank
                         let moodsToSave = rankMoods
                         let lineToSave = rankLine
+                        let origin = rankWatchlistOrigin
                         Task {
-                            await RankPersistence.save(
+                            await finishRank(
                                 movie: movieToSave, tier: tierToSave,
                                 rank: rankToSave, moods: moodsToSave, line: lineToSave,
-                                writeJournalQuickEntry: false
+                                writeJournalQuickEntry: false,
+                                origin: origin
                             )
                         }
                         presentComposerForCeremony(movie: m, moods: rankMoods, line: rankLine)
+                        rankWatchlistOrigin = nil
                         flow = nil
                         tab = .stubs
                     }
@@ -429,25 +450,77 @@ public struct SpoolAppRoot: View {
         }
     }
 
-    /// Rank It from the Watchlist tab (C3 Task 3 seam; Task 4 owns the ceremony
-    /// polish — pre-fill signals, post-rank watchlist removal, etc). A movie
+    /// Rank It from the Watchlist tab (C3 Task 3 seam; Task 4 owns the tail —
+    /// pre-fill signals + the B5-corrected post-rank bookmark removal). A movie
     /// watchlist item is already chosen, so this skips the search entry screen
     /// and drops the user straight into the tier pick with the movie seeded.
-    /// Only movie items reach here (the card gates Rank It to `.movie`).
+    ///
+    /// ONLY movie items may enter the movie-only ceremony (data-integrity
+    /// invariant — Task 3 review binding condition 1): a tv/book item that
+    /// somehow reached here is dropped without touching the flow.
     private func rankItFromWatchlist(_ item: WatchlistItem) {
-        rankMovie = Movie(
-            id: item.id,
-            title: item.title,
-            year: Int(item.year) ?? 0,
-            director: item.director ?? "—",
-            seed: abs(item.id.hashValue) % 20,
-            genres: item.genres,
-            posterUrl: item.posterUrl.isEmpty ? nil : item.posterUrl
-        )
+        // `movie(from:)` maps + guards `.movie`; nil ⇒ non-movie ⇒ never rank.
+        guard let mapped = RankFromWatchlistCoordinator.movie(from: item) else {
+            NSLog("[SpoolAppRoot] rankItFromWatchlist ignoring non-movie item: \(item.id)")
+            return
+        }
+        rankMovie = mapped
         rankTier = nil
         rankMoods = []
         rankLine = ""
+        // Remember where this rank came from so a CONFIRMED save can delete the
+        // bookmark (and only then). A plain search→rank leaves this nil.
+        rankWatchlistOrigin = item
         flow = .tier
+
+        // Enrich the ranking-engine prediction signal: a WatchlistItem doesn't
+        // carry `vote_average`, and dropping it regresses the predicted score
+        // for new users (see Movie.voteAverage). Fetch it async while the tier
+        // screen is already up (matching the normal search path's feel, where
+        // the rating rides along on the search result). A nil result leaves
+        // voteAverage nil — a graceful fallback, exactly as before this existed.
+        if let tmdbId = RankFromWatchlistCoordinator.numericTmdbId(item.id) {
+            Task {
+                let vote = await TMDBService.movieVoteAverage(tmdbId: tmdbId)
+                guard let vote else { return }
+                // Only patch if the user hasn't moved on to a DIFFERENT movie.
+                if rankMovie?.id == item.id {
+                    rankMovie?.voteAverage = vote
+                }
+            }
+        }
+    }
+
+    /// Commit a rank and apply the B5-corrected bookmark-removal gate. Builds a
+    /// `RankFromWatchlistCoordinator` bound to the real persistence + repository,
+    /// then delegates — the decision logic lives in the tested coordinator, not
+    /// in this view. `origin` is nil for a plain search→rank (nothing deleted).
+    private func finishRank(
+        movie: Movie, tier: Tier, rank: Int, moods: [String], line: String,
+        writeJournalQuickEntry: Bool = true, origin: WatchlistItem?
+    ) async {
+        let coordinator = RankFromWatchlistCoordinator(
+            save: { movie, tier, rank, moods, line, writeJournalQuickEntry in
+                await RankPersistence.save(
+                    movie: movie, tier: tier, rank: rank,
+                    moods: moods, line: line,
+                    writeJournalQuickEntry: writeJournalQuickEntry
+                )
+            },
+            removeBookmark: { tmdbId, media in
+                try await WatchlistRepository.shared.remove(tmdbId: tmdbId, media: media)
+            },
+            reloadWatchlist: {
+                // Bump the token → the Watchlist tab refetches on next appearance
+                // so the just-ranked item is gone from the queue.
+                watchlistReloadToken &+= 1
+            }
+        )
+        await coordinator.finish(
+            movie: movie, tier: tier, rank: rank, moods: moods, line: line,
+            writeJournalQuickEntry: writeJournalQuickEntry,
+            watchlistOrigin: origin
+        )
     }
 
     private func onTab(_ t: SpoolTab) {
@@ -456,6 +529,9 @@ public struct SpoolAppRoot: View {
             rankTier = nil
             rankMoods = []
             rankLine = ""
+            // A plain search→rank has NO watchlist origin — clear any stale one
+            // so it can never delete an unrelated bookmark (B5).
+            rankWatchlistOrigin = nil
             flow = .entry
         } else {
             tab = t

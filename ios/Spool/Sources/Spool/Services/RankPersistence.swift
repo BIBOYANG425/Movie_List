@@ -18,7 +18,12 @@ import SwiftUI
 ///    `spool.show_signin_sheet` so SpoolAppRoot presents the sign-in sheet
 ///  - not configured: no-op (the sign-in sheet itself is disabled upstream)
 ///
-/// Header last reviewed: 2026-07-07
+/// `save` returns whether a CONFIRMED write landed (`true` only on the signed-in
+/// insert success; preview-queue and not-configured return `false`). C3 Task 4
+/// gates the watchlist-bookmark removal on that signal (B5-corrected) via the
+/// pure `shouldRemoveBookmarkAfterRank`.
+///
+/// Header last reviewed: 2026-07-09
 public enum RankPersistence {
 
     /// Persist the movie into the user's shelf. Fire-and-forget from the
@@ -35,6 +40,13 @@ public enum RankPersistence {
     /// upsert lands after a fast composer save) and the composer probe could see
     /// a concurrently-written row instead of deterministically finding nil and
     /// seeding from moods+line. The two paths are mutually exclusive.
+    /// Returns `true` only when a CONFIRMED `user_rankings` write landed (the
+    /// signed-in insert did not throw). The preview-mode queue path and the
+    /// not-configured no-op both return `false`: nothing durable was written
+    /// yet, so any post-save side effect gated on a confirmed rank (C3 Task 4's
+    /// watchlist-bookmark removal, B5-corrected) must NOT fire. The return is
+    /// discardable so the existing plain call sites are unaffected.
+    @discardableResult
     public static func save(
         movie: Movie,
         tier: Tier,
@@ -42,7 +54,7 @@ public enum RankPersistence {
         moods: [String] = [],
         line: String = "",
         writeJournalQuickEntry: Bool = true
-    ) async {
+    ) async -> Bool {
         // Not-configured path: no Supabase client at all. Skip entirely so
         // we don't stash rows in the preview queue for an app that can
         // never flush them (e.g. a bundle without SUPABASE_URL). Previously
@@ -51,7 +63,7 @@ public enum RankPersistence {
         // sign-in — confusing and pointless.
         guard SpoolClient.shared != nil else {
             NSLog("[RankPersistence] save skipped: SpoolClient not configured")
-            return
+            return false
         }
 
         let genres = movie.genres.isEmpty ? ["Drama"] : movie.genres
@@ -81,7 +93,7 @@ public enum RankPersistence {
                         level: .error
                     )
                 }
-                return
+                return false
             }
             // Stub write mirrors web createStub (PR #30 contract). Fire-and-
             // forget inside StubWriter: a stub failure never fails the rank
@@ -107,7 +119,9 @@ public enum RankPersistence {
                     line: line, moods: moods
                 )
             }
-            return
+            // Confirmed write landed — the caller may now run any post-save
+            // side effect (C3 Task 4 deletes the watchlist bookmark here).
+            return true
         }
 
         // Preview mode: queue the ranking + signal SpoolAppRoot to present
@@ -127,6 +141,10 @@ public enum RankPersistence {
             OnboardingQueue.append(queued)
             UserDefaults.standard.set(true, forKey: "spool.show_signin_sheet")
         }
+        // Preview mode only QUEUED the rank — nothing durable landed, so this is
+        // NOT a confirmed save. A watchlist bookmark must stay put until the
+        // queued rank actually flushes after sign-in.
+        return false
     }
 
     /// Normalize a movie's integer year to the `year: String?` the DB expects.
@@ -142,5 +160,14 @@ public enum RankPersistence {
     /// exclusive so they never double-write / race on `(user_id, tmdb_id)`.
     static func shouldWriteQuickEntry(writeJournalQuickEntry: Bool) -> Bool {
         writeJournalQuickEntry
+    }
+
+    /// Pure gate for the C3 Task 4 watchlist-bookmark removal (tested —
+    /// `RankFromWatchlistTests`). B5-CORRECTED semantics: the bookmark is deleted
+    /// ONLY after a CONFIRMED rank save (`save` returned `true`). On a failed or
+    /// preview-queued save the bookmark stays, so the item survives to be ranked
+    /// again. Mirrors web's post-save removal condition (audit finding B5).
+    public static func shouldRemoveBookmarkAfterRank(saveSucceeded: Bool) -> Bool {
+        saveSucceeded
     }
 }

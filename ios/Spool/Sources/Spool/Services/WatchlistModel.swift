@@ -183,11 +183,17 @@ public final class WatchlistModel: ObservableObject {
         } catch {
             // Revert: splice the row back at its original index (clamped in case
             // the list shifted underneath us — it can't in this single-actor
-            // path, but stay defensive).
+            // path, but stay defensive). Guard against a DUPLICATE insert: if a
+            // concurrent reload already re-fetched the row while the failing
+            // remove was in flight, the id is present again — re-inserting would
+            // mint a second card with the same id (a broken ForEach identity).
+            // Only splice back when the id is genuinely absent.
             var reverted = currentItems(for: media)
-            let insertAt = min(idx, reverted.count)
-            reverted.insert(removed, at: insertAt)
-            states[media] = .loaded(reverted)
+            if !reverted.contains(where: { $0.id == removed.id }) {
+                let insertAt = min(idx, reverted.count)
+                reverted.insert(removed, at: insertAt)
+                states[media] = .loaded(reverted)
+            }
             toastIO("couldn't remove \(removed.title) — try again", .error)
         }
     }
