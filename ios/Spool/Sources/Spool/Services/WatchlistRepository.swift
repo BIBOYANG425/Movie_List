@@ -41,8 +41,9 @@ public actor WatchlistRepository {
 
     /// Another user's watchlist for `media`, newest first. `userID` is a
     /// narrowing FILTER, not a trust boundary: RLS decides which rows come
-    /// back (movie table = owner-only, so a cross-user movie read returns []
-    /// unless it's the caller's own; TV/book add follower SELECT). Used by
+    /// back. All three tables are follower-visible — movie via the
+    /// 20260709 migration (Q2 owner adjudication), TV and book from their
+    /// original follower SELECT policies. Non-followers get []. Used by
     /// Discover's Twin read (Task 5). Throws on failure (feed convention).
     public func listForUser(userId: UUID, media: WatchlistMediaType) async throws -> [WatchlistItem] {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
@@ -120,8 +121,14 @@ public actor WatchlistRepository {
     /// toasts on error — the caller decides the UI reaction from this bool).
     @discardableResult
     public func add(item: WatchlistItem) async -> Bool {
-        guard let client = SpoolClient.shared else { return false }
-        guard let userID = await SpoolClient.currentUserID() else { return false }
+        guard let client = SpoolClient.shared else {
+            NSLog("[WatchlistRepository] add(\(item.mediaType.rawValue) \(item.id)) skipped: client not configured")
+            return false
+        }
+        guard let userID = await SpoolClient.currentUserID() else {
+            NSLog("[WatchlistRepository] add(\(item.mediaType.rawValue) \(item.id)) skipped: not authenticated")
+            return false
+        }
 
         let table = WatchlistContract.tableName(for: item.mediaType)
         do {

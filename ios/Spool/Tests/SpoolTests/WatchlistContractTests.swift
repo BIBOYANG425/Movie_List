@@ -355,8 +355,9 @@ final class WatchlistContractTests: XCTestCase {
         XCTAssertEqual(obj["page_count"] as? Int, 96)
     }
 
-    /// The add payload dispatches by media type (`payload(for:userID:)` picks
-    /// the right table's wire shape) — this is what the repo `add` uses.
+    /// The repo `add` dispatches by media type via its switch on `item.mediaType`,
+    /// calling the matching `WatchlistContract.*AddPayload` builder for each case.
+    /// This verifies the TV branch produces the correct wire shape (show_tmdb_id present).
     func testPayloadDispatchByType() throws {
         let uid = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
         let tv = WatchlistItem(

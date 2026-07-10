@@ -331,6 +331,9 @@ public enum WatchlistContract {
     /// `tv_watchlist_items` upsert payload (`RankingAppPage.tsx:685-697`).
     /// `show_tmdb_id`/`season_number` coalesce nil to 0 (web `?? 0`);
     /// `type` = `'tv_season'`.
+    /// WARNING: callers (Tasks 3/4) MUST always supply a non-nil `showTmdbId` —
+    /// `show_tmdb_id ?? 0` mints a B2-corrupt row that `mapTVRow` will reject on
+    /// every subsequent read. Web parity keeps the coalesce for schema symmetry.
     public static func tvAddPayload(_ item: WatchlistItem, userID: UUID) -> TVAddPayload {
         TVAddPayload(
             user_id: userID.uuidString.lowercased(),
