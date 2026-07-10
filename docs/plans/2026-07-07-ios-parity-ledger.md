@@ -12,7 +12,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | C3 | Watchlist + Discover | FULLY COMPLETE (Parts A + B) — edge functions deployed, both clients migrated off direct TMDB key, TMDB key DoD met, merged Discover on both platforms (chips + New Releases + card actions), journal wipe fix T0, anon onboarding fixtures | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (Part A: branch `fix/c3-watchlist-discover-web-blocking`; Part B: `feat/c3-part-b-suggestions`) | `feat/ios-parity-c3-watchlist` (Part A) + `feat/c3-part-b-suggestions` (Part B) |
 | C4 | Ranking management | COMPLETE — web fixes PR #39 + iOS management UI SHIPPED on `feat/ios-parity-c4-mgmt-ui` (PR pending): edit-mode drag-to-reorder (FullListScreen shelf), long-press menu (move tier / edit notes w/ probe-before-edit + wipe guard / re-rank via corrected ceremony / delete w/ confirm + ranking_remove); ceremony re-rank correction landed (Task 2 — deviation retired) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | #39 | `feat/ios-parity-c4-mgmt-ui` (PR pending) |
 | C5 | TV seasons + books | COMPLETE — web fixes PR #46 + iOS 8-task branch `feat/ios-parity-c5-tv-books` (PR pending): per-media payloads/reads, TMDB TV endpoints, OpenLibrary client, media-generic ceremony (same-media H2H), TV season UI + preselect router + coordinator whole-show identity fix, TV suggestions grid, contracts | audits/2026-07-10-c5-tv-books-web-audit.md | #46 | `feat/ios-parity-c5-tv-books` (PR pending) |
-| C6 | zh localization | pending | — | — | — |
+| C6 | zh localization | web fixes on `fix/c6-zh-web-blocking` (PR pending); C6-iOS next | audits/2026-07-10-c6-zh-web-audit.md | (branch `fix/c6-zh-web-blocking`) | (pending) |
 | C7 | Smaller items | pending | — | — | — |
 | — | iOS design-check | queued after C5–C7 (owner, 2026-07-10); screenshot seed list in progress ledger | — | — | — |
 
@@ -82,6 +82,17 @@ Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
 - [C5-iOS] [adjudication] Q7 (controller) — book global score seeds `ol_ratings_average` from the OpenLibrary search response, never TMDB. `ol_` ids must never be passed to the TMDB proxy.
 - [C5-iOS] [adjudication] Q3/Q4 final: tv stubs written (`media_type = 'tv_season'` to `movie_stubs`); book stubs skipped (DB CHECK constraint blocks them). Journal quick-entry stays movie-only (`writeJournalQuickEntry: false` enforced at `RankPersistence` for tv/book, pinned by test). TV suggestions via `SuggestionsClient.fetch(mediaType: .tv)` wired in the rank-entry screen (Part B client, previously unconsumed); books are search-only, no suggestions engine.
 - [C5-iOS] [adjudication] Q5 — whole-show bookmark removal: the coordinator uses `origin.id == item.id || item.id.hasPrefix(origin.id + "_s")` equality to match a whole-show bookmark origin against a season-ranked result. Web deletes the whole-show bookmark on first season rank (D4 — open product question); iOS mirrors this behavior via the show-id-aware equality check.
+- [C6] [blocking] B1 language toggle hidden behind `hidden md:flex` — unreachable on mobile — fixed on `fix/c6-zh-web-blocking`: toggle added to the always-visible TOP HEADER bar in a `md:hidden` slot (desktop instance in `headerActions` retained — duplicated, not moved; all pages inside `AppLayout`); TAIL: toggle absent on Landing/Auth/Public pages (outside `AppLayout`) — deferred.
+- [C6] [blocking] B2 i18n key tables mismatched — 52 dead keys deleted, 118 keyless surfaces wired + 4 `feed.*Ago` relative-timestamp keys restored — fixed; LESSON: dead-key sweeps must cover `utils/` + `lib/` + type-erased `t()` params — a utils/ grep gap broke every relative timestamp and required a fix-round commit (`c662e67`); 392/392 key parity enforced by the new bidirectional parity test.
+- [C6] [blocking] B3 `zh.ts` untyped object literal — now typed `satisfies Record<TranslationKey, string>`; parity test guards bidirectional coverage + non-empty values + no em-dash in zh values.
+- [C6] [blocking] B4 `useLocalizedItems` called the TMDB localization proxy for `ol_` book ids — books never localize; fixed with a `tmdb_`/`tv_` ALLOWLIST at the shared `fetchLocalizedTitle` seam (STRONGER than the audit's `ol_` denylist — also skips `manual:` and unknown shapes; test-pinned in `localizedTitleSkip.test.ts`). The iOS port MUST replicate the allowlist, not an `ol_`-only check. Closes the proxy-quota burn + C5-D5.
+- [C6] [blocking] B5 mixed-language sentences in zh mode (EN media-type enum values interpolated into zh toast strings) — parameterized via `t()` with translated enum values; no EN fragments in zh-mode user-visible strings.
+- [C6] [deferred] B1 tail — language toggle absent on Landing/Auth/Public pages (outside `AppLayout`); owner decides placement for those surfaces.
+- [C6] [deferred] D-items pointer — see `audits/2026-07-10-c6-zh-web-audit.md` for the full D-list (EN casing nits on reset-confirm/watchlist-tv; en-dash guard gap; zh retry label for zero-result typo-retry; and others).
+- [C6] [adjudication] iOS zh mechanism = Swift dictionary + `LocaleStore` (mirrors web's `Record<TranslationKey, string>` + `useTranslation` hook) — owner-reviewable; recorded for the C6-iOS plan.
+- [C6] [adjudication] iOS zh toggle = `SettingsScreen` row (NOT the web header placement) — owner-reviewable; the web mobile placement (top-header slot) does not translate literally to iOS nav conventions.
+- [C6] [adjudication] `LocaleStore` defaults to DEVICE language (deviation from web's `en` default) — preserves Part B content behavior (TMDB/OL locale follows device; switching the in-app toggle also re-sources `locale()`) — owner-reviewable.
+- [C6] [adjudication] web zh copy ported verbatim to iOS; iOS-only strings (Settings labels, native affordances) get new zh following the register + voice rules (no 不是…而是, no em dashes, no negation-contrast) — owner-reviewable.
 - [C4→shipped] MOVIE SEARCH: owner reported fuzzy movie search not working — shipped on branch `fix/movie-search-fuzzy` (PR #41). (1) Zero-result typo-retry backoff in `services/tmdbService.ts` via pure `services/searchVariants.ts`; covers UniversalSearch, AddMediaModal, AddTVSeasonModal, onboarding. (2) Letterboxd import's private `searchTMDB` wired through the same variants (the initial investigation claim that `searchMovies` covered the import was wrong — the import never called it; fix round added). (3) HTTP-error responses (non-2xx) do NOT trigger or continue the variant loop. (4) Local fuzzy layer repaired in `services/fuzzySearch.ts`: leading-article strip both sides, word-start windows, best-window scoring in `getBestCorrectedQuery`, 2-char non-ASCII gate. (5) iOS mirror in `ios/Spool/Sources/Spool/Services/TMDBService.swift`: Swift `typoRetryVariants` 1:1 port + Task-cancellation between variants + non-2xx bail; `locale()` now follows device language (zh→zh-CN, en-US fallback) for search + discover seeds, matching web's `getTmdbLocale` surfaces. Tests: web 382 vitest, iOS 381 swift. Migrations: none (client-only). Deferred (unchanged from investigation, plus review finds): no-results-vs-error UX distinction; "already in your list" hint when a correction resolves to an owned title; onboarding stale-request guard; TMDB proxy edge function; OpenLibrary book fuzz; letterboxd non-429 HTTP errors now join MAX_RETRIES backoff (was fail-fast — split-sentinel follow-up); 0.3-threshold boundary test for fuzzySearch; iOS in-app locale toggle would need `locale()` re-sourcing.
 
 ## C1 adjudications (controller, 2026-07-07 — recorded verbatim, do not relitigate)
@@ -574,6 +585,40 @@ TV seasons + books on iOS. 8 tasks, plan at `docs/plans/2026-07-10-c5-ios-tv-boo
 - **Riding (accepted, no fix):** `RankEntryModel.applyDirectSeasonLoad` has no stale-load guard (unlike `applySeasonLoad`) — confined because `SeasonSelectScreen` owns a fresh model per presentation; T3/T4 riding minors (4.5s-vs-4.0s score timeout, strict fail-whole OL decode, 200-only posture) stay as adjudicated in the task reviews.
 
 **Device smoke owed (PR body):** rank a TV season end-to-end (search → season grid → ceremony → shelf); rank a book end-to-end; whole-show bookmark → Rank It → season grid → bookmark clears.
+
+### C6 notes (2026-07-10, branch `fix/c6-zh-web-blocking`)
+
+zh correctness before the iOS port. 5 blocking findings fixed; no migrations (client-only). Baseline: 533 vitest tests. Final: 545 tests (+7 i18nParity in Task 1, +5 localizedTitleSkip in Task 3; purely additive — no expectations removed).
+
+**B1-B5 dispositions:**
+
+- **B1** language toggle unreachable on mobile (`hidden md:flex` in `AppLayout`): the existing `LanguageToggle` added to the always-visible top header bar in a `md:hidden` slot (desktop `headerActions` instance retained). Reachable on every page inside `AppLayout`. TAIL DEFERRED: Landing, Auth, and Public pages (outside `AppLayout`) have no toggle placement yet — owner decides.
+- **B2** i18n key tables mismatched: 52 dead keys deleted after grep-verification (confirmed 0 callsites each); 118 keyless surfaces wired through `t()` (nav labels, ceremony steps — TierPicker/NotesStep/ComparisonStep, AddMediaModal, AuthPage, MovieOnboardingPage, journal suite top-level strings); 4 `feed.*Ago` relative-timestamp keys restored (the `utils/` grep gap in the dead-key sweep had deleted them, breaking every relative timestamp on the feed — caught in `c662e67` fix-round). Key parity: 392/392 en↔zh, bidirectional, enforced by `services/__tests__/i18nParity.test.ts`. LESSON recorded in findings: dead-key sweeps must cover `utils/` + `lib/` + type-erased `t()` params, not just component-level callsites.
+- **B3** `zh.ts` was an untyped object literal: now `satisfies Record<TranslationKey, string>`, giving compile-time exhaustiveness. The parity test additionally guards non-empty values and flags any em-dash that leaks into zh copy.
+- **B4** `useLocalizedItems.ts` called the TMDB localization proxy for `ol_`-prefixed book ids — books have no TMDB localization surface; every call burned proxy quota and returned nothing useful. Early-return added for any id starting with `ol_`, closing both the quota burn and the C5-D5 deferred item.
+- **B5** mixed-language sentences in zh mode: EN media words leaked into zh sentences at three sites: the reset `window.confirm` (now interpolates translated `nav.*` values), the Watchlist empty-state/hint (now a `{media}` placeholder + `mediaMode` prop), and `tier.items` (部→个, media-neutral). No EN fragment remains in zh-mode user-visible strings at these sites.
+
+**Owner-reviewable items:**
+
+- The 122 new zh values added in Task 2 (table in the PR description) — confirm register + voice are correct.
+- `landing.subtitle` recast: the audit noted the original subtitle contained a negation-contrast pattern; the new zh value is a direct affirmative recast per the voice rules (no 不是…而是 structure, no em dash).
+
+**iOS C6 adjudications (recorded here for the next plan, owner-reviewable):**
+
+- Mechanism: Swift dictionary keyed on a `TranslationKey` enum, `LocaleStore` observable object holding the active locale. Mirrors web's `Record<TranslationKey, string>` + `useTranslation` hook.
+- Toggle placement: a row in `SettingsScreen` (NOT the web top-header placement — iOS nav conventions differ). Owner confirms or redirects in the C6-iOS plan.
+- `LocaleStore` defaults to DEVICE language — a deliberate deviation from web's hard `en` default. Preserves Part B's content behavior: `locale()` (TMDB/OL locale for search + discover seeds) follows device language; switching the in-app toggle re-sources `locale()` immediately. Owner-reviewable.
+- Web zh copy ported verbatim; iOS-only strings (Settings labels, native affordances, system sheet titles) get new zh authored following the register + voice rules.
+
+**Deferred:**
+
+- B1 tail: toggle absent on Landing/Auth/Public pages (outside `AppLayout`).
+- D-items: see `audits/2026-07-10-c6-zh-web-audit.md` for the full list. Notable: EN casing nits (reset-confirm button, watchlist-tv label); en-dash guard gap in parity test (the test currently checks for em-dash `—` only; en-dash `–` would pass); zh retry label for zero-result typo-retry path (shows EN "no results" in zh mode — deferred from C3-B3 fix-round `c662e67` note).
+
+**Cycle next steps:**
+
+- Merge `fix/c6-zh-web-blocking` → C6-iOS plan (LocaleStore + table port + toggle + `locale()` re-source + zh for iOS-only strings).
+- After C6-iOS: C7 smaller items + iOS design-check.
 
 ## C3 migration runbook (owner applies)
 

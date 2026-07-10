@@ -1,6 +1,7 @@
 import React from 'react';
 import { ComparisonRequest, Tier } from '../../types';
 import { TIER_COLORS } from '../../constants';
+import { useTranslation } from '../../contexts/LanguageContext';
 import { ArrowLeft } from 'lucide-react';
 
 interface ComparisonStepProps {
@@ -15,7 +16,9 @@ export const ComparisonStep: React.FC<ComparisonStepProps> = ({
   selectedTier,
   onChoice,
   onUndo,
-}) => (
+}) => {
+  const { t } = useTranslation();
+  return (
   <div className="flex flex-col gap-5 animate-fade-in">
     <h3 className="text-center text-lg font-bold text-foreground">
       {comparison.question}
@@ -37,7 +40,7 @@ export const ComparisonStep: React.FC<ComparisonStepProps> = ({
           <p className="font-serif text-foreground text-sm leading-tight">{comparison.movieA.title}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{comparison.movieA.year}</p>
           <span className="inline-block mt-2 text-xs text-accent font-semibold border border-accent/30 bg-accent/10 px-2 py-0.5 rounded-full">
-            NEW
+            {t('ceremony.new')}
           </span>
         </div>
       </button>
@@ -45,7 +48,7 @@ export const ComparisonStep: React.FC<ComparisonStepProps> = ({
       {/* OR divider */}
       <div className="flex items-center justify-center flex-shrink-0">
         <div className="w-9 h-9 rounded-full bg-card border border-border flex items-center justify-center text-xs font-black text-muted">
-          OR
+          {t('ceremony.or')}
         </div>
       </div>
 
@@ -78,21 +81,22 @@ export const ComparisonStep: React.FC<ComparisonStepProps> = ({
         className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-foreground transition-colors"
       >
         <ArrowLeft size={15} />
-        Undo
+        {t('ceremony.undo')}
       </button>
       <button
         onClick={() => onChoice('too_tough')}
         className="px-4 py-2 rounded-full border border-border text-sm font-semibold text-muted-foreground hover:bg-secondary hover:border-border transition-all"
       >
-        Too tough
+        {t('ceremony.tooTough')}
       </button>
       <button
         onClick={() => onChoice('skip')}
         className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
-        Skip
+        {t('ceremony.skip')}
         <ArrowLeft size={15} className="rotate-180" />
       </button>
     </div>
   </div>
-);
+  );
+};

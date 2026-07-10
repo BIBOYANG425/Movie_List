@@ -788,9 +788,14 @@ export async function fetchTVSuggestions(
 /**
  * Fetch a single item's localized (Chinese) title + overview by Spool id.
  *
- * Powers the useLocalizedItems hook. Accepts the Spool composite id form:
+ * Powers the useLocalizedItems hook. Only ids that map to a TMDB entry can be
+ * localized; the id prefix is an allowlist:
  *   - `tv_{showId}` or `tv_{showId}_s{n}` → GET tv/{showId}?language=zh-CN
  *   - `tmdb_{movieId}`                    → GET movie/{movieId}?language=zh-CN
+ * Everything else (books `ol_…`, legacy `manual:…`, or any future non-TMDB
+ * shape) has no TMDB entry, so we return null WITHOUT hitting the proxy — firing
+ * a doomed `movie/ol_…` request 403s at the proxy rule and, since only successes
+ * are cached, re-fires on every zh-mode render, starving the shared rate bucket.
  * Returns null on any failure (incl. signed-out 401), so the hook falls back to
  * the original title exactly as before.
  */
@@ -807,8 +812,11 @@ export async function fetchLocalizedTitle(
       return { title: data.name as string, overview: data.overview as string | undefined };
     }
 
-    const numericId = id.replace('tmdb_', '');
-    const res = await proxyFetch(`movie/${numericId}?language=${language}`, 5000);
+    // Only movie ids reach TMDB; skip anything without a TMDB entry.
+    const movieMatch = id.match(/^tmdb_(\d+)$/);
+    if (!movieMatch) return null;
+
+    const res = await proxyFetch(`movie/${movieMatch[1]}?language=${language}`, 5000);
     if (!res.ok) return null;
     const data = await res.json();
     return { title: data.title as string, overview: data.overview as string | undefined };

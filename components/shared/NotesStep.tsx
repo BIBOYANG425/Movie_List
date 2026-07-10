@@ -1,6 +1,7 @@
 import React from 'react';
 import { RankedItem, Tier } from '../../types';
 import { TIER_COLORS, TIER_LABELS } from '../../constants';
+import { useTranslation } from '../../contexts/LanguageContext';
 import { Film, StickyNote, ChevronRight, Users } from 'lucide-react';
 import { FriendTagInput } from '../journal/FriendTagInput';
 
@@ -29,7 +30,9 @@ export const NotesStep: React.FC<NotesStepProps> = ({
   currentUserId,
   watchedWithUserIds,
   onWatchedWithChange,
-}) => (
+}) => {
+  const { t } = useTranslation();
+  return (
   <div className="flex flex-col gap-5 animate-fade-in">
     {/* Item preview */}
     <div className="flex items-center gap-4 bg-secondary p-4 rounded-xl border border-border">
@@ -62,15 +65,15 @@ export const NotesStep: React.FC<NotesStepProps> = ({
     <div className="space-y-2">
       <label className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
         <StickyNote size={15} className="text-gold" />
-        Your thoughts
-        <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+        {t('ceremony.yourThoughts')}
+        <span className="text-muted-foreground font-normal text-xs">{t('ceremony.optional')}</span>
       </label>
       <div className="relative">
         <textarea
           autoFocus
           rows={4}
           maxLength={MAX_NOTES}
-          placeholder="What stood out? A scene, a feeling, why it deserves this tier..."
+          placeholder={t('ceremony.notesPlaceholder')}
           className="w-full bg-card border border-border rounded-xl py-3 px-4 text-foreground placeholder:text-muted focus:outline-none focus:border-amber-500/60 transition-colors resize-none text-sm leading-relaxed"
           value={notes}
           onChange={(e) => onNotesChange(e.target.value)}
@@ -86,8 +89,8 @@ export const NotesStep: React.FC<NotesStepProps> = ({
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
           <Users size={15} className="text-accent" />
-          Watched with
-          <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+          {t('ceremony.watchedWith')}
+          <span className="text-muted-foreground font-normal text-xs">{t('ceremony.optional')}</span>
         </label>
         <FriendTagInput
           currentUserId={currentUserId}
@@ -104,15 +107,16 @@ export const NotesStep: React.FC<NotesStepProps> = ({
         onClick={onContinue}
         className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gold text-background font-semibold text-sm hover:bg-foreground/20 transition-colors"
       >
-        Continue
+        {t('ceremony.continue')}
         <ChevronRight size={16} />
       </button>
       <button
         onClick={onSkip}
         className="w-full py-2.5 rounded-xl text-muted-foreground hover:text-muted-foreground text-sm transition-colors"
       >
-        Skip — add without notes
+        {t('ceremony.skipNoNotes')}
       </button>
     </div>
   </div>
-);
+  );
+};

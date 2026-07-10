@@ -1,19 +1,18 @@
-const zh: Record<string, string> = {
+import type { TranslationKey } from './en';
+
+const zh = {
   // ── Nav ──────────────────────────────────────────────────────────────────
-  'nav.all': '全部',
   'nav.movies': '电影',
   'nav.tv': '剧集',
-  'nav.addItem': '添加',
   'nav.logOut': '退出',
-  'nav.myProfile': '我的主页',
+  // AppLayout main nav (desktop + mobile bars)
+  'nav.board': '片单',
+  'nav.feed': '动态',
+  'nav.watchlist': '想看',
+  'nav.discover': '发现',
+  'nav.profile': '我的',
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
-  'tab.rankings': '排名',
-  'tab.watchlist': '稍后观看',
-  'tab.stats': '统计',
-  'tab.feed': '动态',
-  'tab.discover': '发现',
-  'tab.groups': '群组',
   'tab.resetRankings': '重置排名',
 
   // ── 票根 ───────────────────────────────────────────────────────────────
@@ -22,7 +21,6 @@ const zh: Record<string, string> = {
   'stubs.noStubsYet': '还没有票根',
   'stubs.noStubsHint': '为电影或电视节目排名，收集你的第一张票根。',
   'stubs.watchedOn': '观看于',
-  'stubs.changeDate': '更改日期',
   'stubs.backfill': '生成历史票根',
   'stubs.backfilling': '正在生成...',
   'stubs.mostFelt': '最多感受：',
@@ -45,7 +43,6 @@ const zh: Record<string, string> = {
 
   'ranking.myCanon': '我的片单',
   'ranking.subtitle': '你的终极排名，从杰作到一般。',
-  'ranking.allGenres': '所有类型',
 
   // ── 排名页提示 ──────────────────────────────────────────────────────────
   'ranking.resetConfirm': '重置你的{label}列表？此操作无法撤销。',
@@ -57,14 +54,56 @@ const zh: Record<string, string> = {
 
   // ── Tier Row ─────────────────────────────────────────────────────────────
   'tier.pts': '分',
-  'tier.items': '部',
+  'tier.items': '个',
   'tier.nothingYet': '暂无内容',
+
+  // ── 排名仪式 (TierPicker / NotesStep / ComparisonStep) ───────────────────
+  'ceremony.assignTier': '分配等级',
+  'ceremony.addNote': '添加备注',
+  'ceremony.headToHead': '对决比较',
+  'ceremony.addToSpool': '添加到 Spool',
+  'ceremony.tierFeel': '这个等级感觉如何？',
+  'ceremony.category': '类别',
+  'ceremony.itemsCount': '个',
+  'ceremony.yourThoughts': '你的想法',
+  'ceremony.optional': '（选填）',
+  'ceremony.notesPlaceholder': '有什么让你印象深刻？一个场景、一种感受，或它为何配得上这个等级……',
+  'ceremony.watchedWith': '与谁一起看',
+  'ceremony.continue': '继续',
+  'ceremony.skipNoNotes': '跳过，不添加备注',
+  'ceremony.new': '新',
+  'ceremony.or': '或',
+  'ceremony.undo': '撤销',
+  'ceremony.tooTough': '难以取舍',
+  'ceremony.skip': '跳过',
+  // AddMediaModal 搜索步骤
+  'ceremony.searchPlaceholder': '搜索任意电影……',
+  'ceremony.showingResultsFor': '以下是相关结果',
+  'ceremony.backendNotConfigured': '搜索后端未配置',
+  'ceremony.backendHint': '设置 {url} 和 {key} 以启用实时搜索。',
+  'ceremony.people': '人物',
+  'ceremony.knownFor': '代表作：',
+  'ceremony.backToResults': '返回结果',
+  'ceremony.born': '出生',
+  'ceremony.movies': '电影',
+  'ceremony.alreadySaved': '已保存',
+  'ceremony.saveForLater': '稍后再看',
+  'ceremony.rankThisMovie': '为这部电影排名',
+  'ceremony.noResultsFor': '没有找到“{query}”的结果',
+  'ceremony.noResultsHint': '试试其他片名、导演名，或检查拼写',
+  'ceremony.fetchingGlobalRanking': '正在获取全球排名……',
+  'ceremony.basedOnTaste': '根据你的口味',
+  'ceremony.popularNow': '当下热门',
+  'ceremony.refresh': '换一批',
+  'ceremony.showDifferent': '换一批推荐',
+  'ceremony.typeToSearch': '输入片名进行搜索',
+  'ceremony.addMediaLabel': '添加影片',
 
   // ── Watchlist ────────────────────────────────────────────────────────────
   'watchlist.title': '稍后观看',
   'watchlist.saved': '已保存',
-  'watchlist.empty': '还没有保存的电影',
-  'watchlist.emptyHint': '搜索电影时，点击书签图标将它们保存到这里。',
+  'watchlist.empty': '还没有保存的{media}',
+  'watchlist.emptyHint': '搜索{media}时，点击书签图标将它们保存到这里。',
   'watchlist.rankIt': '去排名',
   'watchlist.remove': '删除',
 
@@ -77,16 +116,16 @@ const zh: Record<string, string> = {
   'stats.tvSeasons': '剧季',
 
   // ── Feed ─────────────────────────────────────────────────────────────────
+  'feed.justNow': '刚刚',
+  'feed.minsAgo': '{n} 分钟前',
+  'feed.hrsAgo': '{n} 小时前',
+  'feed.daysAgo': '{n} 天前',
   'feed.friendsFeed': '好友动态',
   'feed.explore': '探索',
   'feed.emptyFriends': '好友还没有动态。关注更多人来查看他们的排名活动。',
   'feed.emptyExplore': '暂无探索内容，稍后再来看看！',
 
   // ── 动态卡片 ──────────────────────────────────────────────────────────────
-  'feed.justNow': '刚刚',
-  'feed.minsAgo': '{n}分钟前',
-  'feed.hrsAgo': '{n}小时前',
-  'feed.daysAgo': '{n}天前',
   'feed.watchedWith': '与以下人一起观看',
   'feed.reviewed': '评价了',
   'feed.containsSpoilers': '包含剧透',
@@ -114,8 +153,6 @@ const zh: Record<string, string> = {
   'discover.trendingHint': '过去30天朋友排名最多的电影',
   'discover.trendingEmpty': '暂无热门动态。关注更多朋友吧！',
   'discover.rankers': '人排名',
-  'discover.friend': '位朋友',
-  'discover.friends': '位朋友',
   // Engine grid ("for you" suggestions) + provenance chips
   'discover.forYouEngine': '为你推荐',
   'discover.forYouEngineHint': '根据你的口味精选',
@@ -134,13 +171,6 @@ const zh: Record<string, string> = {
   'discover.chip.generic': '大众热门',
   'discover.chip.new_release': '新片',
 
-  // ── Tier Labels ──────────────────────────────────────────────────────────
-  'tierLabel.S': 'S级',
-  'tierLabel.A': 'A级',
-  'tierLabel.B': 'B级',
-  'tierLabel.C': 'C级',
-  'tierLabel.D': 'D级',
-
   // ── Notifications ────────────────────────────────────────────────────────
   'notifications.title': '通知',
   'notifications.recent': '条最近',
@@ -154,6 +184,41 @@ const zh: Record<string, string> = {
   'journal.emptyOwn': '排名一部电影来开始你的观影日记',
   'journal.emptyOther': '暂无日志记录',
   'journal.saved': '日志已保存',
+  // 日志记录面板
+  'journal.tierSuffix': '级',
+  'journal.done': '完成',
+  'journal.saving': '保存中...',
+  'journal.reviewPlaceholder': '写下你的想法...',
+  'journal.howDidItFeel': '这让你有什么感受？',
+  'journal.lessDetails': '收起详情',
+  'journal.addMoreDetails': '添加更多详情',
+  'journal.vibe': '氛围',
+  'journal.favoriteMoments': '最爱时刻',
+  'journal.momentPlaceholder': '时刻 {n}...',
+  'journal.addMoment': '+ 添加时刻',
+  'journal.standoutPerformances': '亮眼表演',
+  'journal.watchContext': '观看信息',
+  'journal.locationPlaceholder': '你在哪里观看的？',
+  'journal.selectPlatform': '选择平台...',
+  'journal.watchedWith': '与谁一起看',
+  'journal.photos': '照片',
+  'journal.rewatch': '重看',
+  'journal.rewatchPlaceholder': '这次有什么不一样？',
+  'journal.personalTakeaway': '个人感悟（私密）',
+  'journal.takeawayPlaceholder': '你的个人反思...',
+  'journal.containsSpoilers': '包含剧透',
+  'journal.visibility': '可见性',
+  'journal.visDefault': '默认',
+  'journal.visPublic': '公开',
+  'journal.visFriends': '好友',
+  'journal.visPrivate': '私密',
+  // 日志对话（聊天）界面
+  'journal.skipToForm': '跳到表单',
+  'journal.retry': '重试',
+  'journal.chatPlaceholder': '分享你的想法...',
+  'journal.generateReview': '生成我的影评',
+  'journal.reviewDraft': '你的影评草稿',
+  'journal.save': '保存',
 
   // ── Profile ──────────────────────────────────────────────────────────────
   'profile.backToApp': '返回应用',
@@ -173,11 +238,6 @@ const zh: Record<string, string> = {
   'profile.bioHint': '告诉大家你喜欢什么类型的电影',
   'profile.saveProfile': '保存资料',
   'profile.saving': '保存中...',
-  'profile.findFriends': '查找好友',
-  'profile.searchUsername': '搜索用户名...',
-  'profile.search': '搜索',
-  'profile.searching': '搜索中...',
-  'profile.noUsersFound': '未找到用户。请尝试其他用户名或显示名称。',
   'profile.friendsOnly': '仅好友可见',
   'profile.friendsOnlyHint': '互相关注后可解锁粉丝/关注列表和最近动态。',
   'profile.noFollowers': '还没有粉丝。',
@@ -203,20 +263,49 @@ const zh: Record<string, string> = {
   'auth.usernameMinLength': '用户名至少需要3个字符。',
   'auth.loading': '加载中\u2026',
   'auth.createAccount': '创建账号',
+  'auth.welcomeBack': '欢迎回来',
+  'auth.createYourAccount': '创建你的账号',
+  'auth.signInSubtitle': '登录你的电影档案',
+  'auth.signUpSubtitle': '开始建立你的电影档案',
+  'auth.noAccount': '还没有账号？',
+  'auth.haveAccount': '已经有账号了？',
 
   // ── Onboarding ───────────────────────────────────────────────────────────
-  'onboarding.welcome': '欢迎来到 Marquee',
-  'onboarding.setupProfile': '设置你的个人资料',
-  'onboarding.setupHint': '朋友可以通过用户名找到你，查看你的主页，并关注你的排名动态。',
-  'onboarding.uploadAvatar': '上传头像',
-  'onboarding.avatarHint': '支持 JPG、PNG、WEBP 或 GIF，最大 5MB。',
-  'onboarding.bioHint': '告诉大家你喜欢什么类型的电影',
-  'onboarding.backToHome': '返回首页',
-  'onboarding.completeProfile': '完成设置',
-
-  // ── Error Boundary ───────────────────────────────────────────────────────
-  'error.somethingWrong': '出了点问题',
-  'error.tryAgain': '重试',
+  'onboarding.stepOf': '第 2 步，共 2 步',
+  'onboarding.getStarted': '开始使用',
+  'onboarding.buildYourSpool': '建立你的 Spool',
+  'onboarding.pickPrefix': '至少挑选',
+  'onboarding.pickMovies': '{n} 部',
+  'onboarding.pickSuffix': '你看过的电影，用来生成你的排名。之后你随时可以调整和微调。',
+  'onboarding.moviesCount': '部电影',
+  'onboarding.moreToGo': '还差 {n} 部',
+  'onboarding.ready': '准备就绪！',
+  'onboarding.continueToSpool': '进入 Spool',
+  'onboarding.createAccount': '创建你的账号',
+  'onboarding.searchPlaceholder': '按片名、导演或演员搜索……',
+  'onboarding.signInToSearch': '登录以搜索完整片库。',
+  'onboarding.pickFromSuggestions': '从下方推荐中挑选来开始。',
+  'onboarding.people': '人物',
+  'onboarding.knownFor': '代表作：',
+  'onboarding.movies': '电影',
+  'onboarding.noResultsFor': '没有找到“{query}”的结果',
+  'onboarding.backToSearch': '返回搜索',
+  'onboarding.born': '出生',
+  'onboarding.filmSingular': '部',
+  'onboarding.filmPlural': '部',
+  'onboarding.directed': '执导作品',
+  'onboarding.starredIn': '出演作品',
+  'onboarding.filmography': '作品',
+  'onboarding.allRanked': '所有电影都已排名！',
+  'onboarding.suggestedMovies': '推荐电影',
+  'onboarding.refresh': '换一批',
+  'onboarding.yourPicks': '你目前的选择',
+  'onboarding.assignTier': '分配等级',
+  'onboarding.headToHead': '对决比较',
+  'onboarding.new': '新片',
+  'onboarding.or': '或',
+  'onboarding.undo': '撤销',
+  'onboarding.tooToughPlace': '难以取舍，就放这里',
 
   // ── Toast ────────────────────────────────────────────────────────────────
   'toast.movieSaved': '电影已保存到观影清单',
@@ -232,16 +321,13 @@ const zh: Record<string, string> = {
 
   // ── Landing Page ─────────────────────────────────────────────────────────
   'landing.tagline': '你的电影，排名并铭记',
-  'landing.subtitle': '等级排名。好友发现。个人观影日记。为真正热爱电影的人而建 —— 不是算法。',
-  'landing.getStarted': '立即开始',
-  'landing.createAccount': '创建账号',
+  'landing.subtitle': '等级排名。好友发现。个人观影日记。为真正热爱电影的人而建，由人做主，与算法无关。',
   'landing.logIn': '登录',
   'landing.socialProof': '加入 48,000+ 电影爱好者的排名行列',
   'landing.trendingTitle': '本周热门',
   'landing.trendingHint': '看看社区正在如何排名',
   'landing.rankings': '个排名',
   'landing.howItWorks': 'Spool 如何运作',
-  'landing.step': '步骤',
   'landing.step1Title': '选择等级',
   'landing.step1Desc': 'S、A、B、C 或 D。一键选择，凭直觉。',
   'landing.step2Title': '快速对比',
@@ -262,10 +348,6 @@ const zh: Record<string, string> = {
 
   // ── Books ──────────────────────────────────────────────────────────────
   'nav.books': '书籍',
-  'book.searchBooks': '搜索书籍...',
-  'book.author': '作者',
-  'book.pages': '页',
-  'book.addBook': '添加书籍',
   'book.assignTier': '分配等级',
   'book.addNote': '添加备注',
   'book.headToHead': '对决比较',
@@ -291,11 +373,6 @@ const zh: Record<string, string> = {
   // ── TV Shows ────────────────────────────────────────────────────────────
   'tv.searchShows': '搜索电视剧...',
   'tv.selectSeason': '选择一季',
-  'tv.seasonCount': '季',
-  'tv.episodeCount': '集',
-  'tv.seasons': '季',
-  'tv.creator': '创作者',
-  'tv.status': '状态',
   'tv.addSeason': '添加电视剧季',
   'tv.assignTier': '分配等级',
   'tv.addNote': '添加备注',
@@ -341,8 +418,6 @@ const zh: Record<string, string> = {
   // ── 月度回顾 ──────────────────────────────────────────────────────────────
   'recap.shareMonth': '分享本月',
   'recap.title': '月度回顾',
-  'recap.watched': '观看',
-  'recap.topMood': '最多心情',
 
   // ── 分享主页 ──────────────────────────────────────────────────────────────
   'profile.shareProfile': '分享主页',
@@ -384,9 +459,6 @@ const zh: Record<string, string> = {
   'detail.watched_btn': '看过',
   'detail.shareTitle': '在 Spool 上看看这个',
   'detail.inTheirList': '在列表中',
-
-  // ── Language toggle ──────────────────────────────────────────────────────
-  'lang.toggle': '中文',
-};
+} satisfies Record<TranslationKey, string>;
 
 export default zh;

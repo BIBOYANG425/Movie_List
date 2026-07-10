@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tier, Bracket, RankedItem } from '../../types';
 import { TIER_COLORS, TIER_LABELS, BRACKET_LABELS } from '../../constants';
+import { useTranslation } from '../../contexts/LanguageContext';
 import { Film, BookOpen } from 'lucide-react';
 
 interface TierPickerProps {
@@ -15,7 +16,9 @@ export const TierPicker: React.FC<TierPickerProps> = ({
   currentItems,
   onSelectTier,
   onBracketChange,
-}) => (
+}) => {
+  const { t } = useTranslation();
+  return (
   <div className="space-y-5 animate-fade-in">
     {/* Selected item preview */}
     <div className="flex items-center gap-4 bg-secondary p-4 rounded-xl border border-border">
@@ -35,13 +38,13 @@ export const TierPicker: React.FC<TierPickerProps> = ({
         {selectedItem?.type === 'book' && selectedItem?.author && (
           <p className="text-muted text-xs mt-0.5">{selectedItem.author}</p>
         )}
-        <p className="text-muted text-sm mt-1">How does this tier feel?</p>
+        <p className="text-muted text-sm mt-1">{t('ceremony.tierFeel')}</p>
       </div>
     </div>
 
     {/* Bracket selector */}
     <div className="space-y-1.5">
-      <p className="text-xs text-muted-foreground font-medium">Category</p>
+      <p className="text-xs text-muted-foreground font-medium">{t('ceremony.category')}</p>
       <div className="flex gap-1.5">
         {Object.values(Bracket).map((b) => (
           <button
@@ -72,10 +75,11 @@ export const TierPicker: React.FC<TierPickerProps> = ({
             <span className="font-semibold opacity-90">{TIER_LABELS[tier]}</span>
           </div>
           <span className="text-xs font-mono opacity-50 bg-black/20 px-2 py-1 rounded">
-            {currentItems.filter(i => i.tier === tier).length} items
+            {currentItems.filter(i => i.tier === tier).length} {t('ceremony.itemsCount')}
           </span>
         </button>
       ))}
     </div>
   </div>
-);
+  );
+};

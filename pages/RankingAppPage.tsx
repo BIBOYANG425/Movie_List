@@ -364,7 +364,9 @@ const RankingAppPage = () => {
 
   const handleReset = async () => {
     if (!user) return;
-    const label = mediaMode === 'books' ? 'book' : mediaMode === 'tv' ? 'TV' : 'movie';
+    // Interpolate the LOCALIZED media word so zh never gets an EN word mid-sentence.
+    const label =
+      mediaMode === 'books' ? t('nav.books') : mediaMode === 'tv' ? t('nav.tv') : t('nav.movies');
     if (!window.confirm(t('ranking.resetConfirm').replace('{label}', label))) return;
 
     if (mediaMode === 'books') {
@@ -1837,6 +1839,7 @@ const RankingAppPage = () => {
         {activeTab === 'watchlist' && (
           <Watchlist
             items={localizedWatchlist}
+            mediaMode={mediaMode}
             onRemove={mediaMode === 'books' ? removeBookFromWatchlist : mediaMode === 'tv' ? removeTVFromWatchlist : removeFromWatchlist}
             onRank={rankFromWatchlist}
           />

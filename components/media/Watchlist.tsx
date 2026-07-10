@@ -7,18 +7,26 @@ interface WatchlistProps {
   items: WatchlistItem[];
   onRemove: (id: string) => void;
   onRank: (item: WatchlistItem) => void;
+  mediaMode?: 'movies' | 'tv' | 'books';
 }
 
-export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank }) => {
+export const Watchlist: React.FC<WatchlistProps> = ({ items, onRemove, onRank, mediaMode = 'movies' }) => {
   const { t } = useTranslation();
 
   if (items.length === 0) {
+    // Interpolate the LOCALIZED media word so zh never renders EN mid-sentence.
+    // Lowercased for natural EN prose; a no-op for CJK.
+    const media = (
+      mediaMode === 'books' ? t('nav.books') : mediaMode === 'tv' ? t('nav.tv') : t('nav.movies')
+    ).toLowerCase();
     return (
       <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/60">
         <Bookmark size={48} className="mb-4 opacity-30" />
-        <p className="text-lg font-semibold text-muted-foreground">{t('watchlist.empty')}</p>
+        <p className="text-lg font-semibold text-muted-foreground">
+          {t('watchlist.empty').replace('{media}', media)}
+        </p>
         <p className="text-sm mt-1 opacity-60 max-w-xs text-center">
-          {t('watchlist.emptyHint')}
+          {t('watchlist.emptyHint').replace('{media}', media)}
         </p>
       </div>
     );

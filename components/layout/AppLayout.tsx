@@ -1,22 +1,25 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import SpoolLogo from './SpoolLogo';
+import { LanguageToggle } from '../shared/LanguageToggle';
+import { useTranslation } from '../../contexts/LanguageContext';
+import type { TranslationKey } from '../../i18n';
 import {
   Film, MessageSquare, Bookmark, Compass, User,
 } from 'lucide-react';
 
 interface NavItem {
   path: string;
-  label: string;
+  labelKey: TranslationKey;
   icon: React.ElementType;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { path: 'ranking', label: 'Board', icon: Film },
-  { path: 'feed', label: 'Feed', icon: MessageSquare },
-  { path: 'watchlist', label: 'Watchlist', icon: Bookmark },
-  { path: 'discover', label: 'Discover', icon: Compass },
-  { path: 'profile', label: 'Profile', icon: User },
+  { path: 'ranking', labelKey: 'nav.board', icon: Film },
+  { path: 'feed', labelKey: 'nav.feed', icon: MessageSquare },
+  { path: 'watchlist', labelKey: 'nav.watchlist', icon: Bookmark },
+  { path: 'discover', labelKey: 'nav.discover', icon: Compass },
+  { path: 'profile', labelKey: 'nav.profile', icon: User },
 ];
 
 interface AppLayoutProps {
@@ -28,6 +31,7 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ activeView, onViewChange, children, headerActions, unreadNotificationCount = 0 }: AppLayoutProps) {
+  const { t } = useTranslation();
   return (
     <div className="h-dvh flex flex-col bg-background">
       {/* Top Bar — all screen sizes */}
@@ -52,7 +56,7 @@ export default function AppLayout({ activeView, onViewChange, children, headerAc
                   }`}
                 >
                   <item.icon className="w-4 h-4" />
-                  <span>{item.label}</span>
+                  <span>{t(item.labelKey)}</span>
                   {item.path === 'profile' && unreadNotificationCount > 0 && (
                     <span className="w-4 h-4 rounded-full bg-red-500 text-[9px] font-bold text-white flex items-center justify-center">
                       {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
@@ -62,6 +66,12 @@ export default function AppLayout({ activeView, onViewChange, children, headerAc
               );
             })}
           </nav>
+        </div>
+
+        {/* Mobile (<768px): headerActions are hidden, but the language toggle
+            must stay reachable. The bottom tab bar carries no header slot. */}
+        <div className="flex md:hidden items-center">
+          <LanguageToggle />
         </div>
 
         {headerActions && <div className="hidden md:flex items-center gap-2">{headerActions}</div>}
@@ -91,7 +101,7 @@ export default function AppLayout({ activeView, onViewChange, children, headerAc
                     <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-500" />
                   )}
                 </div>
-                <span className="text-[10px]">{item.label}</span>
+                <span className="text-[10px]">{t(item.labelKey)}</span>
               </button>
             );
           })}
