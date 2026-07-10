@@ -170,6 +170,19 @@ final class MediaGenericCeremonyTests: XCTestCase {
             .probedMerge)
     }
 
+    /// The preview-mode fallback queue is MOVIE-ONLY: the `OnboardingQueue`
+    /// flushes into `user_rankings` unconditionally, so a tv/book rank that
+    /// reaches the no-session branch (expired session mid-ceremony) must FAIL
+    /// the save rather than queue a `tv_…`/`ol_…` id into the movie table —
+    /// the C5 cross-media corruption class (final-review fold-in).
+    func testPreviewQueueIsMovieOnly() {
+        XCTAssertTrue(RankPersistence.shouldQueuePreviewRanking(media: .movie))
+        XCTAssertFalse(RankPersistence.shouldQueuePreviewRanking(media: .tv),
+                       "a tv rank must never enter the movie-shaped preview queue")
+        XCTAssertFalse(RankPersistence.shouldQueuePreviewRanking(media: .book),
+                       "a book rank must never enter the movie-shaped preview queue")
+    }
+
     // MARK: - 4. Per-media global-score seed
 
     /// A movie seeds from TMDB `vote_average`; a tv item seeds from the show's

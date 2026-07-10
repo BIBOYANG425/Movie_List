@@ -458,8 +458,12 @@ single `ranking_move` (`{notes?, year?}`, watched-with stripped) and, on a
 cross-tier re-rank, compacts the source tier (full membership minus the id) as
 well as the target — no gap left. A genuine fresh insert still emits
 `ranking_add`. The pure fresh-vs-re-rank decision is `CeremonyEmission.decide`
-(pinned by `TierSpliceTests`). iOS routes per media: movie → existing ceremony
-path; tv → `AddTVSeasonModal` flow; book → `RankingFlowModal` flow. Corrupt tv
+(pinned by `TierSpliceTests`). Re-rank entry routes per media on both platforms:
+web `rerankMediaTarget` sends movie → the movie ceremony (rerankState), tv →
+`AddTVSeasonModal` preselect, book → `RankingFlowModal`; iOS
+`SpoolAppRoot.rerankFromShelf` infers the vertical from the id prefix
+(`TVPreselectRouter.mediaForRankingId`: `tv_…` / `ol_…` / else movie) and seeds
+the ONE media-generic ceremony with the per-media `Movie`. Corrupt tv
 ids (the B1 class: `show_tmdb_id = 0` rows with a well-formed `tv_{n}` or
 `tv_{n}_s{k}` id) are healed-or-refused at the re-rank entry point:
 `TVPreselectRouter.resolve` derives the real show id from the id string; a
@@ -501,7 +505,8 @@ shared across all three tables.
 | id-format of `tmdb_id` | `tmdb_{n}` | `tv_{showId}_s{n}` (season) | `ol_{workKey}` (e.g. `ol_OL27448W`) |
 | `type` default | `'movie'` | `'tv_season'` | `'book'` |
 | shared media cols | `title` (NOT NULL), `year`, `poster_url`, `genres` (NOT NULL DEFAULT '{}') | same | same |
-| vertical media cols | `director` | `show_tmdb_id integer NOT NULL`, `season_number integer NOT NULL`, `season_title`, `creator`, `episode_count integer` | `author`, `page_count integer`, `isbn`, `ol_work_key`, `ol_ratings_average real`, `watched_with_user_ids uuid[]` |
+| vertical media cols | `director` | `show_tmdb_id integer NOT NULL`, `season_number integer NOT NULL`, `season_title`, `creator`, `episode_count integer` | `author`, `page_count integer`, `isbn`, `ol_work_key`, `ol_ratings_average real` |
+| `watched_with_user_ids uuid[]` | yes (`supabase_watched_with.sql:2`) | yes (`supabase_watched_with.sql:3`) | yes (native, `supabase_book_rankings.sql:26`) |
 
 **Key column notes:**
 
@@ -514,17 +519,20 @@ shared across all three tables.
   never call TMDB for `ol_` ids — `ol_ratings_average` is the only score source). iOS:
   `OpenLibraryService` populates it from the OL search response field `ratings_average`.
 - `director` is MOVIE-ONLY — sending a non-null `director` key to `tv_rankings` or
-  `book_rankings` causes a Postgres error (column does not exist). The iOS `RankingPayload`
-  is split per media: `TVRankingPayload` (no director), `BookRankingPayload` (no director,
-  no show fields), `RankingPayload` (movies, no show/book fields).
+  `book_rankings` causes a Postgres error (column does not exist). The iOS upsert body
+  is split per media: the `RankingPayload` enum wraps `MoviePayloadBody` (director,
+  no show/book fields), `TVPayloadBody` (show/season fields, no director), and
+  `BookPayloadBody` (OpenLibrary fields, no director, no show fields) — key-sets
+  pinned by `PerMediaPayloadTests`.
 
 ### H2H pool is SAME-MEDIA [client]
 
 The H2H comparison pool MUST contain only items from the same media vertical as
 the item being ranked. Web reference: `AddTVSeasonModal.tsx:399` (tv_rankings
 pool), `RankingFlowModal.tsx:106` (book_rankings pool). iOS: the pool is sourced
-from `RankingRepository.getTierItems(tier:media:)` with the ceremony's active
-media — a tv ceremony never reads from `user_rankings`, and vice versa. Cross-media
+from `RankingRepository.getAllRankedItems(media:)` keyed on the new item's own
+`movie.mediaType.mediaParam` (`RankH2HScreen.loadAllItems`) — a tv ceremony
+never reads from `user_rankings`, and vice versa. Cross-media
 H2H comparisons would produce semantically meaningless results and must not occur.
 
 ### TV preselect router [client]

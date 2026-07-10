@@ -46,10 +46,11 @@ import SwiftUI
 /// WatchlistScreen media-pill idiom) sits under the header, movie the default
 /// leftmost segment. Switching re-seeds `RankManageModel` with the picked media
 /// (`setMedia` + a fresh `getAllRankedItems(media:)` read) so drag / cross-tier
-/// move / notes / delete all route to that vertical's table. RE-RANK stays
-/// MOVIE-ONLY this cycle (`RankManageModel.showsRerank(forMedia:)`): the tv/book
-/// re-rank ceremony doesn't exist until Task 5/6, so tv/book cards show
-/// move/notes/delete only — TODO(C5-T6) restores re-rank once routed per media.
+/// move / notes / delete all route to that vertical's table. RE-RANK is offered
+/// for ALL media as of C5-iOS Task 6 (`RankManageModel.showsRerank(forMedia:)`
+/// accepts any known vertical): the hand-off routes per media in `SpoolAppRoot.
+/// rerankFromShelf` — a tv season id goes straight to the ceremony, a legacy
+/// whole-show id detours through the season grid, a book/movie goes direct.
 ///
 /// Header last reviewed: 2026-07-10
 public struct FullListScreen: View {
@@ -458,13 +459,14 @@ public struct FullListScreen: View {
     // MARK: long-press context menu (Task 4)
 
     /// The long-press management menu for one ranked card: move to another tier,
-    /// edit notes, re-rank, delete. Move / notes / delete work for EVERY vertical
-    /// (they route through the media-parameterized `RankManageModel`); RE-RANK is
-    /// gated to MOVIE-ONLY this cycle (`RankManageModel.showsRerank(forMedia:)`)
-    /// because the tv/book re-rank ceremony doesn't land until Task 5/6 —
-    /// TODO(C5-T6): show re-rank for tv/book once routed per media. All actions
-    /// route through the injected-closure `RankManageModel` (optimistic + revert +
-    /// toast, tested); this builder only shapes the menu.
+    /// edit notes, re-rank, delete. EVERY action works for EVERY vertical (they
+    /// route through the media-parameterized `RankManageModel`); RE-RANK is
+    /// offered for all known media as of C5-iOS Task 6
+    /// (`RankManageModel.showsRerank(forMedia:)` — only an unknown media hides
+    /// it), with the completion routed per media by `SpoolAppRoot.
+    /// rerankFromShelf`. All actions route through the injected-closure
+    /// `RankManageModel` (optimistic + revert + toast, tested); this builder
+    /// only shapes the menu.
     @ViewBuilder
     private func rankMenu(for item: RankedItem) -> some View {
         // Move to tier — a submenu of every tier EXCEPT the one it's in. Each
@@ -490,9 +492,10 @@ public struct FullListScreen: View {
             Label("edit notes", systemImage: "square.and.pencil")
         }
 
-        // RE-RANK — movie-only until the tv/book ceremony lands (C5-T6). The
-        // gate keys on the shelf's current media, not the item, so a whole
-        // vertical's cards share one rule.
+        // RE-RANK — all known media (C5-T6; the media-generic ceremony routes
+        // per vertical). The gate keys on the shelf's current media, not the
+        // item, so a whole vertical's cards share one rule; only an unknown
+        // media hides the action.
         if RankManageModel.showsRerank(forMedia: selectedMedia.rawValue) {
             Button {
                 manage.requestRerank(item: item)

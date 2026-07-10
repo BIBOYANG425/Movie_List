@@ -536,11 +536,11 @@ Web and iOS fixes on `fix/c4-ranking-blocking` per `docs/plans/2026-07-09-c4-blo
 
 ### C5-iOS notes (2026-07-10, branch `feat/ios-parity-c5-tv-books`)
 
-TV seasons + books on iOS. 8 tasks, plan at `docs/plans/2026-07-10-c5-ios-tv-books-plan.md`. Baselines: iOS 585, web 533. Final count: 726 iOS tests.
+TV seasons + books on iOS. 8 tasks, plan at `docs/plans/2026-07-10-c5-ios-tv-books-plan.md`. Baselines: iOS 585, web 533. Final count: 741 iOS tests (739 at T7 + 2 final-review pins).
 
 **What shipped:**
 
-- **T1 (per-media payloads):** `RankingPayload` split into `RankingPayload` (movie: `director`), `TVRankingPayload` (`show_tmdb_id Int` + `season_number Int` NOT NULL, `season_title?`, `creator?`, `episode_count?`, `watched_with_user_ids`), `BookRankingPayload` (`author?`, `page_count?`, `isbn?`, `ol_work_key?`, `ol_ratings_average?`). Verified column-for-column against DDL. The C4-deferred latent-break (director on tv/book rows) is closed.
+- **T1 (per-media payloads):** the upsert body split into a per-media `RankingPayload` enum wrapping `MoviePayloadBody` (movie: `director`), `TVPayloadBody` (`show_tmdb_id Int` + `season_number Int` NOT NULL, `season_title?`, `creator?`, `episode_count?`, `watched_with_user_ids`), `BookPayloadBody` (`author?`, `page_count?`, `isbn?`, `ol_work_key?`, `ol_ratings_average?`, `watched_with_user_ids`). Verified column-for-column against DDL. The C4-deferred latent-break (director on tv/book rows) is closed.
 - **T2 (media-parameterized reads):** `getTierItems(tier:media:)` and `getAllRankedItems(media:)` route to the correct table per media. `RankManageModel` and `FullListScreen` un-pinned from `"movie"`.
 - **T3 (TMDB TV endpoints):** `searchTVShows` (typo-retry variants, web parity), `getTVShowDetails` (seasons, Specials filtered), `getTVSeasonDetails`, `getTVShowGlobalScore`; `TV_GENRE_MAP` + `normalizeTVGenres` ported. All via the proxy.
 - **T4 (OpenLibrary client):** `OpenLibraryService` — keyless direct GET, `ol_{workKey}` id mint, `normalizeBookGenres` + `ALL_BOOK_GENRES` (48 entries, diffed identical to web), debounce + cancellation; `+` force-encoded as `%2B`; deterministic genre tie order.
@@ -565,6 +565,13 @@ TV seasons + books on iOS. 8 tasks, plan at `docs/plans/2026-07-10-c5-ios-tv-boo
 - **Gated-query no auto re-search post-sign-in** — after dismissing the sign-in nudge in the TV search stage, the query field repopulates but no automatic re-search fires; user must retype or tap. UX nicety, not a data contract issue.
 - **Preview-mode TV/book unsupported by design** — the signed-in gate is enforced at the rank-entry screen; preview-mode users see movie suggestions only. Deliberate.
 - **Notes prefill absent on season-preselect** — iOS `WatchlistItem` carries no `notes` column, so the iOS season-preselect path opens the ceremony with no notes prefill (web carries notes from the watchlist row). Deliberate platform gap, noted in `TVPreselectRouter.swift` header.
+
+**Final whole-branch review fold-ins (2026-07-10):**
+
+- **Preview-queue media gate (fixed):** `RankPersistence.save`'s no-session fallback queued ANY media into the movie-shaped `OnboardingQueue`, whose flush inserts into `user_rankings` unconditionally — an expired session mid-tv/book-ceremony would have minted a `tv_…`/`ol_…` id into the movie table (the C5 corruption class). Now gated by pure `shouldQueuePreviewRanking(media:)` (movie-only; tv/book toast + return false, bookmark stays per B5). Pinned by `MediaGenericCeremonyTests.testPreviewQueueIsMovieOnly`.
+- **Book re-rank global-score seed (fixed):** `rankedItem(from:)` hardcoded `globalScore: nil`, making `rerankFromShelf`'s book branch (`item.globalScore.map { $0 / 2 }`) dead code — book re-ranks seeded no engine score. Now maps `ol_ratings_average × 2` from the row (books only; movie/tv still enrich async from TMDB). Pinned by `MediaReadRoutingTests.testBookRowMapsOLRatingIntoGlobalScoreTimesTwo`.
+- **Stale movie-only re-rank comments (fixed):** `FullListScreen` header + menu comments still claimed "RE-RANK stays MOVIE-ONLY / TODO(C5-T6)" after T6 shipped all-media re-rank; the T1-ledgered `RankingRow.attribution` comment fix (wrong fallback order + nonexistent web `WatchlistCard` citation) had been dropped from T8 — both corrected.
+- **Riding (accepted, no fix):** `RankEntryModel.applyDirectSeasonLoad` has no stale-load guard (unlike `applySeasonLoad`) — confined because `SeasonSelectScreen` owns a fresh model per presentation; T3/T4 riding minors (4.5s-vs-4.0s score timeout, strict fail-whole OL decode, 200-only posture) stay as adjudicated in the task reviews.
 
 **Device smoke owed (PR body):** rank a TV season end-to-end (search → season grid → ceremony → shelf); rank a book end-to-end; whole-show bookmark → Rank It → season grid → bookmark clears.
 

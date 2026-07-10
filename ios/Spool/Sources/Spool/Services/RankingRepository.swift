@@ -153,7 +153,15 @@ public actor RankingRepository {
             id: row.tmdb_id, title: row.title, year: yearInt,
             director: row.attribution ?? "—",
             genres: row.genres, tier: tier, rank: row.rank_position,
-            bracket: bracket, globalScore: nil, seed: 0,
+            // A BOOK row is the only one whose global score is stored on the
+            // ranking row itself (`ol_ratings_average`, 0-5 → ×2 to the 0-10
+            // engine scale — Q7: never TMDB for an ol_ id). Movie/tv rows keep
+            // nil here; their re-rank paths enrich async from TMDB
+            // (`movieVoteAverage` / `tvShowGlobalScore`). This is what lets
+            // `rerankFromShelf`'s book branch re-derive the 0-5 rating.
+            bracket: bracket,
+            globalScore: row.ol_ratings_average.map { $0 * 2 },
+            seed: 0,
             posterUrl: row.poster_url, seasonTitle: row.season_title
         )
     }
@@ -795,8 +803,9 @@ public struct RankingRow: Codable, Sendable, Hashable {
     public let notes: String?
 
     /// The per-media "subtitle" attribution the shelf shows under a title:
-    /// director for movies, creator for TV, author for books (web
-    /// `WatchlistCard` uses the same `director ?? author ?? creator` fallback).
+    /// director for movies, creator for TV, author for books. Each table stores
+    /// at most ONE of the three columns, so the chain order never competes
+    /// (web precedent: `MediaDetailModal`'s `director ?? creator` fallback).
     public var attribution: String? {
         director ?? creator ?? author
     }

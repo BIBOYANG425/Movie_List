@@ -33,8 +33,11 @@ import SwiftUI
 ///    proceeds to the stub write, matching web where stub creation only
 ///    follows a successful rank upsert)
 ///  - preview mode: append to `OnboardingQueue` + flip AppStorage
-///    `spool.show_signin_sheet` so SpoolAppRoot presents the sign-in sheet
-///    (onboarding is movie-only; the queue is movie-shaped)
+///    `spool.show_signin_sheet` so SpoolAppRoot presents the sign-in sheet.
+///    MOVIE-ONLY (`shouldQueuePreviewRanking`): the queue is movie-shaped and
+///    flushes into `user_rankings`, so a tv/book rank that reaches this branch
+///    (expired session — the entry flows gate on live sign-in) fails the save
+///    with a toast instead of queueing a cross-media row
 ///  - not configured: no-op (the sign-in sheet itself is disabled upstream)
 ///
 /// `save` returns whether a CONFIRMED write landed (`true` only on the signed-in
@@ -193,6 +196,24 @@ public enum RankPersistence {
         // Preview mode: queue the ranking + signal SpoolAppRoot to present
         // its sign-in sheet. AuthService drains the queue on successful
         // sign-in so the row lands without a second trip through ranking.
+        //
+        // MOVIE-ONLY (C5-iOS final review): the queue is movie-shaped and its
+        // flush inserts into `user_rankings` unconditionally, so queueing a
+        // tv/book item here would later mint a `tv_…`/`ol_…` id into the MOVIE
+        // table — the exact cross-media corruption class C5 exists to prevent.
+        // Every tv/book entry flow gates on a live sign-in, so this branch is
+        // reachable for them only if the session died mid-ceremony; fail the
+        // save honestly (bookmark stays, B5) instead of queueing corruption.
+        guard Self.shouldQueuePreviewRanking(media: movie.mediaType) else {
+            NSLog("[RankPersistence] preview queue is movie-only; dropping \(movie.mediaType.rawValue) rank for \(movie.id)")
+            await MainActor.run {
+                ToastCenter.shared.show(
+                    "couldn't save your rank — sign in and try again",
+                    level: .error
+                )
+            }
+            return false
+        }
         let queued = QueuedRanking(
             tmdbId: movie.id,
             title: movie.title,
@@ -292,6 +313,17 @@ public enum RankPersistence {
         case .moved:
             return hasInput ? .probedMerge : .skip
         }
+    }
+
+    /// Pure gate for the preview-mode fallback (tested —
+    /// `MediaGenericCeremonyTests`). The `OnboardingQueue` is MOVIE-shaped and
+    /// its flush inserts into `user_rankings` unconditionally, so only a movie
+    /// rank may be queued when no session exists. A tv/book rank reaching the
+    /// fallback (expired session mid-ceremony — every tv/book entry flow gates
+    /// on live sign-in) fails the save instead, keeping `tv_…`/`ol_…` ids out
+    /// of the movie table (the C5 cross-media corruption class).
+    static func shouldQueuePreviewRanking(media: RankMedia) -> Bool {
+        media == .movie
     }
 
     /// Did the ceremony capture any journal signal? True when EITHER the moods or

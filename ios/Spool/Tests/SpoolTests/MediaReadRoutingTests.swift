@@ -44,6 +44,7 @@ final class MediaReadRoutingTests: XCTestCase {
         tmdbId: String, title: String, tier: String, rank: Int,
         director: String? = nil, creator: String? = nil, author: String? = nil,
         seasonTitle: String? = nil, seasonNumber: Int? = nil,
+        olRatingsAverage: Double? = nil,
         genres: [String] = ["Drama"], year: String? = "2011"
     ) -> RankingRow {
         RankingRow(
@@ -53,7 +54,7 @@ final class MediaReadRoutingTests: XCTestCase {
             show_tmdb_id: seasonNumber != nil ? 1399 : nil,
             season_number: seasonNumber, season_title: seasonTitle,
             creator: creator, episode_count: nil,
-            author: author,
+            author: author, ol_ratings_average: olRatingsAverage,
             tier: tier, rank_position: rank, notes: nil
         )
     }
@@ -91,6 +92,28 @@ final class MediaReadRoutingTests: XCTestCase {
         XCTAssertEqual(item.director, "J.R.R. Tolkien",
                        "book subtitle slot = author (attribution)")
         XCTAssertNil(item.seasonTitle, "books carry no season line")
+    }
+
+    /// A BOOK row is the only one whose global score is stored on the ranking
+    /// row itself: `ol_ratings_average` (0-5) maps ×2 onto the shelf item's
+    /// 0-10 `globalScore` so `rerankFromShelf`'s book branch can re-derive the
+    /// 0-5 OL rating and seed the re-rank engine (Q7 — never TMDB for `ol_`
+    /// ids). Movie/tv rows keep nil (their re-ranks enrich async from TMDB).
+    func testBookRowMapsOLRatingIntoGlobalScoreTimesTwo() throws {
+        let book = row(tmdbId: "ol_OL27448W", title: "The Hobbit", tier: "S", rank: 0,
+                       author: "J.R.R. Tolkien", olRatingsAverage: 4.2)
+        let item = try XCTUnwrap(RankingRepository.rankedItem(from: book))
+        XCTAssertEqual(try XCTUnwrap(item.globalScore), 8.4, accuracy: 0.0001,
+                       "ol_ratings_average 0-5 scales ×2 to the 0-10 engine scale")
+
+        let movie = row(tmdbId: "tmdb_42", title: "Heat", tier: "S", rank: 0,
+                        director: "Michael Mann")
+        XCTAssertNil(try XCTUnwrap(RankingRepository.rankedItem(from: movie)).globalScore,
+                     "movie shelf rows carry no stored global score")
+        let tv = row(tmdbId: "tv_1399_s1", title: "GoT", tier: "A", rank: 0,
+                     creator: "David Benioff", seasonNumber: 1)
+        XCTAssertNil(try XCTUnwrap(RankingRepository.rankedItem(from: tv)).globalScore,
+                     "tv shelf rows carry no stored global score")
     }
 
     func testRowWithMissingAttributionFallsBackToDash() throws {
