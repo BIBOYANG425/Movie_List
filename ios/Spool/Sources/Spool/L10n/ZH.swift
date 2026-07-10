@@ -29,5 +29,13 @@ public enum ZH {
 
         // Generic failure toast — reuse web 'ranking.failedSave'.
         "toast.saveFailed": "保存失败，请重试",
+
+        // Settings → language row (C6-iOS Task 2). Row label is faithful zh
+        // (语言 = "language"); the two option glyphs stay 'EN' / '中文' identical
+        // to en so the picker names each language in its own script on both
+        // surfaces (matches web `LanguageToggle`).
+        "settings.language": "语言",
+        "settings.languageEnglish": "EN",
+        "settings.languageChinese": "中文",
     ]
 }

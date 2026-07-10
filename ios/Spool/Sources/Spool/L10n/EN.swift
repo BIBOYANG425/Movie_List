@@ -32,5 +32,13 @@ public enum EN {
         // A generic failure toast — verbatim web 'ranking.failedSave' en copy
         // (i18n/en.ts). Em-dash ban is zh-only; en value is faithful to web.
         "toast.saveFailed": "Failed to save — please try again",
+
+        // Settings → language row (C6-iOS Task 2). Web has no settings.* keys yet,
+        // so these are iOS-first; the two option labels reuse the web
+        // `LanguageToggle` glyphs ('EN' / '中文', components/shared/LanguageToggle.tsx)
+        // verbatim so both surfaces name the languages identically.
+        "settings.language": "language",
+        "settings.languageEnglish": "EN",
+        "settings.languageChinese": "中文",
     ]
 }

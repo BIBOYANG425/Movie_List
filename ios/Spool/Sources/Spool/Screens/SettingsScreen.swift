@@ -5,6 +5,9 @@ import SwiftUI
 /// Scoped to actions we can reliably perform today:
 ///  - Sign out (AuthService)
 ///  - Theme toggle (paper / dark) — pass-through binding from SpoolAppRoot
+///  - Language toggle (EN / 中文) — writes the `spool_locale` slot via
+///    `@AppStorage`; the root's `.id(rawLocale)` re-renders `L10n.t` views live
+///    (C6-iOS Task 2)
 ///  - Profile visibility (public/friends/private) — the explore opt-in loop's
 ///    other half, backed by `profiles.profile_visibility` (signed-in only)
 ///  - App version / build info
@@ -13,7 +16,7 @@ import SwiftUI
 /// Destructive actions (delete account) are intentionally absent until we have
 /// a proper server-side cascade + confirmation flow.
 ///
-/// Header last reviewed: 2026-07-07
+/// Header last reviewed: 2026-07-10
 public struct SettingsScreen: View {
     public var onClose: () -> Void
     public var onSignedOut: () -> Void
@@ -43,6 +46,17 @@ public struct SettingsScreen: View {
     /// A visibility write is in flight — disables the picker so a rapid
     /// re-tap can't race the round-trip.
     @State private var visibilityBusy: Bool = false
+    /// Persisted app language (C6-iOS Task 2). Bound to `LocaleStore.storageKey`
+    /// via the SAME raw-string `@AppStorage` contract the theme toggle uses.
+    /// Writing here flips `LocaleStore.current` for every non-View reader
+    /// (`L10n.t`, `TMDBService`/`SuggestionsClient` locale) AND, because the root
+    /// (`SpoolAppRoot`) keys its content on this same slot, re-renders every
+    /// `L10n.t`-reading view live.
+    ///
+    /// Fresh-install ordering (LocaleStore contract): the default is the DEVICE
+    /// default (`LocaleStore.current.rawValue`), NOT a bare `"en"`, so opening
+    /// Settings on a device-zh install never masks the `.zh` device seed.
+    @AppStorage(LocaleStore.storageKey) private var rawLocale: String = LocaleStore.current.rawValue
 
     public init(preference: Binding<ThemePreference>,
                 effectiveMode: SpoolMode,
@@ -65,6 +79,7 @@ public struct SettingsScreen: View {
                             visibilitySection
                         }
                         preferencesSection
+                        languageSection
                         aboutSection
                         if hasSession {
                             signOutButton
@@ -167,6 +182,38 @@ public struct SettingsScreen: View {
             }
         }
     }
+
+    // MARK: language (C6-iOS Task 2)
+
+    /// EN / 中文 language picker — the same paper-capsule chip idiom as APPEARANCE
+    /// and PRIVACY. Chips write `rawLocale` (the `LocaleStore` slot), which flips
+    /// `LocaleStore.current` for every non-View reader and, via the root's
+    /// `.id(rawLocale)`, re-renders every `L10n.t`-reading view live. The row
+    /// label + option labels come from `L10n.t` so the row localizes itself.
+    private var languageSection: some View {
+        section(title: L10n.t("settings.language").uppercased()) { t in
+            HStack(spacing: 8) {
+                ForEach(Self.languageOptions, id: \.raw) { option in
+                    LanguageChip(
+                        label: L10n.t(option.labelKey),
+                        selected: rawLocale == option.raw
+                    ) {
+                        rawLocale = option.raw
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
+        }
+    }
+
+    /// The two language options, in EN-then-中文 order. `raw` is the `spool_locale`
+    /// slot value; `labelKey` resolves the display label via `L10n.t`.
+    static let languageOptions: [(raw: String, labelKey: String)] = [
+        (SpoolLocale.en.rawValue, "settings.languageEnglish"),
+        (SpoolLocale.zh.rawValue, "settings.languageChinese"),
+    ]
 
     // MARK: profile visibility (explore opt-in)
 
@@ -384,6 +431,34 @@ private struct ThemeChip: View {
                     )
             }
             .buttonStyle(.plain)
+        }
+    }
+}
+
+/// Language picker chip — same paper-capsule idiom as `ThemeChip` (C6-iOS Task 2).
+/// Selecting writes the `spool_locale` slot; the a11y label names the language.
+private struct LanguageChip: View {
+    let label: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            Button(action: action) {
+                Text(label)
+                    .font(SpoolFonts.mono(11))
+                    .tracking(1.5)
+                    .foregroundStyle(selected ? t.cream : t.ink)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(selected ? t.ink : t.cream2)
+                            .overlay(Capsule().stroke(t.ink, lineWidth: 1.2))
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         }
     }
 }
