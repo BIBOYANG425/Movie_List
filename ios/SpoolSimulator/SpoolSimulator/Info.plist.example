@@ -8,15 +8,19 @@
   The spool:// URL scheme is required for the Google OAuth callback
   (AuthService.oauthRedirectURL = spool://auth-callback).
   SUPABASE_ANON_KEY: Supabase dashboard → Settings → API (legacy anon key).
-  TMDB_API_KEY: same value as web's VITE_TMDB_API_KEY.
+
+  NOTE: TMDB_API_KEY is intentionally absent (C3 Part B, Task 5). The TMDB key
+  no longer ships in the app bundle. Every TMDB request is routed through the
+  authenticated `tmdb-proxy` edge function (see TMDBProxy / TMDBService), and the
+  5-pool suggestion engine lives behind the `suggestions` edge function (see
+  SuggestionsClient). Both inject the key server-side from the Supabase secret
+  store. Do NOT add TMDB_API_KEY back to this plist.
 -->
 <dict>
 	<key>SUPABASE_URL</key>
 	<string>https://YOUR-PROJECT.supabase.co</string>
 	<key>SUPABASE_ANON_KEY</key>
 	<string>YOUR-ANON-KEY</string>
-	<key>TMDB_API_KEY</key>
-	<string>YOUR-TMDB-KEY</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

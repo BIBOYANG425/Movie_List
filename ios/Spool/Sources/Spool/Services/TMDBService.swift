@@ -1,51 +1,90 @@
 import Foundation
+import Supabase
 
-/// TMDB search client. Mirror of `services/tmdbService.ts` `searchMovies`
-/// — same endpoint, same response shape.
+/// TMDB search/details client — proxy-routed. Mirror of `services/tmdbService.ts`
+/// (search + details seams), same endpoints, same response shapes.
 ///
-/// Reads `TMDB_API_KEY` from `Info.plist`. Web exposes the key in the bundle
-/// the same way (`VITE_TMDB_API_KEY`), so this matches the existing risk model.
-/// When a backend edge-function proxy lands, swap this implementation without
-/// changing call sites.
+/// The iOS bundle no longer holds a TMDB key. Every TMDB request goes through the
+/// authenticated `tmdb-proxy` edge function (see `TMDBProxy`): the proxy injects
+/// `TMDB_API_KEY` server-side and enforces a path allowlist. Requests carry the
+/// caller's Supabase session JWT (Bearer) + the anon `apikey` header, mirroring
+/// how web's `proxyRequest` invokes the proxy. Signed-out callers have no session,
+/// so `proxyFetch` short-circuits to a synthetic 401 WITHOUT hitting the network —
+/// every consumer already treats a non-ok response as "no results", preserving the
+/// pre-migration signed-out behavior (empty → callers fall back to fixtures/no-results).
+///
+/// The 5-pool suggestion engine (getGenericSuggestions + discover pools) moved
+/// server-side into the `suggestions` edge function (see `SuggestionsClient`).
+/// Only the seams that still have client callers remain here: search + movie
+/// details (`vote_average` enrichment).
+///
+/// Header last reviewed: 2026-07-10
 public enum TMDBService {
 
     public static let imageBase = "https://image.tmdb.org/t/p/w500"
     public static let defaultTimeout: TimeInterval = 4.5
-    private static let base = "https://api.themoviedb.org/3"
 
+    /// Whether the proxy path is reachable at all — i.e. the Supabase client is
+    /// configured. When false the app is in credential-free preview mode: TMDB is
+    /// unreachable and callers fall back to their local fixtures (mirrors the old
+    /// `hasKey`-gated demo path, now keyed on backend config instead of a bundled
+    /// TMDB key that no longer exists).
     public static var hasKey: Bool {
-        guard let key = apiKey, !key.isEmpty else { return false }
-        return true
+        SpoolClient.isConfigured
     }
 
-    private static var apiKey: String? {
-        Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+    // MARK: - Proxy fetch seam
+
+    /// Route a bare TMDB path (with its own query string, minus api_key) through
+    /// the tmdb-proxy edge function using the caller's session JWT.
+    ///
+    /// A signed-out caller (no session / no client) yields a synthetic 401
+    /// `(Data, HTTPURLResponse)` WITHOUT hitting the network — callers already
+    /// read non-2xx as empty, so this is the signed-out gate. Any proxy non-2xx
+    /// (401/403/429/502) is surfaced verbatim to the caller's status check, which
+    /// keeps typo-retry's "non-2xx skips variants" rule intact now that proxy
+    /// statuses stand in for the old direct-TMDB statuses.
+    ///
+    /// Throws only on transport failure / cancellation (mirroring `URLSession`),
+    /// which callers already swallow to `[]`.
+    private static func proxyFetch(_ tmdbPath: String, timeout: TimeInterval) async throws -> (Data, HTTPURLResponse) {
+        guard let client = SpoolClient.shared else {
+            return synthetic401()
+        }
+        guard
+            let session = try? await client.auth.session,
+            !session.accessToken.isEmpty,
+            let supabaseURL = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String,
+            let anonKey = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String
+        else {
+            // Signed out (or config gone) — no session to authenticate the proxy.
+            // Synthetic 401 so every caller's non-ok branch yields empty as before.
+            return synthetic401()
+        }
+
+        let urlString = TMDBProxy.buildProxyURL(supabaseURL: supabaseURL, tmdbPath: tmdbPath)
+        guard let url = URL(string: urlString) else { return synthetic401() }
+
+        var req = URLRequest(url: url, timeoutInterval: timeout)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("application/json", forHTTPHeaderField: "accept")
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        // A non-HTTP response is treated as a hard failure (unexpected transport).
+        guard let http = response as? HTTPURLResponse else { return synthetic401() }
+        return (data, http)
     }
 
-    /// Seed pool for brand-new users (taste profile not yet built).
-    /// Mirror of web `getGenericSuggestions`: fetch recent popular (last 2y)
-    /// + high-rated classics (older than 5y), interleave them, shuffle, cap at 12.
-    /// Returns `[]` if TMDB key missing so callers can fall back to fixtures.
-    public static func getGenericSuggestions(page: Int = 1, timeout: TimeInterval = defaultTimeout) async -> [TMDBMovie] {
-        guard hasKey else { return [] }
-        let year = Calendar(identifier: .gregorian).component(.year, from: Date())
-
-        async let recent: [TMDBMovie] = discover(
-            sortBy: "popularity.desc",
-            dateGTE: "\(year - 2)-01-01", dateLTE: nil,
-            voteCountGTE: 50, page: page, timeout: timeout
-        )
-        async let classics: [TMDBMovie] = discover(
-            sortBy: "vote_average.desc",
-            dateGTE: nil, dateLTE: "\(year - 5)-12-31",
-            voteCountGTE: 1000, page: page, timeout: timeout
-        )
-        let (r, c) = await (recent, classics)
-
-        let newFilms = Array(r.prefix(6))
-        let classicFilms = Array(c.prefix(6))
-        let merged = interleave(newFilms, classicFilms)
-        return Array(dedupByID(merged).prefix(12)).shuffled()
+    /// A synthetic 401 response used for the signed-out / unconfigured gate — no
+    /// network is touched. `URL` is a stable placeholder never dereferenced.
+    private static func synthetic401() -> (Data, HTTPURLResponse) {
+        let http = HTTPURLResponse(
+            url: URL(string: "https://spool.invalid/unauthenticated")!,
+            statusCode: 401, httpVersion: nil, headerFields: nil
+        )!
+        return (Data(#"{"error":"Not authenticated"}"#.utf8), http)
     }
 
     // MARK: /movie/{id} — minimal details (vote_average enrichment)
@@ -55,23 +94,14 @@ public enum TMDBService {
     /// the 0-10 rating, and dropping it regresses the ranking engine's prediction
     /// signal for new users (see `Movie.voteAverage`). The normal search→rank
     /// path already has this from the search result; this backfills it for the
-    /// watchlist path. Best-effort: returns `nil` on missing key / HTTP error /
+    /// watchlist path. Best-effort: returns `nil` on signed-out / HTTP error /
     /// transport failure so the caller falls back to a nil `voteAverage` (the
     /// engine then uses the tier midpoint, exactly as before this field existed).
     public static func movieVoteAverage(tmdbId: Int, timeout: TimeInterval = defaultTimeout) async -> Double? {
-        guard let key = apiKey, !key.isEmpty else { return nil }
-        var comps = URLComponents(string: "\(base)/movie/\(tmdbId)")!
-        comps.queryItems = [
-            URLQueryItem(name: "api_key", value: key),
-            URLQueryItem(name: "language", value: locale()),
-        ]
-        guard let url = comps.url else { return nil }
-
-        var req = URLRequest(url: url, timeoutInterval: timeout)
-        req.httpMethod = "GET"
+        let path = "movie/\(tmdbId)?language=\(locale())"
         do {
-            let (data, response) = try await URLSession.shared.data(for: req)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            let (data, http) = try await proxyFetch(path, timeout: timeout)
+            guard http.statusCode == 200 else { return nil }
             let detail = try JSONDecoder().decode(TMDBDetailResponse.self, from: data)
             return detail.voteAverage
         } catch {
@@ -86,58 +116,7 @@ public enum TMDBService {
         }
     }
 
-    // MARK: /discover/movie
-
-    private static func discover(
-        sortBy: String, dateGTE: String?, dateLTE: String?,
-        voteCountGTE: Int, page: Int, timeout: TimeInterval
-    ) async -> [TMDBMovie] {
-        guard let key = apiKey, !key.isEmpty else { return [] }
-        var comps = URLComponents(string: "\(base)/discover/movie")!
-        var items: [URLQueryItem] = [
-            URLQueryItem(name: "api_key", value: key),
-            URLQueryItem(name: "language", value: locale()),
-            URLQueryItem(name: "sort_by", value: sortBy),
-            URLQueryItem(name: "include_adult", value: "false"),
-            URLQueryItem(name: "vote_count.gte", value: String(voteCountGTE)),
-            URLQueryItem(name: "page", value: String(page)),
-        ]
-        if let d = dateGTE { items.append(URLQueryItem(name: "primary_release_date.gte", value: d)) }
-        if let d = dateLTE { items.append(URLQueryItem(name: "primary_release_date.lte", value: d)) }
-        comps.queryItems = items
-        guard let url = comps.url else { return [] }
-
-        var req = URLRequest(url: url, timeoutInterval: timeout)
-        req.httpMethod = "GET"
-        do {
-            let (data, response) = try await URLSession.shared.data(for: req)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
-            let wrapper = try JSONDecoder().decode(TMDBSearchResponse.self, from: data)
-            return wrapper.results.compactMap(mapResult)
-        } catch {
-            return []
-        }
-    }
-
-    private static func interleave(_ a: [TMDBMovie], _ b: [TMDBMovie]) -> [TMDBMovie] {
-        var out: [TMDBMovie] = []
-        let maxLen = max(a.count, b.count)
-        for i in 0..<maxLen {
-            if i < a.count { out.append(a[i]) }
-            if i < b.count { out.append(b[i]) }
-        }
-        return out
-    }
-
-    private static func dedupByID(_ items: [TMDBMovie]) -> [TMDBMovie] {
-        var seen = Set<Int>()
-        var out: [TMDBMovie] = []
-        for m in items where !seen.contains(m.tmdbId) {
-            seen.insert(m.tmdbId)
-            out.append(m)
-        }
-        return out
-    }
+    // MARK: /search/movie
 
     /// Returns at most 12 posters-only results, newest-first by TMDB's default
     /// relevance ordering. Swallow all errors into `[]` — search is best-effort.
@@ -147,12 +126,12 @@ public enum TMDBService {
     /// retry with the cheap deterministic variants from `typoRetryVariants`,
     /// cheapest-first, and take the first non-empty set. An HTTP-error (non-2xx)
     /// response does NOT trigger or continue the variant loop — that distinguishes
-    /// a real zero-result from a 429/5xx/401 so we don't hammer TMDB. Between
-    /// variant requests we honor `Task` cancellation: debounced callers cancel
-    /// stale searches, and a cancelled search must not fire more requests.
+    /// a real zero-result from a proxy 401/403/429/502 so we don't hammer the proxy.
+    /// Between variant requests we honor `Task` cancellation: debounced callers
+    /// cancel stale searches, and a cancelled search must not fire more requests.
     public static func searchMovies(query: String, timeout: TimeInterval = defaultTimeout) async -> [TMDBMovie] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let key = apiKey, !key.isEmpty, !trimmed.isEmpty else { return [] }
+        guard !trimmed.isEmpty else { return [] }
 
         // One fetch+map for a single query term. Reused verbatim by the retry
         // loop so retries share the exact request/mapping path. Returns `nil` on
@@ -160,21 +139,20 @@ public enum TMDBService {
         // from an HTTP error and skip the variant loop. Throws on transport
         // errors / cancellation, which the caller swallows to `[]`.
         func fetchAndMap(_ term: String) async throws -> [TMDBMovie]? {
-            var comps = URLComponents(string: "\(base)/search/movie")!
+            // Pack the TMDB query into the proxy `path` param (buildProxyURL
+            // handles encoding). api_key is never sent — the proxy injects it.
+            var comps = URLComponents()
             comps.queryItems = [
-                URLQueryItem(name: "api_key", value: key),
                 URLQueryItem(name: "query", value: term),
                 URLQueryItem(name: "language", value: locale()),
                 URLQueryItem(name: "page", value: "1"),
                 URLQueryItem(name: "include_adult", value: "false"),
             ]
-            guard let url = comps.url else { return [] }
+            let tmdbQuery = comps.percentEncodedQuery ?? ""
+            let path = "search/movie?\(tmdbQuery)"
 
-            var req = URLRequest(url: url, timeoutInterval: timeout)
-            req.httpMethod = "GET"
-
-            let (data, response) = try await URLSession.shared.data(for: req)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            let (data, http) = try await proxyFetch(path, timeout: timeout)
+            guard http.statusCode == 200 else { return nil }
             let wrapper = try JSONDecoder().decode(TMDBSearchResponse.self, from: data)
             return wrapper.results.compactMap(mapResult).prefix(12).map { $0 }
         }

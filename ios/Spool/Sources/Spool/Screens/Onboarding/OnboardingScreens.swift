@@ -269,8 +269,9 @@ struct OnbGrid: View {
 
     private let tierOptions: [Tier] = [.S, .A, .B, .C, .D]
 
-    /// Fallback pool used when `TMDB_API_KEY` isn't set or the network fails.
-    /// Same titles the HTML prototype showed so the demo path stays consistent.
+    /// Seed pool for onboarding's pre-auth tier placement (the `suggestions`
+    /// edge function needs a session that doesn't exist yet). Same titles the
+    /// HTML prototype showed so the demo path stays consistent.
     private static let fallbackPool: [TMDBMovie] = [
         .fixture(id: "fx_past_lives",    title: "Past Lives",                year: 2023, seed: 0),
         .fixture(id: "fx_itmfl",         title: "In the Mood for Love",      year: 2000, seed: 2),
@@ -415,9 +416,14 @@ struct OnbGrid: View {
     private func load() async {
         if !suggestions.isEmpty { return }
         loading = true
-        let results = await TMDBService.getGenericSuggestions()
+        // Onboarding runs PRE-AUTH: the `suggestions` edge function requires a
+        // session, and the TMDB key no longer ships in the bundle, so the generic
+        // seed pool that `getGenericSuggestions` used to fetch is unreachable here.
+        // The curated fixture pool is the signed-out seed (same titles the demo
+        // path always showed). Once signed in, the Discover grid (Task 6) draws
+        // live suggestions via `SuggestionsClient`.
         await MainActor.run {
-            suggestions = results.isEmpty ? Self.fallbackPool : results
+            suggestions = Self.fallbackPool
             loading = false
         }
     }
