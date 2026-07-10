@@ -611,7 +611,18 @@ function mapTVGenres(genreIds: number[]): string[] {
 // 401 (signed out) / 429 / 502 degrades to "no suggestions" exactly like the
 // old key-gated engine returned [] when the key was absent.
 
-export type SuggestionMode = 'suggestions' | 'backfill';
+export type SuggestionMode = 'suggestions' | 'backfill' | 'new_releases';
+
+/** Engine provenance pool tag (mirrors the suggestions edge function §1.3). */
+export type SuggestionPool =
+  | 'similar'
+  | 'taste'
+  | 'trending'
+  | 'variety'
+  | 'friend'
+  | 'generic'
+  | 'backfill'
+  | 'new_release';
 
 interface SuggestionResponseItem {
   id: string;
@@ -625,6 +636,12 @@ interface SuggestionResponseItem {
   overview: string;
   voteAverage?: number;
   seasonCount?: number;
+  pool?: SuggestionPool;
+}
+
+/** A movie suggestion carrying its engine provenance pool (Discover grid). */
+export interface MovieSuggestion extends TMDBMovie {
+  pool?: SuggestionPool;
 }
 
 async function invokeSuggestions(
@@ -671,6 +688,36 @@ export async function fetchMovieSuggestions(
     genres: m.genres ?? [],
     overview: m.overview ?? '',
     voteAverage: m.voteAverage,
+  }));
+}
+
+/**
+ * Fetch movie suggestions for the Discover engine grid, preserving each item's
+ * engine provenance `pool` (used to render the "why" chip). Distinct from
+ * fetchMovieSuggestions, which drops the pool for the ranking modal that doesn't
+ * surface provenance. Errors / signed-out degrade to [] like every other seam.
+ *
+ * `mode` defaults to "suggestions" (the ≤12 5-pool grid). Pass "new_releases"
+ * for the date-ascending new-releases row (movie-only, ≤10, chip "new").
+ */
+export async function fetchMovieSuggestionsWithProvenance(
+  mode: SuggestionMode = 'suggestions',
+  page: number = 1,
+  sessionExcludeIds: string[] = [],
+): Promise<MovieSuggestion[]> {
+  const items = await invokeSuggestions('movie', mode, page, sessionExcludeIds);
+  return items.map((m): MovieSuggestion => ({
+    id: m.id,
+    tmdbId: m.tmdbId,
+    title: m.title,
+    year: m.year,
+    posterUrl: m.posterUrl,
+    backdropUrl: m.backdropUrl,
+    type: 'movie',
+    genres: m.genres ?? [],
+    overview: m.overview ?? '',
+    voteAverage: m.voteAverage,
+    pool: m.pool,
   }));
 }
 

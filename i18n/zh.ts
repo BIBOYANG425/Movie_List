@@ -116,6 +116,22 @@ const zh: Record<string, string> = {
   'discover.rankers': '人排名',
   'discover.friend': '位朋友',
   'discover.friends': '位朋友',
+  // Engine grid ("for you" suggestions) + provenance chips
+  'discover.forYouEngine': '为你推荐',
+  'discover.forYouEngineHint': '根据你的口味精选',
+  'discover.forYouEmpty': '排名几部影片，即可解锁个性化推荐。',
+  'discover.forYouError': '暂时无法加载推荐，请刷新重试。',
+  'discover.refresh': '换一批',
+  'discover.newReleases': '新片上映',
+  'discover.newReleasesHint': '正在热映与即将上映',
+  'discover.newReleasesEmpty': '暂无新片可显示。',
+  'discover.chip.friend': '朋友喜欢',
+  'discover.chip.taste': '你的口味',
+  'discover.chip.similar': '因为你排过',
+  'discover.chip.trending': '热门',
+  'discover.chip.variety': '换个口味',
+  'discover.chip.generic': '大众热门',
+  'discover.chip.new_release': '新片',
 
   // ── Tier Labels ──────────────────────────────────────────────────────────
   'tierLabel.S': 'S级',

@@ -116,6 +116,22 @@ const en = {
   'discover.rankers': 'rankers',
   'discover.friend': 'friend',
   'discover.friends': 'friends',
+  // Engine grid ("for you" suggestions) + provenance chips
+  'discover.forYouEngine': 'For You',
+  'discover.forYouEngineHint': 'Picks tuned to your taste',
+  'discover.forYouEmpty': 'Rank a few films to unlock personalized picks.',
+  'discover.forYouError': 'Couldn\'t load picks right now. Try refreshing.',
+  'discover.refresh': 'Refresh',
+  'discover.newReleases': 'New Releases',
+  'discover.newReleasesHint': 'Fresh in theaters and coming soon',
+  'discover.newReleasesEmpty': 'No new releases to show right now.',
+  'discover.chip.friend': 'friends loved',
+  'discover.chip.taste': 'your taste',
+  'discover.chip.similar': 'because you ranked',
+  'discover.chip.trending': 'trending',
+  'discover.chip.variety': 'something different',
+  'discover.chip.generic': 'popular',
+  'discover.chip.new_release': 'new',
 
   // ── Tier Labels ──────────────────────────────────────────────────────────
   'tierLabel.S': 'S-Tier',
