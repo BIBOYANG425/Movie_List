@@ -192,6 +192,82 @@ public extension Movie {
     }
 }
 
+public extension Movie {
+
+    /// Build the rankable `Movie` for a chosen TV SEASON, following T5's tv
+    /// construction conventions (C5-iOS Task 6). `movie.id` is the composite
+    /// `tv_{showId}_s{n}` stub/ranking id; `showTmdbId`/`seasonNumber` are the
+    /// REAL `tv_rankings` identity columns; `voteAverage` carries the show's
+    /// global score (Task 3 `tvShowGlobalScore`) so the ceremony seeds the
+    /// engine from it via `rankGlobalScore`. `genres` are the show's genres
+    /// already normalized via `TMDBTVGenres.normalize`; `title` is the SHOW name
+    /// (`seasonTitle` carries the season line). `creator` is the `.tv`
+    /// attribution. `year` parses the season's air date, falling back to the
+    /// show's year, else 0.
+    ///
+    /// Pure so the season-selection wiring is unit-testable without a live fetch.
+    static func tvSeason(
+        show: TMDBTVShow,
+        season: TMDBTVSeason,
+        showGlobalScore: Double?
+    ) -> Movie {
+        let id = WatchlistContract.tvSeasonId(showId: show.tmdbId, season: season.seasonNumber)
+        // Season air-date year → else show year → else 0.
+        let seasonYear = season.airDate.flatMap { $0.count >= 4 ? Int($0.prefix(4)) : nil }
+        let year = seasonYear ?? Int(show.year) ?? 0
+        let creator = show.creators.first
+        return Movie(
+            id: id,
+            title: show.name,
+            year: year,
+            director: creator ?? "—",
+            seed: Movie.stableSeed(id),
+            genres: TMDBTVGenres.normalize(show.genres),
+            posterUrl: season.posterUrl ?? show.posterUrl,
+            voteAverage: showGlobalScore,
+            mediaType: .tv,
+            showTmdbId: show.tmdbId,
+            seasonNumber: season.seasonNumber,
+            seasonTitle: season.name,
+            creator: creator,
+            episodeCount: season.episodeCount
+        )
+    }
+
+    /// Build the rankable `Movie` for a chosen BOOK, following T5's book
+    /// construction conventions (C5-iOS Task 6). `movie.id` is the `ol_{workKey}`
+    /// id; `author` is the `.book` attribution; `olRatingsAverage` seeds the
+    /// engine (×2) — `voteAverage` stays nil (never TMDB for an ol_ id). `genres`
+    /// come pre-normalized from the OpenLibrary client. Pure / testable.
+    static func book(_ book: OpenLibraryBook) -> Movie {
+        Movie(
+            id: book.id,
+            title: book.title,
+            year: Int(book.year) ?? 0,
+            director: book.author,
+            seed: Movie.stableSeed(book.id),
+            genres: book.genres,
+            posterUrl: book.posterUrl.isEmpty ? nil : book.posterUrl,
+            voteAverage: nil,
+            mediaType: .book,
+            author: book.author,
+            pageCount: book.pageCount,
+            isbn: book.isbn,
+            olWorkKey: book.olWorkKey,
+            olRatingsAverage: book.olRatingsAverage
+        )
+    }
+
+    /// Deterministic 0-999 poster-palette seed, stable across launches — mirrors
+    /// `RankEntryScreen.stableSeed`. Parses a trailing integer from the id when
+    /// present, else a djb2 digest. NEVER `hashValue` (process-seeded).
+    static func stableSeed(_ id: String) -> Int {
+        var h: UInt64 = 5381
+        for b in id.utf8 { h = (h &* 33) &+ UInt64(b) }
+        return Int(h % 1000)
+    }
+}
+
 public struct Friend: Identifiable, Hashable, Sendable {
     public var id: String { handle }
     public let handle: String

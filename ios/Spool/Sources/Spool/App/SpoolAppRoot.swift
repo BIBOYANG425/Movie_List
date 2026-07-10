@@ -66,6 +66,13 @@ public struct SpoolAppRoot: View {
     /// Monotonic reload signal for the Watchlist tab. Bumped after a confirmed
     /// rank+bookmark-remove so the ranked item drops out of the queue.
     @State private var watchlistReloadToken: Int = 0
+    /// The whole-show season-grid target (C5-iOS Task 6): set when a WHOLE-SHOW
+    /// TV bookmark's "Rank It" routes through the preselect router to the season
+    /// grid. Carries the router-derived REAL show id + a fallback name. The
+    /// `.seasonGrid` flow step presents `SeasonSelectScreen` for it; picking a
+    /// season builds the composite Movie and continues into `.tier`.
+    @State private var rankSeasonShowId: Int? = nil
+    @State private var rankSeasonShowName: String = ""
 
     // Stub modals
     @State private var stubDetail: WatchedDay? = nil
@@ -87,7 +94,7 @@ public struct SpoolAppRoot: View {
 
     public init() {}
 
-    enum RankFlowStep { case entry, tier, h2h, ceremony, printed }
+    enum RankFlowStep { case entry, seasonGrid, tier, h2h, ceremony, printed }
 
     public var body: some View {
         ZStack {
@@ -308,10 +315,12 @@ public struct SpoolAppRoot: View {
         case .entry:
             RankEntryScreen(
                 onPick: { m in
-                    // The user chose a movie from search — this is now a PLAIN
-                    // add, not a watchlist-origin rank. Clear any stale origin
-                    // that survived a Watchlist → tier → back → search detour;
-                    // without this, a different movie's bookmark gets deleted.
+                    // The user chose a movie/tv-season/book from search — this is
+                    // now a PLAIN add, not a watchlist-origin rank. Clear any stale
+                    // origin that survived a Watchlist → tier → back → search
+                    // detour; without this, a different item's bookmark gets
+                    // deleted. `m` already carries its `mediaType` + vertical
+                    // fields (T5), so the ceremony/persist route by media.
                     rankWatchlistOrigin = nil
                     rankMovie = m
                     flow = .tier
@@ -321,8 +330,38 @@ public struct SpoolAppRoot: View {
                     // clear any stale origin the same way.
                     rankWatchlistOrigin = nil
                     flow = nil
-                }
+                },
+                onSignIn: {
+                    // tv/book modes nudge a signed-out user here → present the
+                    // sign-in sheet (the whole flow stays up behind it).
+                    showSignInSheet = true
+                },
+                // A user in preview mode (onboarded without signing in) is treated
+                // as signed-out for the tv/book gate even if the client exists.
+                signedIn: !previewMode && SpoolClient.shared != nil
             )
+        case .seasonGrid:
+            if let showId = rankSeasonShowId {
+                SeasonSelectScreen(
+                    showId: showId,
+                    showName: rankSeasonShowName,
+                    onPick: { m in
+                        // A season was chosen for a whole-show watchlist rank.
+                        // The rankWatchlistOrigin (the whole-show bookmark) is
+                        // KEPT so a confirmed save clears it — the coordinator's
+                        // widened identity match (origin.id + "_s") handles the
+                        // whole-show → season id divergence.
+                        rankMovie = m
+                        flow = .tier
+                    },
+                    onClose: {
+                        // Abandon the whole-show rank — no save, bookmark stays.
+                        rankWatchlistOrigin = nil
+                        rankSeasonShowId = nil
+                        flow = nil
+                    }
+                )
+            }
         case .tier:
             if let m = rankMovie {
                 RankTierScreen(
@@ -464,84 +503,198 @@ public struct SpoolAppRoot: View {
         }
     }
 
-    /// Rank It from the Watchlist tab (C3 Task 3 seam; Task 4 owns the tail —
-    /// pre-fill signals + the B5-corrected post-rank bookmark removal). A movie
-    /// watchlist item is already chosen, so this skips the search entry screen
-    /// and drops the user straight into the tier pick with the movie seeded.
+    /// Rank It from the Watchlist tab (C3 Task 3/4 seam; C5-iOS Task 6 widens it
+    /// to tv/book). Routes PER MEDIA:
     ///
-    /// ONLY movie items may enter the movie-only ceremony (data-integrity
-    /// invariant — Task 3 review binding condition 1): a tv/book item that
-    /// somehow reached here is dropped without touching the flow.
+    ///  * MOVIE — map + seed the ceremony straight into `.tier` (unchanged).
+    ///  * TV WHOLE-SHOW — the preselect router (`TVPreselectRouter.resolve`)
+    ///    returns `.seasonGrid`; enter the `.seasonGrid` step with the router's
+    ///    DERIVED real show id (so a legacy `show_tmdb_id=0` row still reaches the
+    ///    grid). Picking a season there builds the composite Movie and continues.
+    ///  * TV SEASON — the router returns `.tier`; build the season Movie directly
+    ///    (healed show id) and seed the ceremony. iOS bookmarks carry no notes,
+    ///    so there is NO notes prefill (web carried notes here — deliberate gap).
+    ///  * BOOK — build the book Movie directly and seed the ceremony.
+    ///
+    /// The whole-show bookmark is KEPT as `rankWatchlistOrigin` even though the
+    /// ranked id becomes a season id: the coordinator's widened identity match
+    /// (`origin.id + "_s"`) removes it after a confirmed save (audit §3.9).
     private func rankItFromWatchlist(_ item: WatchlistItem) {
-        // `movie(from:)` maps + guards `.movie`; nil ⇒ non-movie ⇒ never rank.
-        guard let mapped = RankFromWatchlistCoordinator.movie(from: item) else {
-            NSLog("[SpoolAppRoot] rankItFromWatchlist ignoring non-movie item: \(item.id)")
-            return
-        }
-        rankMovie = mapped
         rankTier = nil
         rankMoods = []
         rankLine = ""
+        rankSeasonShowId = nil
+        rankSeasonShowName = ""
         // Remember where this rank came from so a CONFIRMED save can delete the
         // bookmark (and only then). A plain search→rank leaves this nil.
         rankWatchlistOrigin = item
-        flow = .tier
 
-        // Enrich the ranking-engine prediction signal: a WatchlistItem doesn't
-        // carry `vote_average`, and dropping it regresses the predicted score
-        // for new users (see Movie.voteAverage). Fetch it async while the tier
-        // screen is already up (matching the normal search path's feel, where
-        // the rating rides along on the search result). A nil result leaves
-        // voteAverage nil — a graceful fallback, exactly as before this existed.
-        if let tmdbId = RankFromWatchlistCoordinator.numericTmdbId(item.id) {
-            Task {
-                let vote = await TMDBService.movieVoteAverage(tmdbId: tmdbId)
-                guard let vote else { return }
-                // Only patch if the user hasn't moved on to a DIFFERENT movie.
-                if rankMovie?.id == item.id {
-                    rankMovie?.voteAverage = vote
+        switch item.mediaType {
+        case .movie:
+            guard let mapped = RankFromWatchlistCoordinator.movie(from: item) else {
+                NSLog("[SpoolAppRoot] rankItFromWatchlist: movie map failed for \(item.id)")
+                rankWatchlistOrigin = nil
+                return
+            }
+            rankMovie = mapped
+            flow = .tier
+            // Enrich the prediction signal (a WatchlistItem carries no
+            // vote_average). Async while the tier screen is already up.
+            if let tmdbId = RankFromWatchlistCoordinator.numericTmdbId(item.id) {
+                Task {
+                    let vote = await TMDBService.movieVoteAverage(tmdbId: tmdbId)
+                    guard let vote else { return }
+                    if rankMovie?.id == item.id { rankMovie?.voteAverage = vote }
                 }
             }
+
+        case .tv:
+            let preselect = TVPreselectRouter.Preselect(
+                id: item.id, showTmdbId: item.showTmdbId, seasonNumber: item.seasonNumber)
+            guard let route = TVPreselectRouter.resolve(preselect),
+                  let showId = route.showTmdbId else {
+                // No resolvable show id → cannot rank safely (would mint a 0 row).
+                NSLog("[SpoolAppRoot] rankItFromWatchlist: unresolvable tv preselect \(item.id)")
+                rankWatchlistOrigin = nil
+                return
+            }
+            switch route.route {
+            case .seasonGrid:
+                // Whole-show → present the season grid, then continue to .tier.
+                rankSeasonShowId = showId
+                rankSeasonShowName = item.title
+                flow = .seasonGrid
+            case .tier:
+                // Season already known → build the season Movie directly, heal
+                // the show id, and seed the ceremony.
+                rankMovie = tvSeasonMovie(from: item, showId: showId)
+                flow = .tier
+                // Enrich voteAverage from the show's global score (async).
+                Task {
+                    let score = await TMDBService.tvShowGlobalScore(showId: showId)
+                    guard let score else { return }
+                    if rankMovie?.id == item.id { rankMovie?.voteAverage = score }
+                }
+            }
+
+        case .book:
+            rankMovie = bookMovie(from: item)
+            flow = .tier
         }
     }
 
-    /// Re-rank an ALREADY-RANKED item from the shelf's long-press menu (C4 Task
-    /// 4). The shelf sheet has already dismissed itself (`onClose` before
-    /// `onRerank`), so this just seeds the ceremony with the RAW item and enters
-    /// the tier pick — NO watchlist origin (a re-rank must never delete a
-    /// bookmark), and NO up-front delete (B3: the ceremony's `(user_id,tmdb_id)`
-    /// upsert replaces the row non-destructively and the Task-2-corrected path
-    /// compacts both tiers + emits a single `ranking_move`; cancel = zero writes).
-    /// Movies only — the shelf reads `user_rankings` exclusively.
-    private func rerankFromShelf(_ item: RankedItem) {
-        rankMovie = Movie(
+    /// Build a season `Movie` from a SEASON watchlist bookmark (its seasonNumber
+    /// is real). `showId` is the router-HEALED id so a legacy corrupt row persists
+    /// the real show id. `voteAverage` is nil here; enriched async by the caller.
+    private func tvSeasonMovie(from item: WatchlistItem, showId: Int) -> Movie {
+        let season = item.seasonNumber ?? 0
+        return Movie(
             id: item.id,
             title: item.title,
-            year: item.year ?? 0,
-            director: item.director,
-            seed: item.seed,
+            year: Int(item.year) ?? 0,
+            director: item.creator ?? "—",
+            seed: Movie.stableSeed(item.id),
             genres: item.genres,
-            posterUrl: item.posterUrl
+            posterUrl: item.posterUrl.isEmpty ? nil : item.posterUrl,
+            voteAverage: nil,
+            mediaType: .tv,
+            showTmdbId: showId,
+            seasonNumber: season,
+            seasonTitle: item.seasonTitle,
+            creator: item.creator
         )
+    }
+
+    /// Build a book `Movie` from a book watchlist bookmark.
+    private func bookMovie(from item: WatchlistItem) -> Movie {
+        Movie(
+            id: item.id,
+            title: item.title,
+            year: Int(item.year) ?? 0,
+            director: item.author ?? "—",
+            seed: Movie.stableSeed(item.id),
+            genres: item.genres,
+            posterUrl: item.posterUrl.isEmpty ? nil : item.posterUrl,
+            voteAverage: nil,
+            mediaType: .book,
+            author: item.author,
+            pageCount: item.pageCount,
+            isbn: item.isbn,
+            olWorkKey: item.olWorkKey,
+            olRatingsAverage: item.olRatingsAverage
+        )
+    }
+
+    /// Re-rank an ALREADY-RANKED item from the shelf's long-press menu (C4 Task 4;
+    /// C5-iOS Task 6 routes per media). The shelf sheet has already dismissed
+    /// itself (`onClose` before `onRerank`), so this seeds the ceremony with the
+    /// RAW item and enters the tier pick — NO watchlist origin (a re-rank must
+    /// never delete a bookmark), and NO up-front delete (the ceremony's
+    /// `(user_id,tmdb_id)` upsert replaces the row non-destructively).
+    ///
+    /// Media is inferred from the id prefix (`tv_…` / `ol_…` / else movie), since
+    /// a `RankedItem` carries no `mediaType`. A tv re-rank goes STRAIGHT to the
+    /// ceremony with the SEASON item (its `seasonNumber` is real → NO season
+    /// grid); book/movie re-ranks go straight in too. The season/book `Movie`
+    /// carries its vertical fields so the ceremony persists back to the right
+    /// table.
+    private func rerankFromShelf(_ item: RankedItem) {
+        let media = TVPreselectRouter.mediaForRankingId(item.id)
         rankTier = nil
         rankMoods = []
         rankLine = ""
         // A re-rank is NOT a watchlist-origin rank — clear any stale origin so a
         // confirmed save can never delete an unrelated bookmark (B5).
         rankWatchlistOrigin = nil
-        flow = .tier
 
-        // Enrich the prediction signal with vote_average, same as the watchlist
-        // path: the shelf `RankedItem` doesn't carry it, and dropping it regresses
-        // the predicted score. Fetch async while the tier screen is already up.
-        if let tmdbId = Int(item.id.filter(\.isNumber)), !item.id.isEmpty {
-            Task {
-                let vote = await TMDBService.movieVoteAverage(tmdbId: tmdbId)
-                guard let vote else { return }
-                if rankMovie?.id == item.id {
-                    rankMovie?.voteAverage = vote
+        switch media {
+        case .movie:
+            rankMovie = Movie(
+                id: item.id, title: item.title, year: item.year ?? 0,
+                director: item.director, seed: item.seed, genres: item.genres,
+                posterUrl: item.posterUrl)
+            flow = .tier
+            // Enrich vote_average (the shelf RankedItem carries none).
+            if let tmdbId = Int(item.id.filter(\.isNumber)), !item.id.isEmpty {
+                Task {
+                    let vote = await TMDBService.movieVoteAverage(tmdbId: tmdbId)
+                    guard let vote else { return }
+                    if rankMovie?.id == item.id { rankMovie?.voteAverage = vote }
                 }
             }
+
+        case .tv:
+            // Derive the show/season split from the composite id; the season is
+            // real so we skip the grid and seed the ceremony directly.
+            let split = TVPreselectRouter.showAndSeason(fromSeasonId: item.id)
+            rankMovie = Movie(
+                id: item.id, title: item.title, year: item.year ?? 0,
+                director: item.director,          // = attribution (creator)
+                seed: item.seed, genres: item.genres, posterUrl: item.posterUrl,
+                voteAverage: nil, mediaType: .tv,
+                showTmdbId: split?.show, seasonNumber: split?.season,
+                seasonTitle: item.seasonTitle, creator: item.director)
+            flow = .tier
+            if let showId = split?.show {
+                Task {
+                    let score = await TMDBService.tvShowGlobalScore(showId: showId)
+                    guard let score else { return }
+                    if rankMovie?.id == item.id { rankMovie?.voteAverage = score }
+                }
+            }
+
+        case .book:
+            let workKey = item.id.hasPrefix("ol_") ? String(item.id.dropFirst(3)) : nil
+            rankMovie = Movie(
+                id: item.id, title: item.title, year: item.year ?? 0,
+                director: item.director,          // = attribution (author)
+                seed: item.seed, genres: item.genres, posterUrl: item.posterUrl,
+                voteAverage: nil, mediaType: .book,
+                author: item.director, olWorkKey: workKey,
+                // The shelf RankedItem carries `globalScore` (0-10); re-derive the
+                // 0-5 OL rating so the book engine seed (×2) reproduces it.
+                olRatingsAverage: item.globalScore.map { $0 / 2 })
+            flow = .tier
         }
     }
 
@@ -616,8 +769,10 @@ public struct SpoolAppRoot: View {
             rankMoods = []
             rankLine = ""
             // A plain search→rank has NO watchlist origin — clear any stale one
-            // so it can never delete an unrelated bookmark (B5).
+            // so it can never delete an unrelated bookmark (B5). Also drop any
+            // stale whole-show season-grid target (C5-iOS Task 6).
             rankWatchlistOrigin = nil
+            rankSeasonShowId = nil
             flow = .entry
         } else {
             tab = t

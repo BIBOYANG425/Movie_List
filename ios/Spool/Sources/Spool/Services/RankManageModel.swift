@@ -83,9 +83,13 @@ import SwiftUI
 /// "book"`, default `"movie"`) that the shelf sets on each media-segment switch.
 /// Every management IO — reorder / cross-tier move / notes probe+save / delete —
 /// threads that key so a tv/book shelf reorders/moves/deletes on its own table
-/// (`RankingRepository`'s ops already take a `media:` param since C4-UI). Only
-/// re-rank stays movie-gated (`showsRerank(forMedia:)` — the tv/book ceremony
-/// doesn't exist until Task 5/6), so tv/book cards offer move/notes/delete only.
+/// (`RankingRepository`'s ops already take a `media:` param since C4-UI). As of
+/// C5-iOS Task 6 re-rank is offered for ALL media (`showsRerank(forMedia:)`
+/// accepts any known vertical); the media-generic ceremony (T5) now exists, so
+/// tv/book cards offer move/notes/delete/re-rank, and the completion routes per
+/// media. Each mutating op CAPTURES `media` at op start and skips its post-await
+/// tier writes / emission if the shelf switched verticals mid-flight, so a stale
+/// response can never corrupt the newly-selected media's in-memory list.
 ///
 /// Header last reviewed: 2026-07-10
 @MainActor
@@ -316,12 +320,14 @@ public final class RankManageModel: ObservableObject {
     }
 
     /// Whether the long-press "re-rank" menu action is offered for `media`.
-    /// MOVIE-ONLY this cycle: the tv/book re-rank ceremony doesn't exist until
-    /// Task 5/6, so tv/book cards show move / notes / delete but NOT re-rank.
-    /// TODO(C5-T6): drop this gate once the tv/book ceremony lands and route
-    /// re-rank per media.
+    /// ALL media as of C5-iOS Task 6: the media-generic ceremony now exists
+    /// (T5), so tv/book cards get re-rank too. The completion routes per media —
+    /// a tv re-rank enters the ceremony with the SEASON item already chosen (its
+    /// `seasonNumber` is real, so NO season grid), a book/movie re-rank enters
+    /// the ceremony direct. `requestRerank` still no-ops on an unknown media so
+    /// a malformed shelf can never seed a garbage ceremony.
     public static func showsRerank(forMedia media: String) -> Bool {
-        media == "movie"
+        RankMedia(rawValue: media) != nil
     }
 
     // MARK: - Seeding
@@ -389,6 +395,14 @@ public final class RankManageModel: ObservableObject {
         guard let current = tiers[tier], !current.isEmpty else { return }
         guard let fromIndex = source.first else { return }
 
+        // Capture the media at op start (C5-iOS Task 6 cross-media race guard):
+        // the RPC awaits, and the shelf may switch verticals + re-seed `tiers`
+        // meanwhile. A post-await mutation keyed off the OLD tier would then
+        // corrupt the NEW media's in-memory list. If the media changed we skip
+        // the optimistic + post-await tier writes below (the switch already
+        // cleared/re-seeded), so a stale response never mutates the wrong list.
+        let opMedia = media
+
         // Translate SwiftUI's before-removal destination into TierOrder's
         // after-removal `to` (SwiftUI adds 1 when moving downward).
         let toIndex = destination > fromIndex ? destination - 1 : destination
@@ -410,7 +424,12 @@ public final class RankManageModel: ObservableObject {
         defer { isReordering = false }
 
         do {
-            try await reorderIO(media, tier.rawValue, after)
+            try await reorderIO(opMedia, tier.rawValue, after)
+            // The shelf switched media mid-flight and re-seeded — do NOT write
+            // this (old-media) result onto the new media's tiers. The emission
+            // is also skipped: the reorder DID land on the old table, but the
+            // UI has moved on; a fresh reload on return reflects reality.
+            guard media == opMedia else { return }
             // Confirmed change → renumber ranks 0-based so #n badges and the
             // read-only render (sorted by rank) stay consistent mid-edit and
             // after edit mode exits.
@@ -426,8 +445,10 @@ public final class RankManageModel: ObservableObject {
             )
             await emitIO(event)
         } catch {
-            // Revert THIS tier to its exact prior order and toast. Other tiers
-            // are untouched (drag is single-tier).
+            // Revert THIS tier to its exact prior order and toast — but only if
+            // the shelf hasn't switched media meanwhile (the switch already
+            // re-seeded; reverting onto the new list would corrupt it).
+            guard media == opMedia else { return }
             tiers[tier] = current
             toastIO("couldn't reorder \(movedItem.title) — try again", .error)
         }
@@ -449,6 +470,11 @@ public final class RankManageModel: ObservableObject {
         let source = item.tier
         guard target != source else { return }
 
+        // Capture the media at op start (cross-media race guard, C5-iOS Task 6):
+        // if the shelf switches verticals during the await, skip the post-await
+        // emission + revert so a stale response never mutates the new list.
+        let opMedia = media
+
         // Snapshot both tiers for an exact revert.
         let priorSource = tiers[source] ?? []
         let priorTarget = tiers[target] ?? []
@@ -462,7 +488,10 @@ public final class RankManageModel: ObservableObject {
         tiers[target] = newTarget
 
         do {
-            try await moveIO(media, item.id, source.rawValue, target.rawValue, nil)
+            try await moveIO(opMedia, item.id, source.rawValue, target.rawValue, nil)
+            // Media switched mid-flight — the move DID land on the old table, but
+            // the UI has moved on; skip the emission and let a reload reconcile.
+            guard media == opMedia else { return }
             // ONE ranking_move for the moved item, carrying the TARGET tier.
             await emitIO(MoveEvent(
                 tmdbId: item.id,
@@ -473,6 +502,7 @@ public final class RankManageModel: ObservableObject {
                 notes: nil
             ))
         } catch {
+            guard media == opMedia else { return }
             tiers[source] = priorSource
             tiers[target] = priorTarget
             toastIO("couldn't move \(item.title) — try again", .error)
@@ -535,7 +565,16 @@ public final class RankManageModel: ObservableObject {
     /// both-tier compaction). This model does NOT touch its in-memory tiers or
     /// persist anything: the ceremony is the single source of truth for a
     /// re-rank, and the shelf refetches when it reopens.
+    ///
+    /// Media guard (C5-iOS Task 6): if `self.media` is not a known vertical the
+    /// re-rank is a no-op — a malformed shelf can never seed a garbage ceremony.
+    /// The screen already gates the menu via `showsRerank`, so this is
+    /// defense-in-depth mirroring the completion's per-media routing.
     public func requestRerank(item: RankedItem) {
+        guard Self.showsRerank(forMedia: media) else {
+            NSLog("[RankManageModel] requestRerank ignored for unknown media '\(media)'")
+            return
+        }
         (rerankOverride ?? rerankIO)(item)
     }
 
@@ -551,11 +590,17 @@ public final class RankManageModel: ObservableObject {
         let tier = item.tier
         let prior = tiers[tier] ?? []
 
+        // Capture the media at op start (cross-media race guard, C5-iOS Task 6).
+        let opMedia = media
+
         // Optimistic removal + renumber.
         tiers[tier] = Self.renumbered(prior.filter { $0.id != item.id })
 
         do {
-            try await deleteIO(media, item.id, tier.rawValue)
+            try await deleteIO(opMedia, item.id, tier.rawValue)
+            // Media switched mid-flight — skip the emission; the delete landed on
+            // the old table and a reload on return reflects it.
+            guard media == opMedia else { return }
             await emitRemoveIO(RemoveEvent(
                 tmdbId: item.id,
                 title: item.title,
@@ -565,6 +610,7 @@ public final class RankManageModel: ObservableObject {
                 notes: nil
             ))
         } catch {
+            guard media == opMedia else { return }
             tiers[tier] = prior
             toastIO("couldn't delete \(item.title) — try again", .error)
         }

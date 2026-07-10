@@ -81,17 +81,25 @@ public struct RankPrintedScreen: View {
                             .padding(.horizontal, 8)
                             .padding(.top, 8)
 
-                        Button(action: onWriteMore) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "pencil.line")
-                                    .font(.system(size: 13))
-                                Text("write more about it →")
-                                    .font(SpoolFonts.script(18))
+                        // "write more" opens the journal composer, which is
+                        // MOVIE-KEYED (the journal is a movie feature). The
+                        // persistence quick-entry gate already refuses to write a
+                        // journal row for tv/book; here we hide the UI affordance
+                        // too so a tv/book stub never offers a dead-end button
+                        // (C5-iOS Task 6). Movie keeps it.
+                        if movie.mediaType == .movie {
+                            Button(action: onWriteMore) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "pencil.line")
+                                        .font(.system(size: 13))
+                                    Text("write more about it →")
+                                        .font(SpoolFonts.script(18))
+                                }
+                                .foregroundStyle(t.accent)
                             }
-                            .foregroundStyle(t.accent)
+                            .buttonStyle(.plain)
+                            .padding(.top, 12)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.top, 12)
 
                         Button("keep private →", action: onClose)
                             .font(SpoolFonts.script(17))

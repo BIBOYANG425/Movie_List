@@ -674,18 +674,114 @@ final class RankManageModelTests: XCTestCase {
         XCTAssertEqual(saveMedia, ["book"], "notes save threads the selected media")
     }
 
-    // MARK: - 8. re-rank menu gating (C5 Task 2 — re-rank movie-only until T6)
+    // MARK: - 8. re-rank menu gating (C5 Task 6 — re-rank flipped ON for tv/book)
 
-    /// Re-rank in the long-press menu is MOVIE-ONLY this cycle: the tv/book
-    /// ceremony doesn't exist until Task 5/6, so the shelf shows move/notes/delete
-    /// for tv/book but NOT re-rank (TODO(C5-T6)). Movie keeps re-rank.
-    func testRerankMenuGatedToMovieOnly() {
+    /// Re-rank in the long-press menu is now offered for ALL known verticals: the
+    /// media-generic ceremony (T5) lands in C5, so tv/book cards get re-rank and
+    /// the completion routes per media. An unknown media string is still gated
+    /// off so a malformed shelf never seeds a garbage ceremony.
+    func testRerankMenuOfferedForAllKnownMedia() {
         XCTAssertTrue(RankManageModel.showsRerank(forMedia: "movie"),
-                      "movie keeps re-rank in the long-press menu")
-        XCTAssertFalse(RankManageModel.showsRerank(forMedia: "tv"),
-                       "tv re-rank is disabled until the tv ceremony lands (C5-T6)")
-        XCTAssertFalse(RankManageModel.showsRerank(forMedia: "book"),
-                       "book re-rank is disabled until the book ceremony lands (C5-T6)")
+                      "movie keeps re-rank")
+        XCTAssertTrue(RankManageModel.showsRerank(forMedia: "tv"),
+                      "tv re-rank is enabled now the ceremony exists (C5-T6)")
+        XCTAssertTrue(RankManageModel.showsRerank(forMedia: "book"),
+                      "book re-rank is enabled now the ceremony exists (C5-T6)")
+        XCTAssertFalse(RankManageModel.showsRerank(forMedia: "podcast"),
+                       "an unknown media is still gated off")
+    }
+
+    /// `requestRerank` fires the hand-off for a known media…
+    func testRequestRerankFiresForKnownMedia() {
+        var fired: [String] = []
+        let model = makeMenuModel(items: [item("a", rank: 0)])
+        model.bindRerank { fired.append($0.id) }
+        model.setMedia("tv")
+        model.requestRerank(item: item("a", rank: 0))
+        XCTAssertEqual(fired, ["a"], "tv re-rank routes through the hand-off")
+    }
+
+    /// …and is a no-op for an unknown media (defense-in-depth media guard).
+    func testRequestRerankNoOpForUnknownMedia() {
+        var fired: [String] = []
+        let model = makeMenuModel(items: [item("a", rank: 0)])
+        model.bindRerank { fired.append($0.id) }
+        model.setMedia("podcast")
+        model.requestRerank(item: item("a", rank: 0))
+        XCTAssertTrue(fired.isEmpty, "unknown media must not seed the ceremony")
+    }
+
+    // MARK: - 9. cross-media race guard (C5 Task 6)
+
+    /// A mutable box so an injected IO closure can switch the SAME model's media
+    /// mid-await — the shelf-switched-verticals race we guard against.
+    private final class ModelBox { weak var model: RankManageModel? }
+
+    /// A cross-tier move whose RPC is in flight while the shelf switches media
+    /// must NOT write its (old-media) result onto the new media's tiers. The
+    /// move IO flips `setMedia` mid-op, so the post-await guard skips the
+    /// emission (and would skip a revert too).
+    func testMoveToTierSkipsEmissionWhenMediaSwitchesMidFlight() async {
+        var emitCount = 0
+        let box = ModelBox()
+        let model = RankManageModel(
+            reorder: { _, _, _ in },
+            move: { _, _, _, _, _ in box.model?.setMedia("tv") },   // switch mid-await
+            notesProbe: { _, _ in nil },
+            saveNotes: { _, _, _ in },
+            delete: { _, _, _ in },
+            rerank: { _ in },
+            emit: { _ in emitCount += 1 },
+            emitRemove: { _ in },
+            toast: { _, _ in }
+        )
+        box.model = model
+        model.setMedia("movie")
+        model.setItems([item("a", tier: .A, rank: 0), item("s", tier: .S, rank: 0)])
+
+        await model.moveTo(tier: .S, item: item("a", tier: .A, rank: 0))
+
+        XCTAssertEqual(emitCount, 0,
+                       "a move whose media switched mid-flight emits nothing")
+        XCTAssertEqual(model.media, "tv", "the switch itself still took effect")
+    }
+
+    /// A move that does NOT switch media still emits — the guard only trips on a
+    /// real mid-flight switch (control case).
+    func testMoveToTierStillEmitsWhenMediaUnchanged() async {
+        var emitCount = 0
+        let model = makeMenuModel(
+            items: [item("a", tier: .A, rank: 0), item("s", tier: .S, rank: 0)],
+            emitMove: { _ in emitCount += 1 }
+        )
+        await model.moveTo(tier: .S, item: item("a", tier: .A, rank: 0))
+        XCTAssertEqual(emitCount, 1, "a same-media move emits as normal")
+    }
+
+    /// A delete whose media switches mid-flight likewise skips its emission.
+    func testDeleteSkipsEmissionWhenMediaSwitchesMidFlight() async {
+        var removeEmitCount = 0
+        let box = ModelBox()
+        let model = RankManageModel(
+            reorder: { _, _, _ in },
+            move: { _, _, _, _, _ in },
+            notesProbe: { _, _ in nil },
+            saveNotes: { _, _, _ in },
+            delete: { _, _, _ in box.model?.setMedia("tv") },   // switch mid-await
+            rerank: { _ in },
+            emit: { _ in },
+            emitRemove: { _ in removeEmitCount += 1 },
+            toast: { _, _ in }
+        )
+        box.model = model
+        model.setMedia("movie")
+        model.setItems([item("a", tier: .A, rank: 0), item("b", tier: .A, rank: 1)])
+
+        await model.delete(item: item("b", tier: .A, rank: 1))
+
+        XCTAssertEqual(removeEmitCount, 0,
+                       "a delete whose media switched mid-flight emits nothing")
+        XCTAssertEqual(model.media, "tv")
     }
 }
 

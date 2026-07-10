@@ -2,25 +2,27 @@ import SwiftUI
 
 /// One watchlist row rendered as a ticket/paper card: a poster on the left, the
 /// title / year / "added" line on the right, and the media-appropriate action
-/// buttons underneath. Movies get **Rank It** (primary, filled) + **Remove**;
-/// tv and books get **Remove** only (the iOS rank ceremony is movie-only until
-/// C5, per the C3 plan's Global Constraints).
+/// buttons underneath. ALL media now get **Rank It** (primary, filled) +
+/// **Remove**: the media-generic rank ceremony (C5-iOS T5) and the tv/book
+/// preselect router (T6) exist, so a tv bookmark ranks through the season grid
+/// and a book/season bookmark ranks straight into the ceremony.
 ///
 /// The card is a pure view — it owns no state. `onRankIt` / `onRemove` are
 /// injected by `WatchlistScreen`, which routes them through `WatchlistModel`.
-/// The Rank It affordance is gated HERE (only `.movie` items render it) so the
-/// model's `rankIt` seam stays media-agnostic for Task 4.
+/// The card just hands the item up; the ROOT routes per media through the
+/// preselect router, so the model's `rankIt` seam stays media-agnostic.
 ///
-/// Header last reviewed: 2026-07-09
+/// Header last reviewed: 2026-07-10
 struct WatchlistCard: View {
     let item: WatchlistItem
-    /// Fired when the user taps Rank It (movies only — never rendered otherwise).
+    /// Fired when the user taps Rank It (all media — the root routes per media).
     let onRankIt: () -> Void
     /// Fired when the user taps Remove (all media).
     let onRemove: () -> Void
 
-    /// Only movies expose the Rank It affordance this cycle.
-    private var showsRankIt: Bool { item.mediaType == .movie }
+    /// Rank It is offered for every vertical now the media-generic ceremony +
+    /// tv/book preselect router exist (C5-iOS Task 6).
+    private var showsRankIt: Bool { true }
 
     var body: some View {
         SpoolThemeReader { t, _ in
@@ -157,7 +159,7 @@ struct WatchlistCard: View {
     .spoolMode(.paper)
 }
 
-#Preview("watchlist card · tv (remove only)") {
+#Preview("watchlist card · tv (rank it + remove)") {
     WatchlistCard(
         item: WatchlistItem(
             id: "tv_1399_s1", title: "Game of Thrones", year: "2011", posterUrl: "",
