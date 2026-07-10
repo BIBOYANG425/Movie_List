@@ -129,22 +129,22 @@ untranslated — audit D12); iOS writes the identical English strings.
 PRUNED from the CHECK and their rows deleted by that migration; the C1
 audit §1.7's "CHECK never pruned" note was stale and is corrected here.
 
-**Types actually written today** (all writes are CLIENT-side inserts;
-there are NO DB triggers for notifications):
+**Types actually written today:**
 
-| type | Writer (verified file:line) | title | body | actor_id | reference_id |
+| type | Writer | title | body | actor_id | reference_id |
 |---|---|---|---|---|---|
-| `new_follower` | `services/followService.ts:14-22` on follow | literal `'started following you'` | unset | follower | follower's user id |
-| `journal_tag` | `services/journalService.ts:157-171`, one row per tagged friend | `` `watched ${title} with you` `` | first 100 chars of review text; omitted when none | journal author | journal entry id |
+| `new_follower` | CLIENT — `services/followService.ts:14-22` on follow | literal `'started following you'` | unset | follower | follower's user id |
+| `journal_tag` | CLIENT — `services/journalService.ts:157-171`, one row per tagged friend | `` `watched ${title} with you` `` | first 100 chars of review text; omitted when none | journal author | journal entry id |
+| `badge_unlock` | SERVER — `grant_achievements()` RPC (SECURITY DEFINER); clients MUST NOT write these directly | literal `'Badge unlocked'` | initcap'd badge key (e.g. `'First Rank'`) | the earner's own `uid` | the `badge_key` |
+
+There are NO DB triggers for notifications. `notificationService.createNotification`
+(`services/notificationService.ts:5-23`) is a dead export with zero callers.
 
 **Rendered-only types (no writer exists):** `review_like`, `list_like`,
-`badge_unlock`, `ranking_comment` — they have bell icons
+`ranking_comment` — they have bell icons
 (`components/social/NotificationBell.tsx:7-14`) and live in the type
 union, but nothing inserts them; feed reactions and comments generate no
 notifications (adjudicated Q5: out of scope for C1).
-`notificationService.createNotification`
-(`services/notificationService.ts:5-23`) is a dead export with zero
-callers.
 
 **RLS:** SELECT/UPDATE/DELETE own rows only; INSERT allowed for ANY
 authenticated user targeting any existing profile
@@ -940,26 +940,31 @@ Tests: `services/__tests__/tmdbProxyRules.test.ts`.
 
 ## achievements (since C7 web fixes, branch `fix/c7-web-blocking`)
 
-Badge catalog: `services/achievementService.ts` (`ACHIEVEMENT_DEFINITIONS` — 15
-badge keys as of C7). `user_achievements` table:
-`supabase/migrations/20260711_achievements_rls_lockdown.sql`.
+Badge catalog: `components/social/AchievementsView.tsx` (`BADGE_CATALOG` — 16
+badges, 15 grantable; `early_adopter` has no rule and is never granted by the
+RPC). Milestone copy map: `services/achievementService.ts`
+(`BADGE_MILESTONE_COPY`). `user_achievements` table + RPC:
+`supabase/migrations/20260711_achievements_server_grant.sql` (one migration;
+a follow-up `array_append` fix was applied as `achievements_grant_array_append_fix`,
+both live in prod).
 
 ### `grant_achievements()` RPC contract
 
 `grant_achievements() returns text[]`
 
-Migration: `supabase/migrations/20260711_grant_achievements_rpc.sql`.
+Migration: `supabase/migrations/20260711_achievements_server_grant.sql`.
 
-- **SECURITY DEFINER, `search_path = public`.** Runs as the function owner; the
+- **SECURITY DEFINER, `search_path = public, pg_temp`.** Runs as the function owner; the
   caller need only be authenticated — `auth.uid()` is the sole subject, so the
   definer privilege cannot be leveraged to read or write another user's rows.
   No `p_user_id` parameter exists by design; the function evaluates for the
   caller identified by `auth.uid()`.
 - **Evaluates every rule internally.** The function reads the caller's
   `user_rankings`, `journal_entries`, `friend_follows`, `list_items` (curated
-  lists), and existing `user_achievements` rows, applies the 15 badge rules
-  (thresholds verified against `ACHIEVEMENT_DEFINITIONS`), and inserts only the
-  newly earned badges.
+  lists), and existing `user_achievements` rows, applies the 15 grantable badge
+  rules (thresholds verified against `BADGE_CATALOG` in
+  `components/social/AchievementsView.tsx`), and inserts only the newly earned
+  badges.
 - **Idempotent via `ON CONFLICT (user_id, badge_key) DO NOTHING`.** Concurrent
   calls are safe — at most one row lands per `(user_id, badge_key)`.
 - **Returns** `text[]` — the `badge_key` values of badges granted in THIS call
@@ -976,41 +981,54 @@ Migration: `supabase/migrations/20260711_grant_achievements_rpc.sql`.
   after the migration applies those inserts fail RLS silently during the
   apply→merge window (acceptable degraded window, documented in the C7 audit).
 
-### Client call rule — fire-and-forget post-action
+### Client call rule — reference behavior and recommended pattern
 
-Clients call `supabase.rpc('grant_achievements')` fire-and-forget (no await,
-errors suppressed) AFTER a confirmed successful write in any of:
+**Reference implementation (web, current):** `grant_achievements()` is called on
+own-profile tab mount inside `AchievementsView` (`components/social/AchievementsView.tsx`
+`useEffect`), AWAITED before the badge grid loads. This is a load-triggered call,
+not a post-write fire-and-forget. It is the only active web call point today; the
+post-write call points listed below are NOT yet implemented on web.
+
+**Recommended pattern for iOS (and future web adoption):** call
+`supabase.rpc('grant_achievements')` fire-and-forget (no await, errors suppressed)
+AFTER a confirmed successful write in any of:
 
 - Ranking add / re-rank (post `addItem`/`addTVItem`/`addBookItem` success)
 - Journal save (post `upsertJournalEntry` success)
 - Follow (post `followUser` success)
 - List create / item add (post list write success)
 
-The call is purely opportunistic — a failure or empty return does not affect the
-triggering action's UX. Clients do NOT call `grant_achievements` proactively on
-page load or on a schedule; badge checks are event-driven.
+This is an intentional, documented asymmetry: web currently grants on profile-tab
+load; iOS should grant post-action (more timely, no extra load-time await). Web
+may adopt post-write calls in a later cycle. The call is purely opportunistic — a
+failure or empty return does not affect the triggering action's UX.
 
 **There is no client INSERT path for `user_achievements`.** RLS blocks it.
 
 ### `badge_unlock` notification shape
 
-When `grant_achievements()` returns a non-empty array, each newly-granted
-badge key should trigger a `badge_unlock` notification row (client-side insert
-into `notifications`). Shape per the notifications table schema:
+`badge_unlock` rows are written SERVER-SIDE inside `grant_achievements()` — the
+RPC is the sole writer. **Clients MUST NOT insert `badge_unlock` rows directly**;
+doing so would double-write (the RPC already inserted one) and violate the intended
+write path. The notification is inserted atomically with the `user_achievements`
+grant in the same RPC call.
+
+Shape (from the live RPC `20260711_achievements_server_grant.sql:216-217`):
 
 | Column | Value |
 |---|---|
 | `type` | `'badge_unlock'` |
-| `title` | badge name string (EN, baked at write time) |
-| `body` | badge description / milestone text (EN) |
+| `title` | literal `'Badge unlocked'` |
+| `body` | initcap'd badge key with underscores replaced by spaces (e.g. `'First Rank'`) |
 | `reference_id` | the `badge_key` text (e.g. `'first_rank'`) |
 | `user_id` | `auth.uid()` (recipient = the earner) |
-| `actor_id` | `NULL` (self-awarded; no actor) |
+| `actor_id` | `auth.uid()` (the user's own id; self-awarded) |
 
-`notifications` INSERT still carries `WITH CHECK (true)` — a bell-abuse-class
-RLS gap (C7 deferred sweep item, sibling of B2). The intent is owner-only
-self-inserts for badge notifications; the column `user_id` MUST be set to
-`auth.uid()` at write time. Do not set `user_id` to any other value.
+`notifications` INSERT carries `WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = notifications.user_id))` —
+a bell-abuse-class RLS gap (C7 deferred sweep item): any authenticated user can
+notify any EXISTING profile. The server-side write path in the RPC bypasses this
+policy (SECURITY DEFINER), so the gap only matters for any future client-side
+notification inserts.
 
 ### Milestone feed events — one-shot-lossy, client-side
 
@@ -1027,5 +1045,7 @@ is a ledgered follow-up (more durable — avoids the lossy window).
 iOS MUST NOT emit a milestone event for a badge key that was already held
 before the call (only new keys in the `grant_achievements()` return array).
 
-Badge catalog pointer: `services/achievementService.ts` `ACHIEVEMENT_DEFINITIONS`.
+Badge catalog pointer: `components/social/AchievementsView.tsx` `BADGE_CATALOG`
+(16 badges, 15 grantable). Milestone copy map: `services/achievementService.ts`
+`BADGE_MILESTONE_COPY`.
 iOS port: achievements surface + `grant_achievements()` calls ship in C7-iOS.

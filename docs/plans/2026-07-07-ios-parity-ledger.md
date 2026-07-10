@@ -13,7 +13,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | C4 | Ranking management | COMPLETE — web fixes PR #39 + iOS management UI SHIPPED on `feat/ios-parity-c4-mgmt-ui` (PR pending): edit-mode drag-to-reorder (FullListScreen shelf), long-press menu (move tier / edit notes w/ probe-before-edit + wipe guard / re-rank via corrected ceremony / delete w/ confirm + ranking_remove); ceremony re-rank correction landed (Task 2 — deviation retired) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | #39 | `feat/ios-parity-c4-mgmt-ui` (PR pending) |
 | C5 | TV seasons + books | COMPLETE — web fixes PR #46 + iOS 8-task branch `feat/ios-parity-c5-tv-books` (PR pending): per-media payloads/reads, TMDB TV endpoints, OpenLibrary client, media-generic ceremony (same-media H2H), TV season UI + preselect router + coordinator whole-show identity fix, TV suggestions grid, contracts | audits/2026-07-10-c5-tv-books-web-audit.md | #46 | `feat/ios-parity-c5-tv-books` (PR pending) |
 | C6 | zh localization | COMPLETE (both halves) — web PR #48 merged; iOS on `feat/ios-parity-c6-zh` (PR pending) | audits/2026-07-10-c6-zh-web-audit.md | #48 | `feat/ios-parity-c6-zh` (PR pending) |
-| C7 | Smaller items | web half in PR `fix/c7-web-blocking` (HEAD 1208d98); iOS half pending | — | `fix/c7-web-blocking` | — |
+| C7 | Smaller items | web half in PR `fix/c7-web-blocking` (HEAD e7b1616, probe-caught SQL fix); migration `20260711_achievements_server_grant.sql` + `array_append` fix APPLIED to prod; probes green (INSERT 42501, 6-badge grant, idempotent, unauth RAISE); iOS half pending | — | `fix/c7-web-blocking` | — |
 | — | iOS design-check | queued after C5–C7 (owner, 2026-07-10); screenshot seed list in progress ledger | — | — | — |
 
 ## Audit findings
@@ -65,7 +65,7 @@ Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
 - [C4] [deferred] iOS `insertRanking` tv/book path is latent-broken: `RankingPayload` carries `director`; `tv_rankings` needs `creator` + NOT NULL `show_tmdb_id`/`season_number`; `book_rankings` needs `author` — fails loudly, unreachable today (no tv/book ceremony on iOS); C5 must extend the payload
 - [C4→fixed] iOS ceremony re-rank deviation (was `ranking_add` + target-only splice) — FIXED in the iOS management-UI sub-plan (Task 2): `insertRanking` pre-reads the existing row, compacts the SOURCE tier on a cross-tier re-rank (live membership minus the id), and emits a single `ranking_move` (`{notes?, year?}`, watched-with stripped) via the pure `CeremonyEmission.decide` seam; fresh insert still `ranking_add`. Contract Known-deviations §3 retired. Tests: `TierSpliceTests` +7.
 - [C4] [deferred] web `addTVItem`/`addBookItem`: RPC failure is silent (no toast) and `ranking_add` still fires regardless — toast + event gate needed in a later cycle
-- [C4] [deferred, iOS mgmt UI] plain-finish re-rank fires the stage-A journal quick-write full-replace: an existing rich journal entry for the movie is replaced by the near-blank quick draft (pre-existing ceremony posture mirroring web stage-A; the new long-press re-rank affordance makes it a first-class path). Candidate fix: skip the quick-write when `InsertOutcome == .moved`, or probe-before-quick-write. `user_rankings.notes` itself is safe (omission pinned).
+- [C4→fixed in C3-B Task 0] plain-finish re-rank fires the stage-A journal quick-write full-replace: an existing rich journal entry for the movie was replaced by the near-blank quick draft. FIXED: `InsertOutcome == .moved` guard (`probed-merge guard`) prevents the quick-write when the outcome is a move, not a fresh insert (ledger line ~511; `Journal quick-write wipe fix (T0)`). Deferred-sweep #4 retired — this fix was already applied and is NOT a C7-iOS open item.
 - [C4] [deferred, iOS mgmt UI] shelf projection carries no notes → move/remove emissions carry `{year?}` only (web carries notes — analytics divergence); re-rank doesn't preseed the existing note in the editor (preservation-by-omission pinned by test); "—" director placeholder can overwrite NULL director on re-rank (pre-existing mapping pattern, worth a C5 cleanup); moveTo/delete are single-shot with no in-flight guard; done-during-inflight sub-second stale window on the optimistic list.
 - [C5] [blocking] B1 UniversalSearch "Rank TV" skipped season selection + minted season-less `tv_rankings` rows (`show_tmdb_id=0`, `season_number=0`, `tmdb_id='tv_{showId}'`) — fixed on `fix/c5-tv-books-web-blocking`: `handleSearchRankTV` now passes `showTmdbId: show.tmdbId` + normalized genres; modal preselect router hardened to treat any `^tv_\d+$`-shaped id with no `seasonNumber` as whole-show, deriving `showTmdbId` from the id; b1-router pure seam pinned by tests. Controller B1 corruption-detection query: run `SELECT count(*) FROM tv_rankings WHERE show_tmdb_id = 0 OR (tmdb_id ~ '^tv_\d+$' AND season_number = 0)` before merge to confirm; repair owner-ackable (delete vs repair-to-season per Q8)
 - [C5] [blocking] B2 TV/book re-rank was delete-first: cancel = permanent loss, completion = `ranking_remove`+`ranking_add` instead of single `ranking_move` — fixed: `rerankState` marker extended to tv/book (per-vertical); completion upserts on the unique key, then `set_tier_order` for both source (when tier changed) and target tiers; emits ONE `ranking_move` (`{notes?, year?}`, watched-with omitted) matching the movie contract; cancel/close clears marker with zero writes. Contract known-deviations updated (item 2 widened).
@@ -728,7 +728,7 @@ Smaller items, achievements, descopes, and D2 close. Plan at
 `docs/plans/2026-07-11-c7-web-blocking-plan.md`. Baseline: 545 web vitest
 (untouched through Tasks 1–3). iOS half follows separately.
 
-### Web half (Tasks 1–3, HEAD 1208d98)
+### Web half (Tasks 1–3, HEAD e7b1616)
 
 **B1 — Profile tabs (viewer's data on any profile)**
 
@@ -742,15 +742,17 @@ hole is B2, fixed in Task 2.
 
 **B2+B3 — Achievements RLS lockdown + `grant_achievements()` RPC**
 
-Migration `20260711_achievements_rls_lockdown.sql` revokes INSERT from
-authenticated users; anon already excluded. Migration
-`20260711_grant_achievements_rpc.sql` installs the SECURITY DEFINER
-`grant_achievements()` function (15 rules, thresholds-verified against
-`ACHIEVEMENT_DEFINITIONS`; RETURNING-CTE idempotency). Client
-`services/achievementService.ts` `checkAndGrantBadges` swapped from direct
-INSERT to `rpc('grant_achievements')` fire-and-forget. `AchievementsView`
-`isOwnProfile` default footgun addressed (defaults to `false` — no phantom
-own-profile badge writes for cross-user views).
+Single migration `supabase/migrations/20260711_achievements_server_grant.sql`
+revokes INSERT from authenticated users (anon already excluded) and installs
+the SECURITY DEFINER `grant_achievements()` function (16-badge catalog,
+15 grantable rules, thresholds verified against `BADGE_CATALOG` in
+`components/social/AchievementsView.tsx`; RETURNING-CTE idempotency). A
+follow-up `array_append` fix was applied as `achievements_grant_array_append_fix`;
+both live in prod. Client `services/achievementService.ts` `checkAndGrantBadges`
+swapped from direct INSERT to `rpc('grant_achievements')` awaited on own-profile
+tab mount (`AchievementsView` `useEffect`). `AchievementsView` `isOwnProfile`
+default footgun addressed (defaults to `false` — no phantom own-profile badge
+writes for cross-user views).
 
 Apply-then-merge window note: between migration apply and PR merge, old deployed
 web clients' `checkAndGrantBadges` direct INSERTs fail RLS silently (they were
@@ -765,8 +767,7 @@ Minor ledger items from Task 2 review:
 - **Milestone feed events one-shot-lossy:** `logMilestoneEvent` is client-side;
   a silent write failure loses the event. Server-side write inside the SECURITY
   DEFINER is a follow-up (ledgered in `shared-payloads.md` achievements section).
-- **`notifications` INSERT `WITH CHECK (true)`:** the bell-table still has a
-  wide-open INSERT CHECK — same B2 class (bell-abuse class). Deferred sweep
+- **`notifications` INSERT `WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = notifications.user_id))`:** any authenticated user can notify any EXISTING profile — same bell-abuse class as B2. Deferred sweep
   candidate, sibling of the achievements lockdown.
 - **`movie_reviews` dead-table reads:** `reviewService.ts` / `tasteService.ts`
   still query `movie_reviews` (no rows since journal migration). Cleanup deferred.
@@ -828,18 +829,20 @@ From the deferred sweep list carried into C7:
    `AddMediaModal` already has the grid).
 3. **Discover card actions polish:** C7-iOS (Part B shipped the card actions; any
    polish needed is iOS-side).
-4. **Stage-A shelf-notes emission gap** (iOS management UI deferred item):
-   C7-iOS scope (iOS emissions carry `{year?}` only, no `notes`).
+4. **Stage-A quick-write full-replace** (C4-iOS mgmt UI deferred: plain-finish
+   re-rank overwrote existing rich journal entry with near-blank quick draft):
+   FIXED in C3-B Task 0 — `InsertOutcome == .moved` guard added
+   (ledger line ~511; `Journal quick-write wipe fix (T0)`). Retired.
 5. **Journal agent client (Kimi edge fn):** own later slice — not in C7.
-6. **Emission items** (C4-iOS mgmt UI deferred: move/remove carry `{year?}` only):
-   C7-iOS scope.
+6. **Emission items** (C4-iOS mgmt UI deferred: move/remove carry `{year?}` only,
+   no `notes`; shelf-notes emission gap): C7-iOS scope.
 7. **Localized-title display twin:** later cycle — display-only lag after locale
    toggle, web-side `fetchLocalizedTitle` exists; iOS has no equivalent yet.
 8. **zh typography pairing:** design cycle — PingFang SC/TC acceptable for now.
 
 New deferrals surfaced during C7 web tasks:
 
-- `notifications` INSERT `WITH CHECK (true)` (bell-abuse class) — deferred sweep
+- `notifications` INSERT `WITH CHECK (EXISTS (profiles.id = user_id))` (bell-abuse class) — any authenticated user can notify any existing profile; deferred sweep
   candidate alongside the achievements lockdown (B2 sibling).
 - `movie_reviews` dead-table reads in `reviewService.ts` / `tasteService.ts` —
   cleanup candidate.
