@@ -183,21 +183,21 @@ BEGIN
 
   -- ── Assemble the earned set (every grantable rule; thresholds cited above) ──
   earned := ARRAY[]::text[];
-  IF rank_count     >= 1   THEN earned := earned || 'first_rank';   END IF;
-  IF rank_count     >= 10  THEN earned := earned || 'rank_10';      END IF;
-  IF rank_count     >= 25  THEN earned := earned || 'rank_25';      END IF;
-  IF rank_count     >= 50  THEN earned := earned || 'rank_50';      END IF;
-  IF rank_count     >= 100 THEN earned := earned || 'rank_100';     END IF;
-  IF review_count   >= 1   THEN earned := earned || 'first_review'; END IF;
-  IF review_count   >= 10  THEN earned := earned || 'review_10';    END IF;
-  IF following_count >= 1  THEN earned := earned || 'first_follow'; END IF;
-  IF follower_count >= 10  THEN earned := earned || 'followers_10'; END IF;
-  IF follower_count >= 50  THEN earned := earned || 'followers_50'; END IF;
-  IF list_count     >= 1   THEN earned := earned || 'first_list';   END IF;
-  IF genre_count    >= 5   THEN earned := earned || 'genre_5';      END IF;
-  IF genre_count    >= 10  THEN earned := earned || 'genre_10';     END IF;
-  IF s_count        >= 10  THEN earned := earned || 's_tier_10';    END IF;
-  IF d_count        >= 5   THEN earned := earned || 'd_tier_5';     END IF;
+  IF rank_count     >= 1   THEN earned := array_append(earned, 'first_rank');   END IF;
+  IF rank_count     >= 10  THEN earned := array_append(earned, 'rank_10');      END IF;
+  IF rank_count     >= 25  THEN earned := array_append(earned, 'rank_25');      END IF;
+  IF rank_count     >= 50  THEN earned := array_append(earned, 'rank_50');      END IF;
+  IF rank_count     >= 100 THEN earned := array_append(earned, 'rank_100');     END IF;
+  IF review_count   >= 1   THEN earned := array_append(earned, 'first_review'); END IF;
+  IF review_count   >= 10  THEN earned := array_append(earned, 'review_10');    END IF;
+  IF following_count >= 1  THEN earned := array_append(earned, 'first_follow'); END IF;
+  IF follower_count >= 10  THEN earned := array_append(earned, 'followers_10'); END IF;
+  IF follower_count >= 50  THEN earned := array_append(earned, 'followers_50'); END IF;
+  IF list_count     >= 1   THEN earned := array_append(earned, 'first_list');   END IF;
+  IF genre_count    >= 5   THEN earned := array_append(earned, 'genre_5');      END IF;
+  IF genre_count    >= 10  THEN earned := array_append(earned, 'genre_10');     END IF;
+  IF s_count        >= 10  THEN earned := array_append(earned, 's_tier_10');    END IF;
+  IF d_count        >= 5   THEN earned := array_append(earned, 'd_tier_5');     END IF;
 
   -- ── Grant only NEW badges; RETURNING gives us exactly what was inserted ──
   WITH ins AS (
