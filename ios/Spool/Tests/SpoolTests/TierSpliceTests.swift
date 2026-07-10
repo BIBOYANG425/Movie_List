@@ -122,10 +122,12 @@ final class TierSpliceTests: XCTestCase {
     // were written via the "edit notes" sheet. Pinned here so a refactor that
     // adds a custom `encode(to:)` can't accidentally regress the omission.
 
-    /// `RankingPayload` with `notes: nil` → the JSON must NOT contain a `"notes"`
-    /// key. PostgREST omit-key semantics preserve the existing column on re-rank.
+    /// The MOVIE payload body with `notes: nil` → the JSON must NOT contain a
+    /// `"notes"` key. PostgREST omit-key semantics preserve the existing column
+    /// on re-rank. (Post-C5 the payload is per-media; the movie body is the
+    /// unchanged historical shape, so this pin is byte-identical to before.)
     func testRankingPayloadNilNotesOmitsKey() throws {
-        let payload = RankingPayload(
+        let payload = MoviePayloadBody(
             user_id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
             tmdb_id: "tt1234", title: "Some Film", year: nil, poster_url: nil,
             type: "movie", genres: [], director: nil, tier: "A",
@@ -137,10 +139,10 @@ final class TierSpliceTests: XCTestCase {
                        "nil notes must OMIT the key so PostgREST preserves the existing column on re-rank; got: \(json)")
     }
 
-    /// `RankingPayload` with a non-nil `notes` → the JSON MUST contain the key
-    /// so an intentional notes write reaches the server.
+    /// The MOVIE payload body with a non-nil `notes` → the JSON MUST contain the
+    /// key so an intentional notes write reaches the server.
     func testRankingPayloadPresentNotesIncludesKey() throws {
-        let payload = RankingPayload(
+        let payload = MoviePayloadBody(
             user_id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
             tmdb_id: "tt1234", title: "Some Film", year: "2000", poster_url: nil,
             type: "movie", genres: [], director: nil, tier: "A",

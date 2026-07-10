@@ -252,23 +252,15 @@ public actor RankingRepository {
             existingIds, newId: ranking.tmdbId, at: ranking.rankPosition
         )
 
-        let payload = RankingPayload(
-            user_id: userID,
-            tmdb_id: ranking.tmdbId,
-            title: ranking.title,
-            year: ranking.year,
-            poster_url: ranking.posterURL,
-            type: ranking.type,
-            genres: ranking.genres,
-            director: ranking.director,
-            tier: ranking.tier.rawValue,
-            rank_position: ranking.rankPosition,
-            notes: ranking.notes
-        )
-
         // Step 3: UPSERT on (user_id, tmdb_id) so an iOS re-rank of an already-
         // ranked item replaces its row instead of failing the unique key. The
         // row MUST exist before the RPC (UPDATE-only) — this is that insert.
+        // The payload is PER-MEDIA (`RankingPayload.make`): the movie body is
+        // byte-for-byte the historical shape (director, no vertical columns);
+        // the tv/book bodies carry ONLY their own table's columns and NEVER a
+        // director key (those tables have no such column — a stray director
+        // 400s). `.single()` still round-trips the full `RankingRow`.
+        let payload = RankingPayload.make(from: ranking, userID: userID)
         let inserted: RankingRow = try await client
             .from(table)
             .upsert(payload, onConflict: "user_id,tmdb_id")
@@ -587,39 +579,157 @@ public actor RankingRepository {
 
 // MARK: - DTOs (wire format, snake_case to match Postgres)
 
+/// The per-media "vertical" fields a `RankingInsert` carries, one case per
+/// backing table. Makes illegal states unrepresentable: a `.tv` insert MUST
+/// supply `showTmdbId` + `season` (both are `tv_rankings NOT NULL` columns —
+/// `supabase_tv_rankings.sql:10-11`), so a TV rank without them cannot compile;
+/// and `director` only exists on the `.movie` case, so it can never leak onto
+/// the tv/book tables (which have no `director` column — a non-nil director key
+/// 400s there). The vertical fields map straight to `tv_rankings` /
+/// `book_rankings` columns; see the per-media payload structs below.
+public enum RankingMedia: Sendable, Equatable {
+    /// `user_rankings` — the movie table. `director` is the ONLY vertical
+    /// column and lives ONLY here.
+    case movie(director: String?)
+    /// `tv_rankings`. `showTmdbId`/`season` are NON-OPTIONAL (NOT NULL in the
+    /// DDL); `seasonTitle`/`creator`/`episodeCount` are nullable columns.
+    case tv(showTmdbId: Int, season: Int, seasonTitle: String? = nil,
+            creator: String? = nil, episodeCount: Int? = nil)
+    /// `book_rankings`. All five OpenLibrary-derived columns are nullable.
+    case book(author: String? = nil, pageCount: Int? = nil, isbn: String? = nil,
+              olWorkKey: String? = nil, olRatingsAverage: Double? = nil)
+
+    /// The `type`/`p_media` discriminator: `"movie" | "tv" | "book"`. Drives
+    /// `rankingsTable`/`pMedia` and the persisted `type` column.
+    var typeString: String {
+        switch self {
+        case .movie: return "movie"
+        case .tv:    return "tv"
+        case .book:  return "book"
+        }
+    }
+}
+
 public struct RankingInsert: Sendable {
     public let tmdbId: String
     public let title: String
     public let year: String?
     public let posterURL: String?
-    public let type: String            // "movie" | "tv" | "book"
     public let genres: [String]
-    public let director: String?
+    public let media: RankingMedia
     public let tier: Tier
     public let rankPosition: Int
     public let notes: String?
-    /// Ceremony friends for the activity-event metadata. Defaults nil —
-    /// no caller wires this yet (C-later plumbs the picker through).
+    /// Ceremony friends for the activity-event metadata. Defaults nil.
+    /// Persisted on tv/book rows (both tables carry `watched_with_user_ids`),
+    /// and — per the emission contract — carried on a fresh `ranking_add` but
+    /// STRIPPED on a re-rank `ranking_move` (`CeremonyEmission.decide`).
     public let watchedWithUserIds: [UUID]?
 
+    /// `"movie" | "tv" | "book"` — derived from `media`, so the discriminator
+    /// and the vertical payload can never disagree. Kept as a property (not a
+    /// stored field) for `rankingsTable`/`pMedia` and callers that log it.
+    public var type: String { media.typeString }
+
+    /// The movie director, when this is a movie insert; nil otherwise. Present
+    /// for the movie payload build (and callers that still read `.director`).
+    public var director: String? {
+        if case let .movie(director) = media { return director }
+        return nil
+    }
+
+    /// Media-generic designated init. Prefer the `.movie`/`.tv`/`.book`
+    /// factories for new call sites — they make the required vertical fields
+    /// explicit at the call.
     public init(tmdbId: String, title: String, year: String?, posterURL: String?,
-                type: String = "movie", genres: [String] = [], director: String? = nil,
+                genres: [String] = [], media: RankingMedia,
                 tier: Tier, rankPosition: Int, notes: String? = nil,
                 watchedWithUserIds: [UUID]? = nil) {
         self.tmdbId = tmdbId
         self.title = title
         self.year = year
         self.posterURL = posterURL
-        self.type = type
         self.genres = genres
-        self.director = director
+        self.media = media
         self.tier = tier
         self.rankPosition = rankPosition
         self.notes = notes
         self.watchedWithUserIds = watchedWithUserIds
     }
+
+    /// Back-compat movie init — the historical shape (`type:` + `director:`).
+    /// Existing movie call sites (`RankPersistence`, onboarding) compile
+    /// unchanged; `type` is accepted for source compatibility but the media is
+    /// always `.movie`, so a stray `type:"tv"` here can't mint a movie-shaped
+    /// tv row.
+    public init(tmdbId: String, title: String, year: String?, posterURL: String?,
+                type: String = "movie", genres: [String] = [], director: String? = nil,
+                tier: Tier, rankPosition: Int, notes: String? = nil,
+                watchedWithUserIds: [UUID]? = nil) {
+        self.init(tmdbId: tmdbId, title: title, year: year, posterURL: posterURL,
+                  genres: genres, media: .movie(director: director),
+                  tier: tier, rankPosition: rankPosition, notes: notes,
+                  watchedWithUserIds: watchedWithUserIds)
+    }
+
+    // MARK: per-media factories (make required vertical fields explicit)
+
+    public static func movie(
+        tmdbId: String, title: String, year: String?, posterURL: String?,
+        genres: [String] = [], director: String? = nil, tier: Tier,
+        rankPosition: Int, notes: String? = nil, watchedWithUserIds: [UUID]? = nil
+    ) -> RankingInsert {
+        RankingInsert(tmdbId: tmdbId, title: title, year: year, posterURL: posterURL,
+                      genres: genres, media: .movie(director: director),
+                      tier: tier, rankPosition: rankPosition, notes: notes,
+                      watchedWithUserIds: watchedWithUserIds)
+    }
+
+    public static func tv(
+        tmdbId: String, title: String, year: String?, posterURL: String?,
+        genres: [String] = [], showTmdbId: Int, season: Int,
+        seasonTitle: String? = nil, creator: String? = nil, episodeCount: Int? = nil,
+        tier: Tier, rankPosition: Int, notes: String? = nil,
+        watchedWithUserIds: [UUID]? = nil
+    ) -> RankingInsert {
+        RankingInsert(
+            tmdbId: tmdbId, title: title, year: year, posterURL: posterURL,
+            genres: genres,
+            media: .tv(showTmdbId: showTmdbId, season: season, seasonTitle: seasonTitle,
+                       creator: creator, episodeCount: episodeCount),
+            tier: tier, rankPosition: rankPosition, notes: notes,
+            watchedWithUserIds: watchedWithUserIds
+        )
+    }
+
+    public static func book(
+        tmdbId: String, title: String, year: String?, posterURL: String?,
+        genres: [String] = [], author: String? = nil, pageCount: Int? = nil,
+        isbn: String? = nil, olWorkKey: String? = nil, olRatingsAverage: Double? = nil,
+        tier: Tier, rankPosition: Int, notes: String? = nil,
+        watchedWithUserIds: [UUID]? = nil
+    ) -> RankingInsert {
+        RankingInsert(
+            tmdbId: tmdbId, title: title, year: year, posterURL: posterURL,
+            genres: genres,
+            media: .book(author: author, pageCount: pageCount, isbn: isbn,
+                         olWorkKey: olWorkKey, olRatingsAverage: olRatingsAverage),
+            tier: tier, rankPosition: rankPosition, notes: notes,
+            watchedWithUserIds: watchedWithUserIds
+        )
+    }
 }
 
+/// A ranking row read back from ANY of the three tables. The shared columns are
+/// non-optional; every VERTICAL column is optional so ONE struct decodes rows
+/// from all three tables (a movie row lacks the tv/book columns, a tv row lacks
+/// book columns, etc. — the missing keys decode nil via `decodeIfPresent`).
+/// This is what Task 2's media-parameterized reads (`getTierItems(media:)` /
+/// `getAllRankedItems(media:)`) map into per-media `RankedItem`s: `creator`
+/// (tv) and `author` (book) both feed `RankedItem.director` (the shelf's
+/// subtitle slot), while `show_tmdb_id`/`season_number`/`season_title`/
+/// `episode_count` and `page_count`/`isbn`/`ol_work_key`/`ol_ratings_average`
+/// give Task 2 the identity + detail fields for its per-media projections.
 public struct RankingRow: Codable, Sendable, Hashable {
     public let id: UUID
     public let user_id: UUID
@@ -629,10 +739,91 @@ public struct RankingRow: Codable, Sendable, Hashable {
     public let poster_url: String?
     public let type: String
     public let genres: [String]
+    // movie
     public let director: String?
+    // tv (nil on movie/book rows)
+    public let show_tmdb_id: Int?
+    public let season_number: Int?
+    public let season_title: String?
+    public let creator: String?
+    public let episode_count: Int?
+    // book (nil on movie/tv rows)
+    public let author: String?
+    public let page_count: Int?
+    public let isbn: String?
+    public let ol_work_key: String?
+    public let ol_ratings_average: Double?
+    // shared
     public let tier: String
     public let rank_position: Int
     public let notes: String?
+
+    /// The per-media "subtitle" attribution the shelf shows under a title:
+    /// director for movies, creator for TV, author for books (web
+    /// `WatchlistCard` uses the same `director ?? author ?? creator` fallback).
+    public var attribution: String? {
+        director ?? creator ?? author
+    }
+
+    public init(
+        id: UUID, user_id: UUID, tmdb_id: String, title: String,
+        year: String?, poster_url: String?, type: String, genres: [String],
+        director: String? = nil,
+        show_tmdb_id: Int? = nil, season_number: Int? = nil,
+        season_title: String? = nil, creator: String? = nil, episode_count: Int? = nil,
+        author: String? = nil, page_count: Int? = nil, isbn: String? = nil,
+        ol_work_key: String? = nil, ol_ratings_average: Double? = nil,
+        tier: String, rank_position: Int, notes: String?
+    ) {
+        self.id = id
+        self.user_id = user_id
+        self.tmdb_id = tmdb_id
+        self.title = title
+        self.year = year
+        self.poster_url = poster_url
+        self.type = type
+        self.genres = genres
+        self.director = director
+        self.show_tmdb_id = show_tmdb_id
+        self.season_number = season_number
+        self.season_title = season_title
+        self.creator = creator
+        self.episode_count = episode_count
+        self.author = author
+        self.page_count = page_count
+        self.isbn = isbn
+        self.ol_work_key = ol_work_key
+        self.ol_ratings_average = ol_ratings_average
+        self.tier = tier
+        self.rank_position = rank_position
+        self.notes = notes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        user_id = try c.decode(UUID.self, forKey: .user_id)
+        tmdb_id = try c.decode(String.self, forKey: .tmdb_id)
+        title = try c.decode(String.self, forKey: .title)
+        year = try c.decodeIfPresent(String.self, forKey: .year)
+        poster_url = try c.decodeIfPresent(String.self, forKey: .poster_url)
+        type = try c.decode(String.self, forKey: .type)
+        genres = try c.decodeIfPresent([String].self, forKey: .genres) ?? []
+        director = try c.decodeIfPresent(String.self, forKey: .director)
+        show_tmdb_id = try c.decodeIfPresent(Int.self, forKey: .show_tmdb_id)
+        season_number = try c.decodeIfPresent(Int.self, forKey: .season_number)
+        season_title = try c.decodeIfPresent(String.self, forKey: .season_title)
+        creator = try c.decodeIfPresent(String.self, forKey: .creator)
+        episode_count = try c.decodeIfPresent(Int.self, forKey: .episode_count)
+        author = try c.decodeIfPresent(String.self, forKey: .author)
+        page_count = try c.decodeIfPresent(Int.self, forKey: .page_count)
+        isbn = try c.decodeIfPresent(String.self, forKey: .isbn)
+        ol_work_key = try c.decodeIfPresent(String.self, forKey: .ol_work_key)
+        ol_ratings_average = try c.decodeIfPresent(Double.self, forKey: .ol_ratings_average)
+        tier = try c.decode(String.self, forKey: .tier)
+        rank_position = try c.decode(Int.self, forKey: .rank_position)
+        notes = try c.decodeIfPresent(String.self, forKey: .notes)
+    }
 }
 
 public struct ActivityEventRow: Codable, Sendable, Hashable, Identifiable {
@@ -707,12 +898,80 @@ struct NotesUpdatePayload: Encodable, Equatable {
     }
 }
 
-/// Upsert body for `user_rankings`. Uses synthesized `Encodable` which maps
-/// `Optional` properties via `encodeIfPresent` — a nil `notes` OMITS the key
-/// so PostgREST preserves the existing column on a re-rank (the ceremony only
-/// touches the columns it explicitly sets). Tests pin this contract in
+/// Per-media upsert body dispatcher. ONE `Encodable` type so `insertRanking`'s
+/// `.upsert(_:)` stays media-generic, but each case encodes ONLY the columns
+/// that exist on its backing table:
+///   - `.movie` → `user_rankings`: the historical shape (director, NO vertical
+///     columns) — encoded BYTE-FOR-BYTE by `MoviePayloadBody` so the movie pins
+///     stay green and no re-rank regresses.
+///   - `.tv` → `tv_rankings`: adds `show_tmdb_id`/`season_number` (NOT NULL),
+///     `season_title?`/`creator?`/`episode_count?`, `watched_with_user_ids`.
+///     NO `director` key (the table has no such column).
+///   - `.book` → `book_rankings`: adds `author?`/`page_count?`/`isbn?`/
+///     `ol_work_key?`/`ol_ratings_average?`, `watched_with_user_ids`. NO
+///     `director`, NO show/season keys.
+/// Nil-omission is UNIFORM across all three bodies: a nil optional OMITS its key
+/// so PostgREST preserves the existing column on a re-rank (the `notes`
+/// omission pin, `TierSpliceTests.testRankingPayloadNilNotesOmitsKey`, applies
+/// to every media). `watched_with_user_ids` is ALWAYS present on tv/book
+/// (defaulting to `[]`), matching web `?? []`.
+enum RankingPayload: Encodable {
+    case movie(MoviePayloadBody)
+    case tv(TVPayloadBody)
+    case book(BookPayloadBody)
+
+    /// Build the correct per-media body from a `RankingInsert`. The vertical
+    /// enum drives the branch, so a movie insert can NEVER produce a tv/book
+    /// body (or vice-versa) and `director` can only reach the movie body.
+    static func make(from ranking: RankingInsert, userID: UUID) -> RankingPayload {
+        switch ranking.media {
+        case let .movie(director):
+            return .movie(MoviePayloadBody(
+                user_id: userID, tmdb_id: ranking.tmdbId, title: ranking.title,
+                year: ranking.year, poster_url: ranking.posterURL, type: "movie",
+                genres: ranking.genres, director: director,
+                tier: ranking.tier.rawValue, rank_position: ranking.rankPosition,
+                notes: ranking.notes
+            ))
+        case let .tv(showTmdbId, season, seasonTitle, creator, episodeCount):
+            return .tv(TVPayloadBody(
+                user_id: userID, tmdb_id: ranking.tmdbId,
+                show_tmdb_id: showTmdbId, season_number: season,
+                title: ranking.title, season_title: seasonTitle,
+                year: ranking.year, poster_url: ranking.posterURL, type: "tv_season",
+                genres: ranking.genres, creator: creator,
+                tier: ranking.tier.rawValue, rank_position: ranking.rankPosition,
+                notes: ranking.notes, episode_count: episodeCount,
+                watched_with_user_ids: ranking.watchedWithUserIds ?? []
+            ))
+        case let .book(author, pageCount, isbn, olWorkKey, olRatingsAverage):
+            return .book(BookPayloadBody(
+                user_id: userID, tmdb_id: ranking.tmdbId, title: ranking.title,
+                year: ranking.year, poster_url: ranking.posterURL, type: "book",
+                genres: ranking.genres, author: author,
+                tier: ranking.tier.rawValue, rank_position: ranking.rankPosition,
+                notes: ranking.notes, page_count: pageCount, isbn: isbn,
+                ol_work_key: olWorkKey, ol_ratings_average: olRatingsAverage,
+                watched_with_user_ids: ranking.watchedWithUserIds ?? []
+            ))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case let .movie(body): try body.encode(to: encoder)
+        case let .tv(body):    try body.encode(to: encoder)
+        case let .book(body):  try body.encode(to: encoder)
+        }
+    }
+}
+
+/// `user_rankings` upsert body — the historical `RankingPayload` shape, kept
+/// UNCHANGED. Synthesized `Encodable` uses `encodeIfPresent`, so a nil `notes`
+/// (and nil `year`/`poster_url`/`director`) OMITS the key and PostgREST
+/// preserves the existing column on a re-rank. Pinned by
 /// `TierSpliceTests.testRankingPayloadNilNotesOmitsKey`.
-struct RankingPayload: Encodable {
+struct MoviePayloadBody: Encodable {
     let user_id: UUID
     let tmdb_id: String
     let title: String
@@ -724,6 +983,55 @@ struct RankingPayload: Encodable {
     let tier: String
     let rank_position: Int
     let notes: String?
+}
+
+/// `tv_rankings` upsert body (`supabase_tv_rankings.sql:6-28`, +
+/// `supabase_watched_with.sql`). `show_tmdb_id`/`season_number` are NON-optional
+/// (NOT NULL columns). Optionals (`season_title`/`creator`/`episode_count`/
+/// `year`/`poster_url`/`notes`) OMIT on nil via synthesized `encodeIfPresent`,
+/// preserving the column on re-rank. There is NO `director` key. `type` is
+/// `"tv_season"`. Key-set pinned by `PerMediaPayloadTests`.
+struct TVPayloadBody: Encodable {
+    let user_id: UUID
+    let tmdb_id: String
+    let show_tmdb_id: Int
+    let season_number: Int
+    let title: String
+    let season_title: String?
+    let year: String?
+    let poster_url: String?
+    let type: String
+    let genres: [String]
+    let creator: String?
+    let tier: String
+    let rank_position: Int
+    let notes: String?
+    let episode_count: Int?
+    let watched_with_user_ids: [UUID]
+}
+
+/// `book_rankings` upsert body (`supabase_book_rankings.sql:6-29`). All five
+/// OpenLibrary columns (`author`/`page_count`/`isbn`/`ol_work_key`/
+/// `ol_ratings_average`) plus `year`/`poster_url`/`notes` OMIT on nil via
+/// synthesized `encodeIfPresent`. NO `director`, NO show/season keys. `type`
+/// is `"book"`. Key-set pinned by `PerMediaPayloadTests`.
+struct BookPayloadBody: Encodable {
+    let user_id: UUID
+    let tmdb_id: String
+    let title: String
+    let year: String?
+    let poster_url: String?
+    let type: String
+    let genres: [String]
+    let author: String?
+    let tier: String
+    let rank_position: Int
+    let notes: String?
+    let page_count: Int?
+    let isbn: String?
+    let ol_work_key: String?
+    let ol_ratings_average: Double?
+    let watched_with_user_ids: [UUID]
 }
 
 private struct ActivityEventPayload: Encodable {
