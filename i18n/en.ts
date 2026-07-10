@@ -114,6 +114,10 @@ const en = {
   'stats.tvSeasons': 'TV Seasons',
 
   // ── Feed ─────────────────────────────────────────────────────────────────
+  'feed.justNow': 'Just now',
+  'feed.minsAgo': '{n}m ago',
+  'feed.hrsAgo': '{n}h ago',
+  'feed.daysAgo': '{n}d ago',
   'feed.friendsFeed': 'Friends Feed',
   'feed.explore': 'Explore',
   'feed.emptyFriends': 'No activity from friends yet. Follow people to see their ranking activity here.',
