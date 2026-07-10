@@ -450,11 +450,22 @@ A web movie re-rank through the ceremony flow MUST emit a single `ranking_move` 
 
 A same-tier reorder with no actual position change must emit NO event (B1 no-op suppression).
 
-**Known deviations (ledgered):** Three live paths do not yet satisfy the MUST above; all are deliberately deferred and tracked in `docs/plans/2026-07-07-ios-parity-ledger.md`:
+The iOS ceremony satisfies the MUST too: `RankingRepository.insertRanking`
+pre-reads the existing `(user_id, tmdb_id)` row; when one exists it emits a
+single `ranking_move` (`{notes?, year?}`, watched-with stripped) and, on a
+cross-tier re-rank, compacts the source tier (full membership minus the id) as
+well as the target — no gap left. A genuine fresh insert still emits
+`ranking_add`. The pure fresh-vs-re-rank decision is `CeremonyEmission.decide`
+(pinned by `TierSpliceTests`).
+
+**Known deviations (ledgered):** Two live paths do not yet satisfy the MUST
+above; both are deliberately deferred and tracked in
+`docs/plans/2026-07-07-ios-parity-ledger.md`:
 
 1. **Web movie drag-migration** still emits `ranking_add` (the drag path was not touched in B3; Q2 standardization deferred).
 2. **Web TV/book re-rank** still emits `ranking_remove` + `ranking_add` (delete-first flow; needs the B3 treatment in a later cycle, deferred).
-3. **iOS ceremony re-rank** (upsert path shipped in B5): when the new tier differs, only the target tier is spliced/compacted — the source tier keeps a gap until its next write (self-heals) — and the emission is `ranking_add` rather than `ranking_move`. Fix planned in the iOS management-UI sub-plan.
+
+~~**iOS ceremony re-rank**~~ — FIXED (C4 iOS management-UI sub-plan, Task 2): `insertRanking` now compacts the source tier and emits `ranking_move`; see the paragraph above.
 
 ## watchlist_items (+ tv/book variants) (since C3 web fixes, branch `fix/c3-watchlist-discover-web-blocking`)
 
