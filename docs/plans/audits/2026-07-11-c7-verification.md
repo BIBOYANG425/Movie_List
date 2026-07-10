@@ -177,7 +177,7 @@ begin;
 
   set local role authenticated;
   set local request.jwt.claims to '{"sub":"<FIXTURE_USER>","role":"authenticated"}';
-  perform grant_achievements();  -- FIXTURE_USER grants for THEMSELF
+  select grant_achievements();  -- FIXTURE_USER grants for THEMSELF (plain SQL, not plpgsql)
 
   reset role;  -- back to superuser to read B's count without RLS interference
   select count(*) as after_b from user_achievements where user_id = '<SECOND_USER>';

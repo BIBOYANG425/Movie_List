@@ -224,6 +224,10 @@ $$;
 
 -- ── 5. Grant EXECUTE to authenticated only; revoke from public ──────────────
 REVOKE ALL ON FUNCTION public.grant_achievements() FROM public;
+-- Supabase default privileges grant EXECUTE on new functions to anon explicitly;
+-- revoking PUBLIC does not strip that grant. Defense-in-depth (anon would RAISE
+-- on NULL auth.uid() anyway, before any write):
+REVOKE EXECUTE ON FUNCTION public.grant_achievements() FROM anon;
 GRANT EXECUTE ON FUNCTION public.grant_achievements() TO authenticated;
 
 -- ============================================================================
