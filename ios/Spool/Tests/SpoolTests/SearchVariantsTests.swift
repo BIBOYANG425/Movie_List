@@ -66,4 +66,21 @@ final class SearchVariantsTests: XCTestCase {
         // leave "it" (2 < 3), so it is skipped.
         XCTAssertEqual(TMDBService.typoRetryVariants("it knigt"), ["it knig"])
     }
+
+    // MARK: - TV search shares this exact variant generator
+
+    /// `searchTVShows` reuses `typoRetryVariants` verbatim (the same shared pure
+    /// function as `searchMovies`) inside its zero-result retry loop, mirroring
+    /// web where both `searchMovies` and `searchTVShows` call the same
+    /// `typoRetryVariants`. There is no TV-specific variant generator, so the TV
+    /// retry backoff produces byte-identical variants for the same query. NOTE:
+    /// this pins the generator's OUTPUT only — the single-call-site fact was
+    /// verified by review; a future TV-only fork function would not fail here.
+    func testTVSearchUsesTheSameVariantGeneratorAsMovieSearch() {
+        XCTAssertEqual(
+            TMDBService.typoRetryVariants("shawshenk"),
+            ["shawshen", "shawshe"],
+            "TV + movie search share one typoRetryVariants — no TV-specific fork"
+        )
+    }
 }

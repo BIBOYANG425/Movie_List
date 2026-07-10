@@ -224,4 +224,94 @@ final class RankFromWatchlistTests: XCTestCase {
         XCTAssertNil(RankFromWatchlistCoordinator.numericTmdbId("ol_OL123W"))
         XCTAssertNil(RankFromWatchlistCoordinator.numericTmdbId("tmdb_"))
     }
+
+    // MARK: - 10. whole-show identity matrix (audit §3.9, C5-iOS Task 6)
+
+    /// The pure identity predicate: exact id (movie/book/season-of-season),
+    /// season-of-this-show prefix (whole-show ranked through the grid), and the
+    /// stale/mismatched cases that must NOT match.
+    func testOriginIdentityMatrix() {
+        // Exact matches — movie, book, and an already-season bookmark.
+        XCTAssertTrue(RankFromWatchlistCoordinator.originMatchesRankedItem(
+            originId: "tmdb_603", rankedId: "tmdb_603"))
+        XCTAssertTrue(RankFromWatchlistCoordinator.originMatchesRankedItem(
+            originId: "ol_OL27448W", rankedId: "ol_OL27448W"))
+        XCTAssertTrue(RankFromWatchlistCoordinator.originMatchesRankedItem(
+            originId: "tv_1399_s3", rankedId: "tv_1399_s3"))
+
+        // WHOLE-SHOW → season rank: origin tv_1399, ranked tv_1399_s3 → match.
+        XCTAssertTrue(RankFromWatchlistCoordinator.originMatchesRankedItem(
+            originId: "tv_1399", rankedId: "tv_1399_s3"),
+            "whole-show bookmark ranked through the season grid must still match")
+        XCTAssertTrue(RankFromWatchlistCoordinator.originMatchesRankedItem(
+            originId: "tv_1399", rankedId: "tv_1399_s10"))
+
+        // Stale / mismatched — must NOT match.
+        XCTAssertFalse(RankFromWatchlistCoordinator.originMatchesRankedItem(
+            originId: "tmdb_603", rankedId: "tmdb_27205"),
+            "different movie is stale")
+        XCTAssertFalse(RankFromWatchlistCoordinator.originMatchesRankedItem(
+            originId: "tv_1399", rankedId: "tv_9999_s1"),
+            "a season of a DIFFERENT show must not match a whole-show origin")
+        XCTAssertFalse(RankFromWatchlistCoordinator.originMatchesRankedItem(
+            originId: "tv_13", rankedId: "tv_1399_s1"),
+            "prefix must be exactly origin.id + _s, not a numeric substring")
+        // A season origin ranked as the WHOLE show (reverse) does not match:
+        // the grid path always narrows to a season, never widens to the show.
+        XCTAssertFalse(RankFromWatchlistCoordinator.originMatchesRankedItem(
+            originId: "tv_1399_s3", rankedId: "tv_1399"))
+    }
+
+    /// End-to-end through `finish`: a whole-show origin whose confirmed rank
+    /// produced a SEASON Movie still removes the whole-show bookmark + reloads.
+    func testFinishWholeShowOriginRemovesBookmarkOnSeasonRank() async {
+        let (coord, spies) = makeCoordinator(saveSucceeds: true)
+
+        // Origin is the whole show; the ranked Movie is a specific season.
+        let seasonMovie = Movie(
+            id: "tv_1399_s3", title: "Game of Thrones", year: 2011,
+            director: "—", mediaType: .tv,
+            showTmdbId: 1399, seasonNumber: 3, seasonTitle: "Season 3")
+        let wholeShowOrigin = WatchlistItem(
+            id: "tv_1399", title: "Game of Thrones", year: "2011", posterUrl: "",
+            mediaType: .tv, genres: [], addedAt: Date(),
+            showTmdbId: 1399, seasonNumber: nil)
+
+        let outcome = await coord.finish(
+            movie: seasonMovie, tier: .A, rank: 1, moods: [], line: "",
+            watchlistOrigin: wholeShowOrigin
+        )
+
+        XCTAssertTrue(outcome)
+        XCTAssertEqual(spies.removeCalls.count, 1,
+                       "whole-show bookmark must be removed on a season rank")
+        XCTAssertEqual(spies.removeCalls.first?.0, "tv_1399",
+                       "the WHOLE-SHOW id is removed, not the season id")
+        XCTAssertEqual(spies.removeCalls.first?.1, .tv)
+        XCTAssertEqual(spies.reloadCalls, 1)
+    }
+
+    /// A whole-show origin whose ranked season belongs to a DIFFERENT show is
+    /// stale — the bookmark stays (data-loss guard holds for the widened match).
+    func testFinishWholeShowOriginWrongShowSkipsRemove() async {
+        let (coord, spies) = makeCoordinator(saveSucceeds: true)
+
+        let seasonMovie = Movie(
+            id: "tv_9999_s1", title: "Other Show", year: 2020,
+            director: "—", mediaType: .tv, showTmdbId: 9999, seasonNumber: 1)
+        let wholeShowOrigin = WatchlistItem(
+            id: "tv_1399", title: "Game of Thrones", year: "2011", posterUrl: "",
+            mediaType: .tv, genres: [], addedAt: Date(),
+            showTmdbId: 1399, seasonNumber: nil)
+
+        let outcome = await coord.finish(
+            movie: seasonMovie, tier: .A, rank: 1, moods: [], line: "",
+            watchlistOrigin: wholeShowOrigin
+        )
+
+        XCTAssertTrue(outcome, "rank outcome unaffected by the stale-origin skip")
+        XCTAssertTrue(spies.removeCalls.isEmpty,
+                      "a season of a different show must not clear this bookmark")
+        XCTAssertEqual(spies.reloadCalls, 0)
+    }
 }

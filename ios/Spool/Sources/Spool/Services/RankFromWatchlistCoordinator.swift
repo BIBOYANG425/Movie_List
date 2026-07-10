@@ -25,11 +25,14 @@ import Foundation
 /// `removeBookmark` to `WatchlistRepository.remove`, and `reloadWatchlist` to
 /// the watchlist tab's reload seam.
 ///
-/// Header last reviewed: 2026-07-09
+/// Header last reviewed: 2026-07-10
 ///
-/// Defense-in-depth: `finish` now also guards `origin.id == movie.id` before
-/// removing the bookmark; a stale origin (from a Watchlist→tier→back→search
+/// Defense-in-depth: `finish` guards the ranked id against the origin before
+/// removing the bookmark. A stale origin (from a Watchlist→tier→back→search
 /// detour) logs loudly and skips the remove without affecting the rank result.
+/// The match accepts an exact id OR the season-of-this-show prefix
+/// (`origin.id + "_s"`) so a whole-show TV bookmark ranked through the season
+/// grid still clears its bookmark (audit §3.9, C5-iOS Task 6).
 @MainActor
 public final class RankFromWatchlistCoordinator {
 
@@ -83,13 +86,23 @@ public final class RankFromWatchlistCoordinator {
         }
 
         // Defense-in-depth: if a stale origin survived a Watchlist → tier →
-        // back → search detour and the user ranked a DIFFERENT movie, the ids
+        // back → search detour and the user ranked a DIFFERENT item, the ids
         // diverge. Removing origin.id here would delete the wrong bookmark and
         // leave the original item in neither list — the exact data-loss class
         // C3 Task 4 prevents. Log loudly and skip the remove; the rank result
         // is unaffected.
-        guard origin.id == movie.id else {
-            NSLog("[RankFromWatchlist] stale origin detected — origin.id '\(origin.id)' != movie.id '\(movie.id)'; skipping bookmark remove to prevent data loss")
+        //
+        // WHOLE-SHOW IDENTITY (audit §3.9, C5-iOS Task 6): a whole-show TV
+        // bookmark (`tv_{n}`) is ranked through the season grid, so the ranked
+        // Movie carries the SEASON id (`tv_{n}_s{k}`) — a DIFFERENT id than the
+        // origin, yet the SAME item. Web removes the whole-show bookmark on such
+        // a rank; iOS must too. So the identity match accepts either an exact id
+        // match OR the season-of-this-show prefix (`origin.id + "_s"`). A movie/
+        // book origin never has the `_s` suffix so this widens nothing for them,
+        // and a genuinely stale origin (a different show / a movie) still fails
+        // both clauses and is correctly skipped.
+        guard Self.originMatchesRankedItem(originId: origin.id, rankedId: movie.id) else {
+            NSLog("[RankFromWatchlist] stale origin detected — origin.id '\(origin.id)' does not match ranked id '\(movie.id)'; skipping bookmark remove to prevent data loss")
             return saved
         }
 
@@ -103,6 +116,22 @@ public final class RankFromWatchlistCoordinator {
         // Refresh regardless of the remove's fate so the tab reflects reality.
         await reloadWatchlist()
         return saved
+    }
+
+    // MARK: - Pure identity helper (audit §3.9)
+
+    /// Whether a ranked item's id belongs to the same watchlist origin, so the
+    /// origin's bookmark should be removed after a confirmed save. Matches an
+    /// EXACT id (movie/book/season-of-a-season bookmark) OR the season-of-this-
+    /// show prefix (`origin.id + "_s"`) so a WHOLE-SHOW TV bookmark (`tv_{n}`)
+    /// ranked through the season grid (producing `tv_{n}_s{k}`) still clears the
+    /// bookmark — web parity. Pure so the whole-show/stale matrix is testable.
+    ///
+    /// A movie/book origin id never gains an `_s` suffix, so this widens nothing
+    /// for them. A genuinely stale origin (different show, or a movie whose id
+    /// isn't the ranked id) fails both clauses and is correctly rejected.
+    static func originMatchesRankedItem(originId: String, rankedId: String) -> Bool {
+        originId == rankedId || rankedId.hasPrefix(originId + "_s")
     }
 
     // MARK: - Pure mapping helpers (WatchlistItem → Movie)

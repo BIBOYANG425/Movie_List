@@ -312,10 +312,10 @@ final class RankManageModelTests: XCTestCase {
     /// and toasts.
     private func makeMenuModel(
         items: [RankedItem],
-        move: @escaping (String, String, String, Int?) async throws -> Void = { _, _, _, _ in },
-        notesProbe: @escaping (String) async throws -> String? = { _ in nil },
-        saveNotes: @escaping (String, String?) async throws -> Void = { _, _ in },
-        delete: @escaping (String, String) async throws -> Void = { _, _ in },
+        move: @escaping (String, String, String, String, Int?) async throws -> Void = { _, _, _, _, _ in },
+        notesProbe: @escaping (String, String) async throws -> String? = { _, _ in nil },
+        saveNotes: @escaping (String, String, String?) async throws -> Void = { _, _, _ in },
+        delete: @escaping (String, String, String) async throws -> Void = { _, _, _ in },
         rerank: @escaping (RankedItem) -> Void = { _ in },
         emitMove: @escaping (RankManageModel.MoveEvent) async -> Void = { _ in },
         emitRemove: @escaping (RankManageModel.RemoveEvent) async -> Void = { _ in },
@@ -339,14 +339,14 @@ final class RankManageModelTests: XCTestCase {
     // MARK: - move to tier
 
     func testMoveToTierRegroupsOptimisticallyAndCallsMoveOnce() async {
-        var moveCalls: [(String, String, String, Int?)] = []
+        var moveCalls: [(String, String, String, String, Int?)] = []
         var emitted: [RankManageModel.MoveEvent] = []
         let model = makeMenuModel(
             items: [
                 item("a", tier: .A, rank: 0), item("b", tier: .A, rank: 1),
                 item("s", tier: .S, rank: 0),
             ],
-            move: { id, from, to, idx in moveCalls.append((id, from, to, idx)) },
+            move: { media, id, from, to, idx in moveCalls.append((media, id, from, to, idx)) },
             emitMove: { emitted.append($0) }
         )
 
@@ -357,12 +357,13 @@ final class RankManageModelTests: XCTestCase {
         XCTAssertEqual(model.items(in: .S).map(\.id), ["s", "a"])
         XCTAssertEqual(model.items(in: .A).map(\.rank), [0])
         XCTAssertEqual(model.items(in: .S).map(\.rank), [0, 1])
-        // ONE move call: append (atIndex nil) into S from A.
+        // ONE move call: movie (default), append (atIndex nil) into S from A.
         XCTAssertEqual(moveCalls.count, 1)
-        XCTAssertEqual(moveCalls.first?.0, "a")
-        XCTAssertEqual(moveCalls.first?.1, "A")
-        XCTAssertEqual(moveCalls.first?.2, "S")
-        XCTAssertNil(moveCalls.first?.3, "menu move always appends → atIndex nil")
+        XCTAssertEqual(moveCalls.first?.0, "movie")
+        XCTAssertEqual(moveCalls.first?.1, "a")
+        XCTAssertEqual(moveCalls.first?.2, "A")
+        XCTAssertEqual(moveCalls.first?.3, "S")
+        XCTAssertNil(moveCalls.first?.4, "menu move always appends → atIndex nil")
     }
 
     func testMoveToTierEmitsSingleRankingMoveWithTargetTierAndYear() async {
@@ -390,7 +391,7 @@ final class RankManageModelTests: XCTestCase {
                 item("a", tier: .A, rank: 0), item("b", tier: .A, rank: 1),
                 item("s", tier: .S, rank: 0),
             ],
-            move: { _, _, _, _ in throw Boom() },
+            move: { _, _, _, _, _ in throw Boom() },
             emitMove: { _ in emitCount += 1 },
             toast: { t, l in toasts.append((t, l)) }
         )
@@ -409,7 +410,7 @@ final class RankManageModelTests: XCTestCase {
         var moveCalls = 0
         let model = makeMenuModel(
             items: [item("a", tier: .A, rank: 0), item("b", tier: .A, rank: 1)],
-            move: { _, _, _, _ in moveCalls += 1 }
+            move: { _, _, _, _, _ in moveCalls += 1 }
         )
 
         // Moving to the tier it already lives in is a no-op (the submenu hides
@@ -425,7 +426,7 @@ final class RankManageModelTests: XCTestCase {
     func testFetchNotesReturnsSuccessWithProbeResult() async {
         let model = makeMenuModel(
             items: [item("a", rank: 0)],
-            notesProbe: { id in id == "a" ? "loved the third act" : nil }
+            notesProbe: { _, id in id == "a" ? "loved the third act" : nil }
         )
 
         let result = await model.fetchNotes(item: item("a", rank: 0))
@@ -436,7 +437,7 @@ final class RankManageModelTests: XCTestCase {
     func testFetchNotesSuccessNilWhenColumnEmpty() async {
         let model = makeMenuModel(
             items: [item("a", rank: 0)],
-            notesProbe: { _ in nil }   // column is empty
+            notesProbe: { _, _ in nil }   // column is empty
         )
 
         let result = await model.fetchNotes(item: item("a", rank: 0))
@@ -451,7 +452,7 @@ final class RankManageModelTests: XCTestCase {
         var toasts: [(String, ToastLevel)] = []
         let model = makeMenuModel(
             items: [item("a", rank: 0)],
-            notesProbe: { _ in throw Boom() },
+            notesProbe: { _, _ in throw Boom() },
             toast: { t, l in toasts.append((t, l)) }
         )
 
@@ -474,7 +475,7 @@ final class RankManageModelTests: XCTestCase {
         var emitRemove = 0
         let model = makeMenuModel(
             items: [item("a", rank: 0)],
-            saveNotes: { id, notes in saveCalls.append((id, notes)) },
+            saveNotes: { _, id, notes in saveCalls.append((id, notes)) },
             emitMove: { _ in emitMove += 1 },
             emitRemove: { _ in emitRemove += 1 }
         )
@@ -494,7 +495,7 @@ final class RankManageModelTests: XCTestCase {
         var saveCalls: [(String, String?)] = []
         let model = makeMenuModel(
             items: [item("a", rank: 0)],
-            saveNotes: { id, notes in saveCalls.append((id, notes)) }
+            saveNotes: { _, id, notes in saveCalls.append((id, notes)) }
         )
 
         await model.saveNotes(item: item("a", rank: 0), notes: "   ")
@@ -508,7 +509,7 @@ final class RankManageModelTests: XCTestCase {
         var toasts: [(String, ToastLevel)] = []
         let model = makeMenuModel(
             items: [item("a", rank: 0)],
-            saveNotes: { _, _ in throw Boom() },
+            saveNotes: { _, _, _ in throw Boom() },
             toast: { t, l in toasts.append((t, l)) }
         )
 
@@ -545,7 +546,7 @@ final class RankManageModelTests: XCTestCase {
                 item("a", tier: .A, rank: 0), item("b", tier: .A, rank: 1),
                 item("c", tier: .A, rank: 2),
             ],
-            delete: { id, tier in deleteCalls.append((id, tier)) },
+            delete: { _, id, tier in deleteCalls.append((id, tier)) },
             emitRemove: { removed.append($0) }
         )
 
@@ -575,7 +576,7 @@ final class RankManageModelTests: XCTestCase {
                 item("a", tier: .A, rank: 0), item("b", tier: .A, rank: 1),
                 item("c", tier: .A, rank: 2),
             ],
-            delete: { _, _ in throw Boom() },
+            delete: { _, _, _ in throw Boom() },
             emitRemove: { _ in removeCount += 1 },
             toast: { t, l in toasts.append((t, l)) }
         )
@@ -588,6 +589,222 @@ final class RankManageModelTests: XCTestCase {
         XCTAssertEqual(toasts.count, 1)
         XCTAssertEqual(toasts.first?.1, .error)
         XCTAssertEqual(removeCount, 0, "no emission on a failed delete")
+    }
+
+    // MARK: - 7. media threading (C5 Task 2 — unpinned from "movie")
+
+    /// The model defaults to the movie vertical so the C4 shelf keeps its
+    /// current behaviour when no media is set.
+    func testDefaultMediaIsMovie() {
+        let model = makeModel(items: [item("a", rank: 0)])
+        XCTAssertEqual(model.media, "movie")
+    }
+
+    /// A TV-seeded model threads `"tv"` into the reorder RPC (arg 1) instead of
+    /// the hardcoded `"movie"` — the read/write for a tv shelf both hit
+    /// `tv_rankings`.
+    func testReorderThreadsSelectedMediaIntoRPC() async {
+        var reorderCalls: [(String, String, [String])] = []
+        let model = makeModel(
+            items: [item("a", rank: 0), item("b", rank: 1), item("c", rank: 2)],
+            reorder: { m, t, ids in reorderCalls.append((m, t, ids)) }
+        )
+        model.setMedia("tv")
+
+        await model.moveRow(tier: .A, from: IndexSet(integer: 2), to: 0)
+
+        XCTAssertEqual(reorderCalls.count, 1)
+        XCTAssertEqual(reorderCalls.first?.0, "tv",
+                       "reorder threads the selected media, not a hardcoded movie")
+        XCTAssertEqual(reorderCalls.first?.2, ["c", "a", "b"])
+    }
+
+    /// A book-seeded model threads `"book"` into the cross-tier move IO.
+    func testMoveToTierThreadsSelectedMediaIntoMoveIO() async {
+        var moveCalls: [(String, String, String, String, Int?)] = []
+        let model = makeMenuModel(
+            items: [item("a", tier: .A, rank: 0), item("s", tier: .S, rank: 0)],
+            move: { media, id, from, to, idx in moveCalls.append((media, id, from, to, idx)) }
+        )
+        model.setMedia("book")
+
+        await model.moveTo(tier: .S, item: item("a", tier: .A, rank: 0))
+
+        XCTAssertEqual(moveCalls.count, 1)
+        XCTAssertEqual(moveCalls.first?.0, "book", "cross-tier move threads the selected media")
+        XCTAssertEqual(moveCalls.first?.1, "a")
+        XCTAssertEqual(moveCalls.first?.2, "A")
+        XCTAssertEqual(moveCalls.first?.3, "S")
+    }
+
+    /// The delete IO threads the selected media so a tv/book delete compacts the
+    /// right table.
+    func testDeleteThreadsSelectedMediaIntoDeleteIO() async {
+        var deleteCalls: [(String, String, String)] = []
+        let model = makeMenuModel(
+            items: [item("a", tier: .A, rank: 0), item("b", tier: .A, rank: 1)],
+            delete: { media, id, tier in deleteCalls.append((media, id, tier)) }
+        )
+        model.setMedia("tv")
+
+        await model.delete(item: item("b", tier: .A, rank: 1))
+
+        XCTAssertEqual(deleteCalls.count, 1)
+        XCTAssertEqual(deleteCalls.first?.0, "tv", "delete threads the selected media")
+        XCTAssertEqual(deleteCalls.first?.1, "b")
+        XCTAssertEqual(deleteCalls.first?.2, "A")
+    }
+
+    /// The notes probe + save IO thread the selected media so the fetch-before-
+    /// edit + write hit the tv/book table.
+    func testNotesProbeAndSaveThreadSelectedMedia() async {
+        var probeMedia: [String] = []
+        var saveMedia: [String] = []
+        let model = makeMenuModel(
+            items: [item("a", rank: 0)],
+            notesProbe: { media, _ in probeMedia.append(media); return "existing" },
+            saveNotes: { media, _, _ in saveMedia.append(media) }
+        )
+        model.setMedia("book")
+
+        _ = await model.fetchNotes(item: item("a", rank: 0))
+        await model.saveNotes(item: item("a", rank: 0), notes: "great read")
+
+        XCTAssertEqual(probeMedia, ["book"], "notes probe threads the selected media")
+        XCTAssertEqual(saveMedia, ["book"], "notes save threads the selected media")
+    }
+
+    // MARK: - 8. re-rank menu gating (C5 Task 6 — re-rank flipped ON for tv/book)
+
+    /// Re-rank in the long-press menu is now offered for ALL known verticals: the
+    /// media-generic ceremony (T5) lands in C5, so tv/book cards get re-rank and
+    /// the completion routes per media. An unknown media string is still gated
+    /// off so a malformed shelf never seeds a garbage ceremony.
+    func testRerankMenuOfferedForAllKnownMedia() {
+        XCTAssertTrue(RankManageModel.showsRerank(forMedia: "movie"),
+                      "movie keeps re-rank")
+        XCTAssertTrue(RankManageModel.showsRerank(forMedia: "tv"),
+                      "tv re-rank is enabled now the ceremony exists (C5-T6)")
+        XCTAssertTrue(RankManageModel.showsRerank(forMedia: "book"),
+                      "book re-rank is enabled now the ceremony exists (C5-T6)")
+        XCTAssertFalse(RankManageModel.showsRerank(forMedia: "podcast"),
+                       "an unknown media is still gated off")
+    }
+
+    /// `requestRerank` fires the hand-off for a known media…
+    func testRequestRerankFiresForKnownMedia() {
+        var fired: [String] = []
+        let model = makeMenuModel(items: [item("a", rank: 0)])
+        model.bindRerank { fired.append($0.id) }
+        model.setMedia("tv")
+        model.requestRerank(item: item("a", rank: 0))
+        XCTAssertEqual(fired, ["a"], "tv re-rank routes through the hand-off")
+    }
+
+    /// …and is a no-op for an unknown media (defense-in-depth media guard).
+    func testRequestRerankNoOpForUnknownMedia() {
+        var fired: [String] = []
+        let model = makeMenuModel(items: [item("a", rank: 0)])
+        model.bindRerank { fired.append($0.id) }
+        model.setMedia("podcast")
+        model.requestRerank(item: item("a", rank: 0))
+        XCTAssertTrue(fired.isEmpty, "unknown media must not seed the ceremony")
+    }
+
+    // MARK: - 9. cross-media race guard (C5 Task 6)
+
+    /// A mutable box so an injected IO closure can switch the SAME model's media
+    /// mid-await — the shelf-switched-verticals race we guard against.
+    private final class ModelBox { weak var model: RankManageModel? }
+
+    /// A cross-tier move whose RPC is in flight while the shelf switches media
+    /// must NOT write its (old-media) result onto the new media's tiers. The
+    /// move IO flips `setMedia` mid-op, so the post-await guard skips the
+    /// emission (and would skip a revert too).
+    func testMoveToTierSkipsEmissionWhenMediaSwitchesMidFlight() async {
+        var emitCount = 0
+        let box = ModelBox()
+        let model = RankManageModel(
+            reorder: { _, _, _ in },
+            move: { _, _, _, _, _ in box.model?.setMedia("tv") },   // switch mid-await
+            notesProbe: { _, _ in nil },
+            saveNotes: { _, _, _ in },
+            delete: { _, _, _ in },
+            rerank: { _ in },
+            emit: { _ in emitCount += 1 },
+            emitRemove: { _ in },
+            toast: { _, _ in }
+        )
+        box.model = model
+        model.setMedia("movie")
+        model.setItems([item("a", tier: .A, rank: 0), item("s", tier: .S, rank: 0)])
+
+        await model.moveTo(tier: .S, item: item("a", tier: .A, rank: 0))
+
+        XCTAssertEqual(emitCount, 0,
+                       "a move whose media switched mid-flight emits nothing")
+        XCTAssertEqual(model.media, "tv", "the switch itself still took effect")
+    }
+
+    /// A move that does NOT switch media still emits — the guard only trips on a
+    /// real mid-flight switch (control case).
+    func testMoveToTierStillEmitsWhenMediaUnchanged() async {
+        var emitCount = 0
+        let model = makeMenuModel(
+            items: [item("a", tier: .A, rank: 0), item("s", tier: .S, rank: 0)],
+            emitMove: { _ in emitCount += 1 }
+        )
+        await model.moveTo(tier: .S, item: item("a", tier: .A, rank: 0))
+        XCTAssertEqual(emitCount, 1, "a same-media move emits as normal")
+    }
+
+    /// An in-tier drag (`moveRow`) whose RPC is in flight while the shelf switches
+    /// media must NOT write its (old-media) result onto the new media's tiers.
+    /// The reorder IO flips `setMedia` mid-op, so the post-await tier write +
+    /// emission are skipped and the new media's list is left untouched.
+    func testMoveRowSkipsEmissionWhenMediaSwitchesMidFlight() async {
+        var emitCount = 0
+        let box = ModelBox()
+        let model = RankManageModel(
+            reorder: { _, _, _ in box.model?.setMedia("tv") },  // switch mid-await
+            emit: { _ in emitCount += 1 },
+            toast: { _, _ in }
+        )
+        box.model = model
+        model.setMedia("movie")
+        model.setItems([item("a", rank: 0), item("b", rank: 1), item("c", rank: 2)])
+
+        await model.moveRow(tier: .A, from: IndexSet(integer: 2), to: 0)
+
+        XCTAssertEqual(emitCount, 0,
+                       "a moveRow whose media switched mid-flight emits nothing")
+        XCTAssertEqual(model.media, "tv", "the switch itself still took effect")
+    }
+
+    /// A delete whose media switches mid-flight likewise skips its emission.
+    func testDeleteSkipsEmissionWhenMediaSwitchesMidFlight() async {
+        var removeEmitCount = 0
+        let box = ModelBox()
+        let model = RankManageModel(
+            reorder: { _, _, _ in },
+            move: { _, _, _, _, _ in },
+            notesProbe: { _, _ in nil },
+            saveNotes: { _, _, _ in },
+            delete: { _, _, _ in box.model?.setMedia("tv") },   // switch mid-await
+            rerank: { _ in },
+            emit: { _ in },
+            emitRemove: { _ in removeEmitCount += 1 },
+            toast: { _, _ in }
+        )
+        box.model = model
+        model.setMedia("movie")
+        model.setItems([item("a", tier: .A, rank: 0), item("b", tier: .A, rank: 1)])
+
+        await model.delete(item: item("b", tier: .A, rank: 1))
+
+        XCTAssertEqual(removeEmitCount, 0,
+                       "a delete whose media switched mid-flight emits nothing")
+        XCTAssertEqual(model.media, "tv")
     }
 }
 

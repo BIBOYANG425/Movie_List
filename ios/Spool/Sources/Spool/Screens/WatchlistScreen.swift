@@ -8,11 +8,12 @@ import SwiftUI
 ///
 /// State is owned by a `WatchlistModel` (`@MainActor ObservableObject`, iOS-16
 /// floor — the `JournalListModel` precedent). All IO is injected there, so this
-/// view is pure layout. Movie cards expose **Rank It** (routed to the model's
-/// `rankIt` seam → `onRankIt`, which the app root wires into the rank ceremony
-/// in Task 4) plus **Remove**; tv/book cards get **Remove** only.
+/// view is pure layout. ALL cards expose **Rank It** (routed to the model's
+/// `rankIt` seam → `onRankIt`, which the app root routes per media through the
+/// preselect router — whole-show TV → season grid, tv-season/book → ceremony
+/// direct) plus **Remove**, as of C5-iOS Task 6.
 ///
-/// Header last reviewed: 2026-07-09
+/// Header last reviewed: 2026-07-10
 public struct WatchlistScreen: View {
 
     @StateObject private var model: WatchlistModel
