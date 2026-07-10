@@ -40,6 +40,13 @@ public struct FeedScreen: View {
 
     @StateObject private var model = FeedFeedModel()
 
+    /// Presents the social Discover surface (C3 Task 5). Mounted as a header
+    /// affordance (a compass, next to the bell) rather than a sixth bottom-nav
+    /// tab — the nav capsule is at its practical ceiling (BottomNav capacity
+    /// note). A sheet (like the bell / settings) — `fullScreenCover` is macOS-
+    /// unavailable and the package builds a mac test target.
+    @State private var showDiscover = false
+
     public init(onRankTap: (() -> Void)? = nil,
                 onOpenFriends: (() -> Void)? = nil,
                 onOpenSettings: (() -> Void)? = nil,
@@ -64,6 +71,21 @@ public struct FeedScreen: View {
             }
         }
         .task { await model.loadInitialIfNeeded() }
+        .sheet(isPresented: $showDiscover) {
+            DiscoverScreen(
+                onOpenActor: { actorID, handle in
+                    // Close Discover first, then route to the profile so the
+                    // parent's profile screen isn't stacked under the cover.
+                    showDiscover = false
+                    onOpenActor?(actorID, handle)
+                },
+                onFindFriends: {
+                    showDiscover = false
+                    onOpenFriends?()
+                },
+                onClose: { showDiscover = false }
+            )
+        }
     }
 
     // MARK: header
@@ -77,9 +99,12 @@ public struct FeedScreen: View {
                         .tracking(-0.5)
                         .foregroundStyle(t.ink)
                     Spacer()
-                    NotificationBellView(onOpenActor: { actor in
-                        onOpenActor?(actor, nil)
-                    })
+                    HStack(spacing: 14) {
+                        discoverButton(t: t)
+                        NotificationBellView(onOpenActor: { actor in
+                            onOpenActor?(actor, nil)
+                        })
+                    }
                 }
                 modeSwitcher(t: t)
             }
@@ -87,6 +112,20 @@ public struct FeedScreen: View {
             .padding(.top, 60)
             .padding(.bottom, 12)
         }
+    }
+
+    /// The compass affordance that opens Discover — mirrors how the bell mounts
+    /// (a plain glyph button in the header trailing cluster).
+    @ViewBuilder
+    private func discoverButton(t: SpoolPalette) -> some View {
+        Button { showDiscover = true } label: {
+            Image(systemName: "safari")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(t.ink)
+                .padding(4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("discover")
     }
 
     @ViewBuilder
