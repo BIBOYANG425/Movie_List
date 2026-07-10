@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from '../contexts/LanguageContext';
 import SpoolLogo from '../components/layout/SpoolLogo';
 
 const AuthPage = () => {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,7 +31,7 @@ const AuthPage = () => {
       }
     } else {
       if (username.length < 3) {
-        setError('Username must be at least 3 characters.');
+        setError(t('auth.usernameMinLength'));
         setSubmitting(false);
         return;
       }
@@ -61,10 +63,10 @@ const AuthPage = () => {
           <SpoolLogo size="lg" />
           <div className="text-center">
             <h1 className="font-serif text-2xl text-foreground">
-              {mode === 'signin' ? 'Welcome back' : 'Create your account'}
+              {mode === 'signin' ? t('auth.welcomeBack') : t('auth.createYourAccount')}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {mode === 'signin' ? 'Sign in to your movie archive' : 'Start building your movie archive'}
+              {mode === 'signin' ? t('auth.signInSubtitle') : t('auth.signUpSubtitle')}
             </p>
           </div>
         </div>
@@ -80,38 +82,38 @@ const AuthPage = () => {
               <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-foreground text-background text-xs font-bold">
                 G
               </span>
-              {oauthSubmitting ? 'Redirecting…' : 'Continue with Google'}
+              {oauthSubmitting ? t('auth.redirecting') : t('auth.google')}
             </button>
 
             <div className="relative">
               <div className="h-px bg-border/40" />
               <span className="absolute left-1/2 -translate-x-1/2 -top-2 bg-card px-2 text-center text-[10px] tracking-wider uppercase text-muted-foreground">
-                Or
+                {t('auth.or')}
               </span>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Email</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.email')}</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-input-background border border-border text-foreground rounded-xl h-12 px-3 text-sm placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
-                placeholder="you@example.com"
+                placeholder={t('auth.emailPlaceholder')}
               />
             </div>
 
             {mode === 'signup' && (
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Username</label>
+                <label className="text-xs font-semibold text-muted-foreground">{t('auth.username')}</label>
                 <input
                   type="text"
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full bg-input-background border border-border text-foreground rounded-xl h-12 px-3 text-sm placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
-                  placeholder="cinephile42"
+                  placeholder={t('auth.usernamePlaceholder')}
                   minLength={3}
                   maxLength={32}
                   pattern="^[a-zA-Z0-9_]{3,32}$"
@@ -120,14 +122,14 @@ const AuthPage = () => {
             )}
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-muted-foreground">Password</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.password')}</label>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-input-background border border-border text-foreground rounded-xl h-12 px-3 text-sm placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
-                placeholder="••••••••"
+                placeholder={t('auth.passwordPlaceholder')}
                 minLength={6}
               />
             </div>
@@ -143,18 +145,18 @@ const AuthPage = () => {
               disabled={submitting || oauthSubmitting}
               className="w-full bg-gold hover:bg-gold-muted disabled:opacity-50 disabled:cursor-not-allowed text-background font-semibold rounded-xl h-12 text-sm transition-colors active:scale-95"
             >
-              {submitting ? 'Loading…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+              {submitting ? t('auth.loading') : mode === 'signin' ? t('auth.signIn') : t('auth.createAccount')}
             </button>
           </form>
         </div>
 
         <p className="text-center text-sm text-muted-foreground">
-          {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+          {mode === 'signin' ? t('auth.noAccount') : t('auth.haveAccount')}
           <button
             onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(null); }}
             className="text-gold hover:underline"
           >
-            {mode === 'signin' ? 'Sign Up' : 'Sign In'}
+            {mode === 'signin' ? t('auth.signUp') : t('auth.signIn')}
           </button>
         </p>
       </div>

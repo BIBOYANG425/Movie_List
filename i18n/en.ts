@@ -1,19 +1,16 @@
 const en = {
   // ── Nav ──────────────────────────────────────────────────────────────────
-  'nav.all': 'All',
   'nav.movies': 'Movies',
   'nav.tv': 'TV',
-  'nav.addItem': 'Add Item',
   'nav.logOut': 'Log out',
-  'nav.myProfile': 'My profile',
+  // AppLayout main nav (desktop + mobile bars)
+  'nav.board': 'Board',
+  'nav.feed': 'Feed',
+  'nav.watchlist': 'Watchlist',
+  'nav.discover': 'Discover',
+  'nav.profile': 'Profile',
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
-  'tab.rankings': 'Rankings',
-  'tab.watchlist': 'Watch Later',
-  'tab.stats': 'Stats',
-  'tab.feed': 'Feed',
-  'tab.discover': 'Discover',
-  'tab.groups': 'Groups',
   'tab.resetRankings': 'Reset rankings',
 
   // ── Ticket Stubs / Memories ──────────────────────────────────────────────
@@ -22,7 +19,6 @@ const en = {
   'stubs.noStubsYet': 'No stubs yet',
   'stubs.noStubsHint': 'Rank a movie or TV show to collect your first ticket stub.',
   'stubs.watchedOn': 'Watched on',
-  'stubs.changeDate': 'Change date',
   'stubs.backfill': 'Generate past stubs',
   'stubs.backfilling': 'Generating...',
   'stubs.mostFelt': 'Most felt:',
@@ -45,7 +41,6 @@ const en = {
   // ── Ranking Page ─────────────────────────────────────────────────────────
   'ranking.myCanon': 'My Canon',
   'ranking.subtitle': 'Your definitive rankings, from masterpiece to meh.',
-  'ranking.allGenres': 'All Genres',
 
   // ── Ranking Page Toasts ───────────────────────────────────────────────────
   'ranking.resetConfirm': 'Reset your {label} list? This cannot be undone.',
@@ -59,6 +54,48 @@ const en = {
   'tier.pts': 'pts',
   'tier.items': 'items',
   'tier.nothingYet': 'Nothing here yet',
+
+  // ── Ranking Ceremony (TierPicker / NotesStep / ComparisonStep) ───────────
+  'ceremony.assignTier': 'Assign Tier',
+  'ceremony.addNote': 'Add a Note',
+  'ceremony.headToHead': 'Head-to-Head',
+  'ceremony.addToSpool': 'Add to Spool',
+  'ceremony.tierFeel': 'How does this tier feel?',
+  'ceremony.category': 'Category',
+  'ceremony.itemsCount': 'items',
+  'ceremony.yourThoughts': 'Your thoughts',
+  'ceremony.optional': '(optional)',
+  'ceremony.notesPlaceholder': 'What stood out? A scene, a feeling, why it deserves this tier...',
+  'ceremony.watchedWith': 'Watched with',
+  'ceremony.continue': 'Continue',
+  'ceremony.skipNoNotes': 'Skip — add without notes',
+  'ceremony.new': 'NEW',
+  'ceremony.or': 'OR',
+  'ceremony.undo': 'Undo',
+  'ceremony.tooTough': 'Too tough',
+  'ceremony.skip': 'Skip',
+  // AddMediaModal search step
+  'ceremony.searchPlaceholder': 'Search any movie...',
+  'ceremony.showingResultsFor': 'Showing results for',
+  'ceremony.backendNotConfigured': 'Search backend not configured',
+  'ceremony.backendHint': 'Set {url} and {key} to enable live search.',
+  'ceremony.people': 'People',
+  'ceremony.knownFor': 'Known for:',
+  'ceremony.backToResults': 'Back to results',
+  'ceremony.born': 'Born',
+  'ceremony.movies': 'Movies',
+  'ceremony.alreadySaved': 'Already saved',
+  'ceremony.saveForLater': 'Save for later',
+  'ceremony.rankThisMovie': 'Rank this movie',
+  'ceremony.noResultsFor': 'No results for "{query}"',
+  'ceremony.noResultsHint': 'Try a different title, director name, or check spelling',
+  'ceremony.fetchingGlobalRanking': 'Fetching global ranking...',
+  'ceremony.basedOnTaste': 'Based on your taste',
+  'ceremony.popularNow': 'Popular right now',
+  'ceremony.refresh': 'Refresh',
+  'ceremony.showDifferent': 'Show different suggestions',
+  'ceremony.typeToSearch': 'Type a movie title to search',
+  'ceremony.addMediaLabel': 'Add media',
 
   // ── Watchlist ────────────────────────────────────────────────────────────
   'watchlist.title': 'Watch Later',
@@ -83,10 +120,6 @@ const en = {
   'feed.emptyExplore': 'No activity to explore yet. Check back soon!',
 
   // ── Feed Cards ───────────────────────────────────────────────────────────
-  'feed.justNow': 'just now',
-  'feed.minsAgo': '{n}m ago',
-  'feed.hrsAgo': '{n}h ago',
-  'feed.daysAgo': '{n}d ago',
   'feed.watchedWith': 'Watched with',
   'feed.reviewed': 'reviewed',
   'feed.containsSpoilers': 'Contains spoilers',
@@ -114,8 +147,6 @@ const en = {
   'discover.trendingHint': 'Most ranked by friends (last 30 days)',
   'discover.trendingEmpty': 'No trending activity yet. Follow more friends!',
   'discover.rankers': 'rankers',
-  'discover.friend': 'friend',
-  'discover.friends': 'friends',
   // Engine grid ("for you" suggestions) + provenance chips
   'discover.forYouEngine': 'For You',
   'discover.forYouEngineHint': 'Picks tuned to your taste',
@@ -134,13 +165,6 @@ const en = {
   'discover.chip.generic': 'popular',
   'discover.chip.new_release': 'new',
 
-  // ── Tier Labels ──────────────────────────────────────────────────────────
-  'tierLabel.S': 'S-Tier',
-  'tierLabel.A': 'A-Tier',
-  'tierLabel.B': 'B-Tier',
-  'tierLabel.C': 'C-Tier',
-  'tierLabel.D': 'D-Tier',
-
   // ── Notifications ────────────────────────────────────────────────────────
   'notifications.title': 'Notifications',
   'notifications.recent': 'recent',
@@ -154,6 +178,41 @@ const en = {
   'journal.emptyOwn': 'Start your film diary by ranking a movie',
   'journal.emptyOther': 'No journal entries yet',
   'journal.saved': 'Journal entry saved',
+  // Journal entry sheet
+  'journal.tierSuffix': 'Tier',
+  'journal.done': 'Done',
+  'journal.saving': 'Saving...',
+  'journal.reviewPlaceholder': 'Write your thoughts...',
+  'journal.howDidItFeel': 'How did this make you feel?',
+  'journal.lessDetails': 'Less details',
+  'journal.addMoreDetails': 'Add more details',
+  'journal.vibe': 'Vibe',
+  'journal.favoriteMoments': 'Favorite moments',
+  'journal.momentPlaceholder': 'Moment {n}...',
+  'journal.addMoment': '+ Add moment',
+  'journal.standoutPerformances': 'Standout performances',
+  'journal.watchContext': 'Watch context',
+  'journal.locationPlaceholder': 'Where did you watch?',
+  'journal.selectPlatform': 'Select platform...',
+  'journal.watchedWith': 'Watched with',
+  'journal.photos': 'Photos',
+  'journal.rewatch': 'Rewatch',
+  'journal.rewatchPlaceholder': 'What was different this time?',
+  'journal.personalTakeaway': 'Personal takeaway (private)',
+  'journal.takeawayPlaceholder': 'Your personal reflection...',
+  'journal.containsSpoilers': 'Contains spoilers',
+  'journal.visibility': 'Visibility',
+  'journal.visDefault': 'Default',
+  'journal.visPublic': 'Public',
+  'journal.visFriends': 'Friends',
+  'journal.visPrivate': 'Private',
+  // Journal conversation (chat) surface
+  'journal.skipToForm': 'Skip to form',
+  'journal.retry': 'Retry',
+  'journal.chatPlaceholder': 'Share your thoughts...',
+  'journal.generateReview': 'Generate my review',
+  'journal.reviewDraft': 'Your Review Draft',
+  'journal.save': 'Save',
 
   // ── Profile ──────────────────────────────────────────────────────────────
   'profile.backToApp': 'Back to App',
@@ -173,11 +232,6 @@ const en = {
   'profile.bioHint': 'Tell people what kinds of movies you rank',
   'profile.saveProfile': 'Save Profile',
   'profile.saving': 'Saving...',
-  'profile.findFriends': 'Find Friends',
-  'profile.searchUsername': 'Search username...',
-  'profile.search': 'Search',
-  'profile.searching': 'Searching...',
-  'profile.noUsersFound': 'No users found. Try a different username or display name.',
   'profile.friendsOnly': 'Friends-only profile details',
   'profile.friendsOnlyHint': 'Follow each other to unlock followers/following lists and recent activity.',
   'profile.noFollowers': 'No followers yet.',
@@ -203,20 +257,49 @@ const en = {
   'auth.usernameMinLength': 'Username must be at least 3 characters.',
   'auth.loading': 'Loading\u2026',
   'auth.createAccount': 'Create Account',
+  'auth.welcomeBack': 'Welcome back',
+  'auth.createYourAccount': 'Create your account',
+  'auth.signInSubtitle': 'Sign in to your movie archive',
+  'auth.signUpSubtitle': 'Start building your movie archive',
+  'auth.noAccount': "Don't have an account? ",
+  'auth.haveAccount': 'Already have an account? ',
 
-  // ── Onboarding ───────────────────────────────────────────────────────────
-  'onboarding.welcome': 'Welcome to Marquee',
-  'onboarding.setupProfile': 'Set up your profile',
-  'onboarding.setupHint': 'Friends can discover you by username, see your profile, and follow your ranking activity.',
-  'onboarding.uploadAvatar': 'Upload avatar photo',
-  'onboarding.avatarHint': 'JPG, PNG, WEBP, or GIF up to 5MB.',
-  'onboarding.bioHint': 'Tell people what kind of movies you love',
-  'onboarding.backToHome': 'Back to home',
-  'onboarding.completeProfile': 'Complete Profile',
-
-  // ── Error Boundary ───────────────────────────────────────────────────────
-  'error.somethingWrong': 'Something went wrong',
-  'error.tryAgain': 'Try again',
+  // ── Onboarding (Movie) ───────────────────────────────────────────────────
+  'onboarding.stepOf': 'Step 2 of 2',
+  'onboarding.getStarted': 'Get Started',
+  'onboarding.buildYourSpool': 'Build your Spool',
+  'onboarding.pickPrefix': 'Pick at least',
+  'onboarding.pickMovies': '{n} movies',
+  'onboarding.pickSuffix': "you've seen to seed your rankings. You can adjust and fine-tune everything later.",
+  'onboarding.moviesCount': 'movies',
+  'onboarding.moreToGo': '{n} more to go',
+  'onboarding.ready': 'Ready!',
+  'onboarding.continueToSpool': 'Continue to Spool',
+  'onboarding.createAccount': 'Create your account',
+  'onboarding.searchPlaceholder': 'Search by title, director, or actor...',
+  'onboarding.signInToSearch': 'Sign in to search the full catalog.',
+  'onboarding.pickFromSuggestions': 'Pick from the suggestions below to get started.',
+  'onboarding.people': 'People',
+  'onboarding.knownFor': 'Known for:',
+  'onboarding.movies': 'Movies',
+  'onboarding.noResultsFor': 'No results for "{query}"',
+  'onboarding.backToSearch': 'Back to search',
+  'onboarding.born': 'Born',
+  'onboarding.filmSingular': 'film',
+  'onboarding.filmPlural': 'films',
+  'onboarding.directed': 'directed',
+  'onboarding.starredIn': 'starred in',
+  'onboarding.filmography': 'Filmography',
+  'onboarding.allRanked': 'All movies already ranked!',
+  'onboarding.suggestedMovies': 'Suggested movies',
+  'onboarding.refresh': 'Refresh',
+  'onboarding.yourPicks': 'Your picks so far',
+  'onboarding.assignTier': 'Assign Tier',
+  'onboarding.headToHead': 'Head-to-Head',
+  'onboarding.new': 'NEW',
+  'onboarding.or': 'OR',
+  'onboarding.undo': 'Undo',
+  'onboarding.tooToughPlace': 'Too tough — place here',
 
   // ── Toast ────────────────────────────────────────────────────────────────
   'toast.movieSaved': 'Movie saved to watchlist',
@@ -233,15 +316,12 @@ const en = {
   // ── Landing Page ─────────────────────────────────────────────────────────
   'landing.tagline': 'Your movies, ranked and remembered',
   'landing.subtitle': 'Tier-based rankings. Friend-powered discovery. A personal film journal. Built for people who care about movies \u2014 not algorithms.',
-  'landing.getStarted': 'Get started',
-  'landing.createAccount': 'Create your account',
   'landing.logIn': 'Log in',
   'landing.socialProof': 'Join 48,000+ movie lovers ranking right now',
   'landing.trendingTitle': 'Trending this week',
   'landing.trendingHint': 'See how the community is ranking right now',
   'landing.rankings': 'rankings',
   'landing.howItWorks': 'How Spool works',
-  'landing.step': 'STEP',
   'landing.step1Title': 'Pick your tier',
   'landing.step1Desc': 'S, A, B, C, or D. One tap, gut feeling.',
   'landing.step2Title': 'Quick comparisons',
@@ -262,10 +342,6 @@ const en = {
 
   // ── Books ──────────────────────────────────────────────────────────────
   'nav.books': 'Books',
-  'book.searchBooks': 'Search books...',
-  'book.author': 'Author',
-  'book.pages': 'pages',
-  'book.addBook': 'Add Book',
   'book.assignTier': 'Assign Tier',
   'book.addNote': 'Add a Note',
   'book.headToHead': 'Head-to-Head',
@@ -291,11 +367,6 @@ const en = {
   // ── TV Shows ────────────────────────────────────────────────────────────
   'tv.searchShows': 'Search TV shows...',
   'tv.selectSeason': 'Select a season',
-  'tv.seasonCount': 'seasons',
-  'tv.episodeCount': 'episodes',
-  'tv.seasons': 'Seasons',
-  'tv.creator': 'Creator',
-  'tv.status': 'Status',
   'tv.addSeason': 'Add TV Season',
   'tv.assignTier': 'Assign Tier',
   'tv.addNote': 'Add a Note',
@@ -341,8 +412,6 @@ const en = {
   // ── Monthly Recap ──────────────────────────────────────────────────────────
   'recap.shareMonth': 'Share this month',
   'recap.title': 'Monthly Recap',
-  'recap.watched': 'Watched',
-  'recap.topMood': 'Top mood',
 
   // ── Profile Share ──────────────────────────────────────────────────────────
   'profile.shareProfile': 'Share profile',
@@ -384,9 +453,6 @@ const en = {
   'detail.watched_btn': 'Watched',
   'detail.shareTitle': 'Check this out on Spool',
   'detail.inTheirList': 'in their list',
-
-  // ── Language toggle ──────────────────────────────────────────────────────
-  'lang.toggle': 'EN',
 } as const;
 
 export type TranslationKey = keyof typeof en;

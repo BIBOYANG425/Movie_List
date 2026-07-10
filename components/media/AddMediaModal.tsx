@@ -7,6 +7,7 @@ import { fuzzyFilterLocal, getBestCorrectedQuery, mergeAndDedupSearchResults } f
 import { classifyBracket } from '../../services/rankingAlgorithm';
 import { RankingSession } from '../../services/rankingSession';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTranslation } from '../../contexts/LanguageContext';
 import { SkeletonList } from '../shared/SkeletonCard';
 import { TierPicker } from '../shared/TierPicker';
 import { NotesStep } from '../shared/NotesStep';
@@ -31,6 +32,7 @@ const TMDB_SEARCH_TIMEOUT_MS = 4500;
 
 export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, onAdd, onSaveForLater, currentItems, watchlistIds, preselectedItem, preselectedTier, onCompare, onMovieInfoClick }) => {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
@@ -428,7 +430,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         <input
           type="text"
           autoFocus
-          placeholder="Search any movie..."
+          placeholder={t('ceremony.searchPlaceholder')}
           className="w-full bg-card border border-border rounded-xl py-3 pl-10 pr-4 text-foreground placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -441,17 +443,26 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       {/* Corrected query hint */}
       {correctedQuery && !isSearching && (
         <p className="text-xs text-muted-foreground italic px-1">
-          Showing results for <span className="font-semibold text-accent">"{correctedQuery}"</span>
+          {t('ceremony.showingResultsFor')} <span className="font-semibold text-accent">"{correctedQuery}"</span>
         </p>
       )}
 
       {/* Backend-not-configured warning (Supabase env missing) */}
       {!hasTmdbKey() && (
         <div className="bg-gold/10 border border-yellow-500/20 rounded-xl p-4 text-sm text-yellow-300">
-          <p className="font-semibold mb-1">Search backend not configured</p>
+          <p className="font-semibold mb-1">{t('ceremony.backendNotConfigured')}</p>
           <p className="text-gold/70 text-xs">
-            Set <code className="bg-black/30 px-1 rounded">VITE_SUPABASE_URL</code> and{' '}
-            <code className="bg-black/30 px-1 rounded">VITE_SUPABASE_ANON_KEY</code> to enable live search.
+            {t('ceremony.backendHint').split('{url}').map((seg, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <code className="bg-black/30 px-1 rounded">VITE_SUPABASE_URL</code>}
+                {seg.split('{key}').map((sub, j) => (
+                  <React.Fragment key={j}>
+                    {j > 0 && <code className="bg-black/30 px-1 rounded">VITE_SUPABASE_ANON_KEY</code>}
+                    {sub}
+                  </React.Fragment>
+                ))}
+              </React.Fragment>
+            ))}
           </p>
         </div>
       )}
@@ -476,7 +487,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {/* People (directors & actors) */}
         {!isSearching && !selectedDirector && directorProfiles.length > 0 && (
           <div className="space-y-1 pb-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">People</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('ceremony.people')}</p>
             {directorProfiles.map(person => (
               <button
                 key={person.id}
@@ -498,7 +509,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                     </span>
                   </div>
                   {person.knownFor.length > 0 && (
-                    <p className="text-xs text-muted-foreground truncate">Known for: {person.knownFor.join(', ')}</p>
+                    <p className="text-xs text-muted-foreground truncate">{t('ceremony.knownFor')} {person.knownFor.join(', ')}</p>
                   )}
                 </div>
                 <ChevronRight size={14} className="text-muted-foreground/60 flex-shrink-0" />
@@ -522,7 +533,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft size={14} />
-              Back to results
+              {t('ceremony.backToResults')}
             </button>
 
             <div className="flex items-start gap-3 p-3 bg-card rounded-xl border border-border">
@@ -542,7 +553,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {selectedDirector.placeOfBirth && <span>{selectedDirector.placeOfBirth}</span>}
-                  {selectedDirector.birthday && <span> · Born {selectedDirector.birthday}</span>}
+                  {selectedDirector.birthday && <span> · {t('ceremony.born')} {selectedDirector.birthday}</span>}
                 </p>
               </div>
             </div>
@@ -581,7 +592,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {!isSearching && !selectedDirector && filteredSearchResults.length > 0 && (
           <div className="space-y-1">
             {directorProfiles.length > 0 && (
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pt-1">Movies</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pt-1">{t('ceremony.movies')}</p>
             )}
             {filteredSearchResults.map((movie) => (
               <div
@@ -618,13 +629,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                   {onSaveForLater && (
                     <button
                       onClick={() => handleBookmark(movie)}
-                      title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
+                      title={isBookmarked(movie.id) ? t('ceremony.alreadySaved') : t('ceremony.saveForLater')}
                       className={`p-1.5 rounded-lg transition-colors ${isBookmarked(movie.id) ? 'text-emerald-400 bg-emerald-500/10' : 'text-muted-foreground/40 hover:text-emerald-400 hover:bg-emerald-500/10'}`}
                     >
                       <Bookmark size={16} className={isBookmarked(movie.id) ? 'fill-current' : ''} />
                     </button>
                   )}
-                  <button onClick={() => handleSelectMovie(movie)} className="p-1.5 rounded-lg text-muted-foreground/40 group-hover:text-muted-foreground hover:bg-secondary/50 transition-colors" title="Rank this movie">
+                  <button onClick={() => handleSelectMovie(movie)} className="p-1.5 rounded-lg text-muted-foreground/40 group-hover:text-muted-foreground hover:bg-secondary/50 transition-colors" title={t('ceremony.rankThisMovie')}>
                     <Plus size={18} />
                   </button>
                 </div>
@@ -637,8 +648,8 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         {!isSearching && !selectedDirector && searchTerm.trim() && filteredSearchResults.length === 0 && directorProfiles.length === 0 && (
           <div className="text-center py-12 text-muted-foreground text-sm">
             <Film size={32} className="mx-auto mb-3 opacity-30" />
-            <p>No results for "{searchTerm}"</p>
-            <p className="text-xs mt-1 opacity-60">Try a different title, director name, or check spelling</p>
+            <p>{t('ceremony.noResultsFor').replace('{query}', searchTerm)}</p>
+            <p className="text-xs mt-1 opacity-60">{t('ceremony.noResultsHint')}</p>
           </div>
         )}
 
@@ -649,7 +660,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
                 <div className="flex flex-col items-center gap-3 bg-card border border-border p-6 rounded-2xl shadow-2xl">
                   <Loader2 className="w-8 h-8 text-gold animate-spin" />
-                  <p className="text-sm font-semibold text-muted-foreground">Fetching global ranking...</p>
+                  <p className="text-sm font-semibold text-muted-foreground">{t('ceremony.fetchingGlobalRanking')}</p>
                 </div>
               </div>
             )}
@@ -662,15 +673,15 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
               <div>
                 <div className="flex items-center justify-between mb-3 px-1">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    {hasBackfillMixed ? 'Based on your taste' : 'Popular right now'}
+                    {hasBackfillMixed ? t('ceremony.basedOnTaste') : t('ceremony.popularNow')}
                   </p>
                   <button
                     onClick={handleRefreshSuggestions}
                     className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground/60 hover:text-muted-foreground transition-colors px-2 py-1 rounded-lg hover:bg-secondary"
-                    title="Show different suggestions"
+                    title={t('ceremony.showDifferent')}
                   >
                     <RefreshCw size={11} />
-                    Refresh
+                    {t('ceremony.refresh')}
                   </button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -698,7 +709,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
                       {onSaveForLater && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleBookmark(movie, true); }}
-                          title={isBookmarked(movie.id) ? 'Already saved' : 'Save for later'}
+                          title={isBookmarked(movie.id) ? t('ceremony.alreadySaved') : t('ceremony.saveForLater')}
                           className={`absolute top-3 right-3 p-1.5 rounded-full transition-all shadow-md ${isBookmarked(movie.id)
                             ? 'bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
                             : 'bg-black/60 text-muted-foreground border border-border opacity-0 group-hover:opacity-100 hover:text-emerald-400 hover:bg-emerald-500/20'
@@ -714,7 +725,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
             ) : !suggestionsLoading ? (
               <div className="text-center py-12 text-muted-foreground/60 text-sm">
                 <Search size={32} className="mx-auto mb-3 opacity-30" />
-                <p>Type a movie title to search</p>
+                <p>{t('ceremony.typeToSearch')}</p>
               </div>
             ) : null}
           </>
@@ -763,10 +774,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
 
   const getStepTitle = () => {
     switch (step) {
-      case 'search': return 'Add to Spool';
-      case 'tier': return 'Assign Tier';
-      case 'notes': return 'Add a Note';
-      case 'compare': return 'Head-to-Head';
+      case 'search': return t('ceremony.addToSpool');
+      case 'tier': return t('ceremony.assignTier');
+      case 'notes': return t('ceremony.addNote');
+      case 'compare': return t('ceremony.headToHead');
     }
   };
 
@@ -779,7 +790,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   return (
     <FocusTrap focusTrapOptions={{ allowOutsideClick: true }}>
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-label="Add media" className="bg-background border border-border w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">
+      <div role="dialog" aria-modal="true" aria-label={t('ceremony.addMediaLabel')} className="bg-background border border-border w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-3 sm:p-5 border-b border-border bg-card/30 flex-shrink-0">
           <div className="flex items-center gap-2 sm:gap-3">

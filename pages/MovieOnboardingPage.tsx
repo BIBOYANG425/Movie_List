@@ -10,6 +10,7 @@ import { RankingSession } from '../services/rankingSession';
 import { ComparisonRequest } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 
 const REQUIRED_MOVIES = MIN_MOVIES_FOR_SCORES;
@@ -27,6 +28,7 @@ function mergeAndDedup(results: TMDBMovie[]): TMDBMovie[] {
 
 const MovieOnboardingPage: React.FC = () => {
     const { user } = useAuth();
+    const { t } = useTranslation();
     const navigate = useNavigate();
 
     // Ranked movies collected during onboarding
@@ -494,7 +496,7 @@ const MovieOnboardingPage: React.FC = () => {
                                         <ArrowLeft size={18} />
                                     </button>
                                 )}
-                                <h3 className="text-lg font-bold">{modalStep === 'tier' ? 'Assign Tier' : 'Head-to-Head'}</h3>
+                                <h3 className="text-lg font-bold">{modalStep === 'tier' ? t('onboarding.assignTier') : t('onboarding.headToHead')}</h3>
                             </div>
                             <button onClick={() => setPendingMovie(null)} className="text-muted-foreground hover:text-foreground transition-colors">
                                 <X size={20} />
@@ -563,13 +565,13 @@ const MovieOnboardingPage: React.FC = () => {
                                                 className="w-full aspect-[2/3] object-cover rounded-lg shadow-lg"
                                             />
                                             <p className="font-bold text-foreground text-xs leading-tight text-center">{currentComparison.movieA.title}</p>
-                                            <span className="text-[10px] text-accent font-semibold border border-accent/30 bg-accent/10 px-2 py-0.5 rounded-full">NEW</span>
+                                            <span className="text-[10px] text-accent font-semibold border border-accent/30 bg-accent/10 px-2 py-0.5 rounded-full">{t('onboarding.new')}</span>
                                         </button>
 
                                         {/* OR divider */}
                                         <div className="flex items-center justify-center flex-shrink-0">
                                             <div className="w-7 h-7 rounded-full bg-secondary border border-border flex items-center justify-center text-[10px] font-black text-muted-foreground">
-                                                OR
+                                                {t('onboarding.or')}
                                             </div>
                                         </div>
 
@@ -597,13 +599,13 @@ const MovieOnboardingPage: React.FC = () => {
                                             className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                         >
                                             <ArrowLeft size={13} />
-                                            Undo
+                                            {t('onboarding.undo')}
                                         </button>
                                         <button
                                             onClick={() => handleCompareChoice('skip')}
                                             className="px-3 py-1.5 rounded-full border border-border text-xs font-semibold text-muted-foreground hover:bg-secondary hover:border-border transition-all"
                                         >
-                                            Too tough — place here
+                                            {t('onboarding.tooToughPlace')}
                                         </button>
                                     </div>
                                 </div>
@@ -615,11 +617,10 @@ const MovieOnboardingPage: React.FC = () => {
             <main className="max-w-2xl mx-auto px-4 py-10 space-y-6">
                 {/* Header */}
                 <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-[0.2em] text-accent">{user ? 'Step 2 of 2' : 'Get Started'}</p>
-                    <h1 className="text-3xl font-bold">Build your Spool</h1>
+                    <p className="text-xs uppercase tracking-[0.2em] text-accent">{user ? t('onboarding.stepOf') : t('onboarding.getStarted')}</p>
+                    <h1 className="text-3xl font-bold">{t('onboarding.buildYourSpool')}</h1>
                     <p className="text-muted-foreground text-sm">
-                        Pick at least <span className="text-foreground font-semibold">{REQUIRED_MOVIES} movies</span> you've seen
-                        to seed your rankings. You can adjust and fine-tune everything later.
+                        {t('onboarding.pickPrefix')} <span className="text-foreground font-semibold">{t('onboarding.pickMovies').replace('{n}', String(REQUIRED_MOVIES))}</span> {t('onboarding.pickSuffix')}
                     </p>
                 </div>
 
@@ -627,13 +628,13 @@ const MovieOnboardingPage: React.FC = () => {
                 <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">
-                            <span className="text-foreground font-bold">{rankedItems.length}</span> / {REQUIRED_MOVIES} movies
+                            <span className="text-foreground font-bold">{rankedItems.length}</span> / {REQUIRED_MOVIES} {t('onboarding.moviesCount')}
                         </span>
                         {remaining > 0 ? (
-                            <span className="text-muted-foreground">{remaining} more to go</span>
+                            <span className="text-muted-foreground">{t('onboarding.moreToGo').replace('{n}', String(remaining))}</span>
                         ) : (
                             <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                                <Check size={14} /> Ready!
+                                <Check size={14} /> {t('onboarding.ready')}
                             </span>
                         )}
                     </div>
@@ -656,7 +657,7 @@ const MovieOnboardingPage: React.FC = () => {
                         onClick={handleContinue}
                         className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gold text-primary-foreground font-bold text-sm hover:bg-gold-muted transition-colors shadow-lg shadow-gold/20 animate-fade-in"
                     >
-                        {user ? 'Continue to Spool' : 'Create your account'}
+                        {user ? t('onboarding.continueToSpool') : t('onboarding.createAccount')}
                         <ChevronRight size={16} />
                     </button>
                 )}
@@ -666,7 +667,7 @@ const MovieOnboardingPage: React.FC = () => {
                     <Search className="absolute left-3 top-3.5 text-muted-foreground" size={18} />
                     <input
                         type="text"
-                        placeholder="Search by title, director, or actor..."
+                        placeholder={t('onboarding.searchPlaceholder')}
                         className="w-full bg-card border border-border rounded-xl py-3 pl-10 pr-4 text-foreground placeholder-muted-foreground focus:outline-none focus:border-gold transition-colors"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
@@ -679,8 +680,8 @@ const MovieOnboardingPage: React.FC = () => {
                 {searchTerm.trim() && isAnon && (
                     <div className="text-center py-8 text-muted-foreground text-sm space-y-1">
                         <Search size={26} className="mx-auto mb-2 opacity-30" />
-                        <p>Sign in to search the full catalog.</p>
-                        <p className="text-xs text-muted-foreground/70">Pick from the suggestions below to get started.</p>
+                        <p>{t('onboarding.signInToSearch')}</p>
+                        <p className="text-xs text-muted-foreground/70">{t('onboarding.pickFromSuggestions')}</p>
                     </div>
                 )}
 
@@ -704,7 +705,7 @@ const MovieOnboardingPage: React.FC = () => {
                         {/* People (directors & actors) */}
                         {!isSearching && personProfiles.length > 0 && (
                             <div className="space-y-1">
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">People</p>
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">{t('onboarding.people')}</p>
                                 {personProfiles.map(person => (
                                     <button
                                         key={person.id}
@@ -726,7 +727,7 @@ const MovieOnboardingPage: React.FC = () => {
                                                 </span>
                                             </div>
                                             {person.knownFor.length > 0 && (
-                                                <p className="text-xs text-muted-foreground mt-0.5 truncate">Known for: {person.knownFor.join(', ')}</p>
+                                                <p className="text-xs text-muted-foreground mt-0.5 truncate">{t('onboarding.knownFor')} {person.knownFor.join(', ')}</p>
                                             )}
                                         </div>
                                         <ChevronRight size={16} className="text-muted-foreground/60 flex-shrink-0" />
@@ -739,7 +740,7 @@ const MovieOnboardingPage: React.FC = () => {
                         {!isSearching && filteredSearch.length > 0 && (
                             <div className="space-y-1">
                                 {personProfiles.length > 0 && (
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1 pt-1">Movies</p>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1 pt-1">{t('onboarding.movies')}</p>
                                 )}
                                 {filteredSearch.map(movie => (
                                     <button
@@ -774,7 +775,7 @@ const MovieOnboardingPage: React.FC = () => {
                         {!isSearching && searchTerm.trim() && filteredSearch.length === 0 && personProfiles.length === 0 && (
                             <div className="text-center py-8 text-muted-foreground text-sm">
                                 <Film size={28} className="mx-auto mb-2 opacity-30" />
-                                <p>No results for "{searchTerm}"</p>
+                                <p>{t('onboarding.noResultsFor').replace('{query}', searchTerm)}</p>
                             </div>
                         )}
                     </div>
@@ -788,7 +789,7 @@ const MovieOnboardingPage: React.FC = () => {
                             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
                         >
                             <ArrowLeft size={16} />
-                            Back to search
+                            {t('onboarding.backToSearch')}
                         </button>
 
                         {/* Person header */}
@@ -813,10 +814,10 @@ const MovieOnboardingPage: React.FC = () => {
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                     {selectedPerson.placeOfBirth && <span>{selectedPerson.placeOfBirth}</span>}
-                                    {selectedPerson.birthday && <span> · Born {selectedPerson.birthday}</span>}
+                                    {selectedPerson.birthday && <span> · {t('onboarding.born')} {selectedPerson.birthday}</span>}
                                 </p>
                                 <p className="text-sm text-accent font-semibold mt-1">
-                                    {selectedPerson.movies.length} {selectedPerson.movies.length === 1 ? 'film' : 'films'} {selectedPerson.role === 'Director' ? 'directed' : 'starred in'}
+                                    {selectedPerson.movies.length} {selectedPerson.movies.length === 1 ? t('onboarding.filmSingular') : t('onboarding.filmPlural')} {selectedPerson.role === 'Director' ? t('onboarding.directed') : t('onboarding.starredIn')}
                                 </p>
                             </div>
                         </div>
@@ -830,7 +831,7 @@ const MovieOnboardingPage: React.FC = () => {
 
                         {/* Filmography grid */}
                         <div>
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Filmography</p>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t('onboarding.filmography')}</p>
                             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                                 {selectedPerson.movies.filter(m => !isOwned(m)).map(movie => (
                                     <button
@@ -851,7 +852,7 @@ const MovieOnboardingPage: React.FC = () => {
                                 ))}
                             </div>
                             {selectedPerson.movies.filter(m => !isOwned(m)).length === 0 && (
-                                <p className="text-center py-6 text-muted-foreground text-sm">All movies already ranked!</p>
+                                <p className="text-center py-6 text-muted-foreground text-sm">{t('onboarding.allRanked')}</p>
                             )}
                         </div>
                     </div>
@@ -868,13 +869,13 @@ const MovieOnboardingPage: React.FC = () => {
                 {!searchTerm.trim() && (
                     <section className="space-y-3">
                         <div className="flex items-center justify-between px-1">
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Suggested movies</p>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('onboarding.suggestedMovies')}</p>
                             <button
                                 onClick={handleRefresh}
                                 className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground/60 hover:text-muted-foreground transition-colors px-2 py-1 rounded-lg hover:bg-secondary"
                             >
                                 <RefreshCw size={11} />
-                                Refresh
+                                {t('onboarding.refresh')}
                             </button>
                         </div>
 
@@ -914,7 +915,7 @@ const MovieOnboardingPage: React.FC = () => {
                 {/* Selected movies summary */}
                 {rankedItems.length > 0 && (
                     <section className="space-y-3 pt-4 border-t border-border">
-                        <h3 className="text-sm font-semibold text-muted-foreground">Your picks so far</h3>
+                        <h3 className="text-sm font-semibold text-muted-foreground">{t('onboarding.yourPicks')}</h3>
                         <div className="flex flex-wrap gap-2">
                             {rankedItems.map(item => (
                                 <div

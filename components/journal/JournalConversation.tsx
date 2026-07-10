@@ -8,6 +8,7 @@ import { createSession, sendAgentMessage, requestReviewGeneration, endSession, A
 import { supabase } from '../../lib/supabase';
 import { recordAllCorrections } from '../../services/correctionService';
 import { ensureConsentRecord } from '../../services/consentService';
+import { useTranslation } from '../../contexts/LanguageContext';
 import { MoodTagSelector } from './MoodTagSelector';
 import { VibeTagSelector } from './VibeTagSelector';
 import { CastSelector } from './CastSelector';
@@ -31,6 +32,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
   onDismiss,
   onSaved,
 }) => {
+  const { t } = useTranslation();
   // Conversation phase
   const [phase, setPhase] = useState<'chat' | 'draft'>('chat');
   const [messages, setMessages] = useState<{ role: 'agent' | 'user'; content: string }[]>([]);
@@ -479,7 +481,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-semibold text-foreground truncate">{item.title}</h3>
                 <span className={`text-xs font-bold ${TIER_COLORS[item.tier]?.split(' ')[0] ?? 'text-muted-foreground'}`}>
-                  {item.tier} Tier
+                  {item.tier} {t('journal.tierSuffix')}
                 </span>
               </div>
               <button
@@ -487,7 +489,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                 className="flex items-center gap-1 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-full transition-colors"
               >
                 <MessageSquare size={12} />
-                Skip to form
+                {t('journal.skipToForm')}
               </button>
             </div>
 
@@ -528,7 +530,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                     disabled={isLoading}
                     className="px-3 py-1.5 text-xs text-accent bg-accent/20 hover:bg-gold/30 border border-accent/30 rounded-full transition-colors disabled:opacity-50"
                   >
-                    Retry
+                    {t('journal.retry')}
                   </button>
                 </div>
               )}
@@ -544,7 +546,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                  placeholder="Share your thoughts..."
+                  placeholder={t('journal.chatPlaceholder')}
                   disabled={isLoading}
                   className="flex-1 bg-card border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border disabled:opacity-50"
                 />
@@ -563,7 +565,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                   className="w-full flex items-center justify-center gap-2 py-2.5 bg-accent/20 hover:bg-gold/30 text-accent text-sm font-medium rounded-xl border border-accent/30 transition-colors disabled:opacity-50"
                 >
                   <Sparkles size={14} />
-                  Generate my review
+                  {t('journal.generateReview')}
                 </button>
               )}
             </div>
@@ -580,13 +582,13 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                   <ArrowLeft size={18} />
                 </button>
               )}
-              <h3 className="flex-1 text-sm font-semibold text-foreground">Your Review Draft</h3>
+              <h3 className="flex-1 text-sm font-semibold text-foreground">{t('journal.reviewDraft')}</h3>
               <button
                 onClick={handleSave}
                 disabled={saving}
                 className="px-4 py-1.5 bg-gold hover:bg-gold-muted text-foreground text-sm font-semibold rounded-full transition-colors disabled:opacity-50"
               >
-                {saving ? 'Saving...' : 'Save'}
+                {saving ? t('journal.saving') : t('journal.save')}
               </button>
             </div>
             {saveError && (
@@ -601,14 +603,14 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
               <textarea
                 value={reviewText}
                 onChange={(e) => setReviewText(e.target.value)}
-                placeholder={JOURNAL_REVIEW_PROMPTS[item.tier] ?? 'Write your thoughts...'}
+                placeholder={JOURNAL_REVIEW_PROMPTS[item.tier] ?? t('journal.reviewPlaceholder')}
                 rows={3}
                 className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:border-border"
               />
 
               {/* Mood tags */}
               <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">How did this make you feel?</p>
+                <p className="text-xs font-medium text-muted-foreground mb-2">{t('journal.howDidItFeel')}</p>
                 <MoodTagSelector selected={moodTags} onChange={setMoodTags} />
               </div>
 
@@ -619,20 +621,20 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                 className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
               >
                 {showDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                {showDetails ? 'Less details' : 'Add more details'}
+                {showDetails ? t('journal.lessDetails') : t('journal.addMoreDetails')}
               </button>
 
               {showDetails && (
                 <div className="space-y-4">
                   {/* Vibe tags */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Vibe</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">{t('journal.vibe')}</p>
                     <VibeTagSelector selected={vibeTags} onChange={setVibeTags} />
                   </div>
 
                   {/* Favorite moments */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Favorite moments</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">{t('journal.favoriteMoments')}</p>
                     <div className="space-y-1.5">
                       {favoriteMoments.map((moment, i) => (
                         <div key={i} className="flex gap-1.5">
@@ -640,7 +642,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                             type="text"
                             value={moment}
                             onChange={(e) => updateMoment(i, e.target.value)}
-                            placeholder={`Moment ${i + 1}...`}
+                            placeholder={t('journal.momentPlaceholder').replace('{n}', String(i + 1))}
                             className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
                           />
                           <button
@@ -658,7 +660,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                           onClick={addMoment}
                           className="text-xs text-accent hover:text-accent"
                         >
-                          + Add moment
+                          {t('journal.addMoment')}
                         </button>
                       )}
                     </div>
@@ -666,7 +668,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
                   {/* Standout performances */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Standout performances</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">{t('journal.standoutPerformances')}</p>
                     <CastSelector
                       tmdbId={tmdbNumericId}
                       selected={standoutPerformances}
@@ -676,7 +678,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
                   {/* Watch context */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Watch context</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">{t('journal.watchContext')}</p>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <Calendar size={14} className="text-muted-foreground shrink-0" />
@@ -693,7 +695,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                           type="text"
                           value={watchedLocation}
                           onChange={(e) => setWatchedLocation(e.target.value)}
-                          placeholder="Where did you watch?"
+                          placeholder={t('journal.locationPlaceholder')}
                           className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
                         />
                       </div>
@@ -704,7 +706,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                           onChange={(e) => setWatchedPlatform(e.target.value)}
                           className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-border"
                         >
-                          <option value="">Select platform...</option>
+                          <option value="">{t('journal.selectPlatform')}</option>
                           {PLATFORM_OPTIONS.map((opt) => (
                             <option key={opt.id} value={opt.id}>{opt.label}</option>
                           ))}
@@ -713,7 +715,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                       <div>
                         <div className="flex items-center gap-2 mb-1.5">
                           <Users size={14} className="text-muted-foreground shrink-0" />
-                          <span className="text-xs text-muted-foreground">Watched with</span>
+                          <span className="text-xs text-muted-foreground">{t('journal.watchedWith')}</span>
                         </div>
                         <FriendTagInput
                           currentUserId={userId}
@@ -727,7 +729,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
 
                   {/* Photos */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Photos</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">{t('journal.photos')}</p>
                     <JournalPhotoGrid
                       photoPaths={photoPaths}
                       onAdd={handlePhotoAdd}
@@ -745,7 +747,7 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                         onChange={(e) => setIsRewatch(e.target.checked)}
                         className="rounded border-border bg-card text-gold focus:ring-accent/20"
                       />
-                      Rewatch
+                      {t('journal.rewatch')}
                     </label>
                   </div>
                   {isRewatch && (
@@ -753,18 +755,18 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                       type="text"
                       value={rewatchNote}
                       onChange={(e) => setRewatchNote(e.target.value)}
-                      placeholder="What was different this time?"
+                      placeholder={t('journal.rewatchPlaceholder')}
                       className="w-full bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border"
                     />
                   )}
 
                   {/* Personal takeaway */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Personal takeaway (private)</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">{t('journal.personalTakeaway')}</p>
                     <textarea
                       value={personalTakeaway}
                       onChange={(e) => setPersonalTakeaway(e.target.value)}
-                      placeholder={JOURNAL_TAKEAWAY_PROMPTS[item.tier] ?? 'Your personal reflection...'}
+                      placeholder={JOURNAL_TAKEAWAY_PROMPTS[item.tier] ?? t('journal.takeawayPlaceholder')}
                       rows={2}
                       className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:border-border"
                     />
@@ -780,16 +782,16 @@ export const JournalConversation: React.FC<JournalConversationProps> = ({
                         className="rounded border-border bg-card text-gold focus:ring-amber-500/20"
                       />
                       <AlertTriangle size={14} className="text-gold" />
-                      Contains spoilers
+                      {t('journal.containsSpoilers')}
                     </label>
                   </div>
 
                   {/* Visibility */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Visibility</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">{t('journal.visibility')}</p>
                     <div className="flex gap-2">
                       {([undefined, 'public', 'friends', 'private'] as const).map((vis) => {
-                        const label = vis === undefined ? 'Default' : vis === 'public' ? 'Public' : vis === 'friends' ? 'Friends' : 'Private';
+                        const label = vis === undefined ? t('journal.visDefault') : vis === 'public' ? t('journal.visPublic') : vis === 'friends' ? t('journal.visFriends') : t('journal.visPrivate');
                         const icon = vis === 'private' ? <EyeOff size={12} /> : vis === 'friends' ? <Users size={12} /> : <Eye size={12} />;
                         const active = visibilityOverride === vis;
                         return (
