@@ -8,7 +8,7 @@ import {
   TMDBTVShow, TMDBTVSeasonSummary,
 } from '../../services/tmdbService';
 import { fuzzyFilterLocal, getBestCorrectedQuery } from '../../services/fuzzySearch';
-import { resolveTVPreselectRoute } from '../../services/watchlistRankHelpers';
+import { resolveTVPreselectRoute, healTVPreselect } from '../../services/watchlistRankHelpers';
 import { classifyBracket } from '../../services/rankingAlgorithm';
 import { RankingSession } from '../../services/rankingSession';
 import { useAuth } from '../../contexts/AuthContext';
@@ -222,7 +222,13 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
       });
     } else if (preselectedItem) {
       // Full season preselect — go directly to tier selection.
-      setSelectedItem(preselectedItem);
+      // Stamp the derived show id back onto the item (C5-Task-2 self-heal): a
+      // legacy corrupt row (show_tmdb_id=0) carries the real id in its `tv_{n}_s{k}`
+      // key, which resolveTVPreselectRoute already derived for the score fetch.
+      // Without this step the raw preselect (showTmdbId=0) was seeded verbatim and
+      // completion would persist show_tmdb_id=0, re-minting corruption. Now the
+      // healed item flows all the way to onAdd → the DB write.
+      setSelectedItem(healTVPreselect(preselectedItem, route));
       if (preselectedItem.notes) setNotes(preselectedItem.notes);
       if (preselectedItem.watchedWithUserIds?.length) setWatchedWithUserIds(preselectedItem.watchedWithUserIds);
       setStep('tier');

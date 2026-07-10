@@ -24,8 +24,11 @@
 // movie path (a stale marker for a different id must never misclassify an add);
 // and `resolveTVPreselectRoute`/`showTmdbIdFromTVId` — the hardened preselect
 // router (audit B1 defense-in-depth) that derives the real show id from a
-// `tv_{n}` / `tv_{n}_s{k}` id when showTmdbId is 0/absent so legacy corrupt rows
-// self-heal instead of re-minting a 0 show id.
+// `tv_{n}` / `tv_{n}_s{k}` id when showTmdbId is 0/absent; and `healTVPreselect`
+// — the C5-Task-2 self-heal seam that stamps the derived show id back onto the
+// preselected item before it is seeded into the tier step, so both the whole-show
+// class (`tv_{n}`) and the season class (`tv_{n}_s{k}`) truly self-heal: corrupt
+// rows no longer re-mint a 0 show id at completion.
 //
 // Header last reviewed: 2026-07-10
 
@@ -135,6 +138,29 @@ export function resolveTVPreselectRoute(
     route: isWholeShow ? 'season-grid' : 'tier',
     showTmdbId,
   };
+}
+
+/**
+ * Stamp the derived show id back onto a season-class preselected item before it
+ * is seeded into the tier step (C5-Task-2 self-heal seam). When a legacy corrupt
+ * row carries showTmdbId=0 but a well-formed `tv_{n}_s{k}` id, `resolveTVPreselectRoute`
+ * already derives the real show id for the score fetch — but without this step
+ * the component seeded the raw preselect verbatim, so completion persisted
+ * `show_tmdb_id=0` and re-minted corruption. This pure helper applies the derived
+ * id to the item itself, so whatever the component eventually persists via onAdd
+ * carries the real showTmdbId. It is a no-op when the item already has a valid
+ * (> 0) showTmdbId or when the route produced no id.
+ */
+export function healTVPreselect<T extends { id: string; showTmdbId?: number }>(
+  item: T,
+  route: TVPreselectRoute | null,
+): T {
+  if (!route) return item;
+  const healed = route.showTmdbId !== undefined && route.showTmdbId > 0
+    ? route.showTmdbId
+    : (item.showTmdbId && item.showTmdbId > 0 ? item.showTmdbId : route.showTmdbId);
+  if (healed === item.showTmdbId) return item;
+  return { ...item, showTmdbId: healed };
 }
 
 /**

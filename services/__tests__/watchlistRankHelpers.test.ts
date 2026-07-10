@@ -8,6 +8,7 @@ import {
   canonicalMovieTmdbId,
   isRerankCompletion,
   resolveTVPreselectRoute,
+  healTVPreselect,
 } from '../watchlistRankHelpers';
 import type { TMDBTVShow } from '../tmdbService';
 import { Tier } from '../../types';
@@ -255,5 +256,82 @@ describe('resolveTVPreselectRoute', () => {
     // with no show id (the global-score fetch is skipped, as before).
     const r = resolveTVPreselectRoute({ id: 'legacy_weird_id', seasonNumber: 2 });
     expect(r).toEqual({ route: 'tier', showTmdbId: undefined });
+  });
+});
+
+// Pins the C5-Task-2 season-class self-heal seam (healTVPreselect). A legacy
+// corrupt row (show_tmdb_id=0, id=`tv_123_s2`) reaches the tier step via
+// resolveTVPreselectRoute which derives showTmdbId=123. Without healTVPreselect
+// the component seeded the raw preselect (showTmdbId=0) verbatim — completion
+// would then persist show_tmdb_id=0, re-minting corruption. healTVPreselect
+// stamps the derived id back onto the item so the tier step and every downstream
+// consumer (proceedFromNotes → onAdd → DB write) carry the real showTmdbId.
+describe('healTVPreselect', () => {
+  const mkItem = (id: string, showTmdbId: number): RankedItem => ({
+    id,
+    title: 'Test Show',
+    year: '2020',
+    posterUrl: '/p.jpg',
+    type: 'tv_season',
+    genres: ['Drama'],
+    showTmdbId,
+    seasonNumber: 2,
+    tier: Tier.B,
+    rank: 0,
+  });
+
+  it('stamps the derived show id onto a season-class corrupt item (showTmdbId=0)', () => {
+    // Core assertion: this is the C5-Task-2 regression pin.
+    const corrupt = mkItem('tv_123_s2', 0);
+    const route = resolveTVPreselectRoute(corrupt);
+    // route.showTmdbId must be 123 (derived from the id)
+    expect(route?.showTmdbId).toBe(123);
+    // healTVPreselect must flow that id back onto the item
+    const healed = healTVPreselect(corrupt, route);
+    expect(healed.showTmdbId).toBe(123);
+  });
+
+  it('preserves a valid showTmdbId when it is already correct (no-op)', () => {
+    const good = mkItem('tv_123_s2', 123);
+    const route = resolveTVPreselectRoute(good);
+    const healed = healTVPreselect(good, route);
+    expect(healed.showTmdbId).toBe(123);
+  });
+
+  it('returns the original object reference when no healing is needed', () => {
+    const good = mkItem('tv_123_s2', 123);
+    const route = resolveTVPreselectRoute(good);
+    // No mutation: same reference
+    expect(healTVPreselect(good, route)).toBe(good);
+  });
+
+  it('is a no-op when route is null', () => {
+    const corrupt = mkItem('tv_123_s2', 0);
+    expect(healTVPreselect(corrupt, null)).toBe(corrupt);
+  });
+
+  it('heals a whole-show corrupt item too (showTmdbId=0, id=tv_{n})', () => {
+    const wholeShow: RankedItem = {
+      id: 'tv_456',
+      title: 'Show',
+      year: '2019',
+      posterUrl: '',
+      type: 'tv_season',
+      genres: [],
+      showTmdbId: 0,
+      tier: Tier.B,
+      rank: 0,
+    };
+    const route = resolveTVPreselectRoute(wholeShow);
+    const healed = healTVPreselect(wholeShow, route);
+    expect(healed.showTmdbId).toBe(456);
+  });
+
+  it('does not mutate the original item (pure function)', () => {
+    const corrupt = mkItem('tv_123_s2', 0);
+    const original = { ...corrupt };
+    const route = resolveTVPreselectRoute(corrupt);
+    healTVPreselect(corrupt, route);
+    expect(corrupt.showTmdbId).toBe(original.showTmdbId);
   });
 });
