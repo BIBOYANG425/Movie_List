@@ -7,7 +7,7 @@ import SwiftUI
 ///    Task 3, signed-in only) via `SuggestionsClient.fetch(mediaType: .movie)`;
 ///    typing swaps it for film search. Tap a suggested/searched movie →
 ///    `onPick(movie)` STRAIGHT to the ceremony (no season grid); a picked
-///    suggestion threads `voteAverage` (`Movie.movie(from:)`) so the ceremony's
+///    suggestion threads `voteAverage` (`RankEntryModel.rankMovie(from:)`) so the ceremony's
 ///    prediction seeds. Signed-out movie keeps its demo-fixtures search path and
 ///    shows NO grid (the engine 401s signed-out).
 ///  * TV — an empty search field surfaces a SUGGESTIONS grid (SHOWS, Task 7) via
@@ -185,21 +185,19 @@ public struct RankEntryScreen: View {
         SearchField(text: $query, placeholder: model.searchPlaceholder)
             .padding(.top, 16)
             .onChange(of: query) { newValue in scheduleSearch(for: newValue) }
-            // Always-present view: observe the sign-in gate here so the
-            // true→false transition fires regardless of which branch is
-            // currently rendered. Attaching to `resultsSection` was wrong —
-            // that view only exists in the `else` branch, so it is being
-            // INSERTED (not updated) when requiresSignIn flips false, and
-            // SwiftUI never calls onChange on initial attachment.
-            .onChange(of: model.requiresSignIn) { nowRequires in
-                // After a signed-out user signs in from the nudge, load the
-                // tv suggestions that were suppressed behind the gate.
-                if !nowRequires && model.mode == .tv { model.loadTVSuggestions() }
-            }
-            // Movie mode's requiresSignIn never flips (always false — fixtures
-            // fallback), so observe the raw suggestions gate instead: once a
-            // signed-out movie user signs in, load the movie grid that the engine
-            // 401 was suppressing. Harmless for tv (loadTVSuggestions re-gates).
+            // Always-present view: observe the raw suggestions gate so the
+            // gate-open transition fires for BOTH movie and tv regardless of
+            // which branch is currently rendered. Attaching to `resultsSection`
+            // was wrong — that view only exists in the `else` branch, so it is
+            // being INSERTED (not updated) when the gate opens, and SwiftUI
+            // never calls onChange on initial attachment.
+            //
+            // A single gate observer covers all modes: tv mode's gate opens
+            // when `requiresSignIn` flips false (session lands); movie mode's
+            // gate opens when `isSignedInIO` flips true (same event, but movie
+            // mode's `requiresSignIn` never flips — it is always false because
+            // movie keeps a fixtures search fallback). Book mode never opens the
+            // gate (`modeHasSuggestionGrid == false`), so it is a no-op.
             .onChange(of: model.suggestionsGateOpen) { gateOpen in
                 if gateOpen { model.loadTVSuggestions() }
             }

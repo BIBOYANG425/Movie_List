@@ -52,7 +52,7 @@ public enum RankEntryStage: Equatable, Sendable {
 ///     excludes are SHOW ids `tv_{n}`.
 ///   * movie — a picked MOVIE goes STRAIGHT to the ceremony (`onPick`, no season
 ///     grid); `voteAverage` rides along so the ceremony's prediction seeds
-///     (`Movie.movie(from:)`); the excludes are movie ids `tmdb_{n}`.
+///     (`RankEntryModel.rankMovie(from:)`); the excludes are movie ids `tmdb_{n}`.
 ///
 /// The generic store is `[SuggestionItem]`; `tvSuggestions`/`movieSuggestions`
 /// are typed projections over it so each render surface reads its own DTO and the
@@ -460,7 +460,7 @@ public final class RankEntryModel: ObservableObject {
     /// The user tapped a SUGGESTED movie (C7-iOS Task 3). Consume it (splice out +
     /// refill + note the movie id `tmdb_{n}` in the excludes) and return the
     /// rankable `Movie` — a picked movie goes STRAIGHT to the ceremony (no season
-    /// grid). `voteAverage` rides along via `Movie.movie(from:)` so the ceremony's
+    /// grid). `voteAverage` rides along via `RankEntryModel.rankMovie(from:)` so the ceremony's
     /// prediction seeds (the C3A concern class). Mirrors web `handleSelectMovie`
     /// with `fromSuggestion=true`. Returns nil if the id isn't in the current grid
     /// (a stale tap after a mode switch / refresh).
@@ -471,9 +471,8 @@ public final class RankEntryModel: ObservableObject {
     }
 
     /// Mint the rankable `Movie` for a picked movie suggestion. Threads
-    /// `voteAverage` so the ceremony's prediction seeds (the C3A concern class) —
-    /// the exact construction the Discover grid uses (`DiscoverCardCopy.movie`),
-    /// kept local so `RankEntryModel` doesn't depend on a screen helper.
+    /// `voteAverage` so the ceremony's prediction seeds (the C3A concern class).
+    /// Kept local so `RankEntryModel` doesn't depend on a screen helper.
     static func rankMovie(from item: SuggestionItem) -> Movie {
         Movie(
             id: item.id,
@@ -487,8 +486,10 @@ public final class RankEntryModel: ObservableObject {
         )
     }
 
-    /// djb2 seed for a stable poster placeholder from an id (mirrors the view's
-    /// per-row seed + `DiscoverCardCopy.stableSeed`).
+    /// djb2 seed for a stable poster placeholder from an id. Pure djb2 hash
+    /// modulo 1000 — mirrors `RankEntryScreen.stableSeed(from:)`, NOT
+    /// `DiscoverCardCopy.stableSeed` (which uses trailing-digit extraction and
+    /// mod 20).
     static func stableSeed(_ id: String) -> Int {
         var h: UInt64 = 5381
         for b in id.utf8 { h = (h &* 33) &+ UInt64(b) }
@@ -601,7 +602,7 @@ public final class RankEntryModel: ObservableObject {
     /// suggestion's `tmdb_{n}` movie id; `voteAverage` is preserved so the picked
     /// `Movie` seeds the ceremony's prediction. This DTO is a render/tap key only —
     /// the picked `Movie` is minted from the raw `SuggestionItem` via
-    /// `Movie.movie(from:)`, which threads `voteAverage` directly.
+    /// `Self.rankMovie(from:)`, which threads `voteAverage` directly.
     static func movieDTO(from item: SuggestionItem) -> TMDBMovie {
         TMDBMovie(
             id: item.id,
