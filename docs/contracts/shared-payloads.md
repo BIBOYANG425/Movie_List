@@ -937,3 +937,95 @@ mirrors `suggestions` (`Access-Control-Allow-Origin: *`; same tightening caveat)
 Implementations: `supabase/functions/tmdb-proxy/index.ts` (HTTP shell),
 `supabase/functions/tmdb-proxy/rules.ts` (pure allowlist + sanitize).
 Tests: `services/__tests__/tmdbProxyRules.test.ts`.
+
+## achievements (since C7 web fixes, branch `fix/c7-web-blocking`)
+
+Badge catalog: `services/achievementService.ts` (`ACHIEVEMENT_DEFINITIONS` — 15
+badge keys as of C7). `user_achievements` table:
+`supabase/migrations/20260711_achievements_rls_lockdown.sql`.
+
+### `grant_achievements()` RPC contract
+
+`grant_achievements() returns text[]`
+
+Migration: `supabase/migrations/20260711_grant_achievements_rpc.sql`.
+
+- **SECURITY DEFINER, `search_path = public`.** Runs as the function owner; the
+  caller need only be authenticated — `auth.uid()` is the sole subject, so the
+  definer privilege cannot be leveraged to read or write another user's rows.
+  No `p_user_id` parameter exists by design; the function evaluates for the
+  caller identified by `auth.uid()`.
+- **Evaluates every rule internally.** The function reads the caller's
+  `user_rankings`, `journal_entries`, `friend_follows`, `list_items` (curated
+  lists), and existing `user_achievements` rows, applies the 15 badge rules
+  (thresholds verified against `ACHIEVEMENT_DEFINITIONS`), and inserts only the
+  newly earned badges.
+- **Idempotent via `ON CONFLICT (user_id, badge_key) DO NOTHING`.** Concurrent
+  calls are safe — at most one row lands per `(user_id, badge_key)`.
+- **Returns** `text[]` — the `badge_key` values of badges granted in THIS call
+  (newly inserted rows only, via a RETURNING-CTE). An empty array means no new
+  badges this call (caller already held them all, or no threshold crossed).
+- **Review rule is journal-based.** The `first_review` badge evaluates
+  `journal_entries WHERE review_text IS NOT NULL AND review_text <> ''`. The
+  `movie_reviews` table is dead — no badge rule reads it; do not add calls to
+  that table.
+- **NO client INSERT path.** `user_achievements` RLS is locked down:
+  INSERT is REVOKED for all authenticated users (anon was already excluded).
+  The only write path is `grant_achievements()` (SECURITY DEFINER). Any
+  prior client-side `checkAndGrantBadges` insert was already best-effort/silent;
+  after the migration applies those inserts fail RLS silently during the
+  apply→merge window (acceptable degraded window, documented in the C7 audit).
+
+### Client call rule — fire-and-forget post-action
+
+Clients call `supabase.rpc('grant_achievements')` fire-and-forget (no await,
+errors suppressed) AFTER a confirmed successful write in any of:
+
+- Ranking add / re-rank (post `addItem`/`addTVItem`/`addBookItem` success)
+- Journal save (post `upsertJournalEntry` success)
+- Follow (post `followUser` success)
+- List create / item add (post list write success)
+
+The call is purely opportunistic — a failure or empty return does not affect the
+triggering action's UX. Clients do NOT call `grant_achievements` proactively on
+page load or on a schedule; badge checks are event-driven.
+
+**There is no client INSERT path for `user_achievements`.** RLS blocks it.
+
+### `badge_unlock` notification shape
+
+When `grant_achievements()` returns a non-empty array, each newly-granted
+badge key should trigger a `badge_unlock` notification row (client-side insert
+into `notifications`). Shape per the notifications table schema:
+
+| Column | Value |
+|---|---|
+| `type` | `'badge_unlock'` |
+| `title` | badge name string (EN, baked at write time) |
+| `body` | badge description / milestone text (EN) |
+| `reference_id` | the `badge_key` text (e.g. `'first_rank'`) |
+| `user_id` | `auth.uid()` (recipient = the earner) |
+| `actor_id` | `NULL` (self-awarded; no actor) |
+
+`notifications` INSERT still carries `WITH CHECK (true)` — a bell-abuse-class
+RLS gap (C7 deferred sweep item, sibling of B2). The intent is owner-only
+self-inserts for badge notifications; the column `user_id` MUST be set to
+`auth.uid()` at write time. Do not set `user_id` to any other value.
+
+### Milestone feed events — one-shot-lossy, client-side
+
+A `milestone` activity event (`event_type = 'milestone'`, metadata
+`{ badgeKey, badgeIcon, milestoneDescription }`) is emitted CLIENT-SIDE by
+`services/achievementService.ts` (`logMilestoneEvent`) for each NEW badge key
+returned by `grant_achievements()`. One event per new key per call.
+
+**One-shot-lossy:** the client emits the milestone event once at grant time.
+If the event write fails silently (fire-and-forget), the milestone never
+appears in the feed. A server-side write inside the SECURITY DEFINER function
+is a ledgered follow-up (more durable — avoids the lossy window).
+
+iOS MUST NOT emit a milestone event for a badge key that was already held
+before the call (only new keys in the `grant_achievements()` return array).
+
+Badge catalog pointer: `services/achievementService.ts` `ACHIEVEMENT_DEFINITIONS`.
+iOS port: achievements surface + `grant_achievements()` calls ship in C7-iOS.

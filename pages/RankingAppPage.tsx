@@ -1508,7 +1508,7 @@ const RankingAppPage = () => {
       setRerankState(null);
     }
     // D2: only overwrite the toast when the save landed — failure toasts set
-    // inside addItem (ranking.failedSave / ranking.failedSaveRanking) must
+    // inside addItem (ranking.failedSaveRanking) must
     // survive to the user. Guard the journal sheet with the same boolean: a
     // failed save must not pop a "write a review" prompt for a movie that never
     // landed (audit :1507).

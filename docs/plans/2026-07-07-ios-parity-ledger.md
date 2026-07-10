@@ -13,7 +13,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | C4 | Ranking management | COMPLETE — web fixes PR #39 + iOS management UI SHIPPED on `feat/ios-parity-c4-mgmt-ui` (PR pending): edit-mode drag-to-reorder (FullListScreen shelf), long-press menu (move tier / edit notes w/ probe-before-edit + wipe guard / re-rank via corrected ceremony / delete w/ confirm + ranking_remove); ceremony re-rank correction landed (Task 2 — deviation retired) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | #39 | `feat/ios-parity-c4-mgmt-ui` (PR pending) |
 | C5 | TV seasons + books | COMPLETE — web fixes PR #46 + iOS 8-task branch `feat/ios-parity-c5-tv-books` (PR pending): per-media payloads/reads, TMDB TV endpoints, OpenLibrary client, media-generic ceremony (same-media H2H), TV season UI + preselect router + coordinator whole-show identity fix, TV suggestions grid, contracts | audits/2026-07-10-c5-tv-books-web-audit.md | #46 | `feat/ios-parity-c5-tv-books` (PR pending) |
 | C6 | zh localization | COMPLETE (both halves) — web PR #48 merged; iOS on `feat/ios-parity-c6-zh` (PR pending) | audits/2026-07-10-c6-zh-web-audit.md | #48 | `feat/ios-parity-c6-zh` (PR pending) |
-| C7 | Smaller items | pending | — | — | — |
+| C7 | Smaller items | web half in PR `fix/c7-web-blocking` (HEAD 1208d98); iOS half pending | — | `fix/c7-web-blocking` | — |
 | — | iOS design-check | queued after C5–C7 (owner, 2026-07-10); screenshot seed list in progress ledger | — | — | — |
 
 ## Audit findings
@@ -721,3 +721,149 @@ SELECT mirroring tv/book). Rollback (verbatim in the file):
 - **(5)** `SELECT policyname FROM pg_policies WHERE tablename = 'watchlist_items' AND cmd = 'SELECT'` → exactly 2 rows: `"Users can view own watchlist"` and `"Users can view followed users watchlist"`.
 
 **3. Merge the PR.**
+
+## C7 notes (2026-07-11, branch `fix/c7-web-blocking`)
+
+Smaller items, achievements, descopes, and D2 close. Plan at
+`docs/plans/2026-07-11-c7-web-blocking-plan.md`. Baseline: 545 web vitest
+(untouched through Tasks 1–3). iOS half follows separately.
+
+### Web half (Tasks 1–3, HEAD 1208d98)
+
+**B1 — Profile tabs (viewer's data on any profile)**
+
+`ProfileTabs.tsx` served the VIEWER's own `items`/`journal` arrays on any
+visited profile. Fixed in Task 1: tabs now conditionally use the profile-owner's
+fetched data when `!isOwnProfile`. Cross-user create/like/remove buttons on
+`MovieListView` remain present in the DOM but are RLS-backstopped no-ops for all
+three list tables (`auth.uid()` keys every INSERT/UPDATE/DELETE) — ACCEPTED risk.
+`user_achievements` had NO RLS backstop for INSERT (`WITH CHECK (true)`) — that
+hole is B2, fixed in Task 2.
+
+**B2+B3 — Achievements RLS lockdown + `grant_achievements()` RPC**
+
+Migration `20260711_achievements_rls_lockdown.sql` revokes INSERT from
+authenticated users; anon already excluded. Migration
+`20260711_grant_achievements_rpc.sql` installs the SECURITY DEFINER
+`grant_achievements()` function (15 rules, thresholds-verified against
+`ACHIEVEMENT_DEFINITIONS`; RETURNING-CTE idempotency). Client
+`services/achievementService.ts` `checkAndGrantBadges` swapped from direct
+INSERT to `rpc('grant_achievements')` fire-and-forget. `AchievementsView`
+`isOwnProfile` default footgun addressed (defaults to `false` — no phantom
+own-profile badge writes for cross-user views).
+
+Apply-then-merge window note: between migration apply and PR merge, old deployed
+web clients' `checkAndGrantBadges` direct INSERTs fail RLS silently (they were
+already best-effort/unchecked per the pre-B3 posture) — acceptable degraded
+window.
+
+Minor ledger items from Task 2 review:
+
+- **Genre-rule micro-drift:** the RPC's genre badge thresholds are marginally
+  stricter than the old client-side rules in the same direction (correct) —
+  sanctioned as-is.
+- **Milestone feed events one-shot-lossy:** `logMilestoneEvent` is client-side;
+  a silent write failure loses the event. Server-side write inside the SECURITY
+  DEFINER is a follow-up (ledgered in `shared-payloads.md` achievements section).
+- **`notifications` INSERT `WITH CHECK (true)`:** the bell-table still has a
+  wide-open INSERT CHECK — same B2 class (bell-abuse class). Deferred sweep
+  candidate, sibling of the achievements lockdown.
+- **`movie_reviews` dead-table reads:** `reviewService.ts` / `tasteService.ts`
+  still query `movie_reviews` (no rows since journal migration). Cleanup deferred.
+
+**D2 — Success-toast overwrite (all 3 verticals)**
+
+Deferred sweep item #1, closed in Task 3. Completion handlers on all three
+verticals (`addItem` / `addTVItem` / `addBookItem` callback sites) now gate the
+success toast AND the journal-sheet trigger behind `saveSucceeded`. A failed save
+no longer overwrites the failure toast with "Ranked to S" and no longer pops a
+"write a review" prompt for a movie that never landed. Journal-sheet gating
+audit-sanctioned (the D2 audit note explicitly named the sheet gate).
+
+Cosmetic comment fixed (Task 3 minor): `ranking.failedSave` misattribution in the
+D2 comment corrected to `ranking.failedSaveRanking`.
+
+Remaining: the compaction-failure toast on the success path (a failed
+`set_tier_order` after a successful upsert) is still overwritten by the
+success toast — pre-existing, not D2, deferred.
+
+### Descopes (owner-reviewable adjudications)
+
+The following features were audited and explicitly descoped from the parity
+program as owner-adjudicated:
+
+- **Curated lists (B4 from the C7 audit):** never launched — zero UI callers,
+  all prod list rows empty. Finishing the lists feature is product work, not
+  a parity gap. B1 profile-tab bug (wrong owner for the lists tab) is fixed
+  (the tab now renders the profile owner's lists for cross-user views, correctly
+  empty in prod). The cross-user create/like/remove no-ops are RLS-backstopped
+  (see B1 above).
+- **Send-3-recs (C7 audit item):** never shipped on any platform. DDL is
+  ready-to-lift when the feature is built; no client path exists anywhere.
+  Parity DoD covers live features only — excluded from C7 scope.
+- **Letterboxd import:** WEB-ONLY intentionally. iOS will not ship this surface.
+  The import is a one-time migration utility; iOS users have the rank-entry
+  flow instead. Recorded as a permanent platform divergence, not a gap.
+
+### Universal links disposition
+
+`spool://u/` deep-link handling ships in C7-iOS (the URL scheme is registered
+via `spool://` OAuth callback scheme already in `Info.plist`; path routing for
+`/u/{username}` is additive client code).
+
+AASA (`/.well-known/apple-app-site-association`) and Associated Domains
+entitlement (`applinks:spoolapp.co` or equivalent) are BLOCKED on owner Apple
+infrastructure: the entitlement requires an Apple Developer team-level change
+(bundle ID + provisioning), and the hosted AASA file must be served over HTTPS
+at the domain root. **Owner action item before C7-iOS merges:** add
+`com.apple.developer.associated-domains` to the entitlements and host the AASA.
+Without both, tapping a web link opens the browser, not the app.
+
+### Deferred-sweep dispositions (C7 web audit items)
+
+From the deferred sweep list carried into C7:
+
+1. **D2 — success-toast overwrite:** DONE HERE (Task 3, all 3 verticals).
+2. **Movie-mode in-flow suggestions grid:** C7-iOS (the gap is iOS-only; web
+   `AddMediaModal` already has the grid).
+3. **Discover card actions polish:** C7-iOS (Part B shipped the card actions; any
+   polish needed is iOS-side).
+4. **Stage-A shelf-notes emission gap** (iOS management UI deferred item):
+   C7-iOS scope (iOS emissions carry `{year?}` only, no `notes`).
+5. **Journal agent client (Kimi edge fn):** own later slice — not in C7.
+6. **Emission items** (C4-iOS mgmt UI deferred: move/remove carry `{year?}` only):
+   C7-iOS scope.
+7. **Localized-title display twin:** later cycle — display-only lag after locale
+   toggle, web-side `fetchLocalizedTitle` exists; iOS has no equivalent yet.
+8. **zh typography pairing:** design cycle — PingFang SC/TC acceptable for now.
+
+New deferrals surfaced during C7 web tasks:
+
+- `notifications` INSERT `WITH CHECK (true)` (bell-abuse class) — deferred sweep
+  candidate alongside the achievements lockdown (B2 sibling).
+- `movie_reviews` dead-table reads in `reviewService.ts` / `tasteService.ts` —
+  cleanup candidate.
+- Milestone feed events one-shot-lossy — server-side write inside
+  `grant_achievements()` is the durable fix (follow-up).
+- Success-path compaction-failure toast overwrite (the `set_tier_order` failure
+  after a successful upsert still reads as a success to the user) — not D2,
+  deferred.
+
+### C7-iOS scope note
+
+The iOS half of C7 (separate branch, follows web PR merge):
+
+- Achievements surface: `user_achievements` reads, badge grid in profile.
+- `grant_achievements()` RPC calls: fire-and-forget post rank/journal/follow/list
+  actions (see `shared-payloads.md` achievements section for the client call rule).
+- Movie-mode in-flow suggestions grid (deferred sweep #2).
+- Discover card actions polish (deferred sweep #3).
+- Stage-A / shelf emission items — `notes` in move/remove emissions (deferred
+  sweep #4/#6).
+- `spool://u/` universal link handling (URL scheme already registered; AASA =
+  owner infra prerequisite).
+- `locale()` static-glue consolidation + `L10n.table(for:)` dead code drop
+  (C6-iOS deferred riders, small).
+
+After C7: iOS design-check cycle (overlap audit, Bobby's screenshot seed list),
+then STOP before iMessage agent build (blocked on owner Photon infra).
