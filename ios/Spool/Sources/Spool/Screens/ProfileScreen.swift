@@ -12,6 +12,9 @@ public struct ProfileScreen: View {
     @State private var topFour: [RankingRow] = []
     @State private var recent: [StubRow] = []
     @State private var topTwin: (handle: String, score: Int)?
+    /// Signed-in user id — drives the achievements badge section (own profile:
+    /// all 16 badges, unearned dimmed). Nil in fixture/preview mode.
+    @State private var userID: UUID?
 
     public init(onOpenSettings: @escaping () -> Void = {},
                 onOpenFullList: @escaping () -> Void = {}) {
@@ -29,6 +32,7 @@ public struct ProfileScreen: View {
                     obsessed.padding(.top, 18)
                     topFourSection.padding(.top, 18)
                     recentSection.padding(.top, 18)
+                    achievementsSection.padding(.top, 18)
                     footerPills.padding(.top, 16)
                 }
                 .padding(.horizontal, 18)
@@ -314,6 +318,18 @@ public struct ProfileScreen: View {
         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 
+    // MARK: achievements
+
+    /// Own-profile badge surface — all 16 badges grouped by category with
+    /// unearned dimmed (mirrors web AchievementsView own-profile grid). Hidden
+    /// in fixture/preview mode (no session → no user to read badges for).
+    @ViewBuilder
+    private var achievementsSection: some View {
+        if let userID {
+            AchievementsSection(userId: userID, mode: .own)
+        }
+    }
+
     // MARK: footer
 
     private var footerPills: some View {
@@ -334,6 +350,7 @@ public struct ProfileScreen: View {
 
         let userID = await SpoolClient.currentUserID()
         hasSession = userID != nil
+        self.userID = userID
         NSLog("[ProfileScreen] reload: userID=\(userID?.uuidString ?? "nil"), isConfigured=\(SpoolClient.isConfigured)")
 
         guard let userID else {

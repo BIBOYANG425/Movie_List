@@ -213,6 +213,20 @@ public enum ZH {
         "friendProfile.mutual": "◉ {n} 位共同好友",
         "friendProfile.stubsPill": "{n} 张票根",
 
+        // ── Achievements section ──────────────────────────────────────────────
+        // 只翻译界面框架；徽章名称与描述保留英文专有名词（web 的 BADGE_CATALOG
+        // 文案不在 i18n 表里，中文模式也显示同样的英文名）。分类标签对应
+        // web CATEGORY_STYLES.label。
+        "achievements.title": "成就",
+        "achievements.count": "已解锁 {earned}/{total}",
+        "achievements.noneYet": "还没有徽章。",
+        "achievements.loading": "加载徽章中…",
+        "achievements.locked": "未解锁",
+        "achievements.category.milestone": "里程碑",
+        "achievements.category.social": "社交",
+        "achievements.category.taste": "品味",
+        "achievements.category.special": "特别",
+
         // ── Taste twin (TwinScreen) ───────────────────────────────────────────
         // 叙述性句子（拼接的 Text，演示为主）保留英文。以下为界面框架 + 空态 + 韦恩图标签。
         "twin.shareCard": "↗ 分享卡片",               // web share.createCard register

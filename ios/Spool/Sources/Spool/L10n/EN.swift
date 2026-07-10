@@ -233,6 +233,21 @@ public enum EN {
         "friendProfile.mutual": "◉ {n} mutual",
         "friendProfile.stubsPill": "{n} stubs",
 
+        // ── Achievements section (AchievementsSection on Profile / FriendProfile) ─
+        // Section CHROME localizes; badge NAMES + DESCRIPTIONS stay EN proper
+        // nouns (web's BADGE_CATALOG copy lives in AchievementsView.tsx, NOT the
+        // i18n tables — web zh mode shows the same EN badge names). Category
+        // labels mirror web CATEGORY_STYLES.label.
+        "achievements.title": "ACHIEVEMENTS",
+        "achievements.count": "{earned}/{total} UNLOCKED",
+        "achievements.noneYet": "no badges yet.",
+        "achievements.loading": "loading badges…",
+        "achievements.locked": "locked",
+        "achievements.category.milestone": "MILESTONES",
+        "achievements.category.social": "SOCIAL",
+        "achievements.category.taste": "TASTE",
+        "achievements.category.special": "SPECIAL",
+
         // ── Taste twin (TwinScreen) ───────────────────────────────────────────
         // The narrative summary/fight SENTENCES (concatenated Text + markText,
         // demo-heavy) stay EN. Chrome + empty states + Venn labels localize.
