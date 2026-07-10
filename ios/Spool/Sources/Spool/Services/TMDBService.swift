@@ -141,24 +141,7 @@ public enum TMDBService {
         func fetchAndMap(_ term: String) async throws -> [TMDBMovie]? {
             // Pack the TMDB query into the proxy `path` param (buildProxyURL
             // handles encoding). api_key is never sent — the proxy injects it.
-            //
-            // `+` encoding note: URLComponents.percentEncodedQuery leaves `+`
-            // unencoded (RFC 3986 allows `+` in query strings as a literal
-            // `+`). However, the proxy uses web `URLSearchParams` to decode
-            // the inner query, which maps `+` → space (application/x-www-form-
-            // urlencoded convention). Force-encode `+` → `%2B` so that a title
-            // like "9+1" arrives at the proxy intact. Mirrors web's
-            // `encodeURIComponent` which always emits `%2B` for `+`.
-            var comps = URLComponents()
-            comps.queryItems = [
-                URLQueryItem(name: "query", value: term),
-                URLQueryItem(name: "language", value: locale()),
-                URLQueryItem(name: "page", value: "1"),
-                URLQueryItem(name: "include_adult", value: "false"),
-            ]
-            let tmdbQuery = (comps.percentEncodedQuery ?? "")
-                .replacingOccurrences(of: "+", with: "%2B")
-            let path = "search/movie?\(tmdbQuery)"
+            let path = buildSearchQuery(term: term)
 
             let (data, http) = try await proxyFetch(path, timeout: timeout)
             guard http.statusCode == 200 else { return nil }
@@ -186,6 +169,32 @@ public enum TMDBService {
         } catch {
             return []
         }
+    }
+
+    // MARK: - Query builder
+
+    /// Build the TMDB search path string for a given query term.
+    ///
+    /// Extracted from the inner `fetchAndMap` closure so it is unit-testable in
+    /// isolation (see `testPlusInQueryIsEncodedAsPercent2B` in `OnbGridPoolTests`).
+    ///
+    /// `+` encoding note: `URLComponents.percentEncodedQuery` leaves `+` unencoded
+    /// (RFC 3986 allows `+` as a literal `+` in query strings). However the proxy's
+    /// `URLSearchParams` decodes `+` as a space (application/x-www-form-urlencoded
+    /// convention). Force-encode `+` → `%2B` so a title like "9+1" arrives at the
+    /// proxy intact. Web uses `URLSearchParams` which encodes `+` → `%2B` for the
+    /// same reason — same byte-level outcome.
+    static func buildSearchQuery(term: String) -> String {
+        var comps = URLComponents()
+        comps.queryItems = [
+            URLQueryItem(name: "query", value: term),
+            URLQueryItem(name: "language", value: locale()),
+            URLQueryItem(name: "page", value: "1"),
+            URLQueryItem(name: "include_adult", value: "false"),
+        ]
+        let tmdbQuery = (comps.percentEncodedQuery ?? "")
+            .replacingOccurrences(of: "+", with: "%2B")
+        return "search/movie?\(tmdbQuery)"
     }
 
     // MARK: - Typo-retry variants

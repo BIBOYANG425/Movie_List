@@ -54,7 +54,8 @@ public enum SuggestionsClient {
     ///
     /// - Throws: `SuggestionsError.notConfigured` / `.notAuthenticated` before any
     ///   network call; `.http(status:)` on a non-2xx response; `.decoding` on a
-    ///   malformed body; `CancellationError` if the surrounding task is cancelled.
+    ///   malformed body; `.transport(Error)` on a URLError / connectivity failure;
+    ///   `CancellationError` if the surrounding task is cancelled.
     public static func fetch(
         mode: SuggestionMode,
         mediaType: SuggestionMediaType,

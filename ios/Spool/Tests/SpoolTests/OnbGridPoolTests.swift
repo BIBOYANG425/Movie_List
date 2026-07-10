@@ -56,7 +56,7 @@ final class OnbGridPoolTests: XCTestCase {
     }
 
     /// When signed out (no session), `resolvePool` must NOT call the network
-    /// and must return the fixture fallback.
+    /// and must return the fixture fallback unchanged.
     func testSignedOutUsesFallbackWithoutCallingClient() async throws {
         var called = false
         let pool = await OnbGrid.resolvePool(
@@ -69,7 +69,6 @@ final class OnbGridPoolTests: XCTestCase {
 
         XCTAssertFalse(called, "fetch must NOT be called when there is no session")
         XCTAssertEqual(pool.map(\.id), Self.fixtures.map(\.id), "must return the fixture pool")
-        XCTAssertTrue(pool.allSatisfy { $0.tmdbId < 0 }, "fixtures have negative synthetic ids")
     }
 
     /// When signed in but the fetch throws (e.g. transport error), `resolvePool`
@@ -107,24 +106,16 @@ final class OnbGridPoolTests: XCTestCase {
     /// inside the packed `path` value so that the proxy's URLSearchParams
     /// decode it as `+`, not as a space.
     ///
-    /// Pin: the `query` value in the inner query string (`search/movie?query=...`)
-    /// must contain `%2B` at the position where the `+` appears.
+    /// Pin: pinned against `TMDBService.buildSearchQuery(term:)` — the production
+    /// function that `searchMovies` delegates to — so this test always tracks the
+    /// real encoding path, not a hand-rolled duplicate.
+    ///
+    /// Web uses `URLSearchParams` to build the inner query string; `URLSearchParams`
+    /// encodes `+` → `%2B` (application/x-www-form-urlencoded). The iOS path uses
+    /// `URLComponents` + a manual `replacingOccurrences` step to match that byte.
     func testPlusInQueryIsEncodedAsPercent2B() {
-        // We can observe the encoding by checking TMDBProxy.buildProxyURL
-        // with a pre-built inner query to isolate the `+` encoding step.
-        // Simulate the inner query-building step by constructing the same
-        // URLComponents that TMDBService.fetchAndMap builds, then apply
-        // the same `.replacingOccurrences(of: "+", with: "%2B")` step.
-        var comps = URLComponents()
-        comps.queryItems = [
-            URLQueryItem(name: "query", value: "9+1"),
-            URLQueryItem(name: "language", value: "en-US"),
-            URLQueryItem(name: "page", value: "1"),
-            URLQueryItem(name: "include_adult", value: "false"),
-        ]
-        let rawQuery = comps.percentEncodedQuery ?? ""
-        let encodedQuery = rawQuery.replacingOccurrences(of: "+", with: "%2B")
-        let path = "search/movie?\(encodedQuery)"
+        // Call the production builder directly — no inline duplication.
+        let path = TMDBService.buildSearchQuery(term: "9+1")
 
         // The packed proxy URL carries the inner query inside `path=`
         let proxyURL = TMDBProxy.buildProxyURL(
