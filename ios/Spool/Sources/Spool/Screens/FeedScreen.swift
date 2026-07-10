@@ -37,6 +37,12 @@ public struct FeedScreen: View {
     /// rows). Carries the actor id and best-known handle so the parent can
     /// build a `Friend`/`FriendProfileScreen` route.
     private let onOpenActor: ((UUID, String?) -> Void)?
+    /// Rank-it from a Discover card (C3 Part B). Discover is presented here as a
+    /// `.sheet`, but the rank flow lives in `SpoolAppRoot`; this closure lets the
+    /// root seed its ceremony with the RAW `Movie` (no watchlist origin). The
+    /// sheet dismisses FIRST so the rank screens aren't stacked under the cover
+    /// (same handoff shape as `onOpenActor` above).
+    private let onRankFromDiscover: ((Movie) -> Void)?
 
     @StateObject private var model = FeedFeedModel()
 
@@ -50,11 +56,13 @@ public struct FeedScreen: View {
     public init(onRankTap: (() -> Void)? = nil,
                 onOpenFriends: (() -> Void)? = nil,
                 onOpenSettings: (() -> Void)? = nil,
-                onOpenActor: ((UUID, String?) -> Void)? = nil) {
+                onOpenActor: ((UUID, String?) -> Void)? = nil,
+                onRankFromDiscover: ((Movie) -> Void)? = nil) {
         self.onRankTap = onRankTap
         self.onOpenFriends = onOpenFriends
         self.onOpenSettings = onOpenSettings
         self.onOpenActor = onOpenActor
+        self.onRankFromDiscover = onRankFromDiscover
     }
 
     public var body: some View {
@@ -83,7 +91,14 @@ public struct FeedScreen: View {
                     showDiscover = false
                     onOpenFriends?()
                 },
-                onClose: { showDiscover = false }
+                onClose: { showDiscover = false },
+                onRankIt: { movie in
+                    // Dismiss the sheet FIRST, then hand the RAW movie up to the
+                    // root's ceremony preseed (the rank screens live at the root,
+                    // not under this cover).
+                    showDiscover = false
+                    onRankFromDiscover?(movie)
+                }
             )
         }
     }

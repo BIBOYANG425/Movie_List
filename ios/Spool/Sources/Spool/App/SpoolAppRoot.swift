@@ -273,7 +273,8 @@ public struct SpoolAppRoot: View {
                             twin: 0,
                             userID: actorID
                         )
-                    }
+                    },
+                    onRankFromDiscover: { movie in rankItFromDiscover(movie) }
                 )
             case .stubs:
                 StubsScreen(
@@ -538,6 +539,38 @@ public struct SpoolAppRoot: View {
                 let vote = await TMDBService.movieVoteAverage(tmdbId: tmdbId)
                 guard let vote else { return }
                 if rankMovie?.id == item.id {
+                    rankMovie?.voteAverage = vote
+                }
+            }
+        }
+    }
+
+    /// Rank It from a Discover card (C3 Part B). The `DiscoverModel` already
+    /// mapped the tapped card (engine suggestion or social rec) into a RAW
+    /// `Movie`; this just seeds the ceremony and enters the tier pick — NO
+    /// watchlist origin (a Discover rank must never delete a bookmark, exactly
+    /// like `rerankFromShelf`), and NO up-front delete. The FeedScreen sheet has
+    /// already dismissed itself before this fires, so the rank screens present at
+    /// the root, not under the cover.
+    private func rankItFromDiscover(_ movie: Movie) {
+        rankMovie = movie
+        rankTier = nil
+        rankMoods = []
+        rankLine = ""
+        // A Discover rank is NOT a watchlist-origin rank — clear any stale origin
+        // so a confirmed save can never delete an unrelated bookmark (B5).
+        rankWatchlistOrigin = nil
+        flow = .tier
+
+        // Enrich the prediction signal with vote_average when the card didn't
+        // carry it (social recs have no vote_average; engine items already do).
+        // Fetch async while the tier screen is already up, matching the watchlist
+        // and shelf paths. A nil result leaves voteAverage as-is.
+        if movie.voteAverage == nil, let tmdbId = Int(movie.id.filter(\.isNumber)), !movie.id.isEmpty {
+            Task {
+                let vote = await TMDBService.movieVoteAverage(tmdbId: tmdbId)
+                guard let vote else { return }
+                if rankMovie?.id == movie.id {
                     rankMovie?.voteAverage = vote
                 }
             }
