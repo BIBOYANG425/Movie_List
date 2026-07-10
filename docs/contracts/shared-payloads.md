@@ -452,7 +452,7 @@ A web re-rank through the ceremony flow on ANY of the three media verticals (mov
 
 A same-tier reorder with no actual position change must emit NO event (B1 no-op suppression).
 
-The iOS ceremony satisfies the MUST too: `RankingRepository.insertRanking`
+The iOS MOVIE ceremony satisfies the MUST too (tv/book ceremonies do not exist on iOS yet — C5 iOS plan): `RankingRepository.insertRanking`
 pre-reads the existing `(user_id, tmdb_id)` row; when one exists it emits a
 single `ranking_move` (`{notes?, year?}`, watched-with stripped) and, on a
 cross-tier re-rank, compacts the source tier (full membership minus the id) as
