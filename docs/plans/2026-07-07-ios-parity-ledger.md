@@ -448,7 +448,7 @@ Supabase Edge Function secret):**
   exclusion errors propagate — align in a later cycle).
 - Pull-to-refresh teardown edge (Task teardown on swift concurrency; cosmetic in
   current volume).
-- Reload-token dead code in `WatchlistModel` (unused reload trigger left; W0.3
+- Reload-token dead code in `WatchlistScreen`/`SpoolAppRoot` (unused reload trigger left; W0.3
   delete candidate).
 - Revert-duplicate and seed-item cases in WatchlistContractTests — already fixed
   before review merge.
