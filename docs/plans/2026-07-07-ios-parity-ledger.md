@@ -463,10 +463,10 @@ Supabase Edge Function secret):**
 
 - `suggestions` edge function deployed (5-pool engine, modes: suggestions / backfill / new_releases; auth + rate-limiting; pure engine in `engine.ts` exercised by vitest).
 - `tmdb-proxy` edge function deployed (authenticated GET; hard path allowlist + query safelist; pure rules in `rules.ts` exercised by vitest).
-- Both clients migrated off direct TMDB key: web `VITE_TMDB_API_KEY` removed; iOS `Info.plist` `TmdbApiKey` retired. **TMDB key DoD met.**
+- Both clients migrated off direct TMDB key: web `VITE_TMDB_API_KEY` removed; iOS `Info.plist` `TMDB_API_KEY` retired. **TMDB key DoD met.**
 - Web `DiscoverView` merged layout: friend sections + engine grid with provenance pool chips (`similar` / `taste` / `trending` / `variety` / `friend` / `generic`) + New Releases row (TMDB now_playing + upcoming, taste-filtered, date-asc).
 - iOS `DiscoverScreen` engine grid: `SuggestionsClient` wired, provenance chips rendered, New Releases section, card actions (save-for-later + rank tap).
-- Web `AddMediaModal` / `AddTVSeasonModal` / `MovieOnboardingPage` swap old `getSmartSuggestions/Backfill` + `buildTasteProfile` for edge-function calls via `suggestionsService.ts`.
+- Web `AddMediaModal` / `AddTVSeasonModal` / `MovieOnboardingPage` swap old `getSmartSuggestions/Backfill` + `buildTasteProfile` for edge-function calls via `invokeSuggestions` in `services/tmdbService.ts`.
 - Anonymous onboarding: `services/onboardingFixtures.ts` static pool (~48 curated movies) serves `MovieOnboardingPage` when there is no session — restores the try-before-signup funnel after the TMDB key was removed from the web bundle.
 - Journal quick-write wipe fix (T0): ceremony stage-A no longer overwrites an existing rich journal entry when `.moved` (`InsertOutcome` guard).
 - Contract: `docs/contracts/shared-payloads.md` §suggestions-function and §tmdb-proxy.

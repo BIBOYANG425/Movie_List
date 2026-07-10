@@ -649,7 +649,9 @@ Only `POST` accepted; other methods → 405.
 - `mediaType`: required. `new_releases` mode supports `"movie"` only (400 if `tv`).
 - `mode`: required. `"suggestions"` = smart 5-pool (generic fallback when below threshold
   3); `"backfill"` = recommendations-of-top-ids, variety pad, cap 20; `"new_releases"` =
-  now_playing + upcoming, taste-filtered, date-asc, movie only.
+  now_playing + upcoming, taste-filtered, date-asc, movie only. `new_releases`
+  exclusions are a SUPERSET of the old client behavior: server-side ranked +
+  watchlisted + the caller's `sessionExcludeIds` all apply.
 - `page`: positive integer, defaults to 1 if omitted.
 - `poolSlots`: optional; any keys override `DEFAULT_POOL_SLOTS` (similar:3, taste:4,
   trending:2, variety:2, friend:1; Σ=12). Values must be non-negative numbers.
@@ -736,7 +738,7 @@ Implementations: `supabase/functions/suggestions/index.ts` (HTTP shell),
 `supabase/functions/suggestions/engine.ts` (pure engine).
 Tests: `services/__tests__/suggestionsEngine.test.ts`.
 iOS client: `ios/Spool/Sources/Spool/Services/SuggestionsClient.swift`.
-Web client: `services/suggestionsService.ts`.
+Web client: `invokeSuggestions` + wrappers in `services/tmdbService.ts`.
 
 ## tmdb-proxy (since C3 Part B, branch `feat/c3-part-b-suggestions`)
 
@@ -744,7 +746,7 @@ Authenticated, allowlisted TMDB passthrough (`supabase/functions/tmdb-proxy/inde
 With the `suggestions` function this retires the TMDB key from BOTH app bundles — the
 key lives only in the function's secret store as `TMDB_API_KEY` and is injected
 server-side. **DoD met: `VITE_TMDB_API_KEY` removed from the web bundle; iOS
-`Info.plist` `TmdbApiKey` entry retired.** Both clients' TMDB fetch layers route through
+`Info.plist` `TMDB_API_KEY` entry retired.** Both clients' TMDB fetch layers route through
 this proxy.
 
 ### Auth + method
