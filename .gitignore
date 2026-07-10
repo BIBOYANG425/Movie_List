@@ -43,3 +43,6 @@ ios/SpoolSimulator/SpoolSimulator.xcodeproj/project.xcworkspace/
 
 # Agent working artifacts (task briefs, reports, review packages, progress ledger)
 .superpowers/
+
+# Simulator harness secrets (real keys — commit the .example instead)
+ios/SpoolSimulator/SpoolSimulator/Info.plist

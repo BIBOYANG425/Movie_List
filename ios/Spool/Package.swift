@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "SpoolMac", targets: ["SpoolMac"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/supabase/supabase-swift", from: "2.0.0"),
+        .package(url: "https://github.com/supabase/supabase-swift", "2.0.0"..<"2.44.0"), // 2.44+ changes createSignedURLs to [SignedURLResult] — PhotoStore incompatible; upgrade deliberately
     ],
     targets: [
         .target(
