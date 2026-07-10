@@ -124,20 +124,6 @@ final class AchievementsClientTests: XCTestCase {
         XCTAssertEqual(granted, ["first_rank", "first_follow"])
     }
 
-    // MARK: - grantQuietly error-swallow
-
-    func testGrantQuietlyNeverThrows() async {
-        // Fire-and-forget contract: grantQuietly must return without throwing
-        // regardless of client config. In the SPM test host there is no
-        // Info.plist Supabase config, so grant() throws .notConfigured and
-        // grantQuietly swallows it. (If a host DID have config but no session,
-        // the RPC error is likewise swallowed — same invariant.)
-        await AchievementsClient.grantQuietly()
-        // Reaching here without a thrown error IS the assertion. An explicit
-        // XCTAssertTrue keeps the test from reading as accidentally empty.
-        XCTAssertTrue(true, "grantQuietly returned without throwing")
-    }
-
     func testGrantThrowsNotConfiguredWithoutClient() async throws {
         // Only meaningful when the test host is unconfigured (the CI default).
         // Guarded so a locally-configured host doesn't spuriously fail on a

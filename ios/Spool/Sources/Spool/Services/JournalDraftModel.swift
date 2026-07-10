@@ -59,7 +59,9 @@ import SwiftUI
 ///        `grantAchievements`): `grant_achievements()` + one milestone-feed
 ///        event per newly-granted badge. Fires ONLY on the confirmed-save path
 ///        (after a/b), never on a throw/refused save/photo-mint. Opportunistic +
-///        fire-and-forget — a grant failure never fails the save.
+///        fire-and-forget — the DEFAULT production binding spawns a detached
+///        task so the grant RPC NEVER delays composer dismissal; a grant
+///        failure never fails the save.
 ///
 /// `guard !saving` re-entrancy: overlapping saves are dropped (a double-tapped
 /// Save button must not double-write).
@@ -170,7 +172,7 @@ public final class JournalDraftModel: ObservableObject {
         fetchProfileVisibility: @escaping FetchProfileVisibility,
         emitReviewEvent: @escaping EmitReviewEvent,
         emitJournalTag: @escaping EmitJournalTag,
-        grantAchievements: @escaping GrantAchievements = { await AchievementMilestones.grantAndEmitMilestones() },
+        grantAchievements: @escaping GrantAchievements = { Task.detached { await AchievementMilestones.grantAndEmitMilestones() } },
         currentUserID: @escaping CurrentUserID
     ) {
         self.probeOwnEntry = probeOwnEntry

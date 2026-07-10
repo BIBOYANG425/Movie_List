@@ -18,7 +18,8 @@ import Supabase
 ///   - Clients NEVER write `badge_unlock` notifications — the RPC does that
 ///     inside the same call. There is no notification write here.
 ///   - The RPC is called fire-and-forget AFTER a confirmed write (Task 2 wires
-///     the post-write hooks); `grantQuietly()` is that never-throwing wrapper.
+///     the post-write hooks via `AchievementMilestones.grantAndEmitMilestones()`
+///     in a detached task — see `JournalDraftModel`'s default binding).
 ///   - `earnedBadges(for:)` is a plain SELECT on `user_achievements`
 ///     (`badge_key`, `unlocked_at`); RLS SELECT is public, so it works for the
 ///     viewer's own id and any other user's id (the profile badge surface reads
@@ -61,23 +62,6 @@ public enum AchievementsClient {
             .execute()
             .value
         return granted
-    }
-
-    /// Fire-and-forget grant: calls `grant()` and swallows every error (logging
-    /// only). Never throws. This is the post-write hook shape the contract
-    /// prescribes for iOS — a grant failure or empty return must never affect
-    /// the triggering action's UX. Returns nothing on purpose; callers that
-    /// need the new-key list (e.g. to emit milestone feed events, Task 2) call
-    /// `grant()` directly and handle their own errors.
-    public static func grantQuietly() async {
-        do {
-            let granted = try await grant()
-            if !granted.isEmpty {
-                NSLog("[AchievementsClient] grantQuietly: granted \(granted.count) badge(s): \(granted.joined(separator: ","))")
-            }
-        } catch {
-            NSLog("[AchievementsClient] grantQuietly: suppressed error (\(error))")
-        }
     }
 
     // MARK: - Read (public SELECT)
