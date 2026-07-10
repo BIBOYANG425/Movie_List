@@ -448,11 +448,11 @@ These semantics are deliberate and documented — do not add cleanup without an 
 
 ### Re-rank emits `ranking_move`, never `ranking_remove` + `ranking_add`
 
-A web movie re-rank through the ceremony flow MUST emit a single `ranking_move` event with metadata `{notes?, year?}` (never `watched_with_user_ids` — the move sites do not pass it; consistent with the existing `ranking_move` sites in the `activity_events` table above). It must never emit `ranking_remove` followed by `ranking_add` — that double-emission miscounts milestones, misrepresents the feed, and was the pre-C4 bug (B3).
+A web re-rank through the ceremony flow on ANY of the three media verticals (movie, TV, book) MUST emit a single `ranking_move` event with metadata `{notes?, year?}` (never `watched_with_user_ids` — the move sites do not pass it; consistent with the existing `ranking_move` sites in the `activity_events` table above). It must never emit `ranking_remove` followed by `ranking_add` — that double-emission miscounts milestones, misrepresents the feed, and was the pre-C4/C5 bug (movie B3; TV/book B2).
 
 A same-tier reorder with no actual position change must emit NO event (B1 no-op suppression).
 
-The iOS ceremony satisfies the MUST too: `RankingRepository.insertRanking`
+The iOS MOVIE ceremony satisfies the MUST too (tv/book ceremonies do not exist on iOS yet — C5 iOS plan): `RankingRepository.insertRanking`
 pre-reads the existing `(user_id, tmdb_id)` row; when one exists it emits a
 single `ranking_move` (`{notes?, year?}`, watched-with stripped) and, on a
 cross-tier re-rank, compacts the source tier (full membership minus the id) as
@@ -460,12 +460,14 @@ well as the target — no gap left. A genuine fresh insert still emits
 `ranking_add`. The pure fresh-vs-re-rank decision is `CeremonyEmission.decide`
 (pinned by `TierSpliceTests`).
 
-**Known deviations (ledgered):** Two live paths do not yet satisfy the MUST
-above; both are deliberately deferred and tracked in
+**Event + stub gating (all three verticals):** ceremony completion MUST emit events and write stubs ONLY after a confirmed save success. A failed upsert returns false; the caller must early-return before `logRankingActivityEvent` and stub writes (movie parity landed in C4-B4; TV/book parity landed in C5-B4). iOS already enforces this via the `insertRanking` throw boundary (`RankPersistence.swift:97-110`).
+
+**Known deviations (ledgered):** One live path does not yet satisfy the re-rank MUST above; it is deliberately deferred and tracked in
 `docs/plans/2026-07-07-ios-parity-ledger.md`:
 
-1. **Web movie drag-migration** still emits `ranking_add` (the drag path was not touched in B3; Q2 standardization deferred).
-2. **Web TV/book re-rank** still emits `ranking_remove` + `ranking_add` (delete-first flow; needs the B3 treatment in a later cycle, deferred).
+1. **Web movie drag-migration** still emits `ranking_add` (the drag path was not touched in C4-B3; Q2 standardization deferred).
+
+~~**Web TV/book re-rank**~~ — FIXED in C5 (B2): TV/book re-rank is now non-destructive (rerankState marker, upsert-on-unique-key, `set_tier_order` both tiers, single `ranking_move`). Item 2 from the C4 known-deviations list is retired.
 
 ~~**iOS ceremony re-rank**~~ — FIXED (C4 iOS management-UI sub-plan, Task 2): `insertRanking` now compacts the source tier and emits `ranking_move`; see the paragraph above.
 

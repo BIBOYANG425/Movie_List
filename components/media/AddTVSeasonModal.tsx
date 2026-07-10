@@ -8,6 +8,7 @@ import {
   TMDBTVShow, TMDBTVSeasonSummary,
 } from '../../services/tmdbService';
 import { fuzzyFilterLocal, getBestCorrectedQuery } from '../../services/fuzzySearch';
+import { resolveTVPreselectRoute, healTVPreselect } from '../../services/watchlistRankHelpers';
 import { classifyBracket } from '../../services/rankingAlgorithm';
 import { RankingSession } from '../../services/rankingSession';
 import { useAuth } from '../../contexts/AuthContext';
@@ -201,26 +202,39 @@ export const AddTVSeasonModal: React.FC<AddTVSeasonModalProps> = ({
     setSessionId(crypto.randomUUID());
     sessionRef.current = null;
 
-    if (preselectedItem && preselectedItem.showTmdbId && !preselectedItem.seasonNumber) {
-      // Show-level bookmark — send user through season selection first.
+    // B1 defense-in-depth: route via the hardened pure predicate. It derives the
+    // real show id FROM THE ID (`tv_{n}` / `tv_{n}_s{k}`) when showTmdbId is
+    // 0/absent, so a whole-show preselect with a well-formed id still reaches the
+    // season grid (never mints a season-less `tv_{n}` row) and a legacy corrupt
+    // season row (show_tmdb_id=0) feeds the global-score fetch the REAL id instead
+    // of re-minting 0. See services/watchlistRankHelpers.resolveTVPreselectRoute.
+    const route = resolveTVPreselectRoute(preselectedItem);
+    if (route?.route === 'season-grid') {
+      // Show-level preselect — send user through season selection first.
       setSelectedItem(null);
       setShowLoading(true);
       setStep('search');
-      void getTVShowDetails(preselectedItem.showTmdbId).then((details) => {
+      void getTVShowDetails(route.showTmdbId!).then((details) => {
         if (cancelled || !details) { setShowLoading(false); return; }
         setSelectedShow(details);
         setShowLoading(false);
         setStep('show_detail');
       });
     } else if (preselectedItem) {
-      // Full season bookmark — go directly to tier selection.
-      setSelectedItem(preselectedItem);
+      // Full season preselect — go directly to tier selection.
+      // Stamp the derived show id back onto the item (C5-Task-2 self-heal): a
+      // legacy corrupt row (show_tmdb_id=0) carries the real id in its `tv_{n}_s{k}`
+      // key, which resolveTVPreselectRoute already derived for the score fetch.
+      // Without this step the raw preselect (showTmdbId=0) was seeded verbatim and
+      // completion would persist show_tmdb_id=0, re-minting corruption. Now the
+      // healed item flows all the way to onAdd → the DB write.
+      setSelectedItem(healTVPreselect(preselectedItem, route));
       if (preselectedItem.notes) setNotes(preselectedItem.notes);
       if (preselectedItem.watchedWithUserIds?.length) setWatchedWithUserIds(preselectedItem.watchedWithUserIds);
       setStep('tier');
 
-      if (preselectedItem.showTmdbId) {
-        void getTVShowGlobalScore(preselectedItem.showTmdbId).then((globalScore) => {
+      if (route?.showTmdbId) {
+        void getTVShowGlobalScore(route.showTmdbId).then((globalScore) => {
           if (cancelled || globalScore === undefined) return;
           setSelectedItem((prev) => (
             prev && prev.id === preselectedItem.id ? { ...prev, globalScore } : prev
