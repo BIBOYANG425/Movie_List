@@ -644,39 +644,67 @@ export interface MovieSuggestion extends TMDBMovie {
   pool?: SuggestionPool;
 }
 
+/**
+ * Invoke the `suggestions` edge function and return the raw item list.
+ *
+ * Error contract (provenance callers need reachable error UI):
+ *   - 401 from the function → empty array (auth-gate; signed-out users never
+ *     mount DiscoverView, but expired-token / relay 401 is treated as empty so
+ *     the UI shows the "no results" state, not an error banner).
+ *   - Any other HTTP error (4xx except 401, 5xx) → throws so the provenance
+ *     callers' catch blocks set engineState/newReleasesState = 'error'.
+ *   - Network / fetch failure → throws for the same reason.
+ *
+ * NON-PROVENANCE callers (fetchMovieSuggestions, fetchTVSuggestions) wrap this
+ * in a try/catch and return [] — preserving the AddMediaModal swallow-seam.
+ */
 async function invokeSuggestions(
   mediaType: 'movie' | 'tv',
   mode: SuggestionMode,
   page: number,
   sessionExcludeIds: string[],
 ): Promise<SuggestionResponseItem[]> {
-  try {
-    const { data, error } = await supabase.functions.invoke('suggestions', {
-      body: {
-        mediaType,
-        mode,
-        page,
-        locale: getTmdbLocale(),
-        // Session-local consumed ids only, capped at 200 to match the function's
-        // server-side cap (server also slices, this keeps the payload small).
-        sessionExcludeIds: sessionExcludeIds.slice(0, 200),
-      },
-    });
-    if (error) return [];
-    const items = (data as { items?: SuggestionResponseItem[] } | null)?.items;
-    return Array.isArray(items) ? items : [];
-  } catch {
-    return [];
+  const { data, error } = await supabase.functions.invoke('suggestions', {
+    body: {
+      mediaType,
+      mode,
+      page,
+      locale: getTmdbLocale(),
+      // Session-local consumed ids only, capped at 200 to match the function's
+      // server-side cap (server also slices, this keeps the payload small).
+      sessionExcludeIds: sessionExcludeIds.slice(0, 200),
+    },
+  });
+
+  if (error) {
+    // A 401 means unauthenticated (anon relay or expired token) — treat as
+    // empty, not a fault. DiscoverView never mounts signed-out, but keep the
+    // semantics sane: auth problems → empty, outages → throw.
+    const status = (error as { context?: Response }).context?.status;
+    if (status === 401) return [];
+    throw error;
   }
+
+  const items = (data as { items?: SuggestionResponseItem[] } | null)?.items;
+  return Array.isArray(items) ? items : [];
 }
 
-/** Fetch movie suggestions/backfill via the edge function, mapped to TMDBMovie. */
+/**
+ * Fetch movie suggestions/backfill via the edge function, mapped to TMDBMovie.
+ * Swallows all errors → [] so AddMediaModal and other non-Discover callers
+ * are unaffected by the surfacing change in invokeSuggestions.
+ */
 export async function fetchMovieSuggestions(
   mode: SuggestionMode,
   page: number,
   sessionExcludeIds: string[],
 ): Promise<TMDBMovie[]> {
-  const items = await invokeSuggestions('movie', mode, page, sessionExcludeIds);
+  let items: SuggestionResponseItem[];
+  try {
+    items = await invokeSuggestions('movie', mode, page, sessionExcludeIds);
+  } catch {
+    return [];
+  }
   return items.map((m): TMDBMovie => ({
     id: m.id,
     tmdbId: m.tmdbId,
@@ -695,7 +723,12 @@ export async function fetchMovieSuggestions(
  * Fetch movie suggestions for the Discover engine grid, preserving each item's
  * engine provenance `pool` (used to render the "why" chip). Distinct from
  * fetchMovieSuggestions, which drops the pool for the ranking modal that doesn't
- * surface provenance. Errors / signed-out degrade to [] like every other seam.
+ * surface provenance.
+ *
+ * Unlike fetchMovieSuggestions this function does NOT swallow errors: a real
+ * outage (non-401 HTTP error or network failure) propagates so DiscoverView's
+ * engineState/newReleasesState = 'error' UI fires. A 401 (anon / token-expired)
+ * resolves to [] so DiscoverView shows the empty-state instead.
  *
  * `mode` defaults to "suggestions" (the ≤12 5-pool grid). Pass "new_releases"
  * for the date-ascending new-releases row (movie-only, ≤10, chip "new").
@@ -721,13 +754,21 @@ export async function fetchMovieSuggestionsWithProvenance(
   }));
 }
 
-/** Fetch TV suggestions/backfill via the edge function, mapped to TMDBTVShow. */
+/**
+ * Fetch TV suggestions/backfill via the edge function, mapped to TMDBTVShow.
+ * Swallows all errors → [] (same swallow-seam as fetchMovieSuggestions).
+ */
 export async function fetchTVSuggestions(
   mode: SuggestionMode,
   page: number,
   sessionExcludeIds: string[],
 ): Promise<TMDBTVShow[]> {
-  const items = await invokeSuggestions('tv', mode, page, sessionExcludeIds);
+  let items: SuggestionResponseItem[];
+  try {
+    items = await invokeSuggestions('tv', mode, page, sessionExcludeIds);
+  } catch {
+    return [];
+  }
   return items.map((s): TMDBTVShow => ({
     id: s.id,
     tmdbId: s.tmdbId,

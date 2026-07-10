@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { chipLabelKeyForPool, DISCOVER_CHIP_KEYS } from '../discoverChips';
+import en from '../../i18n/en';
+import zh from '../../i18n/zh';
 
 describe('chipLabelKeyForPool', () => {
   it('maps every engine pool key to its provenance-chip i18n key', () => {
@@ -41,6 +43,15 @@ describe('chipLabelKeyForPool', () => {
     );
     for (const key of emitted) {
       expect(DISCOVER_CHIP_KEYS).toContain(key);
+    }
+  });
+});
+
+describe('discoverChips i18n coverage', () => {
+  it('every DISCOVER_CHIP_KEYS entry has a non-empty string in both en and zh tables', () => {
+    for (const key of DISCOVER_CHIP_KEYS) {
+      expect(en[key as keyof typeof en], `en missing "${key}"`).toBeTruthy();
+      expect(zh[key], `zh missing "${key}"`).toBeTruthy();
     }
   });
 });

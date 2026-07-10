@@ -125,6 +125,7 @@ const en = {
   'discover.newReleases': 'New Releases',
   'discover.newReleasesHint': 'Fresh in theaters and coming soon',
   'discover.newReleasesEmpty': 'No new releases to show right now.',
+  'discover.newReleasesError': 'Couldn\'t load new releases. Try again.',
   'discover.chip.friend': 'friends loved',
   'discover.chip.taste': 'your taste',
   'discover.chip.similar': 'because you ranked',

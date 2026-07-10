@@ -173,13 +173,15 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
     }, [userId]);
 
     // Engine grid — refetches whenever the page changes (Refresh = page+1).
-    const loadEngine = useCallback(async (page: number) => {
+    const loadEngine = useCallback(async (page: number, cancelled: { current: boolean }) => {
         setEngineState('loading');
         try {
             const items = await fetchMovieSuggestionsWithProvenance('suggestions', page, []);
+            if (cancelled.current) return;
             setEngineItems(items.slice(0, ENGINE_GRID_LIMIT));
             setEngineState('ready');
         } catch (err) {
+            if (cancelled.current) return;
             console.error('Discover engine load failed:', err);
             setEngineState('error');
         }
@@ -187,10 +189,15 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
 
     useEffect(() => {
         if (!userId) return;
-        void loadEngine(enginePage);
+        const cancelled = { current: false };
+        void loadEngine(enginePage, cancelled);
+        return () => {
+            cancelled.current = true;
+        };
     }, [userId, enginePage, loadEngine]);
 
-    // New Releases — loads once per mount.
+    // New Releases — loads on mount and on explicit retry.
+    const [newReleasesRetry, setNewReleasesRetry] = useState(0);
     useEffect(() => {
         if (!userId) return;
         let cancelled = false;
@@ -209,9 +216,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
         return () => {
             cancelled = true;
         };
-    }, [userId]);
+    }, [userId, newReleasesRetry]);
 
     const refreshEngine = () => setEnginePage((p) => p + 1);
+    const retryNewReleases = () => setNewReleasesRetry((n) => n + 1);
 
     if (loading) {
         return (
@@ -472,7 +480,16 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                         ))}
                     </div>
                 ) : newReleasesState === 'error' ? (
-                    <p className="text-sm text-muted-foreground">{t('discover.forYouError')}</p>
+                    <div className="flex items-center gap-3">
+                        <p className="text-sm text-muted-foreground">{t('discover.newReleasesError')}</p>
+                        <button
+                            onClick={retryNewReleases}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-card/60 border border-border/50 text-muted-foreground hover:text-foreground hover:border-border transition-all"
+                        >
+                            <RefreshCw size={12} />
+                            {t('discover.refresh')}
+                        </button>
+                    </div>
                 ) : newReleases.length === 0 ? (
                     <p className="text-sm text-muted-foreground">{t('discover.newReleasesEmpty')}</p>
                 ) : (

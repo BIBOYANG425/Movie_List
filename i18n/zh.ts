@@ -125,6 +125,7 @@ const zh: Record<string, string> = {
   'discover.newReleases': '新片上映',
   'discover.newReleasesHint': '正在热映与即将上映',
   'discover.newReleasesEmpty': '暂无新片可显示。',
+  'discover.newReleasesError': '新片加载失败，请重试。',
   'discover.chip.friend': '朋友喜欢',
   'discover.chip.taste': '你的口味',
   'discover.chip.similar': '因为你排过',
