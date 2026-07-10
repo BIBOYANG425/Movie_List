@@ -496,6 +496,12 @@ public enum ZH {
         "rankEntry.episodeSingular": "{n} 集",
         "rankEntry.episodePlural": "{n} 集",
         "rankEntry.ranked": "已排名",
+        // Rank-flow suggestion-grid save affordance (C7-iOS Task 4) — bookmark on
+        // a movie/show suggestion card. {title}: the movie/show title.
+        "rankEntry.saveA11y": "稍后再看",
+        "rankEntry.savedA11y": "已保存稍后再看",
+        "rankEntry.savedToast": "已把{title}保存到稍后再看",
+        "rankEntry.saveFailedToast": "没能保存{title}，再试一次",
 
         // App chrome (SpoolAppRoot). Preview-mode banner (iOS-only). Recast
         // without an em dash per the owner-voice rule; lowercase register to

@@ -237,9 +237,11 @@ public struct DiscoverScreen: View {
         switch model.engineState {
         case .loading:
             engineSkeletonGrid
-        case .ready(let items):
+        case .ready:
+            // Render the LIVE-filtered projection so an item ranked/saved this
+            // session vanishes from the grid immediately (C7-iOS Task 4).
             LazyVGrid(columns: engineColumns, spacing: 12) {
-                ForEach(items) { item in
+                ForEach(model.visibleEngineItems) { item in
                     SuggestionGridCard(
                         item: item,
                         saved: model.isSaved(item.id),
@@ -286,10 +288,12 @@ public struct DiscoverScreen: View {
                     }
                 }
             }
-        case .ready(let items):
+        case .ready:
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
-                    ForEach(items) { item in
+                    // Live-filtered projection — same session-scoped drop as the
+                    // engine grid (C7-iOS Task 4).
+                    ForEach(model.visibleNewReleasesItems) { item in
                         SuggestionGridCard(
                             item: item,
                             chipOverride: DiscoverCardCopy.chipCopy(for: .newRelease),
@@ -947,6 +951,13 @@ enum DiscoverCardCopy {
 /// (feed convention — distinct from a successful empty). When both sections
 /// come back empty, the model inspects `hasFriends` to choose between the
 /// no-friends nudge and the "nothing new" quiet state.
+///
+/// LIVE OWNED-DISPLAY FILTER (C7-iOS Task 4): the engine grid + New Releases
+/// render `visibleEngineItems` / `visibleNewReleasesItems`, which drop any id
+/// in `ownedThisSession` (`savedIds ∪ rankedIds`). The engine already excludes
+/// server-owned items, but an item saved or ranked mid-session was in the
+/// already-fetched page — this render-time re-filter makes it vanish the moment
+/// the user acts on it, mirroring web `AddMediaModal`'s `isAlreadyOwned` filter.
 @MainActor
 public final class DiscoverModel: ObservableObject {
 
@@ -1006,6 +1017,13 @@ public final class DiscoverModel: ObservableObject {
     /// tap and lets the card show a saved affordance. Owned/bookmarked items are
     /// excluded server-side for the grid; this de-dups the user's own taps.
     @Published public private(set) var savedIds: Set<String> = []
+    /// Ids the user RANKED this session via a grid card's rank-it (C7-iOS Task 4).
+    /// The engine excludes owned items server-side, but an item ranked mid-session
+    /// was already in the fetched page — this session-scoped set lets the live
+    /// display filter drop it so it vanishes the moment it's ranked, mirroring
+    /// web's `isAlreadyOwned` re-filter (`AddMediaModal.tsx:288-303`, where
+    /// `rankedIds`/`watchlistIds` are folded into `allExcludedIds` at render time).
+    @Published public private(set) var rankedIds: Set<String> = []
 
     private let loadRecs: LoadRecs
     private let loadTrending: LoadTrending
@@ -1127,10 +1145,21 @@ public final class DiscoverModel: ObservableObject {
         }
     }
 
-    /// The engine grid's items (empty for any non-`.ready` state).
+    /// The engine grid's items (empty for any non-`.ready` state). RAW — the
+    /// render surface reads `visibleEngineItems` instead so a mid-session
+    /// rank/save drops the card live.
     public var engineItems: [SuggestionItem] {
         if case .ready(let items) = engineState { return items }
         return []
+    }
+
+    /// The engine grid AFTER the live owned-display filter (C7-iOS Task 4). Drops
+    /// any item saved or ranked THIS session (`ownedThisSession`), mirroring web's
+    /// render-time `isAlreadyOwned` re-filter: the engine already excludes
+    /// server-owned items, but an item the user acts on mid-session was already in
+    /// the fetched page and must vanish immediately. The view renders this.
+    public var visibleEngineItems: [SuggestionItem] {
+        engineItems.filter { !ownedThisSession.contains($0.id) }
     }
 
     // MARK: - New Releases section (Part B)
@@ -1157,10 +1186,24 @@ public final class DiscoverModel: ObservableObject {
         }
     }
 
-    /// The New Releases items (empty for any non-`.ready` state).
+    /// The New Releases items (empty for any non-`.ready` state). RAW — the
+    /// render surface reads `visibleNewReleasesItems`.
     public var newReleasesItems: [SuggestionItem] {
         if case .ready(let items) = newReleasesState { return items }
         return []
+    }
+
+    /// New Releases AFTER the live owned-display filter (C7-iOS Task 4) — same
+    /// session-scoped drop as `visibleEngineItems`.
+    public var visibleNewReleasesItems: [SuggestionItem] {
+        newReleasesItems.filter { !ownedThisSession.contains($0.id) }
+    }
+
+    /// The ids that must vanish from the grids live: saved OR ranked this session.
+    /// The union backs both `visible*` projections so the two surfaces filter
+    /// identically (web `allExcludedIds` = ranked ∪ watchlisted).
+    private var ownedThisSession: Set<String> {
+        savedIds.union(rankedIds)
     }
 
     /// Error-vs-empty split for an engine section (web outage-vs-401 contract):
@@ -1218,20 +1261,27 @@ public final class DiscoverModel: ObservableObject {
     public func isSaved(_ id: String) -> Bool { savedIds.contains(id) }
 
     /// Rank an engine item — map to the RAW ceremony `Movie` (no watchlist
-    /// origin) and fire the injected entry point.
+    /// origin) and fire the injected entry point. Notes the id in `rankedIds` so
+    /// the live owned-display filter drops the card from the grid immediately
+    /// (C7-iOS Task 4 — web re-filters `isAlreadyOwned` at render).
     public func rankIt(_ item: SuggestionItem) {
+        rankedIds.insert(item.id)
         onRankIt(DiscoverCardCopy.movie(from: item))
     }
 
     /// Rank a social "from your friends" card.
     public func rankIt(_ rec: FriendRecommendation) {
-        guard let movie = DiscoverCardCopy.movie(from: DiscoverCardCopy.watchlistItem(from: rec)) else { return }
+        let item = DiscoverCardCopy.watchlistItem(from: rec)
+        guard let movie = DiscoverCardCopy.movie(from: item) else { return }
+        rankedIds.insert(item.id)
         onRankIt(movie)
     }
 
     /// Rank a social "trending with friends" card.
     public func rankIt(_ movie: TrendingMovie) {
-        guard let m = DiscoverCardCopy.movie(from: DiscoverCardCopy.watchlistItem(from: movie)) else { return }
+        let item = DiscoverCardCopy.watchlistItem(from: movie)
+        guard let m = DiscoverCardCopy.movie(from: item) else { return }
+        rankedIds.insert(item.id)
         onRankIt(m)
     }
 }

@@ -541,6 +541,14 @@ public enum EN {
         "rankEntry.episodeSingular": "{n} episode",
         "rankEntry.episodePlural": "{n} episodes",
         "rankEntry.ranked": "ranked",
+        // Rank-flow suggestion-grid save affordance (C7-iOS Task 4) — the small
+        // bookmark on a movie/show suggestion card. Mirrors web's modal-grid
+        // bookmark (`AddMediaModal`/`AddTVSeasonModal` `handleBookmark*`). A11y
+        // labels + optimistic-save toasts. {title}: the movie/show title.
+        "rankEntry.saveA11y": "save for later",
+        "rankEntry.savedA11y": "saved for later",
+        "rankEntry.savedToast": "saved {title} for later",
+        "rankEntry.saveFailedToast": "couldn't save {title} — try again",
 
         // App chrome (SpoolAppRoot). Preview-mode banner shown above the tab bar
         // to a user who onboarded without signing in — iOS-only surface (web has

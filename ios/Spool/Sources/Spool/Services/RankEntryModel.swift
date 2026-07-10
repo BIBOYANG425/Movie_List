@@ -62,6 +62,15 @@ public enum RankEntryStage: Equatable, Sendable {
 /// its Discover-screen suggestions surface; this in-flow grid is the web-modal
 /// parity surface (a picked movie → ceremony), independent of Discover.
 ///
+/// SUGGESTION-GRID SAVE AFFORDANCE (C7-iOS Task 4): each movie/tv suggestion card
+/// carries a small bookmark → `saveMovieSuggestion`/`saveShowSuggestion`
+/// (optimistic + toast + `savedIds` de-dup, the `DiscoverModel` pattern). Web
+/// parity: the movie modal bookmarks the WHOLE MOVIE; the tv modal's grid
+/// bookmark saves the WHOLE SHOW (`tv_{showId}`, `season_number` NULL), not a
+/// season (`AddTVSeasonModal.handleBookmarkSuggestion`). A save does NOT consume
+/// the suggestion — the card stays with a filled bookmark (only ranked/owned
+/// items are filtered by the web `isAlreadyOwned` seam, not saved ones).
+///
 /// Header last reviewed: 2026-07-10
 @MainActor
 public final class RankEntryModel: ObservableObject {
@@ -85,6 +94,12 @@ public final class RankEntryModel: ObservableObject {
     /// (Discover/T6 conventions).
     public typealias FetchSuggestions =
         (_ media: SuggestionMediaType, _ mode: SuggestionMode, _ page: Int, _ sessionExcludeIds: [String]) async throws -> [SuggestionItem]
+    /// Save-for-later — `WatchlistRepository.add`; returns success so the model
+    /// can toast the outcome + revert the optimistic saved-mark on failure (the
+    /// Discover pattern). C7-iOS Task 4: the rank-flow suggestion-grid bookmark.
+    public typealias SaveForLater = (WatchlistItem) async -> Bool
+    /// A user-visible message (bound to `ToastCenter.shared.show` in prod).
+    public typealias Toast = (String, ToastLevel) -> Void
 
     private let searchMoviesIO: SearchMovies
     private let searchTVIO: SearchTV
@@ -94,6 +109,8 @@ public final class RankEntryModel: ObservableObject {
     private let loadRankedTVIdsIO: LoadRankedTVIds
     private let isSignedInIO: IsSignedIn
     private let fetchSuggestionsIO: FetchSuggestions
+    private let saveForLaterIO: SaveForLater
+    private let toastIO: Toast
 
     // MARK: Published state
 
@@ -141,6 +158,13 @@ public final class RankEntryModel: ObservableObject {
     /// retry). 401/notAuthenticated map to a silent empty grid, not this flag.
     @Published public private(set) var tvSuggestionsFailed: Bool = false
 
+    /// Optimistic "saved this session" ids for the suggestion-grid bookmark
+    /// (C7-iOS Task 4). Swaps the card's bookmark glyph to a filled state and
+    /// de-dups a second tap. The ids are the media stub form (`tmdb_{n}` movies,
+    /// `tv_{n}` shows) — the SAME id the grid renders on, so `isSaved(_:)` reads
+    /// off the card's id directly. Mirrors `DiscoverModel.savedIds`.
+    @Published public private(set) var savedIds: Set<String> = []
+
     /// Prefetched backfill pool — the reservoir the consume-splice refills from.
     /// Generic items (media matches the current grid).
     private var backfillPool: [SuggestionItem] = []
@@ -183,6 +207,18 @@ public final class RankEntryModel: ObservableObject {
             try await SuggestionsClient.fetch(
                 mode: mode, mediaType: media, page: page, sessionExcludeIds: excludes
             ).items
+        },
+        saveForLater: @escaping SaveForLater = { item in
+            await WatchlistRepository.shared.add(item: item)
+        },
+        // The default binds the shared toast center. Hopped through a
+        // `@MainActor` Task because this default expression is evaluated in a
+        // nonisolated context (a designated-init default value), while
+        // `ToastCenter.shared.show` is main-actor-isolated. The model itself is
+        // `@MainActor`, so at the call site `toastIO` already runs on the main
+        // actor; the hop only satisfies the default-value evaluation context.
+        toast: @escaping Toast = { text, level in
+            Task { @MainActor in ToastCenter.shared.show(text, level: level) }
         }
     ) {
         self.searchMoviesIO = searchMovies
@@ -193,6 +229,8 @@ public final class RankEntryModel: ObservableObject {
         self.loadRankedTVIdsIO = loadRankedTVIds
         self.isSignedInIO = isSignedIn
         self.fetchSuggestionsIO = fetchTVSuggestions
+        self.saveForLaterIO = saveForLater
+        self.toastIO = toast
     }
 
     // MARK: Derived
@@ -494,6 +532,84 @@ public final class RankEntryModel: ObservableObject {
         var h: UInt64 = 5381
         for b in id.utf8 { h = (h &* 33) &+ UInt64(b) }
         return Int(h % 1000)
+    }
+
+    // MARK: - Suggestion-grid save-for-later (C7-iOS Task 4)
+
+    /// True once `id` has been saved-for-later this session (drives the card's
+    /// filled-bookmark affordance). The id is the grid card's stub id.
+    public func isSaved(_ id: String) -> Bool { savedIds.contains(id) }
+
+    /// Save a suggested MOVIE for later (the grid card's bookmark). Maps the
+    /// suggestion → a movie `WatchlistItem` and writes optimistically. Mirrors web
+    /// `AddMediaModal.handleBookmark` (a whole-movie bookmark). De-dups a second
+    /// tap via `savedIds`. Does NOT consume the suggestion — the card stays in the
+    /// grid with a saved mark (web keeps a bookmarked movie visible; only ranked/
+    /// owned items are filtered by `isAlreadyOwned`).
+    public func saveMovieSuggestion(_ movie: TMDBMovie) async {
+        await performSave(Self.movieWatchlistItem(from: movie))
+    }
+
+    /// Save a suggested SHOW for later. Per web `AddTVSeasonModal.handleBookmark
+    /// Suggestion`, the grid bookmark saves the WHOLE SHOW (`tv_{showId}`,
+    /// `season_number` NULL = whole show — `WatchlistItem.showTmdbId` set, no
+    /// season), NOT a single season. The season-level bookmark is a different web
+    /// seam (the season-select step), out of scope for the suggestion grid.
+    public func saveShowSuggestion(_ show: TMDBTVShow) async {
+        await performSave(Self.showWatchlistItem(from: show))
+    }
+
+    /// Shared optimistic save: mark the id saved (so a rapid second tap is a
+    /// no-op + the card shows saved state immediately), write, then toast success
+    /// or revert + toast failure. Mirrors `DiscoverModel.performSave`.
+    private func performSave(_ item: WatchlistItem) async {
+        guard !savedIds.contains(item.id) else { return }
+        savedIds.insert(item.id)
+        let ok = await saveForLaterIO(item)
+        if ok {
+            toastIO(L10n.t("rankEntry.savedToast", ["title": item.title]), .success)
+        } else {
+            savedIds.remove(item.id)
+            toastIO(L10n.t("rankEntry.saveFailedToast", ["title": item.title]), .error)
+        }
+    }
+
+    /// Map a suggested MOVIE (grid DTO) → a movie `WatchlistItem`. The id is the
+    /// suggestion's `tmdb_{n}` movie id; `year`/`posterUrl` coalesce to the
+    /// watchlist `''`-when-empty convention (`DiscoverCardCopy.watchlistItem`
+    /// precedent).
+    static func movieWatchlistItem(from movie: TMDBMovie) -> WatchlistItem {
+        WatchlistItem(
+            id: movie.id,
+            title: movie.title,
+            year: movie.year,
+            posterUrl: movie.posterUrl ?? "",
+            mediaType: .movie,
+            genres: movie.genres,
+            addedAt: Date(),
+            director: nil
+        )
+    }
+
+    /// Map a suggested SHOW (grid DTO) → a WHOLE-SHOW tv `WatchlistItem` (web
+    /// `handleBookmarkSuggestion`). The id is the show-level `tv_{showTmdbId}`
+    /// (`WatchlistContract.showId`), `showTmdbId` is the numeric show id, and
+    /// `seasonNumber` is nil (whole show — `isWholeShow == true`, never a B2 row
+    /// because `showTmdbId` is always non-nil here). `type` = `tv_season` via the
+    /// `.tv` media kind.
+    static func showWatchlistItem(from show: TMDBTVShow) -> WatchlistItem {
+        WatchlistItem(
+            id: WatchlistContract.showId(show.tmdbId),
+            title: show.name,
+            year: show.year,
+            posterUrl: show.posterUrl ?? "",
+            mediaType: .tv,
+            genres: show.genres,
+            addedAt: Date(),
+            creator: show.creators.first,
+            showTmdbId: show.tmdbId,
+            seasonNumber: nil
+        )
     }
 
     /// Splice a consumed item out of the grid by id, refill one slot from the

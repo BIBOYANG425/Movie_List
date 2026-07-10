@@ -25,10 +25,12 @@ final class RankManageModelTests: XCTestCase {
 
     // MARK: fixtures
 
-    private func item(_ id: String, tier: Tier = .A, rank: Int, year: Int? = 2020) -> RankedItem {
+    private func item(_ id: String, tier: Tier = .A, rank: Int, year: Int? = 2020,
+                      notes: String? = nil) -> RankedItem {
         RankedItem(
             id: id, title: "Movie \(id)", year: year, director: "Someone",
-            genres: ["Drama"], tier: tier, rank: rank, posterUrl: "http://p/\(id).jpg"
+            genres: ["Drama"], tier: tier, rank: rank, posterUrl: "http://p/\(id).jpg",
+            notes: notes
         )
     }
 
@@ -174,8 +176,32 @@ final class RankManageModelTests: XCTestCase {
         XCTAssertEqual(ev?.posterUrl, "http://p/b.jpg")
         // year nil on the moved item → nil on the event (metadata omits it).
         XCTAssertNil(ev?.year)
-        // notes is never carried by a drag reorder (RankedItem has none).
+        // this moved item has no notes → nil on the event.
         XCTAssertNil(ev?.notes)
+    }
+
+    /// C7-iOS Task 4: the projected `RankedItem.notes` now rides the drag
+    /// reorder's `ranking_move` metadata (web parity — the move sites carry the
+    /// item's notes when present). Previously the emission hardcoded `notes: nil`
+    /// because the projection dropped the column.
+    func testDragReorderCarriesProjectedNotes() async {
+        var emitted: [RankManageModel.MoveEvent] = []
+        let model = makeModel(
+            items: [
+                item("a", rank: 0),
+                item("b", rank: 1, notes: "gut-punch ending"),
+                item("c", rank: 2),
+            ],
+            emit: { emitted.append($0) }
+        )
+
+        // Move "b" (which carries notes) to the top of its tier.
+        await model.moveRow(tier: .A, from: IndexSet(integer: 1), to: 0)
+
+        XCTAssertEqual(emitted.count, 1)
+        XCTAssertEqual(emitted.first?.tmdbId, "b")
+        XCTAssertEqual(emitted.first?.notes, "gut-punch ending",
+                       "a drag reorder's ranking_move carries the moved item's notes")
     }
 
     // MARK: - 4. reorder throw → revert + toast, no emission
@@ -379,7 +405,24 @@ final class RankManageModelTests: XCTestCase {
         XCTAssertEqual(emitted.first?.tmdbId, "a")
         XCTAssertEqual(emitted.first?.tier, "B", "emission carries the TARGET tier")
         XCTAssertEqual(emitted.first?.year, "1994")
-        XCTAssertNil(emitted.first?.notes, "menu move never carries notes")
+        XCTAssertNil(emitted.first?.notes, "this item has no notes → nil on the event")
+    }
+
+    /// C7-iOS Task 4: a cross-tier menu move's `ranking_move` carries the moved
+    /// item's projected notes (web parity — the move sites carry notes).
+    func testMoveToTierCarriesProjectedNotes() async {
+        var emitted: [RankManageModel.MoveEvent] = []
+        let model = makeMenuModel(
+            items: [item("a", tier: .A, rank: 0, year: 1994, notes: "the vault scene")],
+            emitMove: { emitted.append($0) }
+        )
+
+        await model.moveTo(tier: .B, item: item("a", tier: .A, rank: 0, year: 1994,
+                                                notes: "the vault scene"))
+
+        XCTAssertEqual(emitted.count, 1)
+        XCTAssertEqual(emitted.first?.notes, "the vault scene",
+                       "a menu move carries the moved item's notes")
     }
 
     func testMoveToTierRevertsAndToastsOnThrowNoEmission() async {
@@ -564,7 +607,24 @@ final class RankManageModelTests: XCTestCase {
         XCTAssertEqual(removed.first?.tmdbId, "b")
         XCTAssertEqual(removed.first?.tier, "A")
         XCTAssertEqual(removed.first?.year, "1999")
-        XCTAssertNil(removed.first?.notes, "shelf item carries no notes → nil")
+        XCTAssertNil(removed.first?.notes, "this item has no notes → nil")
+    }
+
+    /// C7-iOS Task 4: a delete's `ranking_remove` carries the deleted item's
+    /// projected notes (web's `ranking_remove` writer passes `{notes, year}`).
+    func testDeleteCarriesProjectedNotes() async {
+        var removed: [RankManageModel.RemoveEvent] = []
+        let model = makeMenuModel(
+            items: [item("b", tier: .A, rank: 0, year: 1999, notes: "hope is a good thing")],
+            emitRemove: { removed.append($0) }
+        )
+
+        await model.delete(item: item("b", tier: .A, rank: 0, year: 1999,
+                                      notes: "hope is a good thing"))
+
+        XCTAssertEqual(removed.count, 1)
+        XCTAssertEqual(removed.first?.notes, "hope is a good thing",
+                       "a delete's ranking_remove carries the item's notes")
     }
 
     func testDeleteRevertsAndToastsOnThrowNoEmission() async {

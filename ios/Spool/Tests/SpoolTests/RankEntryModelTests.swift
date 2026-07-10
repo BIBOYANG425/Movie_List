@@ -727,4 +727,98 @@ final class RankEntryModelTests: XCTestCase {
         XCTAssertNil(TVPreselectRouter.showAndSeason(fromSeasonId: "tmdb_603"))
         XCTAssertNil(TVPreselectRouter.showAndSeason(fromSeasonId: "tv_1399_sx"))
     }
+
+    // MARK: - suggestion-grid save-for-later (C7-iOS Task 4)
+
+    /// The movie-suggestion mapper mints a MOVIE `WatchlistItem` — `tmdb_{n}` id,
+    /// `.movie` media, year/poster coalesced. Mirrors web `AddMediaModal`'s
+    /// whole-movie bookmark.
+    func testMovieSuggestionMapsToMovieWatchlistItem() {
+        let movie = RankEntryModel.movieDTO(from: movieSuggestion(603, title: "The Matrix"))
+        let item = RankEntryModel.movieWatchlistItem(from: movie)
+        XCTAssertEqual(item.id, "tmdb_603")
+        XCTAssertEqual(item.mediaType, .movie)
+        XCTAssertEqual(item.title, "The Matrix")
+        XCTAssertEqual(item.year, "2020")
+        XCTAssertEqual(item.posterUrl, "http://p/603.jpg")
+        XCTAssertFalse(item.isWholeShow, "a movie item is never a whole-show bookmark")
+    }
+
+    /// The show-suggestion mapper mints a WHOLE-SHOW tv `WatchlistItem` per web
+    /// `handleBookmarkSuggestion`: `tv_{showId}` id, `.tv` media, `showTmdbId`
+    /// set, `seasonNumber` nil → `isWholeShow`. NOT a season item, and never a
+    /// B2-corrupt row (`showTmdbId` is always non-nil).
+    func testShowSuggestionMapsToWholeShowWatchlistItem() {
+        let s = show(1399, name: "Game of Thrones", creators: ["David Benioff"], seasons: [])
+        let item = RankEntryModel.showWatchlistItem(from: s)
+        XCTAssertEqual(item.id, "tv_1399", "grid bookmark saves the SHOW-level id")
+        XCTAssertEqual(item.mediaType, .tv)
+        XCTAssertEqual(item.title, "Game of Thrones")
+        XCTAssertEqual(item.showTmdbId, 1399, "non-nil show id → never a B2-corrupt row")
+        XCTAssertNil(item.seasonNumber, "grid bookmark is whole-show, no season")
+        XCTAssertTrue(item.isWholeShow, "a nil season number reads as whole show")
+        XCTAssertEqual(item.creator, "David Benioff")
+    }
+
+    /// Saving a movie suggestion writes the mapped item + toasts + marks it
+    /// saved (optimistic, the Discover pattern).
+    func testSaveMovieSuggestionAddsAndToastsAndMarksSaved() async {
+        var saved: WatchlistItem?
+        var toastLevel: ToastLevel?
+        let m = RankEntryModel(
+            saveForLater: { item in saved = item; return true },
+            toast: { _, level in toastLevel = level }
+        )
+        let movie = RankEntryModel.movieDTO(from: movieSuggestion(603, title: "The Matrix"))
+
+        await m.saveMovieSuggestion(movie)
+
+        XCTAssertEqual(saved?.id, "tmdb_603")
+        XCTAssertEqual(saved?.mediaType, .movie)
+        XCTAssertEqual(toastLevel, .success)
+        XCTAssertTrue(m.isSaved("tmdb_603"), "the grid card shows the saved affordance")
+    }
+
+    /// Saving a show suggestion writes the WHOLE-SHOW item.
+    func testSaveShowSuggestionAddsWholeShowItem() async {
+        var saved: WatchlistItem?
+        let m = RankEntryModel(saveForLater: { item in saved = item; return true })
+        let s = show(1399, name: "Game of Thrones", seasons: [])
+
+        await m.saveShowSuggestion(s)
+
+        XCTAssertEqual(saved?.id, "tv_1399")
+        XCTAssertEqual(saved?.mediaType, .tv)
+        XCTAssertNil(saved?.seasonNumber, "whole show — no season")
+        XCTAssertTrue(m.isSaved("tv_1399"))
+    }
+
+    /// A second save of the same suggestion is a no-op (de-dup via `savedIds`,
+    /// the Discover pattern) — `add` fires exactly once.
+    func testSaveSuggestionIsIdempotentPerId() async {
+        var calls = 0
+        let m = RankEntryModel(saveForLater: { _ in calls += 1; return true })
+        let movie = RankEntryModel.movieDTO(from: movieSuggestion(1))
+
+        await m.saveMovieSuggestion(movie)
+        await m.saveMovieSuggestion(movie)
+
+        XCTAssertEqual(calls, 1, "the optimistic saved-set suppresses the duplicate write")
+    }
+
+    /// A failed save reverts the optimistic saved-mark and toasts an error, so
+    /// the user can retry.
+    func testFailedSaveRevertsMarkAndToastsError() async {
+        var toastLevel: ToastLevel?
+        let m = RankEntryModel(
+            saveForLater: { _ in false },
+            toast: { _, level in toastLevel = level }
+        )
+        let movie = RankEntryModel.movieDTO(from: movieSuggestion(1))
+
+        await m.saveMovieSuggestion(movie)
+
+        XCTAssertEqual(toastLevel, .error)
+        XCTAssertFalse(m.isSaved("tmdb_1"), "a failed save reverts the mark so a retry can fire")
+    }
 }

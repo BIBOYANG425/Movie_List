@@ -309,7 +309,11 @@ public struct RankEntryScreen: View {
                                 GridItem(.flexible(), spacing: 10)],
                       spacing: 12) {
                 ForEach(model.tvSuggestions) { show in
-                    SuggestedShowCard(show: show) { model.pickSuggestedShow(show) }
+                    SuggestedShowCard(
+                        show: show,
+                        saved: model.isSaved(show.id),
+                        onSave: { Task { await model.saveShowSuggestion(show) } }
+                    ) { model.pickSuggestedShow(show) }
                 }
             }
             .padding(.top, 12)
@@ -367,7 +371,11 @@ public struct RankEntryScreen: View {
                                 GridItem(.flexible(), spacing: 10)],
                       spacing: 12) {
                 ForEach(model.movieSuggestions) { movie in
-                    SuggestedMovieCard(movie: movie) {
+                    SuggestedMovieCard(
+                        movie: movie,
+                        saved: model.isSaved(movie.id),
+                        onSave: { Task { await model.saveMovieSuggestion(movie) } }
+                    ) {
                         if let picked = model.pickSuggestedMovie(movie) { onPick(picked) }
                     }
                 }
@@ -627,10 +635,14 @@ struct ShowRow: View {
     }
 }
 
-/// A suggested SHOW poster card in the tv suggestions grid (Task 7). Tapping it
-/// routes into the same season-grid flow as a search pick (`pickSuggestedShow`).
+/// A suggested SHOW poster card in the tv suggestions grid (Task 7). Tapping the
+/// card routes into the same season-grid flow as a search pick
+/// (`pickSuggestedShow`). A bookmark overlaid on the poster (C7-iOS Task 4) saves
+/// the WHOLE SHOW for later without leaving the grid (web `handleBookmarkSuggestion`).
 struct SuggestedShowCard: View {
     let show: TMDBTVShow
+    var saved: Bool = false
+    var onSave: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
@@ -640,6 +652,12 @@ struct SuggestedShowCard: View {
                     PosterBlock(title: firstWord(show.name), year: Int(show.year),
                                 director: show.creators.first ?? "—",
                                 seed: seed(show.id), posterUrl: show.posterUrl)
+                        .overlay(alignment: .topTrailing) {
+                            if let onSave {
+                                SuggestionBookmarkButton(saved: saved, action: onSave)
+                                    .padding(5)
+                            }
+                        }
                     Text(show.name)
                         .font(SpoolFonts.serif(13))
                         .foregroundStyle(t.ink)
@@ -666,10 +684,13 @@ struct SuggestedShowCard: View {
 }
 
 /// A suggested MOVIE poster card in the movie suggestions grid (C7-iOS Task 3).
-/// Tapping it consumes the suggestion and routes STRAIGHT to the ceremony (no
-/// season grid), mirroring the suggested-show card's layout.
+/// Tapping the card consumes the suggestion and routes STRAIGHT to the ceremony
+/// (no season grid). A small bookmark overlaid on the poster (C7-iOS Task 4)
+/// saves the movie for later without leaving the grid — web modal-grid parity.
 struct SuggestedMovieCard: View {
     let movie: TMDBMovie
+    var saved: Bool = false
+    var onSave: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
@@ -679,6 +700,12 @@ struct SuggestedMovieCard: View {
                     PosterBlock(title: firstWord(movie.title), year: Int(movie.year),
                                 director: "—",
                                 seed: seed(movie.id), posterUrl: movie.posterUrl)
+                        .overlay(alignment: .topTrailing) {
+                            if let onSave {
+                                SuggestionBookmarkButton(saved: saved, action: onSave)
+                                    .padding(5)
+                            }
+                        }
                     Text(movie.title)
                         .font(SpoolFonts.serif(13))
                         .foregroundStyle(t.ink)
@@ -701,6 +728,32 @@ struct SuggestedMovieCard: View {
         var h: UInt64 = 5381
         for b in id.utf8 { h = (h &* 33) &+ UInt64(b) }
         return Int(h % 1000)
+    }
+}
+
+/// The small save-for-later bookmark overlaid on a suggestion poster (C7-iOS
+/// Task 4). Filled + disabled once saved this session. Its own `Button` sits
+/// ON TOP of the card's tap button, so `.plain` + a hit area keeps the two taps
+/// distinct (a bookmark tap saves; a card tap picks). Shared by the movie + show
+/// suggestion cards.
+struct SuggestionBookmarkButton: View {
+    let saved: Bool
+    let action: () -> Void
+
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            Button(action: action) {
+                Image(systemName: saved ? "bookmark.fill" : "bookmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(t.ink)
+                    .padding(5)
+                    .background(Circle().fill(t.cream.opacity(0.92)))
+                    .overlay(Circle().stroke(t.ink, lineWidth: 1.2))
+            }
+            .buttonStyle(.plain)
+            .disabled(saved)
+            .accessibilityLabel(saved ? L10n.t("rankEntry.savedA11y") : L10n.t("rankEntry.saveA11y"))
+        }
     }
 }
 

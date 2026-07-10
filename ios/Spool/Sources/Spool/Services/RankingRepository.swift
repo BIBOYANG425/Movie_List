@@ -94,7 +94,9 @@ public actor RankingRepository {
     /// layer all operate on the SAME vertical the caller selected. Defaults to
     /// `"movie"` for the unchanged movie callers. Rows map to per-media
     /// `RankedItem`s via `rankedItem(from:)` — `attribution` fills the subtitle
-    /// slot (director/creator/author) and a tv row's `season_title` rides along.
+    /// slot (director/creator/author), a tv row's `season_title` rides along, and
+    /// (C7-iOS Task 4) the row's `notes` are projected so the management emissions
+    /// carry `{notes?, year?}` (the `.select()` already returns the column).
     public func getAllRankedItems(media: String = "movie") async throws -> [RankedItem] {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
         guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
@@ -162,7 +164,12 @@ public actor RankingRepository {
             bracket: bracket,
             globalScore: row.ol_ratings_average.map { $0 * 2 },
             seed: 0,
-            posterUrl: row.poster_url, seasonTitle: row.season_title
+            posterUrl: row.poster_url, seasonTitle: row.season_title,
+            // C7-iOS Task 4: project the row's notes so the management emissions
+            // (`RankMoveEmitter`/`RankRemoveEmitter`) carry `{notes?, year?}` like
+            // web's move/remove sites. The `.select()` already returns the column;
+            // it was previously dropped here, forcing emissions to `notes: nil`.
+            notes: row.notes
         )
     }
 

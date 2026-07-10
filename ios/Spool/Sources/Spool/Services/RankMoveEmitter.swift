@@ -13,12 +13,13 @@ import Supabase
 ///
 /// A drag reorder is a MOVE, so the event type is `ranking_move` with metadata
 /// `{notes?, year?}` and NEVER `watched_with_user_ids` (the move sites strip it,
-/// per `docs/contracts/shared-payloads.md` `## activity_events`). `RankedItem`
-/// carries no notes, so `notes` is always nil here; `year` flows from the moved
-/// item. Metadata omit-empty is `ActivityMetadata`'s existing job — an all-nil
-/// metadata encodes `{}`.
+/// per `docs/contracts/shared-payloads.md` `## activity_events`). `notes` flows
+/// from the moved item's projected `RankedItem.notes` (C7-iOS Task 4 — the
+/// projection now carries the row's notes), nil when the column is empty; `year`
+/// flows from the moved item. Metadata omit-empty is `ActivityMetadata`'s
+/// existing job — an all-nil metadata encodes `{}`.
 ///
-/// Header last reviewed: 2026-07-09
+/// Header last reviewed: 2026-07-10
 public enum RankMoveEmitter {
 
     /// The `activity_events` row for a management reorder `ranking_move`. Media
