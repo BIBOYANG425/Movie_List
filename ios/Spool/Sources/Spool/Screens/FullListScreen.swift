@@ -32,7 +32,8 @@ import SwiftUI
 /// (`moveTo`/`fetchNotes`+`saveNotes`/`delete` — optimistic + revert + toast,
 /// tested); the read-only list renders from `manage.items(in:)` so those
 /// optimistic mutations reflect instantly. Edit-notes opens `RankNotesSheet`
-/// seeded from a live-row `getNotes` probe (the shelf item has no notes column);
+/// seeded from a live-row `getNotes` probe (authoritative even though the shelf
+/// projection now carries `notes` — the probe defends against staleness);
 /// on a probe failure the sheet shows a warning and blocks blank saves so a
 /// whitespace commit can never wipe a real note whose contents are unknown;
 /// delete first opens a destructive confirmation dialog NAMING the movie;
