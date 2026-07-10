@@ -128,11 +128,18 @@ final class BookGenreTests: XCTestCase {
         )
     }
 
-    func testPartialMatchBreaksAfterFirstHitPerSubject() {
+    func testPartialMatchBreaksAfterFirstHitPerSubjectAndTieResolvesInWebSourceOrder() {
         // Each subject contributes at most one partial-match genre (web `break`).
-        // "fantasy romance" → the longest matching keyword hits once.
+        // "fantasy romance novels" contains both "fantasy" (7 chars, source index 2)
+        // and "romance" (7 chars, source index 12). Both are 7 characters, so length
+        // alone can't disambiguate. Web's `Array.prototype.sort` is STABLE, so equal-
+        // length keywords keep their insertion order — "fantasy" (earlier in
+        // SUBJECT_TO_GENRE) sorts before "romance". iOS must reproduce this: Fantasy
+        // wins, not Romance, and not a random result that varies per launch.
         let out = OpenLibraryService.normalizeBookGenres(["fantasy romance novels"])
-        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out.count, 1, "only one genre per subject (web break)")
+        XCTAssertEqual(out.first, "Fantasy",
+            "tie resolved in web source order: 'fantasy' (index 2) beats 'romance' (index 12)")
     }
 
     func testPartialMatchStopsAtThreeSubjects() {

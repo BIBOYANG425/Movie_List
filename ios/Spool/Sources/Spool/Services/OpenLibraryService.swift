@@ -15,13 +15,13 @@ import Foundation
 /// iOS setting it is strictly better API citizenship, not a parity gap.
 ///
 /// Best-effort contract, mirroring web's `try/catch` posture: every failure path
-/// (non-2xx HTTP, timeout, transport error, cancellation) swallows to `[]` with a
-/// log. Callers already treat empty as "no results". `Task.checkCancellation()`
+/// (HTTP 200-only check, timeout, transport error, cancellation) swallows to `[]`
+/// with a log. Callers already treat empty as "no results". `Task.checkCancellation()`
 /// runs before and after the network hop so a debounced/superseded search (the
 /// caller-seam cancels the stale `Task`) fires no further work — the service
 /// itself is a plain async fetch, with debounce owned by the caller.
 ///
-/// Header last reviewed: 2026-07-10
+/// Header last reviewed: 2026-07-10 (+ encoding, deterministic genre tie, quiet cancel)
 public enum OpenLibraryService {
 
     /// 8s request timeout — mirrors web `searchBooks(timeoutMs = 8000)`.
@@ -43,9 +43,11 @@ public enum OpenLibraryService {
 
     /// Keyless direct GET `openlibrary.org/search.json` → mapped books.
     ///
-    /// Best-effort: any non-2xx / timeout / transport error / cancellation yields
-    /// `[]` (web `try/catch` posture). Whitespace-only queries short-circuit to
-    /// `[]` without a request (web `if (!query.trim()) return []`).
+    /// Best-effort: HTTP 200-only (stricter than non-2xx; deliberate) / timeout /
+    /// transport error / cancellation (CancellationError or URLError.cancelled)
+    /// all yield `[]` (web `try/catch` posture). Cancellation is silent — it is
+    /// the expected debounce-supersede path, not a real failure. Whitespace-only
+    /// queries short-circuit to `[]` without a request (web `if (!query.trim()) return []`).
     public static func searchBooks(
         query: String, timeout: TimeInterval = defaultTimeout
     ) async -> [OpenLibraryBook] {
@@ -77,6 +79,10 @@ public enum OpenLibraryService {
         } catch is CancellationError {
             // Debounced/superseded search — silent, expected.
             return []
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            // Mid-flight URLSession cancellation (debounce supersede) — silent,
+            // same expected path as CancellationError above.
+            return []
         } catch {
             print("Open Library search error: \(error)")
             return []
@@ -91,6 +97,13 @@ public enum OpenLibraryService {
     ///
     /// Params mirror web `searchBooks`: `q` (already-trimmed query), `limit=10`,
     /// and the comma-joined `fields` list. No api key — OpenLibrary is keyless.
+    ///
+    /// `+` encoding: `URLComponents.percentEncodedQuery` leaves `+` unencoded
+    /// (RFC 3986 allows literal `+` in query strings), but OpenLibrary's server-
+    /// side decoding follows the `application/x-www-form-urlencoded` convention
+    /// and treats `+` as a space — so "C++" would arrive as "C  ". Web's
+    /// `URLSearchParams` encodes `+` → `%2B`. Force-encode after URLComponents
+    /// builds to produce the same byte-level result.
     static func buildSearchRequest(
         query: String, timeout: TimeInterval = defaultTimeout
     ) -> URLRequest {
@@ -100,6 +113,10 @@ public enum OpenLibraryService {
             URLQueryItem(name: "limit", value: "10"),
             URLQueryItem(name: "fields", value: searchFields.joined(separator: ",")),
         ]
+        // Force `+` → `%2B` so a query like "C++" arrives at OL intact.
+        // Mirror of `TMDBService.buildSearchQuery`'s force-encode step.
+        comps.percentEncodedQuery = (comps.percentEncodedQuery ?? "")
+            .replacingOccurrences(of: "+", with: "%2B")
         var request = URLRequest(url: comps.url!, timeoutInterval: timeout)
         request.httpMethod = "GET"
         // OL API policy: identify the app + a contact URL. Browsers can't set this;
@@ -158,58 +175,76 @@ public enum OpenLibraryService {
 
     /// Map messy OpenLibrary subjects → canonical book genres. Entry-for-entry
     /// port of web `SUBJECT_TO_GENRE` (`services/openLibraryService.ts`).
-    static let subjectToGenre: [String: String] = [
+    ///
+    /// Stored as an ORDERED array of (keyword, genre) pairs in web source order so
+    /// the partial-match fallback sort can resolve ties deterministically. Web's
+    /// `Object.entries(SUBJECT_TO_GENRE).sort((a, b) => b[0].length - a[0].length)`
+    /// is a STABLE sort — equal-length keywords retain their insertion order. Swift's
+    /// Dictionary has randomized iteration, so a plain `[String: String]` would
+    /// produce nondeterministic tie results. The ordered array + a stable sort on
+    /// (length desc, source index asc) reproduces web's exact tie resolution.
+    /// `subjectToGenre` (the `[String: String]` dictionary) is derived from this
+    /// array and kept for O(1) exact-match lookups.
+    static let subjectToGenreOrdered: [(keyword: String, genre: String)] = [
         // Fiction genres
-        "fiction": "Fiction",
-        "literary fiction": "Literary Fiction",
-        "fantasy": "Fantasy",
-        "fantasy fiction": "Fantasy",
-        "science fiction": "Sci-Fi",
-        "sci-fi": "Sci-Fi",
-        "mystery": "Mystery",
-        "mystery and detective stories": "Mystery",
-        "detective": "Mystery",
-        "thriller": "Thriller",
-        "thrillers": "Thriller",
-        "suspense": "Thriller",
-        "romance": "Romance",
-        "romance fiction": "Romance",
-        "love stories": "Romance",
-        "horror": "Horror",
-        "horror fiction": "Horror",
-        "humor": "Humor",
-        "humorous fiction": "Humor",
-        "comedy": "Humor",
-        "satire": "Humor",
-        "young adult": "Young Adult",
-        "young adult fiction": "Young Adult",
-        "juvenile fiction": "Children",
-        "children's fiction": "Children",
-        "children": "Children",
-        "graphic novels": "Graphic Novel",
-        "comics": "Graphic Novel",
-        "manga": "Graphic Novel",
-        "poetry": "Poetry",
-        "poems": "Poetry",
+        ("fiction", "Fiction"),
+        ("literary fiction", "Literary Fiction"),
+        ("fantasy", "Fantasy"),
+        ("fantasy fiction", "Fantasy"),
+        ("science fiction", "Sci-Fi"),
+        ("sci-fi", "Sci-Fi"),
+        ("mystery", "Mystery"),
+        ("mystery and detective stories", "Mystery"),
+        ("detective", "Mystery"),
+        ("thriller", "Thriller"),
+        ("thrillers", "Thriller"),
+        ("suspense", "Thriller"),
+        ("romance", "Romance"),
+        ("romance fiction", "Romance"),
+        ("love stories", "Romance"),
+        ("horror", "Horror"),
+        ("horror fiction", "Horror"),
+        ("humor", "Humor"),
+        ("humorous fiction", "Humor"),
+        ("comedy", "Humor"),
+        ("satire", "Humor"),
+        ("young adult", "Young Adult"),
+        ("young adult fiction", "Young Adult"),
+        ("juvenile fiction", "Children"),
+        ("children's fiction", "Children"),
+        ("children", "Children"),
+        ("graphic novels", "Graphic Novel"),
+        ("comics", "Graphic Novel"),
+        ("manga", "Graphic Novel"),
+        ("poetry", "Poetry"),
+        ("poems", "Poetry"),
         // Non-fiction genres
-        "non-fiction": "Non-fiction",
-        "nonfiction": "Non-fiction",
-        "biography": "Biography",
-        "biographies": "Biography",
-        "autobiography": "Biography",
-        "memoirs": "Biography",
-        "memoir": "Biography",
-        "history": "History",
-        "historical": "History",
-        "philosophy": "Philosophy",
-        "self-help": "Self-help",
-        "self help": "Self-help",
-        "personal development": "Self-help",
-        "science": "Science",
-        "popular science": "Science",
-        "travel": "Travel",
-        "travel writing": "Travel",
+        ("non-fiction", "Non-fiction"),
+        ("nonfiction", "Non-fiction"),
+        ("biography", "Biography"),
+        ("biographies", "Biography"),
+        ("autobiography", "Biography"),
+        ("memoirs", "Biography"),
+        ("memoir", "Biography"),
+        ("history", "History"),
+        ("historical", "History"),
+        ("philosophy", "Philosophy"),
+        ("self-help", "Self-help"),
+        ("self help", "Self-help"),
+        ("personal development", "Self-help"),
+        ("science", "Science"),
+        ("popular science", "Science"),
+        ("travel", "Travel"),
+        ("travel writing", "Travel"),
     ]
+
+    /// Derived O(1) lookup dictionary from `subjectToGenreOrdered`. Last write wins
+    /// for duplicate keywords (none exist in the current table); matches web's plain
+    /// object lookup semantics for exact-match pass 1.
+    static let subjectToGenre: [String: String] = Dictionary(
+        subjectToGenreOrdered.map { ($0.keyword, $0.genre) },
+        uniquingKeysWith: { _, new in new }
+    )
 
     /// Canonical book genre vocabulary — port of web `ALL_BOOK_GENRES`
     /// (`constants.ts`). Order-preserving. `validGenres` gates the mapper so a
@@ -233,25 +268,41 @@ public enum OpenLibraryService {
     /// fiction" beats "science"), take the first keyword each subject contains,
     /// `break` after that subject's first hit, and stop once 3 genres accumulate.
     /// The final result is capped at 5.
+    ///
+    /// Tie resolution: web's `Array.sort` is stable, so equal-length keywords retain
+    /// source-insertion order. The sorted array is derived from `subjectToGenreOrdered`
+    /// (not the dictionary) so the Swift sort can use the source index as a tiebreaker,
+    /// producing deterministic output across launches.
     public static func normalizeBookGenres(_ subjects: [String]) -> [String] {
         var genres = OrderedStringSet()
 
         for subject in subjects {
-            let lower = subject.lowercased().trimmingCharacters(in: .whitespaces)
+            // .whitespacesAndNewlines mirrors JS `String.prototype.trim()` which
+            // strips newlines as well as spaces.
+            let lower = subject.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
             if let mapped = subjectToGenre[lower], validGenres.contains(mapped) {
                 genres.insert(mapped)
             }
         }
 
         // Fallback: partial keyword matching (longest keyword first to avoid
-        // misclassification), only if nothing matched exactly.
+        // misclassification), only if nothing matched exactly. Sort by (length desc,
+        // source index asc) to match web's stable Object.entries sort behaviour —
+        // ties resolve in web source order, not randomly.
         if genres.isEmpty {
-            let sortedEntries = subjectToGenre.sorted { $0.key.count > $1.key.count }
+            let sortedEntries = subjectToGenreOrdered
+                .enumerated()
+                .sorted { lhs, rhs in
+                    let lLen = lhs.element.keyword.count
+                    let rLen = rhs.element.keyword.count
+                    return lLen != rLen ? lLen > rLen : lhs.offset < rhs.offset
+                }
+                .map(\.element)
             for subject in subjects {
-                let lower = subject.lowercased().trimmingCharacters(in: .whitespaces)
-                for (keyword, genre) in sortedEntries {
-                    if lower.contains(keyword), validGenres.contains(genre) {
-                        genres.insert(genre)
+                let lower = subject.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                for entry in sortedEntries {
+                    if lower.contains(entry.keyword), validGenres.contains(entry.genre) {
+                        genres.insert(entry.genre)
                         break
                     }
                 }

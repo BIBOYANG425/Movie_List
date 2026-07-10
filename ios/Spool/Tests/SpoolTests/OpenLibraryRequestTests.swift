@@ -5,11 +5,14 @@ import XCTest
 ///
 /// OpenLibrary is KEYLESS and called DIRECTLY (not via the tmdb-proxy, which is
 /// TMDB-only by design), so there is no api key to smuggle or strip. Instead the
-/// two parity facts we pin are: the exact query params (`q` trimmed, `limit=10`,
-/// the 10-field `fields` list) mirroring web `searchBooks`, and the `User-Agent`
+/// parity facts we pin are: the exact query params (`q` trimmed, `limit=10`,
+/// the 10-field `fields` list) mirroring web `searchBooks`; the `User-Agent`
 /// header set on the request (OL API policy asks for a contact-identifying UA;
 /// a browser CANNOT set User-Agent, so iOS setting it is strictly better
-/// citizenship — pinned here so it can never silently regress).
+/// citizenship — pinned here so it can never silently regress); and the `+`
+/// encoding fix (URLComponents leaves `+` literal; OL decodes it as space under
+/// application/x-www-form-urlencoded — force-encode to `%2B`, matching web's
+/// `URLSearchParams` behaviour).
 final class OpenLibraryRequestTests: XCTestCase {
 
     // MARK: - query params
@@ -61,5 +64,24 @@ final class OpenLibraryRequestTests: XCTestCase {
     func testBuildRequestIsAGet() {
         let req = OpenLibraryService.buildSearchRequest(query: "x")
         XCTAssertEqual(req.httpMethod, "GET")
+    }
+
+    // MARK: - + encoding (parity with web URLSearchParams)
+
+    /// Web's `URLSearchParams` encodes `+` → `%2B`. `URLComponents` leaves `+`
+    /// literal, and OpenLibrary's server decodes it as a space under the
+    /// `application/x-www-form-urlencoded` convention — so "C++" would arrive as
+    /// "C  ". `buildSearchRequest` force-encodes `+` → `%2B` after URLComponents
+    /// builds, matching the TMDB service's approach (`buildSearchQuery`).
+    func testPlusInQueryIsEncodedAsPercent2B() {
+        let req = OpenLibraryService.buildSearchRequest(query: "C++")
+        let raw = req.url!.absoluteString
+        // The percentEncodedQuery must contain C%2B%2B, not "C++" or "C  ".
+        XCTAssertTrue(raw.contains("C%2B%2B"),
+            "'+' in query must be encoded as '%2B', got URL: \(raw)")
+        XCTAssertFalse(raw.contains("C++"),
+            "raw '+' must not survive into the wire URL")
+        XCTAssertFalse(raw.contains("C  "),
+            "'+' must not be decoded as space in the wire URL")
     }
 }
