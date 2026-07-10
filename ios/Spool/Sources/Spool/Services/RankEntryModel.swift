@@ -39,6 +39,21 @@ public enum RankEntryStage: Equatable, Sendable {
 /// movie-shaped, and tv/book ranks write to Supabase). The model exposes
 /// `requiresSignIn` per mode so the view shows the nudge instead of results.
 ///
+/// TV SUGGESTIONS (C5-iOS Task 7): the tv search stage carries a suggestions grid
+/// (SHOWS, not seasons) below the empty search field, consuming
+/// `SuggestionsClient.fetch(mediaType: .tv)`. It replicates the web
+/// `AddTVSeasonModal` choreography (suggestions(12) + backfill(≤20) prefetch,
+/// consume-splice on pick with refill from the backfill pool, re-request backfill
+/// page+1 when the pool drops below 3, Refresh = suggestions page+1, session
+/// excludes = consumed SHOW ids `tv_{n}` capped 200). Tapping a suggested show
+/// routes into the SAME season-grid flow as a search pick (`pickShow`).
+///
+/// MOVIE-MODE ASYMMETRY: iOS movie mode surfaces suggestions on the separate
+/// Discover screen (whole-set-swap Refresh), NOT in this rank-entry screen — so
+/// only tv mode gets an in-flow suggestions grid here. That mirrors the web
+/// parity target (the tv MODAL), and a movie-mode in-flow grid is its own
+/// follow-up. Book mode is search-only (no engine).
+///
 /// Header last reviewed: 2026-07-10
 @MainActor
 public final class RankEntryModel: ObservableObject {
@@ -56,6 +71,10 @@ public final class RankEntryModel: ObservableObject {
     public typealias LoadRankedTVIds = () async -> [String]
     /// Whether the user is signed in (tv/book require it).
     public typealias IsSignedIn = () -> Bool
+    /// Fetch a page of tv suggestions/backfill for the grid (Task 7). Throws so
+    /// the model can map 401→empty vs other→error (Discover/T6 conventions).
+    public typealias FetchTVSuggestions =
+        (_ mode: SuggestionMode, _ page: Int, _ sessionExcludeIds: [String]) async throws -> [SuggestionItem]
 
     private let searchMoviesIO: SearchMovies
     private let searchTVIO: SearchTV
@@ -64,6 +83,7 @@ public final class RankEntryModel: ObservableObject {
     private let loadShowGlobalScoreIO: LoadShowGlobalScore
     private let loadRankedTVIdsIO: LoadRankedTVIds
     private let isSignedInIO: IsSignedIn
+    private let fetchTVSuggestionsIO: FetchTVSuggestions
 
     // MARK: Published state
 
@@ -85,10 +105,46 @@ public final class RankEntryModel: ObservableObject {
     /// True while the season grid is loading its detail.
     @Published public private(set) var isLoadingSeasons: Bool = false
 
+    // MARK: TV suggestions grid (Task 7)
+
+    /// The visible tv suggestions grid (SHOWS). Consumed shows are spliced out and
+    /// refilled from `backfillPool`. Empty when signed out / not yet loaded / no
+    /// suggestions returned.
+    @Published public private(set) var tvSuggestions: [TMDBTVShow] = []
+    /// True while the initial suggestions page is loading (skeleton state).
+    @Published public private(set) var isLoadingTVSuggestions: Bool = false
+    /// True once a backfill item has been mixed into the grid (web `hasBackfillMixed`
+    /// — flips the header copy from "popular right now" to "based on your taste").
+    @Published public private(set) var tvSuggestionsHasBackfill: Bool = false
+    /// True when the last suggestions load hit a non-auth error (the grid shows a
+    /// retry). 401/notAuthenticated map to a silent empty grid, not this flag.
+    @Published public private(set) var tvSuggestionsFailed: Bool = false
+
+    /// Prefetched backfill pool — the reservoir the consume-splice refills from.
+    private var backfillPool: [TMDBTVShow] = []
+    /// Session-consumed SHOW ids (`tv_{n}` form) this session; the server excludes
+    /// on show ids. Ordered so the cap keeps the most recent 200 (web parity).
+    private var sessionExcludeIds: [String] = []
+    /// The current suggestions page (Refresh advances it — web `page+1`).
+    private var suggestionsPage = 1
+    /// The current backfill page (re-request advances it when the pool drops <3).
+    private var backfillPage = 1
+    private var suggestionsTask: Task<Void, Never>? = nil
+    private var backfillTask: Task<Void, Never>? = nil
+
+    /// The server's session-exclude cap (mirrors `SuggestionsClient`'s prefix(200)
+    /// and web `sessionExcludeRef` cap).
+    static let sessionExcludeCap = 200
+    /// Refill the backfill pool when it drops below this many items (web `< 3`).
+    static let backfillRefillThreshold = 3
+
     private var searchTask: Task<Void, Never>? = nil
     private var seasonLoadTask: Task<Void, Never>? = nil
     /// Monotonic search generation so a stale async result is dropped.
     private var searchGeneration: Int = 0
+    /// Monotonic suggestions generation so a stale suggestions/backfill load (after
+    /// a Refresh or a mode switch) is dropped.
+    private var suggestionsGeneration: Int = 0
 
     public init(
         searchMovies: @escaping SearchMovies = { await TMDBService.searchMovies(query: $0) },
@@ -99,7 +155,12 @@ public final class RankEntryModel: ObservableObject {
         loadRankedTVIds: @escaping LoadRankedTVIds = {
             (try? await RankingRepository.shared.getAllRankedItems(media: "tv"))?.map(\.id) ?? []
         },
-        isSignedIn: @escaping IsSignedIn = { SpoolClient.shared != nil }
+        isSignedIn: @escaping IsSignedIn = { SpoolClient.shared != nil },
+        fetchTVSuggestions: @escaping FetchTVSuggestions = { mode, page, excludes in
+            try await SuggestionsClient.fetch(
+                mode: mode, mediaType: .tv, page: page, sessionExcludeIds: excludes
+            ).items
+        }
     ) {
         self.searchMoviesIO = searchMovies
         self.searchTVIO = searchTV
@@ -108,6 +169,7 @@ public final class RankEntryModel: ObservableObject {
         self.loadShowGlobalScoreIO = loadShowGlobalScore
         self.loadRankedTVIdsIO = loadRankedTVIds
         self.isSignedInIO = isSignedIn
+        self.fetchTVSuggestionsIO = fetchTVSuggestions
     }
 
     // MARK: Derived
@@ -151,6 +213,10 @@ public final class RankEntryModel: ObservableObject {
         showGlobalScore = nil
         isSearching = false
         isLoadingSeasons = false
+        // Leaving tv tears the suggestions grid down; entering tv (signed in)
+        // loads it fresh. Book/movie never show a grid here.
+        resetTVSuggestions()
+        if newMode == .tv { loadTVSuggestions() }
     }
 
     // MARK: Search (debounced by the view; the model runs the fetch)
@@ -242,6 +308,187 @@ public final class RankEntryModel: ObservableObject {
         rankedSeasonNumbers = TVPreselectRouter.rankedSeasonNumbers(
             showTmdbId: showId, rankedTVIds: rankedIds)
         isLoadingSeasons = false
+    }
+
+    // MARK: TV suggestions grid (Task 7)
+
+    /// (Re)load the tv suggestions grid at the current `suggestionsPage`, and
+    /// prefetch the backfill pool at page 1. Signed-out is a no-op (the view shows
+    /// the sign-in nudge, and a suggestions fetch would 401). Mirrors web
+    /// `loadInitialTVSuggestions`: suggestions is the visible grid, backfill is the
+    /// silent reservoir consume-splice refills from. A `notAuthenticated`/401 error
+    /// lands an empty grid (no retry); any other error flips `tvSuggestionsFailed`.
+    public func loadTVSuggestions() {
+        guard mode == .tv, !requiresSignIn else { resetTVSuggestions(); return }
+        suggestionsTask?.cancel()
+        backfillTask?.cancel()
+        suggestionsGeneration &+= 1
+        let gen = suggestionsGeneration
+
+        isLoadingTVSuggestions = true
+        tvSuggestionsHasBackfill = false
+        tvSuggestionsFailed = false
+        // Reset the backfill reservoir for a fresh page load (web parity).
+        backfillPage = 1
+        backfillPool = []
+
+        let page = suggestionsPage
+        let excludes = sessionExcludeIds
+        suggestionsTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let items = try await self.fetchTVSuggestionsIO(.suggestions, page, excludes)
+                self.applySuggestions(items, gen: gen)
+            } catch {
+                self.applySuggestionsError(error, gen: gen)
+            }
+        }
+        backfillTask = Task { [weak self] in
+            guard let self else { return }
+            // A backfill failure is silent — the reservoir just stays empty; the
+            // visible grid degrades to fewer refills, never an error banner.
+            let items = (try? await self.fetchTVSuggestionsIO(.backfill, 1, excludes)) ?? []
+            self.applyBackfill(items, gen: gen)
+        }
+    }
+
+    private func applySuggestions(_ items: [SuggestionItem], gen: Int) {
+        guard gen == suggestionsGeneration else { return }
+        tvSuggestions = items.map(Self.show(from:))
+        isLoadingTVSuggestions = false
+        tvSuggestionsFailed = false
+    }
+
+    private func applySuggestionsError(_ error: Error, gen: Int) {
+        guard gen == suggestionsGeneration else { return }
+        isLoadingTVSuggestions = false
+        tvSuggestions = []
+        // 401 / not-authenticated → silent empty (retry would 401 again); every
+        // other failure → a retry affordance (Discover/T6 outage-vs-401 contract).
+        switch error {
+        case SuggestionsClient.SuggestionsError.notAuthenticated,
+             SuggestionsClient.SuggestionsError.http(401):
+            tvSuggestionsFailed = false
+        default:
+            tvSuggestionsFailed = true
+        }
+    }
+
+    private func applyBackfill(_ items: [SuggestionItem], gen: Int) {
+        guard gen == suggestionsGeneration else { return }
+        backfillPool = items.map(Self.show(from:))
+    }
+
+    /// Refresh the suggestions grid — advance the page and reload (web
+    /// `handleRefreshSuggestions`: `suggestionPageRef += 1`). Both the visible grid
+    /// and the backfill reservoir re-request under the new page.
+    public func refreshTVSuggestions() {
+        guard mode == .tv, !requiresSignIn else { return }
+        suggestionsPage += 1
+        loadTVSuggestions()
+    }
+
+    /// The user tapped a SUGGESTED show. Consume it (splice out + refill from the
+    /// backfill pool, note its show id in the session excludes) and route into the
+    /// SAME season-grid flow as a search pick (`pickShow`). Mirrors web
+    /// `handleSelectSuggestion`.
+    public func pickSuggestedShow(_ show: TMDBTVShow) {
+        consumeSuggestion(show)
+        pickShow(show)
+    }
+
+    /// Splice a consumed show out of the grid, refill one slot from the backfill
+    /// pool (skipping ids already present), note the SHOW id in the session
+    /// excludes (capped 200), and re-request the backfill pool when it drops below
+    /// the refill threshold. Mirrors web `consumeSuggestion`.
+    private func consumeSuggestion(_ show: TMDBTVShow) {
+        noteConsumed(show.id)
+        var without = tvSuggestions.filter { $0.id != show.id }
+        if !backfillPool.isEmpty {
+            let present = Set(without.map(\.id))
+            var fill: TMDBTVShow? = nil
+            while !backfillPool.isEmpty {
+                let candidate = backfillPool.removeFirst()
+                if !present.contains(candidate.id) { fill = candidate; break }
+            }
+            if let fill {
+                tvSuggestionsHasBackfill = true
+                without.append(fill)
+            }
+            if backfillPool.count < Self.backfillRefillThreshold {
+                requestBackfillNextPage()
+            }
+        }
+        tvSuggestions = without
+    }
+
+    /// Re-request the backfill pool at the next page and REPLACE the reservoir
+    /// (web `prefetchBackfillPool(page)` overwrites `backfillPoolRef`). Runs under
+    /// the current suggestions generation so a stale Refresh/mode-switch drops it.
+    private func requestBackfillNextPage() {
+        backfillPage += 1
+        let page = backfillPage
+        let excludes = sessionExcludeIds
+        let gen = suggestionsGeneration
+        backfillTask?.cancel()
+        backfillTask = Task { [weak self] in
+            guard let self else { return }
+            let items = (try? await self.fetchTVSuggestionsIO(.backfill, page, excludes)) ?? []
+            self.applyBackfill(items, gen: gen)
+        }
+    }
+
+    /// Test seam — run the consume-splice choreography without the `pickShow`
+    /// stage transition (so the exclude-cap accumulation can be exercised over many
+    /// shows without the grid re-rendering into the season-grid stage each time).
+    func consumeForTest(_ show: TMDBTVShow) { consumeSuggestion(show) }
+
+    /// Note a consumed SHOW id in the session excludes, de-duped and capped at 200
+    /// keeping the most recent (web `noteConsumed`). Show ids are already `tv_{n}`
+    /// (search + suggestions mint them that way); the server excludes on show ids.
+    private func noteConsumed(_ id: String) {
+        guard !sessionExcludeIds.contains(id) else { return }
+        sessionExcludeIds.append(id)
+        if sessionExcludeIds.count > Self.sessionExcludeCap {
+            sessionExcludeIds = Array(sessionExcludeIds.suffix(Self.sessionExcludeCap))
+        }
+    }
+
+    /// Tear the suggestions grid + reservoir down (leaving tv / signed out). Does
+    /// NOT reset `suggestionsPage`/`sessionExcludeIds` — those persist for the
+    /// session so a Refresh keeps advancing and re-entered tv keeps its excludes.
+    private func resetTVSuggestions() {
+        suggestionsTask?.cancel()
+        backfillTask?.cancel()
+        suggestionsGeneration &+= 1
+        tvSuggestions = []
+        backfillPool = []
+        isLoadingTVSuggestions = false
+        tvSuggestionsHasBackfill = false
+        tvSuggestionsFailed = false
+    }
+
+    /// Build a `TMDBTVShow` from a tv `SuggestionItem` so a tapped suggestion can
+    /// route through `pickShow` (which loads the real season detail). The id is the
+    /// suggestion's `tv_{n}` show id; seasons are nil (the grid pick re-fetches
+    /// full detail). Genres/creators the suggestion payload doesn't carry are left
+    /// empty — `pickShow`'s detail load fills them for the season `Movie`.
+    static func show(from item: SuggestionItem) -> TMDBTVShow {
+        TMDBTVShow(
+            id: item.id,
+            tmdbId: item.tmdbId,
+            name: item.title,
+            year: item.year,
+            posterUrl: item.posterUrl,
+            backdropUrl: item.backdropUrl,
+            genres: item.genres,
+            overview: item.overview,
+            seasonCount: item.seasonCount,
+            status: "",
+            creators: [],
+            voteAverage: item.voteAverage,
+            seasons: nil
+        )
     }
 
     /// Seed the season grid DIRECTLY for a known show id (the rank-from-watchlist

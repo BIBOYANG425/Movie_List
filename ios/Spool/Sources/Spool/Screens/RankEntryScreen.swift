@@ -4,10 +4,13 @@ import SwiftUI
 /// switch drives three search modes off one `RankEntryModel`:
 ///
 ///  * MOVIE — film search → tap → `onPick(movie)` (byte-identical to pre-C5).
-///  * TV — show search → tap show → season grid (Specials filtered by
+///  * TV — an empty search field surfaces a SUGGESTIONS grid (SHOWS, Task 7) via
+///    `SuggestionsClient.fetch(mediaType: .tv)`; typing swaps it for show search.
+///    Tap a suggested/searched show → season grid (Specials filtered by
 ///    `getTVShowDetails`, already-ranked seasons disabled) → tap season →
 ///    `onPick(seasonMovie)` with the composite `tv_{show}_s{n}` id + real tv
-///    fields (T5's construction conventions via `Movie.tvSeason`).
+///    fields (T5's construction conventions via `Movie.tvSeason`). The grid's
+///    consume-splice / backfill / Refresh choreography lives in `RankEntryModel`.
 ///  * BOOK — OpenLibrary search → tap book → `onPick(bookMovie)` (`ol_` id,
 ///    author, `olRatingsAverage`; `voteAverage` stays nil).
 ///
@@ -167,13 +170,20 @@ public struct RankEntryScreen: View {
             signInNudge
         } else {
             resultsSection
+                // After a signed-out user signs in from the nudge, the live gate
+                // flips off — load the tv suggestions grid that was suppressed.
+                .onChange(of: model.requiresSignIn) { nowRequires in
+                    if !nowRequires && model.mode == .tv { model.loadTVSuggestions() }
+                }
         }
     }
 
     @ViewBuilder
     private var resultsSection: some View {
         if query.trimmingCharacters(in: .whitespaces).isEmpty {
-            EmptyView()
+            // Empty query: tv mode surfaces the suggestions grid (SHOWS); movie/book
+            // show nothing until the user types (movie's grid lives on Discover).
+            if model.mode == .tv { tvSuggestionsGrid }
         } else {
             switch model.mode {
             case .movie: movieResults
@@ -229,6 +239,60 @@ public struct RankEntryScreen: View {
             searchingRow
         } else {
             noResults
+        }
+    }
+
+    // MARK: tv suggestions grid (Task 7) — shown under an empty search field
+
+    @ViewBuilder
+    private var tvSuggestionsGrid: some View {
+        if model.isLoadingTVSuggestions {
+            searchingRow
+        } else if !model.tvSuggestions.isEmpty {
+            HStack {
+                Text(model.tvSuggestionsHasBackfill ? "BASED ON YOUR TASTE" : "POPULAR RIGHT NOW")
+                    .font(SpoolFonts.mono(10))
+                    .tracking(2)
+                    .foregroundStyle(SpoolTokens.paper.inkSoft)
+                Spacer()
+                Button(action: { model.refreshTVSuggestions() }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("refresh")
+                            .font(SpoolFonts.mono(10))
+                    }
+                    .foregroundStyle(SpoolTokens.paper.inkSoft)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 18)
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
+                                GridItem(.flexible(), spacing: 10),
+                                GridItem(.flexible(), spacing: 10)],
+                      spacing: 12) {
+                ForEach(model.tvSuggestions) { show in
+                    SuggestedShowCard(show: show) { model.pickSuggestedShow(show) }
+                }
+            }
+            .padding(.top, 12)
+        } else if model.tvSuggestionsFailed {
+            VStack(spacing: 10) {
+                Text("couldn't load suggestions")
+                    .font(SpoolFonts.hand(14))
+                    .foregroundStyle(SpoolTokens.paper.inkSoft)
+                SpoolPill("retry", size: .sm) { model.loadTVSuggestions() }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 24)
+        } else {
+            // No suggestions (fresh account / server empty) — a quiet hint to search.
+            Text("search a show to rank a season")
+                .font(SpoolFonts.hand(14))
+                .foregroundStyle(SpoolTokens.paper.inkSoft)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 24)
         }
     }
 
@@ -457,6 +521,44 @@ struct ShowRow: View {
         let year = show.year.isEmpty ? "—" : show.year
         return "TV · \(year)"
     }
+    private func firstWord(_ s: String) -> String {
+        s.split(separator: " ").first.map(String.init) ?? s
+    }
+    private func seed(_ id: String) -> Int {
+        var h: UInt64 = 5381
+        for b in id.utf8 { h = (h &* 33) &+ UInt64(b) }
+        return Int(h % 1000)
+    }
+}
+
+/// A suggested SHOW poster card in the tv suggestions grid (Task 7). Tapping it
+/// routes into the same season-grid flow as a search pick (`pickSuggestedShow`).
+struct SuggestedShowCard: View {
+    let show: TMDBTVShow
+    let action: () -> Void
+
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            Button(action: action) {
+                VStack(alignment: .leading, spacing: 4) {
+                    PosterBlock(title: firstWord(show.name), year: Int(show.year),
+                                director: show.creators.first ?? "—",
+                                seed: seed(show.id), posterUrl: show.posterUrl)
+                    Text(show.name)
+                        .font(SpoolFonts.serif(13))
+                        .foregroundStyle(t.ink)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(show.year.isEmpty ? "—" : show.year)
+                        .font(SpoolFonts.mono(9))
+                        .foregroundStyle(t.inkSoft)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     private func firstWord(_ s: String) -> String {
         s.split(separator: " ").first.map(String.init) ?? s
     }

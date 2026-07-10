@@ -245,6 +245,245 @@ final class RankEntryModelTests: XCTestCase {
                        "requiresSignIn must re-evaluate immediately after sign-in")
     }
 
+    // MARK: - TV suggestions grid (Task 7)
+
+    /// A tv `SuggestionItem` fixture (`tv_{n}` show id, mediaType .tv).
+    private func suggestion(_ n: Int, title: String? = nil) -> SuggestionItem {
+        SuggestionItem(
+            id: "tv_\(n)", tmdbId: n, title: title ?? "Show \(n)", year: "2020",
+            posterUrl: "http://p/\(n).jpg", backdropUrl: nil, mediaType: .tv,
+            genres: ["Drama"], overview: "", voteAverage: 8.0, seasonCount: 3,
+            pool: .trending)
+    }
+
+    /// A recording fake for the suggestions fetch — returns per-mode/page fixtures
+    /// and records every (mode, page, excludes) call for choreography assertions.
+    @MainActor
+    final class SuggestionsFake {
+        var suggestionsByPage: [Int: [SuggestionItem]] = [:]
+        var backfillByPage: [Int: [SuggestionItem]] = [:]
+        var suggestionsError: Error? = nil
+        private(set) var calls: [(mode: SuggestionMode, page: Int, excludes: [String])] = []
+
+        func fetch(_ mode: SuggestionMode, _ page: Int, _ excludes: [String]) async throws -> [SuggestionItem] {
+            calls.append((mode, page, excludes))
+            switch mode {
+            case .suggestions:
+                if let e = suggestionsError { throw e }
+                return suggestionsByPage[page] ?? []
+            case .backfill:
+                return backfillByPage[page] ?? []
+            case .newReleases:
+                return []
+            }
+        }
+    }
+
+    private func settle() async {
+        try? await Task.sleep(nanoseconds: 60_000_000)
+    }
+
+    func testEnteringTVLoadsSuggestionsGridAndPrefetchesBackfill() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...5).map { suggestion($0) }
+        fake.backfillByPage[1] = (100...104).map { suggestion($0) }
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        XCTAssertEqual(m.tvSuggestions.map(\.tmdbId), [1, 2, 3, 4, 5])
+        XCTAssertFalse(m.isLoadingTVSuggestions)
+        // Both a suggestions(page 1) and a backfill(page 1) call fired.
+        XCTAssertTrue(fake.calls.contains { $0.mode == .suggestions && $0.page == 1 })
+        XCTAssertTrue(fake.calls.contains { $0.mode == .backfill && $0.page == 1 })
+    }
+
+    func testSignedOutTVLoadsNoSuggestions() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = [suggestion(1)]
+        let m = RankEntryModel(isSignedIn: { false }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        XCTAssertTrue(m.tvSuggestions.isEmpty)
+        XCTAssertTrue(fake.calls.isEmpty, "signed-out tv fires no suggestions request")
+    }
+
+    func testConsumeSplicesShowOutAndRefillsFromBackfill() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...3).map { suggestion($0) }
+        fake.backfillByPage[1] = (100...105).map { suggestion($0) }
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        let picked = m.tvSuggestions.first { $0.tmdbId == 2 }!
+        m.pickSuggestedShow(picked)
+
+        // Show 2 spliced out; a backfill item (100) appended to keep the grid full.
+        XCTAssertFalse(m.tvSuggestions.contains { $0.tmdbId == 2 })
+        XCTAssertEqual(m.tvSuggestions.map(\.tmdbId), [1, 3, 100])
+        XCTAssertTrue(m.tvSuggestionsHasBackfill, "a backfill item mixed in flips the flag")
+    }
+
+    func testConsumeRefillSkipsIdsAlreadyPresent() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...3).map { suggestion($0) }
+        // Backfill pool leads with an id ALREADY in the grid (3) — it must be skipped.
+        fake.backfillByPage[1] = [suggestion(3), suggestion(200)]
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        m.pickSuggestedShow(m.tvSuggestions.first { $0.tmdbId == 1 }!)
+        // Duplicate id 3 skipped; 200 fills the slot.
+        XCTAssertEqual(m.tvSuggestions.map(\.tmdbId), [2, 3, 200])
+    }
+
+    func testBackfillRefetchWhenPoolDropsBelowThreshold() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...5).map { suggestion($0) }
+        // Pool has exactly 3 — consuming one refills (pool→2) which is < 3, so a
+        // page-2 backfill re-request fires.
+        fake.backfillByPage[1] = (100...102).map { suggestion($0) }
+        fake.backfillByPage[2] = (200...205).map { suggestion($0) }
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        m.pickSuggestedShow(m.tvSuggestions.first!)
+        await settle()
+
+        XCTAssertTrue(fake.calls.contains { $0.mode == .backfill && $0.page == 2 },
+                      "pool dropping below 3 re-requests backfill at page+1")
+    }
+
+    func testRefreshAdvancesSuggestionsPage() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = [suggestion(1)]
+        fake.suggestionsByPage[2] = [suggestion(2)]
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+        XCTAssertEqual(m.tvSuggestions.map(\.tmdbId), [1])
+
+        m.refreshTVSuggestions()
+        await settle()
+
+        XCTAssertEqual(m.tvSuggestions.map(\.tmdbId), [2], "Refresh = suggestions page+1, whole swap")
+        XCTAssertTrue(fake.calls.contains { $0.mode == .suggestions && $0.page == 2 })
+    }
+
+    func testSessionExcludesAccumulateConsumedShowIds() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = (1...3).map { suggestion($0) }
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        m.pickSuggestedShow(m.tvSuggestions.first { $0.tmdbId == 1 }!)
+        m.pickSuggestedShow(m.tvSuggestions.first { $0.tmdbId == 2 }!)
+        // A Refresh forwards the accumulated excludes to the next suggestions call.
+        m.refreshTVSuggestions()
+        await settle()
+
+        let refreshCall = fake.calls.last { $0.mode == .suggestions }
+        XCTAssertEqual(Set(refreshCall?.excludes ?? []), ["tv_1", "tv_2"],
+                       "consumed SHOW ids forwarded as session excludes")
+    }
+
+    func testSessionExcludesCappedAt200() async {
+        let fake = SuggestionsFake()
+        // 205 shows so 205 consumes overflow the 200 cap.
+        fake.suggestionsByPage[1] = (1...205).map { suggestion($0) }
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        for show in m.tvSuggestions { m.consumeForTest(show) }
+        m.refreshTVSuggestions()
+        await settle()
+
+        let refreshCall = fake.calls.last { $0.mode == .suggestions }
+        XCTAssertEqual(refreshCall?.excludes.count, 200, "session excludes cap at 200")
+        // The cap keeps the MOST RECENT ids (web slice(-200)) — earliest dropped.
+        XCTAssertFalse(refreshCall!.excludes.contains("tv_1"))
+        XCTAssertTrue(refreshCall!.excludes.contains("tv_205"))
+    }
+
+    func testSuggestions401MapsToSilentEmpty() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsError = SuggestionsClient.SuggestionsError.http(status: 401)
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        XCTAssertTrue(m.tvSuggestions.isEmpty)
+        XCTAssertFalse(m.tvSuggestionsFailed, "401 → silent empty, no retry affordance")
+    }
+
+    func testSuggestionsNotAuthenticatedMapsToSilentEmpty() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsError = SuggestionsClient.SuggestionsError.notAuthenticated
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        XCTAssertTrue(m.tvSuggestions.isEmpty)
+        XCTAssertFalse(m.tvSuggestionsFailed)
+    }
+
+    func testSuggestionsOtherErrorFlagsRetry() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsError = SuggestionsClient.SuggestionsError.http(status: 502)
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        XCTAssertTrue(m.tvSuggestions.isEmpty)
+        XCTAssertTrue(m.tvSuggestionsFailed, "a 502 → retry affordance")
+    }
+
+    func testPickSuggestedShowRoutesIntoSeasonGrid() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = [suggestion(1399, title: "GoT")]
+        fake.backfillByPage[1] = []
+        let detail = show(1399, name: "GoT", seasons: [season(1), season(2)])
+        var loadedShowId: Int? = nil
+        let m = RankEntryModel(
+            loadShowDetails: { id in loadedShowId = id; return detail },
+            loadShowGlobalScore: { _ in 9.1 },
+            loadRankedTVIds: { [] },
+            isSignedIn: { true },
+            fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+
+        let picked = m.tvSuggestions.first!
+        m.pickSuggestedShow(picked)
+        // Immediately routes into the season-grid stage with the SHOW.
+        XCTAssertEqual(m.stage, .seasonGrid(show: RankEntryModel.show(from: suggestion(1399, title: "GoT"))))
+        await settle()
+        XCTAssertEqual(loadedShowId, 1399, "the same season-load path a search pick uses fires")
+        XCTAssertEqual(m.seasons.map(\.seasonNumber), [1, 2])
+    }
+
+    func testLeavingTVTearsSuggestionsDown() async {
+        let fake = SuggestionsFake()
+        fake.suggestionsByPage[1] = [suggestion(1)]
+        fake.backfillByPage[1] = []
+        let m = RankEntryModel(isSignedIn: { true }, fetchTVSuggestions: fake.fetch)
+        m.setMode(.tv)
+        await settle()
+        XCTAssertFalse(m.tvSuggestions.isEmpty)
+
+        m.setMode(.book)
+        XCTAssertTrue(m.tvSuggestions.isEmpty, "leaving tv clears the grid")
+    }
+
     // MARK: - media inference (shelf re-rank routing)
 
     func testMediaForRankingIdInfersVertical() {
