@@ -12,11 +12,19 @@
 // ranking the row later mints a season-less tv_rankings row that violates the
 // season-id contract.
 //
-// Header last reviewed: 2026-07-07
+// And the shape of a TV RANK preselect minted from a search result (B1): the
+// UniversalSearch "Rank" path on a whole show must route through season selection
+// exactly like the Save path — so the preselect MUST carry the numeric showTmdbId
+// (with NO seasonNumber) and normalized genres. Without showTmdbId the modal's
+// preselect router (AddTVSeasonModal:204) skips the season grid and the ceremony
+// mints a `tv_{showId}` tv_rankings row with show_tmdb_id=0 / season_number=0.
+//
+// Header last reviewed: 2026-07-10
 
 import type { TMDBTVShow } from './tmdbService';
 import { normalizeTVGenres } from './tmdbService';
-import type { WatchlistItem } from '../types';
+import { Tier } from '../types';
+import type { MediaType, RankedItem, WatchlistItem } from '../types';
 
 /**
  * Decide whether the watchlist bookmark should be removed after a rank attempt.
@@ -25,6 +33,30 @@ import type { WatchlistItem } from '../types';
  */
 export function shouldRemoveBookmarkAfterRank(saveSucceeded: boolean): boolean {
   return saveSucceeded;
+}
+
+/**
+ * Dispatch a re-rank gesture to the correct ceremony by media type (B5). The
+ * deep-link MediaDetailModal resolves the ranked item across all three
+ * collections, so its Re-rank must route by the item's OWN `type` — never
+ * unconditionally into the movie ceremony (which would upsert a tv/book id into
+ * `user_rankings` + mint a movie stub, cross-writing tables and leaving the real
+ * `tv_rankings`/`book_rankings` row orphaned).
+ *
+ * Exhaustive over MediaType. 'movie' → the movie ceremony (rerankState path),
+ * 'tv_season' → the AddTVSeasonModal preselect path, 'book' → RankingFlowModal.
+ */
+export type RerankTarget = 'movie' | 'tv' | 'book';
+
+export function rerankMediaTarget(type: MediaType): RerankTarget {
+  switch (type) {
+    case 'tv_season':
+      return 'tv';
+    case 'book':
+      return 'book';
+    case 'movie':
+      return 'movie';
+  }
 }
 
 /**
@@ -61,5 +93,31 @@ export function tvWatchlistItemFromShow(
     genres: normalizeTVGenres(show.genres ?? []),
     showTmdbId: show.tmdbId,
     addedAt,
+  };
+}
+
+/**
+ * Build the RankedItem preselect for the UniversalSearch "Rank" path on a whole
+ * TV show (B1). Sets the numeric `showTmdbId` (with NO `seasonNumber`) so the
+ * AddTVSeasonModal preselect router routes through the season grid before the
+ * tier ceremony, and normalizes compound TV genres. Mirrors
+ * `tvWatchlistItemFromShow` (the Save path) so both entry points agree.
+ *
+ * tier/rank here are inert placeholders: because the preselect goes through
+ * season selection, the real tier is chosen in the ceremony and the persisted
+ * row is minted from the selected season (composite id + real show_tmdb_id +
+ * real season_number), never from this show-level object.
+ */
+export function tvRankPreselectFromShow(show: TMDBTVShow): RankedItem {
+  return {
+    id: show.id,
+    title: show.name,
+    year: show.year,
+    posterUrl: show.posterUrl ?? '',
+    type: 'tv_season',
+    genres: normalizeTVGenres(show.genres ?? []),
+    showTmdbId: show.tmdbId,
+    tier: Tier.B,
+    rank: 0,
   };
 }

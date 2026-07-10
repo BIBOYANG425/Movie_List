@@ -3,6 +3,8 @@ import { describe, it, expect } from 'vitest';
 import {
   shouldRemoveBookmarkAfterRank,
   tvWatchlistItemFromShow,
+  tvRankPreselectFromShow,
+  rerankMediaTarget,
   canonicalMovieTmdbId,
 } from '../watchlistRankHelpers';
 import type { TMDBTVShow } from '../tmdbService';
@@ -63,6 +65,75 @@ describe('tvWatchlistItemFromShow', () => {
     const item = tvWatchlistItemFromShow(show, '2026-07-07T00:00:00.000Z');
     expect(item.addedAt).toBe('2026-07-07T00:00:00.000Z');
     expect(item.type).toBe('tv_season');
+  });
+});
+
+// Pins the CORRECTED UniversalSearch "Rank TV" preselect shape (B1): ranking a
+// whole show from search must route through season selection, exactly like Save.
+// The preselect therefore carries the numeric showTmdbId and NO seasonNumber —
+// which AddTVSeasonModal's preselect router (showTmdbId set + seasonNumber falsy)
+// sends to the season grid. If showTmdbId were absent the ceremony would mint a
+// `tv_{showId}` tv_rankings row with show_tmdb_id=0 / season_number=0 (the C3
+// corruption class). Genres are normalized so classifyBracket recognizes them.
+describe('tvRankPreselectFromShow', () => {
+  const show: TMDBTVShow = {
+    id: 'tv_1396',
+    tmdbId: 1396,
+    name: 'Breaking Bad',
+    year: '2008',
+    posterUrl: '/poster.jpg',
+    genres: ['Action & Adventure', 'Sci-Fi & Fantasy', 'Drama'],
+    overview: '',
+    seasonCount: 5,
+    status: 'Ended',
+    creators: ['Vince Gilligan'],
+  };
+
+  it('carries the numeric showTmdbId (routes through the season grid)', () => {
+    expect(tvRankPreselectFromShow(show).showTmdbId).toBe(1396);
+  });
+
+  it('does NOT set a seasonNumber (whole-show preselect → season selection)', () => {
+    expect(tvRankPreselectFromShow(show).seasonNumber).toBeUndefined();
+  });
+
+  it('satisfies the preselect-router season-grid predicate (showTmdbId set, seasonNumber falsy)', () => {
+    const p = tvRankPreselectFromShow(show);
+    // Mirrors AddTVSeasonModal:204 — this is the exact branch condition that
+    // routes to the season grid instead of straight-to-tier.
+    expect(Boolean(p.showTmdbId) && !p.seasonNumber).toBe(true);
+  });
+
+  it('normalizes compound TV genres', () => {
+    expect(tvRankPreselectFromShow(show).genres).toEqual(['Action', 'Adventure', 'Sci-Fi']);
+  });
+
+  it('keeps the show id and tv_season type', () => {
+    const p = tvRankPreselectFromShow(show);
+    expect(p.id).toBe('tv_1396');
+    expect(p.type).toBe('tv_season');
+  });
+
+  it('coalesces a null posterUrl to empty string', () => {
+    expect(tvRankPreselectFromShow({ ...show, posterUrl: null }).posterUrl).toBe('');
+  });
+});
+
+// Pins the CORRECTED deep-link re-rank dispatch (B5): re-rank routes by the
+// item's OWN media type, never unconditionally into the movie ceremony (which
+// would cross-write user_rankings + mint a movie stub for a tv/book id). The
+// dispatch is exhaustive over MediaType.
+describe('rerankMediaTarget', () => {
+  it('routes a movie to the movie ceremony', () => {
+    expect(rerankMediaTarget('movie')).toBe('movie');
+  });
+
+  it('routes a tv_season to the TV modal path (not the movie ceremony)', () => {
+    expect(rerankMediaTarget('tv_season')).toBe('tv');
+  });
+
+  it('routes a book to the book modal path (not the movie ceremony)', () => {
+    expect(rerankMediaTarget('book')).toBe('book');
   });
 });
 

@@ -25,7 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { logRankingActivityEvent } from '../services/friendsService';
 import { createStub } from '../services/stubService';
-import { shouldRemoveBookmarkAfterRank, tvWatchlistItemFromShow } from '../services/watchlistRankHelpers';
+import { shouldRemoveBookmarkAfterRank, tvWatchlistItemFromShow, tvRankPreselectFromShow, rerankMediaTarget } from '../services/watchlistRankHelpers';
 import {
   tierOrderAfterReorder,
   tierOrderAfterRemoval,
@@ -1491,16 +1491,12 @@ const RankingAppPage = () => {
     setIsModalOpen(true);
   };
   const handleSearchRankTV = (show: TMDBTVShow) => {
-    setPreselectedTVItem({
-      id: show.id,
-      title: show.name,
-      year: show.year,
-      posterUrl: show.posterUrl ?? '',
-      type: 'tv_season',
-      genres: show.genres ?? [],
-      tier: Tier.B,
-      rank: 0,
-    } as RankedItem);
+    // B1: preselect a WHOLE-SHOW rank — carries the numeric showTmdbId (no
+    // seasonNumber) + normalized genres so AddTVSeasonModal's preselect router
+    // routes through the season grid. Without showTmdbId the ceremony would mint
+    // a `tv_{showId}` row with show_tmdb_id=0 / season_number=0 (the C3 corruption
+    // class). Mirrors the Save path's tvWatchlistItemFromShow.
+    setPreselectedTVItem(tvRankPreselectFromShow(show));
     setIsTVModalOpen(true);
   };
   const handleSearchRankBook = (book: OpenLibraryBook) => {
@@ -1852,14 +1848,39 @@ const RankingAppPage = () => {
               const newParams = new URLSearchParams(searchParams);
               newParams.delete('movieId');
               setSearchParams(newParams);
-              // B3: non-destructive re-rank — the ceremony completion replaces
-              // the (user_id,tmdb_id) row and compacts both tiers; no delete-first.
-              // B4 title-locale contract: resolve the RAW item from `items` by id
-              // so the persisted title is the TMDB default-locale title.
-              const rawItem = items.find((i) => i.id === item.id) ?? item;
-              setRerankState(rawItem);
-              setPreselectedForRank(rawItem);
-              setIsModalOpen(true);
+              // B5: dispatch by the item's OWN media type — the deep-link modal
+              // resolves items across all three collections, so re-rank must route
+              // to the matching ceremony. Routing ONLY here; the movie rerankState
+              // marker must NOT be set for tv/book (that path upserts into
+              // user_rankings). tv/book keep their delete-first behavior until
+              // Task 2 makes them non-destructive.
+              switch (rerankMediaTarget(item.type)) {
+                case 'tv': {
+                  removeTVItem(item.id);
+                  const rawTV = tvItems.find((i) => i.id === item.id) ?? item;
+                  setPreselectedTVItem(rawTV);
+                  setIsTVModalOpen(true);
+                  break;
+                }
+                case 'book': {
+                  removeBookItem(item.id);
+                  const rawBook = bookItems.find((i) => i.id === item.id) ?? item;
+                  setBookItemToRank(rawBook);
+                  setIsBookModalOpen(true);
+                  break;
+                }
+                case 'movie': {
+                  // B3: non-destructive re-rank — the ceremony completion replaces
+                  // the (user_id,tmdb_id) row and compacts both tiers; no delete-first.
+                  // B4 title-locale contract: resolve the RAW item from `items` by id
+                  // so the persisted title is the TMDB default-locale title.
+                  const rawItem = items.find((i) => i.id === item.id) ?? item;
+                  setRerankState(rawItem);
+                  setPreselectedForRank(rawItem);
+                  setIsModalOpen(true);
+                  break;
+                }
+              }
             }}
           />
         );
