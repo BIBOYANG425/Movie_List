@@ -21,12 +21,15 @@ import SwiftUI
 /// Edit mode (C4 management-UI Task 3): an "edit" affordance in the header
 /// toggles drag-to-reorder WITHIN a tier. All reorder logic — no-op
 /// suppression, full-membership persistence via `RankingRepository.reorderTier`,
-/// optimistic-apply/revert-on-throw, and the single `ranking_move` emission —
-/// lives in the injected-closure `RankManageModel` (`RankManageModelTests`).
-/// The screen only binds the model's IO and renders an editable per-tier `List`
-/// with `.onMove` while editing (drag is confined to one tier; cross-tier moves
-/// belong to the long-press context menu, Task 4). Movies only — the shelf reads
-/// `user_rankings` exclusively.
+/// optimistic-apply/revert-on-throw, in-flight guard, rank renumbering, and the
+/// single `ranking_move` emission — lives in the injected-closure
+/// `RankManageModel` (`RankManageModelTests`). The screen only binds the model's
+/// IO and renders an editable per-tier `List` with `.onMove` while editing (drag
+/// is confined to one tier; cross-tier moves belong to the long-press context
+/// menu, Task 4). When edit mode exits the screen syncs its read-only `items`
+/// from `manage.flatItems` (local copy, no network) so the shelf render and
+/// `#rank` badges reflect the dragged order immediately. Movies only — the shelf
+/// reads `user_rankings` exclusively.
 ///
 /// Header last reviewed: 2026-07-09
 public struct FullListScreen: View {
@@ -118,7 +121,16 @@ public struct FullListScreen: View {
     private func editToggle(_ t: SpoolPalette) -> some View {
         if hasSession && !items.isEmpty {
             Button {
+                let wasEditing = manage.isEditing
                 manage.toggleEditing()
+                // When exiting edit mode sync the screen's read-only `items`
+                // from the model's tiers (which carry renumbered ranks after
+                // each confirmed drag). This is a local copy — no network hit —
+                // so the shelf and `#rank` badges reflect the reordered state
+                // instantly without waiting for a pull-to-refresh.
+                if wasEditing {
+                    items = manage.flatItems
+                }
             } label: {
                 Text(manage.isEditing ? "done" : "edit")
                     .font(SpoolFonts.mono(12))

@@ -42,6 +42,17 @@ import SwiftUI
 ///     `activity_events` contract; `RankedItem` carries no notes, so notes is
 ///     always nil here).
 ///
+///  5. IN-FLIGHT GUARD. `isReordering` blocks a second concurrent drop while an
+///     RPC is already in flight (same pattern as `JournalDraftModel`'s `saving`
+///     guard). The second drop is silently ignored — the optimistic order from
+///     the first is already live.
+///
+///  6. RANK RENUMBER ON CONFIRMED DRAG. After a successful persist, each tier's
+///     `RankedItem.rank` is updated to its 0-based position in that tier so
+///     the `#n` badge in the editable list stays current mid-edit and the
+///     read-only render (which sorts by `rank`) shows the right order when
+///     edit mode exits.
+///
 /// Movies only: the ranked-list surface reads `user_rankings` exclusively
 /// (`RankingRepository.getAllRankedItems`), so every row is a movie and the
 /// reorder write hardcodes `media: "movie"`.
@@ -94,6 +105,9 @@ public final class RankManageModel: ObservableObject {
     /// The in-memory per-tier membership, best-first. The single source of truth
     /// the view renders while editing; `setItems` seeds it from the loaded shelf.
     @Published public private(set) var tiers: [Tier: [RankedItem]] = [:]
+    /// True while a reorder RPC is in flight. A second `.onMove` drop received
+    /// while this is set is ignored (same guard as `JournalDraftModel.saving`).
+    @Published public private(set) var isReordering: Bool = false
 
     // MARK: Stored
 
@@ -147,6 +161,14 @@ public final class RankManageModel: ObservableObject {
         tiers[tier] ?? []
     }
 
+    /// All items from every tier, flattened in natural tier order (S→D), each
+    /// tier sorted by `rank` ascending. Used by `FullListScreen` to sync its
+    /// read-only `items` array when edit mode exits so the shelf render and the
+    /// `#rank` badges reflect any drags without a network round-trip.
+    public var flatItems: [RankedItem] {
+        Tier.allCases.flatMap { tiers[$0] ?? [] }
+    }
+
     // MARK: - Edit mode
 
     /// Flip edit mode on/off (drag handles + `.onMove`).
@@ -172,7 +194,15 @@ public final class RankManageModel: ObservableObject {
     /// audit B1). A real change applies OPTIMISTICALLY, persists the full
     /// membership, then either emits ONE `ranking_move` (success) or reverts the
     /// tier to its exact prior order and toasts (throw).
+    ///
+    /// A second drop received while an RPC is already in flight is ignored
+    /// (`isReordering` guard — same pattern as `JournalDraftModel.saving`).
+    ///
+    /// On a confirmed persist the tier's `rank` fields are renumbered 0-based so
+    /// the `#n` badge stays current mid-edit and the read-only render (which
+    /// sorts by `rank`) shows the correct order when edit mode exits.
     public func moveRow(tier: Tier, from source: IndexSet, to destination: Int) async {
+        guard !isReordering else { return }
         guard let current = tiers[tier], !current.isEmpty else { return }
         guard let fromIndex = source.first else { return }
 
@@ -193,9 +223,16 @@ public final class RankManageModel: ObservableObject {
         let reordered = Self.reorder(current, to: after)
         tiers[tier] = reordered
 
+        isReordering = true
+        defer { isReordering = false }
+
         do {
             try await reorderIO("movie", tier.rawValue, after)
-            // Confirmed change → ONE ranking_move for the moved item.
+            // Confirmed change → renumber ranks 0-based so #n badges and the
+            // read-only render (sorted by rank) stay consistent mid-edit and
+            // after edit mode exits.
+            tiers[tier] = Self.renumbered(reordered)
+            // ONE ranking_move for the moved item.
             let event = MoveEvent(
                 tmdbId: movedItem.id,
                 title: movedItem.title,
@@ -224,5 +261,17 @@ public final class RankManageModel: ObservableObject {
         let placed = Set(orderedIds)
         for item in items where !placed.contains(item.id) { out.append(item) }
         return out
+    }
+
+    /// Assign contiguous 0-based `rank` values to `items` in their current order.
+    /// Called after a confirmed persist so the `#n` badge (which reads `item.rank`)
+    /// matches the visual position mid-edit, and the read-only render (sorted by
+    /// `rank`) shows the correct order when edit mode exits.
+    private static func renumbered(_ items: [RankedItem]) -> [RankedItem] {
+        items.enumerated().map { idx, item in
+            var copy = item
+            copy.rank = idx
+            return copy
+        }
     }
 }

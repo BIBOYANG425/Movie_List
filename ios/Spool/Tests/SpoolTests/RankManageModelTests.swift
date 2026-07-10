@@ -16,6 +16,10 @@ import XCTest
 ///     membership (via `TierOrder`) + emission fires ONCE.
 ///  4. a reorder throw → the tier's order REVERTS to the exact prior order,
 ///     an error toast fires, and NO emission fires.
+///  5. in-flight guard: a second drop while RPC is in flight is ignored.
+///  6. rank renumber: after a confirmed drag `rank` fields match position.
+///
+/// `RankMoveEmitter.payload` wire shape is pinned separately at the bottom.
 @MainActor
 final class RankManageModelTests: XCTestCase {
 
@@ -79,7 +83,9 @@ final class RankManageModelTests: XCTestCase {
         )
 
         // A move of index 1 to index 1 is a no-op (SwiftUI .onMove passes the
-        // destination AFTER removal; from==to means unchanged order).
+        // raw insertion index BEFORE removal; from==to means unchanged order
+        // because toIndex = destination > fromIndex ? destination-1 : destination
+        // → toIndex == fromIndex, which TierOrder resolves as a no-op).
         await model.moveRow(tier: .A, from: IndexSet(integer: 1), to: 1)
 
         XCTAssertTrue(reorderCalls.isEmpty, "no-op drop must not hit the RPC")
@@ -226,5 +232,144 @@ final class RankManageModelTests: XCTestCase {
         await model.moveRow(tier: .B, from: IndexSet(integer: 0), to: 1)
 
         XCTAssertEqual(reorderCalls, 0)
+    }
+
+    // MARK: - 5. in-flight guard
+
+    func testSecondDropDuringInFlightRPCIsIgnored() async {
+        // The RPC suspends until we resume the continuation, giving us a
+        // window to fire the second drop while `isReordering` is true.
+        var reorderCalls = 0
+        var emitCount = 0
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+
+        let model = makeModel(
+            items: [item("a", rank: 0), item("b", rank: 1), item("c", rank: 2)],
+            reorder: { _, _, _ in
+                reorderCalls += 1
+                // Block until the test resumes us (simulates in-flight RPC).
+                for await _ in stream { break }
+            },
+            emit: { _ in emitCount += 1 }
+        )
+
+        // Start the first drop but don't await it yet.
+        let firstTask = Task { await model.moveRow(tier: .A, from: IndexSet(integer: 2), to: 0) }
+
+        // Yield briefly so the first drop enters the RPC and sets isReordering.
+        await Task.yield()
+        await Task.yield()
+
+        // Second drop while the first RPC is suspended — must be ignored.
+        await model.moveRow(tier: .A, from: IndexSet(integer: 0), to: 2)
+
+        // Unblock the first RPC.
+        continuation.finish()
+        await firstTask.value
+
+        // Only ONE reorder call (the second drop was blocked by the guard).
+        XCTAssertEqual(reorderCalls, 1, "second drop during in-flight RPC must be ignored")
+        XCTAssertEqual(emitCount, 1, "only the first drop emits")
+    }
+
+    // MARK: - 6. rank renumber on confirmed drag
+
+    func testRankRenumberedAfterConfirmedDrag() async {
+        let model = makeModel(
+            items: [item("a", rank: 0), item("b", rank: 1), item("c", rank: 2)]
+        )
+
+        // Move "c" (index 2) to the front (destination 0).
+        await model.moveRow(tier: .A, from: IndexSet(integer: 2), to: 0)
+
+        // After persist the ranks must be 0-based contiguous in the new order.
+        let rows = model.items(in: .A)
+        XCTAssertEqual(rows.map(\.id), ["c", "a", "b"])
+        XCTAssertEqual(rows.map(\.rank), [0, 1, 2], "ranks renumbered 0-based after confirmed drag")
+    }
+
+    func testRankNotRenumberedOnRevert() async {
+        struct Boom: Error {}
+        let model = makeModel(
+            items: [item("a", rank: 0), item("b", rank: 1), item("c", rank: 2)],
+            reorder: { _, _, _ in throw Boom() }
+        )
+
+        await model.moveRow(tier: .A, from: IndexSet(integer: 2), to: 0)
+
+        // Reverted to prior order; original ranks preserved.
+        let rows = model.items(in: .A)
+        XCTAssertEqual(rows.map(\.id), ["a", "b", "c"])
+        XCTAssertEqual(rows.map(\.rank), [0, 1, 2])
+    }
+}
+
+// MARK: - RankMoveEmitter payload pin
+
+/// Wire-shape contract for `RankMoveEmitter.payload`. Verifies:
+///  - `event_type` is exactly `"ranking_move"`
+///  - `actor_id` is lowercased UUID string
+///  - media columns present (title, tier, posterUrl) and non-media nil columns
+///    round-trip as explicit nil (not omitted) via the custom `encode(to:)`
+///  - `metadata` contains `year` from the event, no `watched_with_user_ids` key
+///  - no `watched_with` key at any level
+@MainActor
+final class RankMoveEmitterPayloadTests: XCTestCase {
+
+    func testPayloadPinsWireShape() throws {
+        let actorID = UUID(uuidString: "A1B2C3D4-E5F6-7890-ABCD-EF1234567890")!
+        let event = RankManageModel.MoveEvent(
+            tmdbId: "tt0111161",
+            title: "The Shawshank Redemption",
+            tier: "A",
+            posterUrl: "https://img/shawshank.jpg",
+            year: "1994",
+            notes: nil
+        )
+
+        let payload = RankMoveEmitter.payload(actorID: actorID, event: event)
+
+        // event_type
+        XCTAssertEqual(payload.event_type, "ranking_move")
+        // actor_id is lowercased
+        XCTAssertEqual(payload.actor_id, "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+        // media columns
+        XCTAssertEqual(payload.media_tmdb_id, "tt0111161")
+        XCTAssertEqual(payload.media_title, "The Shawshank Redemption")
+        XCTAssertEqual(payload.media_tier, "A")
+        XCTAssertEqual(payload.media_poster_url, "https://img/shawshank.jpg")
+        // metadata carries year, no notes, no watched_with
+        XCTAssertEqual(payload.metadata.year, "1994")
+        XCTAssertNil(payload.metadata.notes)
+        XCTAssertNil(payload.metadata.watchedWithUserIds)
+    }
+
+    func testPayloadExplicitNullMediaColumnsEncoded() throws {
+        let actorID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let event = RankManageModel.MoveEvent(
+            tmdbId: "tt9999",
+            title: "No Poster Film",
+            tier: "B",
+            posterUrl: nil,  // explicit null on wire
+            year: nil,
+            notes: nil
+        )
+        let payload = RankMoveEmitter.payload(actorID: actorID, event: event)
+
+        // Encode and verify the JSON contains explicit null for media_poster_url,
+        // not a missing key. The custom encode(to:) always writes the key.
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(payload)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+
+        XCTAssertTrue(json.contains("\"media_poster_url\":null"),
+                      "media_poster_url must be explicit null, got: \(json)")
+        XCTAssertFalse(json.contains("watched_with"),
+                       "watched_with must never appear in a ranking_move payload")
+        // metadata omit-empty: nil year → key absent from metadata JSON
+        XCTAssertFalse(json.contains("\"year\""),
+                       "nil year must be omitted from metadata by ActivityMetadata")
+        XCTAssertFalse(json.contains("\"notes\""),
+                       "nil notes must be omitted from metadata by ActivityMetadata")
     }
 }
