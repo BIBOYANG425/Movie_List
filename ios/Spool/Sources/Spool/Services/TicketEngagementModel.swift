@@ -254,13 +254,14 @@ public final class TicketEngagementModel: ObservableObject {
 
     // MARK: - Copy
 
-    static let genericSendFailure = "couldn't post — try again"
+    static var genericSendFailure: String { L10n.t("feed.composerPostFailed") }
 
     /// Lowercase composer copy for the two validation errors (spec §2 voice).
+    /// Wired through `L10n.t` (C6-iOS Task 3) — user-visible emitter copy.
     static func message(for error: CommentError) -> String {
         switch error {
-        case .empty:   return "say something"
-        case .tooLong: return "keep it under 500"
+        case .empty:   return L10n.t("feed.composerEmpty")
+        case .tooLong: return L10n.t("feed.composerTooLong")
         }
     }
 }

@@ -20,7 +20,7 @@ import SwiftUI
 ///  7 Twins         — revealed taste twins
 ///  8 Season        — "start spooling ▸" closes the flow
 ///
-/// Header last reviewed: 2026-04-18
+/// Header last reviewed: 2026-07-10
 public struct OnboardingFlow: View {
     public var onFinish: (OnboardingOutcome) -> Void
     @State private var step: Int = 0
@@ -49,7 +49,7 @@ public struct OnboardingFlow: View {
                 if persisting {
                     HStack(spacing: 8) {
                         ProgressView().scaleEffect(0.8)
-                        Text("saving your picks…").font(.caption)
+                        Text(L10n.t("onb.savingPicks")).font(.caption)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -163,7 +163,10 @@ public struct OnboardingFlow: View {
                     await MainActor.run {
                         for row in failures { OnboardingQueue.append(row) }
                         ToastCenter.shared.show(
-                            "saved \(rankings.count - failures.count) of \(rankings.count) picks — we'll retry on next sign-in",
+                            L10n.t("onb.picksPartialSave", [
+                                "saved": "\(rankings.count - failures.count)",
+                                "total": "\(rankings.count)"
+                            ]),
                             level: .error,
                             duration: 5
                         )

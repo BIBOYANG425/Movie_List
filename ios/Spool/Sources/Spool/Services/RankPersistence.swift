@@ -124,7 +124,7 @@ public enum RankPersistence {
                 NSLog("[RankPersistence] insertRanking failed: \(error)")
                 await MainActor.run {
                     ToastCenter.shared.show(
-                        "couldn't save your rank — check connection",
+                        L10n.t("toast.rankSaveFailed"),
                         level: .error
                     )
                 }
@@ -208,7 +208,7 @@ public enum RankPersistence {
             NSLog("[RankPersistence] preview queue is movie-only; dropping \(movie.mediaType.rawValue) rank for \(movie.id)")
             await MainActor.run {
                 ToastCenter.shared.show(
-                    "couldn't save your rank — sign in and try again",
+                    L10n.t("toast.rankSaveSignIn"),
                     level: .error
                 )
             }

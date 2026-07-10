@@ -50,7 +50,7 @@ public struct StubsScreen: View {
     public var body: some View {
         SpoolScreen {
             VStack(spacing: 0) {
-                SpoolHeader(title: "my stubs") {
+                SpoolHeader(title: L10n.t("stubs.myStubs")) {
                     // The month stepper only applies to the calendar grid; hide
                     // it on the journal segment (which has no month scope).
                     if selectedTab == .stubs {
@@ -81,10 +81,10 @@ public struct StubsScreen: View {
     /// idiom (FeedScreen.modeSwitcher).
     private var tabSwitcher: some View {
         HStack(spacing: 6) {
-            SpoolPill("stubs", active: selectedTab == .stubs, size: .sm) {
+            SpoolPill(L10n.t("stubs.tabStubs"), active: selectedTab == .stubs, size: .sm) {
                 selectedTab = .stubs
             }
-            SpoolPill("journal", active: selectedTab == .journal, size: .sm) {
+            SpoolPill(L10n.t("stubs.tabJournal"), active: selectedTab == .journal, size: .sm) {
                 selectedTab = .journal
             }
             Spacer(minLength: 0)
@@ -109,14 +109,14 @@ public struct StubsScreen: View {
                     .padding(.top, 10)
 
                 SpoolThemeReader { t, _ in
-                    Text("tap a day to see the stub ↑")
+                    Text(L10n.t("stubs.tapADay"))
                         .font(SpoolFonts.script(13))
                         .foregroundStyle(t.inkSoft)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 6)
                 }
 
-                Text("LAST WATCHED")
+                Text(L10n.t("stubs.lastWatched"))
                     .font(SpoolFonts.mono(10))
                     .tracking(2)
                     .foregroundStyle(SpoolTokens.paper.inkSoft)
@@ -207,7 +207,7 @@ public struct StubsScreen: View {
         // on (user, media, tmdb_id) so reprints don't show as extra rows,
         // and we don't read `journal_entries.is_rewatch` here yet). Ship
         // the accurate WATCHED count alone until we wire real data.
-        "\(monthDays.count) WATCHED"
+        L10n.t("stubs.watchedCount", ["n": "\(monthDays.count)"])
     }
 
     @ViewBuilder
@@ -238,8 +238,8 @@ public struct StubsScreen: View {
         } else {
             SpoolThemeReader { t, _ in
                 Text(hasSession
-                     ? "nothing here yet · rank something to start your stub collection."
-                     : "sign in to see your real stubs.")
+                     ? L10n.t("stubs.emptyCollection")
+                     : L10n.t("stubs.signInToSee"))
                     .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
                     .frame(maxWidth: .infinity)
@@ -485,7 +485,7 @@ struct MonthRecapBox: View {
     var body: some View {
         SpoolThemeReader { t, _ in
             VStack(alignment: .leading, spacing: 0) {
-                Text("\(monthLabel), in letters.")
+                Text(L10n.t("stubs.monthInLetters", ["month": monthLabel]))
                     .font(SpoolFonts.serif(20))
                     .foregroundStyle(t.ink)
                 Text(recapLine)
@@ -508,7 +508,7 @@ struct MonthRecapBox: View {
 
                 HStack {
                     Spacer()
-                    SpoolPill("🎞 make \(monthLabel) recap", filled: true, size: .sm)
+                    SpoolPill(L10n.t("stubs.makeRecap", ["month": monthLabel]), filled: true, size: .sm)
                     Spacer()
                 }
                 .padding(.top, 10)
@@ -525,10 +525,10 @@ struct MonthRecapBox: View {
     private var recapLine: String {
         let total = tierCounts.values.reduce(0, +)
         let sCount = tierCounts[.S] ?? 0
-        if total == 0 { return "nothing yet." }
-        if sCount >= 3 { return "a pretty stacked month." }
-        if total < 3 { return "a slow month." }
-        return "a solid month."
+        if total == 0 { return L10n.t("stubs.recapNothing") }
+        if sCount >= 3 { return L10n.t("stubs.recapStacked") }
+        if total < 3 { return L10n.t("stubs.recapSlow") }
+        return L10n.t("stubs.recapSolid")
     }
 }
 

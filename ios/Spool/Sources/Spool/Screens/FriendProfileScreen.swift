@@ -13,7 +13,7 @@ import SwiftUI
 ///   - Follow / unfollow button (optimistic local state — we don't refetch
 ///     follow edges cross-session).
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-07-10
 public struct FriendProfileScreen: View {
     public var friend: Friend
     public var onClose: () -> Void
@@ -72,7 +72,7 @@ public struct FriendProfileScreen: View {
     private var topBar: some View {
         SpoolThemeReader { t, _ in
             HStack {
-                Button("← FRIENDS", action: onClose)
+                Button(L10n.t("friendProfile.back"), action: onClose)
                     .font(SpoolFonts.mono(12))
                     .tracking(1)
                     .foregroundStyle(t.ink)
@@ -88,7 +88,7 @@ public struct FriendProfileScreen: View {
         Button {
             Task { await toggleFollow() }
         } label: {
-            Text(isFollowing ? "following" : "+ follow")
+            Text(isFollowing ? L10n.t("friendProfile.following") : L10n.t("friendProfile.follow"))
                 .font(SpoolFonts.hand(12))
                 .foregroundStyle(isFollowing ? t.cream : t.ink)
                 .padding(.horizontal, 12)
@@ -124,7 +124,7 @@ public struct FriendProfileScreen: View {
                     Text("\(stubsCount)")
                         .font(SpoolFonts.serif(30))
                         .foregroundStyle(t.accent)
-                    Text("STUBS")
+                    Text(L10n.t("profile.stubsLabel"))
                         .font(SpoolFonts.mono(9))
                         .tracking(2)
                         .foregroundStyle(t.inkSoft)
@@ -189,11 +189,11 @@ public struct FriendProfileScreen: View {
             SpoolThemeReader { t, _ in
                 Button(action: onOpenTwin) {
                     HStack(spacing: 8) {
-                        Text("\(compat.score)% TASTE TWIN")
+                        Text(L10n.t("friendProfile.tasteTwin", ["score": "\(compat.score)"]))
                             .font(SpoolFonts.mono(11))
                             .tracking(2)
                             .foregroundStyle(t.ink)
-                        Text("· SEE MORE →")
+                        Text(L10n.t("friendProfile.seeMore"))
                             .font(SpoolFonts.mono(10))
                             .tracking(1)
                             .foregroundStyle(t.accent)
@@ -205,7 +205,7 @@ public struct FriendProfileScreen: View {
                     .overlay(Capsule().stroke(t.ink, lineWidth: 1.5))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open taste twin detail")
+                .accessibilityLabel(L10n.t("friendProfile.openTwinA11y"))
             }
         }
     }
@@ -218,7 +218,7 @@ public struct FriendProfileScreen: View {
                 // Data actually comes from getTopTier(..., tier: .S, ...) —
                 // so the label says "S-tier" rather than implying all tiers
                 // are summed.
-                Text("THEIR TOP 4 · S-TIER")
+                Text(L10n.t("friendProfile.theirTop4"))
                     .font(SpoolFonts.mono(10))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)
@@ -283,7 +283,7 @@ public struct FriendProfileScreen: View {
                 // Derive the month from the newest stub the user actually
                 // has (they may not have watched anything this month).
                 // `recent` is sorted newest-first by getAllStubs.
-                Text("RECENT STUBS · \(recentMonthAbbrev)")
+                Text(L10n.t("profile.recentStubs", ["month": recentMonthAbbrev]))
                     .font(SpoolFonts.mono(10))
                     .tracking(2)
                     .foregroundStyle(t.inkSoft)
@@ -348,9 +348,9 @@ public struct FriendProfileScreen: View {
     private var footerPills: some View {
         HStack(spacing: 6) {
             if mutualCount > 0 {
-                SpoolPill("◉ \(mutualCount) mutual", size: .sm)
+                SpoolPill(L10n.t("friendProfile.mutual", ["n": "\(mutualCount)"]), size: .sm)
             }
-            SpoolPill("\(stubsCount) stubs", size: .sm)
+            SpoolPill(L10n.t("friendProfile.stubsPill", ["n": "\(stubsCount)"]), size: .sm)
         }
     }
 

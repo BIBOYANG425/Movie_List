@@ -214,7 +214,7 @@ final class TicketEngagementModelTests: XCTestCase {
         let model = makeModel(add: { _ in called = true; return self.comment() })
         model.draft = ""
         await model.addComment()
-        XCTAssertEqual(model.inlineError, "say something")
+        XCTAssertEqual(model.inlineError, L10n.t("feed.composerEmpty"))
         XCTAssertFalse(called)
         XCTAssertEqual(model.draft, "")   // preserved
     }
@@ -224,7 +224,7 @@ final class TicketEngagementModelTests: XCTestCase {
         let model = makeModel(add: { _ in called = true; return self.comment() })
         model.draft = "   \n  "
         await model.addComment()
-        XCTAssertEqual(model.inlineError, "say something")
+        XCTAssertEqual(model.inlineError, L10n.t("feed.composerEmpty"))
         XCTAssertFalse(called)
     }
 
@@ -233,7 +233,7 @@ final class TicketEngagementModelTests: XCTestCase {
         let model = makeModel(add: { _ in called = true; return self.comment() })
         model.draft = String(repeating: "x", count: 501)
         await model.addComment()
-        XCTAssertEqual(model.inlineError, "keep it under 500")
+        XCTAssertEqual(model.inlineError, L10n.t("feed.composerTooLong"))
         XCTAssertFalse(called)
         XCTAssertEqual(model.draft.count, 501)   // preserved
     }
@@ -293,7 +293,7 @@ final class TicketEngagementModelTests: XCTestCase {
         // First: empty → error.
         model.draft = ""
         await model.addComment()
-        XCTAssertEqual(model.inlineError, "say something")
+        XCTAssertEqual(model.inlineError, L10n.t("feed.composerEmpty"))
         // Then: valid → error clears.
         model.draft = "ok"
         await model.addComment()

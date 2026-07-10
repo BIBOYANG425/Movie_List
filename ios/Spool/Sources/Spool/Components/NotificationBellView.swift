@@ -91,7 +91,9 @@ public struct NotificationBellView: View {
     }
 
     static func accessibilityLabel(_ count: Int) -> String {
-        count == 0 ? "notifications" : "notifications, \(count) unread"
+        count == 0
+            ? L10n.t("notifications.a11yNone")
+            : L10n.t("notifications.a11yUnread", ["count": "\(count)"])
     }
 }
 
@@ -135,13 +137,13 @@ private struct NotificationSheet: View {
     private var header: some View {
         SpoolThemeReader { t, _ in
             HStack {
-                Text("notifications")
+                Text(L10n.t("notifications.title"))
                     .font(SpoolFonts.serif(22))
                     .tracking(-0.3)
                     .foregroundStyle(t.ink)
                 Spacer()
                 Button(action: onClose) {
-                    Text("close")
+                    Text(L10n.t("settings.close"))
                         .font(SpoolFonts.mono(12))
                         .tracking(1.5)
                         .foregroundStyle(t.ink)
@@ -166,10 +168,10 @@ private struct NotificationSheet: View {
                 Image(systemName: "bell.slash")
                     .font(.system(size: 30))
                     .foregroundStyle(t.inkSoft)
-                Text("nothing yet")
+                Text(L10n.t("notifications.emptyTitle"))
                     .font(SpoolFonts.serif(20))
                     .foregroundStyle(t.ink)
-                Text("follows, likes, and comments land here")
+                Text(L10n.t("notifications.emptyHint"))
                     .font(SpoolFonts.hand(14))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
@@ -261,7 +263,7 @@ private struct NotificationRowView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(item.title)
-            .accessibilityHint(navigates ? "opens profile" : "")
+            .accessibilityHint(navigates ? L10n.t("notifications.opensProfile") : "")
         }
     }
 

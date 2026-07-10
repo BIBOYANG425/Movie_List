@@ -140,16 +140,16 @@ public struct FeedScreen: View {
                 .padding(4)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("discover")
+        .accessibilityLabel(L10n.t("nav.discover"))
     }
 
     @ViewBuilder
     private func modeSwitcher(t: SpoolPalette) -> some View {
         HStack(spacing: 6) {
-            SpoolPill("friends", active: model.mode == .friends, size: .sm) {
+            SpoolPill(L10n.t("feed.modeFriends"), active: model.mode == .friends, size: .sm) {
                 Task { await model.switchMode(.friends) }
             }
-            SpoolPill("explore", active: model.mode == .explore, size: .sm) {
+            SpoolPill(L10n.t("feed.explore"), active: model.mode == .explore, size: .sm) {
                 Task { await model.switchMode(.explore) }
             }
             Spacer(minLength: 0)
@@ -233,16 +233,16 @@ public struct FeedScreen: View {
     private func fixtureBack(card: FeedCard) -> some View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 10) {
-                Text("REACTIONS + REPLIES")
+                Text(L10n.t("feed.reactionsReplies"))
                     .font(SpoolFonts.mono(11)).tracking(2)
                     .foregroundStyle(t.inkSoft)
-                Text("sign in to react and reply")
+                Text(L10n.t("feed.signInToReact"))
                     .font(SpoolFonts.hand(15))
                     .foregroundStyle(t.ink)
                 Button {
                     model.setFlipped(card: card, flipped: false)
                 } label: {
-                    Text("TAP TO FLIP BACK")
+                    Text(L10n.t("feed.tapToFlipBack"))
                         .font(SpoolFonts.mono(8)).tracking(2)
                         .foregroundStyle(t.inkSoft)
                 }
@@ -270,14 +270,14 @@ public struct FeedScreen: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 16) {
                 Spacer(minLength: 60)
-                Text("your feed is quiet")
+                Text(L10n.t("feed.emptyFriendsTitle"))
                     .font(SpoolFonts.serif(26))
                     .foregroundStyle(t.ink)
-                Text("follow people to see their rankings, reviews, and lists here")
+                Text(L10n.t("feed.emptyFriendsHint"))
                     .font(SpoolFonts.hand(15))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
-                SpoolPill("find your people", filled: true, size: .md) {
+                SpoolPill(L10n.t("feed.findYourPeople"), filled: true, size: .md) {
                     onOpenFriends?()
                 }
                 .padding(.top, 4)
@@ -293,14 +293,14 @@ public struct FeedScreen: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 16) {
                 Spacer(minLength: 60)
-                Text("explore is empty")
+                Text(L10n.t("feed.emptyExploreTitle"))
                     .font(SpoolFonts.serif(26))
                     .foregroundStyle(t.ink)
-                Text("public profiles appear here — make yours public in settings")
+                Text(L10n.t("feed.emptyExploreHint"))
                     .font(SpoolFonts.hand(15))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
-                SpoolPill("open settings", filled: true, size: .md) {
+                SpoolPill(L10n.t("feed.openSettings"), filled: true, size: .md) {
                     onOpenSettings?()
                 }
                 .padding(.top, 4)

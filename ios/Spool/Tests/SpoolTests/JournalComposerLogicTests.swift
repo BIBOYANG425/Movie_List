@@ -95,9 +95,11 @@ final class JournalComposerLogicTests: XCTestCase {
     }
 
     func testVisibilityLabelForValue() {
-        XCTAssertEqual(JournalComposerLogic.visibilityLabel(nil), "default")
-        XCTAssertEqual(JournalComposerLogic.visibilityLabel(.pub), "public")
-        XCTAssertEqual(JournalComposerLogic.visibilityLabel(.friends), "friends")
-        XCTAssertEqual(JournalComposerLogic.visibilityLabel(.priv), "private")
+        // Wired through L10n reusing web journal.vis* keys (C6-iOS Task 3);
+        // assert against the resolved value so the test is locale-safe.
+        XCTAssertEqual(JournalComposerLogic.visibilityLabel(nil), L10n.t("journal.visDefault"))
+        XCTAssertEqual(JournalComposerLogic.visibilityLabel(.pub), L10n.t("journal.visPublic"))
+        XCTAssertEqual(JournalComposerLogic.visibilityLabel(.friends), L10n.t("journal.visFriends"))
+        XCTAssertEqual(JournalComposerLogic.visibilityLabel(.priv), L10n.t("journal.visPrivate"))
     }
 }

@@ -62,7 +62,7 @@ struct OnbFoot: View {
                 .disabled(disabled)
 
                 if let onSkip {
-                    Button("skip", action: onSkip)
+                    Button(L10n.t("onb.skip"), action: onSkip)
                         .font(SpoolFonts.hand(12))
                         .foregroundStyle(t.inkSoft)
                         .buttonStyle(.plain)

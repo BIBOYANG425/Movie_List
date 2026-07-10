@@ -49,7 +49,7 @@ struct OnbColdOpen: View {
                             .padding(.top, 6)
                         Spacer(minLength: 10)
 
-                        Text("TONIGHT · ONLY")
+                        Text(L10n.t("onb.tonightOnly"))
                             .font(SpoolFonts.mono(11))
                             .tracking(5.5)
                             .foregroundStyle(OnbTheater.gold.opacity(0.85))
@@ -60,7 +60,7 @@ struct OnbColdOpen: View {
                             .foregroundStyle(OnbTheater.cream)
                             .padding(.top, 10)
 
-                        Text("a private picture palace\nof everything you watch.")
+                        Text(L10n.t("onb.privatePalace"))
                             .font(SpoolFonts.script(22))
                             .foregroundStyle(OnbTheater.gold)
                             .multilineTextAlignment(.center)
@@ -83,7 +83,7 @@ struct OnbColdOpen: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 26)
 
-                Text("no sign-up yet.\nrank first. we'll talk later.")
+                Text(L10n.t("onb.noSignupYet"))
                     .font(SpoolFonts.hand(14))
                     .foregroundStyle(OnbTheater.cream.opacity(0.75))
                     .multilineTextAlignment(.center)
@@ -93,7 +93,7 @@ struct OnbColdOpen: View {
                 Spacer()
 
                 Button(action: onNext) {
-                    Text("take your seat ↘")
+                    Text(L10n.t("onb.takeYourSeat"))
                         .font(SpoolFonts.serif(20))
                         .tracking(0.8)
                         .foregroundStyle(OnbTheater.bg)
@@ -112,7 +112,7 @@ struct OnbColdOpen: View {
         .overlay(alignment: .topTrailing) {
             if let onLogin {
                 Button(action: onLogin) {
-                    Text("log in ↗")
+                    Text(L10n.t("onb.logIn"))
                         .font(SpoolFonts.mono(11))
                         .tracking(2)
                         .foregroundStyle(OnbTheater.gold)
@@ -127,7 +127,7 @@ struct OnbColdOpen: View {
                 .buttonStyle(.plain)
                 .padding(.top, 54)
                 .padding(.trailing, 18)
-                .accessibilityLabel("Log in")
+                .accessibilityLabel(L10n.t("onb.logInA11y"))
             }
         }
     }
@@ -153,20 +153,20 @@ struct OnbSignInScreen: View {
                     VStack(alignment: .leading, spacing: 0) {
                         OnbDots(step: 7)
 
-                        Text("— RESERVE YOUR SEAT —")
+                        Text(L10n.t("auth.reserveSeat"))
                             .font(SpoolFonts.mono(10))
                             .tracking(4)
                             .foregroundStyle(t.inkSoft)
                             .padding(.top, 28)
 
-                        Text("your ticket,\nyour shelf.")
+                        Text(L10n.t("onb.ticketShelf"))
                             .font(SpoolFonts.serif(46))
                             .tracking(-1.4)
                             .foregroundStyle(t.ink)
                             .lineSpacing(-4)
                             .padding(.top, 18)
 
-                        Text("save your stubs across devices.\nfind friends' shelves. pick up where you left off.")
+                        Text(L10n.t("onb.saveStubsHint"))
                             .font(SpoolFonts.hand(13))
                             .foregroundStyle(t.inkSoft)
                             .lineSpacing(3)
@@ -176,7 +176,7 @@ struct OnbSignInScreen: View {
                             .padding(.top, 28)
 
                         Button(action: { onDone(.skipped) }) {
-                            Text("continue without account — preview only")
+                            Text(L10n.t("onb.continueWithoutAccount"))
                                 .font(SpoolFonts.hand(12))
                                 .foregroundStyle(t.inkSoft)
                                 .underline()
@@ -204,7 +204,7 @@ struct OnbManifesto: View {
                 VStack(alignment: .leading, spacing: 0) {
                     OnbDots(step: 1)
 
-                    Text("— THE RULES —")
+                    Text(L10n.t("onb.theRules"))
                         .font(SpoolFonts.mono(10))
                         .tracking(4)
                         .foregroundStyle(t.inkSoft)
@@ -325,7 +325,7 @@ struct OnbGrid: View {
                     VStack(alignment: .leading, spacing: 0) {
                         OnbDots(step: 2)
 
-                        Text("seen it? tier it.")
+                        Text(L10n.t("onb.seenItTierIt"))
                             .font(SpoolFonts.serif(26))
                             .tracking(-0.5)
                             .foregroundStyle(t.ink)
@@ -362,7 +362,7 @@ struct OnbGrid: View {
                         if loading && suggestions.isEmpty {
                             HStack(spacing: 8) {
                                 ProgressView().tint(t.accent)
-                                Text("loading this week's picks…")
+                                Text(L10n.t("onb.loadingPicks"))
                                     .font(SpoolFonts.hand(12))
                                     .foregroundStyle(t.inkSoft)
                             }
@@ -377,7 +377,7 @@ struct OnbGrid: View {
                             .padding(.top, 12)
                         }
 
-                        Text("\(picks.count) tiered · pick at least 4")
+                        Text(L10n.t("onb.tieredCount", ["n": "\(picks.count)"]))
                             .font(SpoolFonts.mono(10))
                             .tracking(1.5)
                             .foregroundStyle(t.inkSoft)
@@ -568,13 +568,13 @@ struct OnbH2H: View {
                 VStack(spacing: 0) {
                     OnbDots(step: 3)
 
-                    Text("— HEAD TO HEAD · MATCH \(currentMatch + 1) OF \(totalMatches) —")
+                    Text(L10n.t("onb.headToHead", ["current": "\(currentMatch + 1)", "total": "\(totalMatches)"]))
                         .font(SpoolFonts.mono(10))
                         .tracking(3)
                         .foregroundStyle(t.inkSoft)
                         .padding(.top, 22)
 
-                    Text("which do you love more?")
+                    Text(L10n.t("onb.whichLoveMore"))
                         .font(SpoolFonts.serif(26))
                         .tracking(-0.5)
                         .foregroundStyle(t.ink)
@@ -586,7 +586,7 @@ struct OnbH2H: View {
                         HStack(spacing: 10) {
                             card(side: .champion,  label: championLabel,
                                  m: contenders[championIdx], mode: mode, t: t)
-                            card(side: .challenger, label: "CHALLENGER",
+                            card(side: .challenger, label: L10n.t("onb.challenger"),
                                  m: contenders[challengerIdx], mode: mode, t: t)
                         }
                         .padding(.horizontal, 22)
@@ -597,20 +597,20 @@ struct OnbH2H: View {
                                 .fill(t.cream2)
                                 .overlay(Circle().stroke(t.ink, lineWidth: 1.5))
                                 .frame(width: 54, height: 54)
-                            Text("vs")
+                            Text(L10n.t("onb.vs"))
                                 .font(SpoolFonts.serif(24))
                                 .foregroundStyle(t.ink)
                         }
                         .padding(.top, 12)
 
-                        Text("winner stays. we climb the ladder.\n\(contenders.count - challengerIdx - 1) more to go.")
+                        Text(L10n.t("onb.winnerStays", ["n": "\(contenders.count - challengerIdx - 1)"]))
                             .font(SpoolFonts.hand(13))
                             .foregroundStyle(t.inkSoft)
                             .multilineTextAlignment(.center)
                             .lineSpacing(3)
                             .padding(.top, 16)
                     } else {
-                        Text("need more picks to compare — skip ahead.")
+                        Text(L10n.t("onb.needMorePicks"))
                             .font(SpoolFonts.hand(13))
                             .foregroundStyle(t.inkSoft)
                             .padding(.top, 60)
@@ -631,13 +631,13 @@ struct OnbH2H: View {
     }
 
     private var championLabel: String {
-        currentMatch == 0 ? "OPENER" : "REIGNING CHAMPION"
+        currentMatch == 0 ? L10n.t("onb.opener") : L10n.t("onb.reigningChampion")
     }
 
     private var ctaLabel: String {
-        if shouldSkip { return "skip →" }
-        if picked == nil { return "pick one" }
-        return isLastMatch ? "crown winner →" : "next matchup →"
+        if shouldSkip { return L10n.t("onb.skipArrow") }
+        if picked == nil { return L10n.t("onb.pickOne") }
+        return isLastMatch ? L10n.t("onb.crownWinner") : L10n.t("onb.nextMatchup")
     }
 
     private func advance() {
@@ -697,7 +697,7 @@ struct OnbH2H: View {
                     .foregroundStyle(t.ink)
                     .multilineTextAlignment(.center)
                 if chosen {
-                    Text("picked ✓")
+                    Text(L10n.t("onb.picked"))
                         .font(SpoolFonts.script(24))
                         .foregroundStyle(t.accent)
                 }
@@ -793,7 +793,7 @@ struct OnbPrint: View {
     @ViewBuilder
     private func stampView(mode: SpoolMode) -> some View {
         let c = tierColor(.S, mode: mode)
-        Text("STAMPED")
+        Text(L10n.t("onb.stamped"))
             .font(SpoolFonts.mono(10))
             .tracking(2)
             .foregroundStyle(c)
@@ -856,13 +856,13 @@ struct OnbIdentity: View {
                     VStack(alignment: .leading, spacing: 0) {
                         OnbDots(step: 5)
 
-                        Text("— WHO SHALL WE SEAT? —")
+                        Text(L10n.t("onb.whoShallWeSeat"))
                             .font(SpoolFonts.mono(10))
                             .tracking(4)
                             .foregroundStyle(t.inkSoft)
                             .padding(.top, 30)
 
-                        Text("and you are…?")
+                        Text(L10n.t("onb.andYouAre"))
                             .font(SpoolFonts.serif(46))
                             .tracking(-1.4)
                             .foregroundStyle(t.ink)
@@ -883,7 +883,7 @@ struct OnbIdentity: View {
                         .padding(.top, 36)
 
                         HStack {
-                            Text("AVAILABLE ✓")
+                            Text(L10n.t("onb.available"))
                                 .font(SpoolFonts.mono(10))
                                 .tracking(2)
                                 .foregroundStyle(t.inkSoft)
@@ -894,10 +894,10 @@ struct OnbIdentity: View {
                         }
                         .padding(.top, 10)
 
-                        questionField(q: "the one movie\nyou'd walk out of?", text: $walkOut, t: t)
+                        questionField(q: L10n.t("onb.walkOutQ"), text: $walkOut, t: t)
                             .padding(.top, 36)
 
-                        questionField(q: "the one you'll\ndefend to the grave?", text: $defend, t: t)
+                        questionField(q: L10n.t("onb.defendQ"), text: $defend, t: t)
                             .padding(.top, 26)
 
                         Spacer(minLength: 100)
@@ -907,7 +907,7 @@ struct OnbIdentity: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                OnbFoot(label: "that's me →", disabled: handle.isEmpty) {
+                OnbFoot(label: L10n.t("onb.thatsMe"), disabled: handle.isEmpty) {
                     onNext(handle)
                 }
             }
@@ -923,7 +923,7 @@ struct OnbIdentity: View {
                 .lineSpacing(-2)
                 .foregroundStyle(t.ink)
 
-            TextField("type anything…", text: text)
+            TextField(L10n.t("onb.typeAnything"), text: text)
                 .font(SpoolFonts.script(22))
                 .foregroundStyle(t.accent)
                 .textFieldStyle(.plain)
@@ -959,7 +959,7 @@ struct OnbSeason: View {
 
             VStack(spacing: 0) {
                 Spacer().frame(height: 60)
-                Text("— COMING THIS YEAR —")
+                Text(L10n.t("onb.comingThisYear"))
                     .font(SpoolFonts.mono(10))
                     .tracking(5)
                     .foregroundStyle(OnbTheater.gold)
@@ -1003,7 +1003,7 @@ struct OnbSeason: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 30)
 
-                Text("the reel is loaded.\nlights dimming…")
+                Text(L10n.t("onb.reelLoaded"))
                     .font(SpoolFonts.hand(14))
                     .foregroundStyle(OnbTheater.cream.opacity(0.8))
                     .multilineTextAlignment(.center)
@@ -1013,7 +1013,7 @@ struct OnbSeason: View {
                 Spacer()
 
                 Button(action: onNext) {
-                    Text("start spooling ▸")
+                    Text(L10n.t("onb.startSpooling"))
                         .font(SpoolFonts.serif(22))
                         .tracking(0.8)
                         .foregroundStyle(OnbTheater.bg)

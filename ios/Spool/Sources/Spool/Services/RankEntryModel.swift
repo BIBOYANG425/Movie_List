@@ -186,9 +186,9 @@ public final class RankEntryModel: ObservableObject {
     /// The placeholder for the current mode's search field.
     public var searchPlaceholder: String {
         switch mode {
-        case .movie: return "search films…"
-        case .tv:    return "search shows…"
-        case .book:  return "search books…"
+        case .movie: return L10n.t("rankEntry.searchFilms")
+        case .tv:    return L10n.t("rankEntry.searchShows")
+        case .book:  return L10n.t("rankEntry.searchBooks")
         }
     }
 

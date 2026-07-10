@@ -33,7 +33,7 @@ import SwiftUI
 ///     item to the injected `onRankIt` closure — the model owns NO ranking
 ///     logic. Movies only; the screen never offers Rank It on tv/book cards.
 ///
-/// Header last reviewed: 2026-07-09
+/// Header last reviewed: 2026-07-10
 @MainActor
 public final class WatchlistModel: ObservableObject {
 
@@ -194,7 +194,7 @@ public final class WatchlistModel: ObservableObject {
                 reverted.insert(removed, at: insertAt)
                 states[media] = .loaded(reverted)
             }
-            toastIO("couldn't remove \(removed.title) — try again", .error)
+            toastIO(L10n.t("toast.removeFailed", ["title": removed.title]), .error)
         }
     }
 

@@ -53,14 +53,16 @@ final class DiscoverEngineModelTests: XCTestCase {
     // MARK: - 1. provenance chip copy (twin of web discoverChips + en.ts)
 
     func testChipCopyForEveryKnownPool() {
+        // Now wired through L10n reusing the web discover.chip.* keys (C6-iOS
+        // Task 3); assert against the resolved value so the test is locale-safe.
         let cases: [(SuggestionPool, String)] = [
-            (.friend, "friends loved"),
-            (.taste, "your taste"),
-            (.similar, "because you ranked"),
-            (.trending, "trending"),
-            (.variety, "something different"),
-            (.generic, "popular"),
-            (.newRelease, "new"),
+            (.friend, L10n.t("discover.chip.friend")),
+            (.taste, L10n.t("discover.chip.taste")),
+            (.similar, L10n.t("discover.chip.similar")),
+            (.trending, L10n.t("discover.chip.trending")),
+            (.variety, L10n.t("discover.chip.variety")),
+            (.generic, L10n.t("discover.chip.generic")),
+            (.newRelease, L10n.t("discover.chip.new_release")),
         ]
         for (pool, copy) in cases {
             XCTAssertEqual(DiscoverCardCopy.chipCopy(for: pool), copy, "pool \(pool.rawValue)")
@@ -68,11 +70,12 @@ final class DiscoverEngineModelTests: XCTestCase {
     }
 
     /// `backfill` has no distinct story and any unknown/nil pool must fall back
-    /// to the safe "popular" chip — never a raw enum or blank (web parity).
+    /// to the safe "popular" chip (discover.chip.generic) — never a raw enum or
+    /// blank (web parity).
     func testChipCopyFallsBackToPopular() {
-        XCTAssertEqual(DiscoverCardCopy.chipCopy(for: .backfill), "popular")
-        XCTAssertEqual(DiscoverCardCopy.chipCopy(for: .unknown("brand_new_v9")), "popular")
-        XCTAssertEqual(DiscoverCardCopy.chipCopy(for: nil), "popular")
+        XCTAssertEqual(DiscoverCardCopy.chipCopy(for: .backfill), L10n.t("discover.chip.generic"))
+        XCTAssertEqual(DiscoverCardCopy.chipCopy(for: .unknown("brand_new_v9")), L10n.t("discover.chip.generic"))
+        XCTAssertEqual(DiscoverCardCopy.chipCopy(for: nil), L10n.t("discover.chip.generic"))
     }
 
     // MARK: - 2. engine section choreography

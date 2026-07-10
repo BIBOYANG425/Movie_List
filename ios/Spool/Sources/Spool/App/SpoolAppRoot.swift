@@ -226,7 +226,7 @@ public struct SpoolAppRoot: View {
                     Image(systemName: "icloud.slash")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(t.ink)
-                    Text("preview mode — sign in to save your rankings")
+                    Text(L10n.t("app.previewBanner"))
                         .font(SpoolFonts.hand(12))
                         .foregroundStyle(t.ink)
                         .lineLimit(1)
@@ -717,7 +717,7 @@ public struct SpoolAppRoot: View {
                 // Garbage id: can't derive a show id → refuse the re-rank.
                 // Never seed a tv Movie with nil showTmdbId (would persist 0/0).
                 NSLog("[SpoolAppRoot] rerankFromShelf: corrupt tv id '\(item.id)' — re-rank refused")
-                ToastCenter.shared.show("couldn't re-rank this show — try again", level: .error)
+                ToastCenter.shared.show(L10n.t("toast.reRankFailed"), level: .error)
             }
 
         case .book:

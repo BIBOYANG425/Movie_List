@@ -72,7 +72,7 @@ public struct JournalComposer: View {
             VStack(spacing: 12) {
                 ProgressView()
                     .tint(t.ink)
-                Text("loading your entry…")
+                Text(L10n.t("composer.loading"))
                     .font(SpoolFonts.hand(14))
                     .foregroundStyle(t.inkSoft)
             }
@@ -115,16 +115,16 @@ public struct JournalComposer: View {
     @ViewBuilder
     private func topBar(t: SpoolPalette) -> some View {
         HStack {
-            Button("× close", action: onClose)
+            Button(L10n.t("composer.close"), action: onClose)
                 .font(SpoolFonts.hand(15))
                 .foregroundStyle(t.inkSoft)
             Spacer()
-            Text("write about it")
+            Text(L10n.t("composer.title"))
                 .font(SpoolFonts.serif(18))
                 .foregroundStyle(t.ink)
             Spacer()
             // Balance the leading close button so the title stays centered.
-            Text("× close").font(SpoolFonts.hand(15)).foregroundStyle(.clear)
+            Text(L10n.t("composer.close")).font(SpoolFonts.hand(15)).foregroundStyle(.clear)
         }
         .padding(.horizontal, 18)
         .padding(.top, 50)
@@ -138,7 +138,7 @@ public struct JournalComposer: View {
                 .font(SpoolFonts.serif(24))
                 .foregroundStyle(t.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("your journal entry")
+            Text(L10n.t("composer.subtitle"))
                 .font(SpoolFonts.mono(10))
                 .tracking(2)
                 .foregroundStyle(t.inkSoft)
@@ -149,11 +149,11 @@ public struct JournalComposer: View {
 
     @ViewBuilder
     private func momentSection(t: SpoolPalette) -> some View {
-        sectionCard(.moment, title: "the moment", t: t) {
+        sectionCard(.moment, title: L10n.t("composer.sectionMoment"), t: t) {
             VStack(alignment: .leading, spacing: 10) {
-                paperEditor(text: $model.draft.reviewText, placeholder: "what did it stir in you?", t: t)
+                paperEditor(text: $model.draft.reviewText, placeholder: L10n.t("composer.reviewPlaceholder"), t: t)
                 Toggle(isOn: $model.draft.containsSpoilers) {
-                    Text("contains spoilers")
+                    Text(L10n.t("composer.containsSpoilers"))
                         .font(SpoolFonts.hand(14))
                         .foregroundStyle(t.ink)
                 }
@@ -166,9 +166,9 @@ public struct JournalComposer: View {
 
     @ViewBuilder
     private func feelingSection(t: SpoolPalette) -> some View {
-        sectionCard(.feeling, title: "the feeling", t: t) {
+        sectionCard(.feeling, title: L10n.t("composer.sectionFeeling"), t: t) {
             VStack(alignment: .leading, spacing: 12) {
-                stampLabel("moods", t: t)
+                stampLabel(L10n.t("composer.moods"), t: t)
                 stampGrid(
                     ids: JournalConstants.moodTagIDs,
                     label: JournalConstants.moodLabel,
@@ -176,7 +176,7 @@ public struct JournalComposer: View {
                     t: t
                 ) { id in toggleMood(id) }
 
-                stampLabel("vibes", t: t)
+                stampLabel(L10n.t("composer.vibes"), t: t)
                 stampGrid(
                     ids: JournalConstants.vibeTagIDs,
                     label: JournalConstants.vibeLabel,
@@ -191,7 +191,7 @@ public struct JournalComposer: View {
 
     @ViewBuilder
     private func detailsSection(t: SpoolPalette) -> some View {
-        sectionCard(.details, title: "the details", t: t) {
+        sectionCard(.details, title: L10n.t("composer.sectionDetails"), t: t) {
             VStack(alignment: .leading, spacing: 16) {
                 favoriteMoments(t: t)
                 standoutPerformances(t: t)
@@ -204,10 +204,10 @@ public struct JournalComposer: View {
     @ViewBuilder
     private func favoriteMoments(t: SpoolPalette) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            stampLabel("favorite moments", t: t)
+            stampLabel(L10n.t("composer.favoriteMoments"), t: t)
             ForEach(Array(model.draft.favoriteMoments.enumerated()), id: \.offset) { idx, _ in
                 HStack(spacing: 8) {
-                    TextField("a moment you loved", text: momentBinding(idx))
+                    TextField(L10n.t("composer.momentPlaceholder"), text: momentBinding(idx))
                         .font(SpoolFonts.hand(14))
                         .foregroundStyle(t.ink)
                         .textFieldStyle(.plain)
@@ -225,7 +225,7 @@ public struct JournalComposer: View {
                 Button {
                     model.draft.favoriteMoments = JournalComposerLogic.addMoment(model.draft.favoriteMoments)
                 } label: {
-                    Label("add a moment", systemImage: "plus")
+                    Label(L10n.t("composer.addMoment"), systemImage: "plus")
                         .font(SpoolFonts.hand(13))
                         .foregroundStyle(t.accent)
                 }
@@ -240,13 +240,13 @@ public struct JournalComposer: View {
     @ViewBuilder
     private func standoutPerformances(t: SpoolPalette) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            stampLabel("standout performances", t: t)
+            stampLabel(L10n.t("composer.standoutPerformances"), t: t)
             ForEach(Array(model.draft.standoutPerformances.enumerated()), id: \.offset) { idx, perf in
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(perf.name).font(SpoolFonts.hand(14)).foregroundStyle(t.ink)
                         if let c = perf.character, !c.isEmpty {
-                            Text("as \(c)").font(SpoolFonts.mono(10)).foregroundStyle(t.inkSoft)
+                            Text(L10n.t("composer.asCharacter", ["character": c])).font(SpoolFonts.mono(10)).foregroundStyle(t.inkSoft)
                         }
                     }
                     Spacer()
@@ -261,9 +261,9 @@ public struct JournalComposer: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(t.rule, lineWidth: 1))
             }
             HStack(spacing: 8) {
-                TextField("actor", text: $newPerfName)
+                TextField(L10n.t("composer.actor"), text: $newPerfName)
                     .font(SpoolFonts.hand(14)).foregroundStyle(t.ink).textFieldStyle(.plain)
-                TextField("as… (optional)", text: $newPerfCharacter)
+                TextField(L10n.t("composer.asOptional"), text: $newPerfCharacter)
                     .font(SpoolFonts.hand(14)).foregroundStyle(t.inkSoft).textFieldStyle(.plain)
                 Button {
                     model.draft.standoutPerformances = JournalComposerLogic.addPerformance(
@@ -284,11 +284,11 @@ public struct JournalComposer: View {
     @ViewBuilder
     private func watchContext(t: SpoolPalette) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            stampLabel("watch context", t: t)
+            stampLabel(L10n.t("composer.watchContext"), t: t)
             // location
             HStack(spacing: 8) {
                 Image(systemName: "mappin.and.ellipse").font(.system(size: 13)).foregroundStyle(t.inkSoft)
-                TextField("where did you watch?", text: $model.draft.watchedLocation)
+                TextField(L10n.t("composer.locationPlaceholder"), text: $model.draft.watchedLocation)
                     .font(SpoolFonts.hand(14)).foregroundStyle(t.ink).textFieldStyle(.plain)
             }
             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -296,14 +296,14 @@ public struct JournalComposer: View {
 
             // platform picker
             Menu {
-                Button("none") { model.draft.watchedPlatform = nil }
+                Button(L10n.t("composer.platformNone")) { model.draft.watchedPlatform = nil }
                 ForEach(JournalConstants.platformIDs, id: \.self) { id in
                     Button(JournalConstants.platformLabel(id)) { model.draft.watchedPlatform = id }
                 }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "tv").font(.system(size: 13)).foregroundStyle(t.inkSoft)
-                    Text(model.draft.watchedPlatform.map(JournalConstants.platformLabel) ?? "platform")
+                    Text(model.draft.watchedPlatform.map(JournalConstants.platformLabel) ?? L10n.t("composer.platform"))
                         .font(SpoolFonts.hand(14))
                         .foregroundStyle(model.draft.watchedPlatform == nil ? t.inkSoft : t.ink)
                     Spacer()
@@ -323,11 +323,11 @@ public struct JournalComposer: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "person.2").font(.system(size: 13)).foregroundStyle(t.inkSoft)
-                Text("watched with")
+                Text(L10n.t("composer.watchedWith"))
                     .font(SpoolFonts.hand(13)).foregroundStyle(t.inkSoft)
             }
             if friends.isEmpty {
-                Text("no friends to tag yet")
+                Text(L10n.t("composer.noFriendsToTag"))
                     .font(SpoolFonts.mono(10)).foregroundStyle(t.inkSoft)
             } else {
                 FlowLayout(spacing: 6, rowSpacing: 6) {
@@ -352,12 +352,12 @@ public struct JournalComposer: View {
     private func rewatch(t: SpoolPalette) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle(isOn: $model.draft.isRewatch) {
-                Text("this was a rewatch")
+                Text(L10n.t("composer.wasRewatch"))
                     .font(SpoolFonts.hand(14)).foregroundStyle(t.ink)
             }
             .tint(t.accent)
             if model.draft.isRewatch {
-                TextField("what changed this time?", text: $model.draft.rewatchNote)
+                TextField(L10n.t("composer.rewatchPlaceholder"), text: $model.draft.rewatchNote)
                     .font(SpoolFonts.hand(14)).foregroundStyle(t.ink).textFieldStyle(.plain)
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(t.rule, lineWidth: 1))
@@ -369,14 +369,14 @@ public struct JournalComposer: View {
 
     @ViewBuilder
     private func privateSection(t: SpoolPalette) -> some View {
-        sectionCard(.priv, title: "private", t: t) {
+        sectionCard(.priv, title: L10n.t("composer.sectionPrivate"), t: t) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: "lock").font(.system(size: 11)).foregroundStyle(t.inkSoft)
-                    Text("only you will ever see this")
+                    Text(L10n.t("composer.privateHint"))
                         .font(SpoolFonts.mono(10)).tracking(1).foregroundStyle(t.inkSoft)
                 }
-                paperEditor(text: $model.draft.personalTakeaway, placeholder: "a note to your future self…", t: t)
+                paperEditor(text: $model.draft.personalTakeaway, placeholder: L10n.t("composer.takeawayPlaceholder"), t: t)
             }
         }
     }
@@ -385,7 +385,7 @@ public struct JournalComposer: View {
 
     @ViewBuilder
     private func photosSection(t: SpoolPalette) -> some View {
-        sectionCard(.photos, title: "photos", t: t) {
+        sectionCard(.photos, title: L10n.t("composer.sectionPhotos"), t: t) {
             VStack(alignment: .leading, spacing: 10) {
                 if !model.draft.photoPaths.isEmpty {
                     photoThumbs(t: t)
@@ -396,7 +396,7 @@ public struct JournalComposer: View {
                         maxSelectionCount: JournalConstants.journalMaxPhotos - model.draft.photoPaths.count,
                         matching: .images
                     ) {
-                        Label("add photos", systemImage: "camera")
+                        Label(L10n.t("composer.addPhotos"), systemImage: "camera")
                             .font(SpoolFonts.hand(14))
                             .foregroundStyle(t.accent)
                     }
@@ -404,7 +404,7 @@ public struct JournalComposer: View {
                         Task { await ingest(items) }
                     }
                 } else {
-                    Text("6 photos max")
+                    Text(L10n.t("composer.photosMax"))
                         .font(SpoolFonts.mono(10)).foregroundStyle(t.inkSoft)
                 }
             }
@@ -440,13 +440,15 @@ public struct JournalComposer: View {
 
     @ViewBuilder
     private func visibilitySection(t: SpoolPalette) -> some View {
-        sectionCard(.visibility, title: "visibility", t: t) {
+        sectionCard(.visibility, title: L10n.t("composer.sectionVisibility"), t: t) {
             VStack(alignment: .leading, spacing: 8) {
                 FlowLayout(spacing: 6, rowSpacing: 6) {
                     ForEach(JournalComposerLogic.visibilityOptions, id: \.label) { opt in
                         let picked = model.draft.visibilityOverride == opt.value
                         Button { model.draft.visibilityOverride = opt.value } label: {
-                            Text(opt.label)
+                            // opt.label stays the stable (EN) ForEach id; the
+                            // DISPLAY text localizes via visibilityLabel (L10n).
+                            Text(JournalComposerLogic.visibilityLabel(opt.value))
                                 .font(SpoolFonts.hand(13))
                                 .foregroundStyle(picked ? t.cream : t.ink)
                                 .padding(.horizontal, 12).padding(.vertical, 4)
@@ -457,7 +459,7 @@ public struct JournalComposer: View {
                     }
                 }
                 if model.draft.visibilityOverride == nil {
-                    Text("default follows your profile")
+                    Text(L10n.t("composer.defaultFollowsProfile"))
                         .font(SpoolFonts.mono(10)).foregroundStyle(t.inkSoft)
                 }
             }
@@ -470,7 +472,7 @@ public struct JournalComposer: View {
     private func saveButton(t: SpoolPalette) -> some View {
         HStack {
             Spacer()
-            SpoolPill(model.saving ? "saving…" : "save entry ✓", filled: true) {
+            SpoolPill(model.saving ? L10n.t("composer.saving") : L10n.t("composer.saveEntry"), filled: true) {
                 Task {
                     if await model.save() != nil { onClose() }
                 }
@@ -709,13 +711,14 @@ public enum JournalComposerLogic {
         ("private", .priv),
     ]
 
-    /// The label for a visibility value (nil = "default").
+    /// The label for a visibility value (nil = "default") — wired through
+    /// `L10n.t` reusing the web journal.vis* keys (C6-iOS Task 3).
     public static func visibilityLabel(_ value: JournalVisibility?) -> String {
         switch value {
-        case .none: return "default"
-        case .pub: return "public"
-        case .friends: return "friends"
-        case .priv: return "private"
+        case .none: return L10n.t("journal.visDefault")
+        case .pub: return L10n.t("journal.visPublic")
+        case .friends: return L10n.t("journal.visFriends")
+        case .priv: return L10n.t("journal.visPrivate")
         }
     }
 }

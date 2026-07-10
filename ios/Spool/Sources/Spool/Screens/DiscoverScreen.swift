@@ -110,7 +110,7 @@ public struct DiscoverScreen: View {
     private var closeButton: some View {
         SpoolThemeReader { t, _ in
             Button { onClose?() } label: {
-                Text("close")
+                Text(L10n.t("settings.close"))
                     .font(SpoolFonts.mono(12))
                     .tracking(1.5)
                     .foregroundStyle(t.ink)
@@ -181,8 +181,8 @@ public struct DiscoverScreen: View {
     private func friendsSection(_ recs: [FriendRecommendation]) -> some View {
         if !recs.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                sectionHeader("from your friends",
-                              sub: "loved by people you follow")
+                sectionHeader(L10n.t("discover.fromFriends"),
+                              sub: L10n.t("discover.fromFriendsSub"))
                 ForEach(recs) { rec in
                     FriendRecCard(
                         rec: rec, onOpenActor: onOpenActor,
@@ -199,8 +199,8 @@ public struct DiscoverScreen: View {
     private func trendingSection(_ trending: [TrendingMovie]) -> some View {
         if !trending.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                sectionHeader("trending with friends",
-                              sub: "most-ranked this month")
+                sectionHeader(L10n.t("discover.trendingFriends"),
+                              sub: L10n.t("discover.trendingFriendsSub"))
                 ForEach(trending) { movie in
                     TrendingCard(
                         movie: movie, onOpenActor: onOpenActor,
@@ -222,10 +222,10 @@ public struct DiscoverScreen: View {
     private var engineSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center) {
-                sectionHeader("for you", sub: "picked from your taste")
+                sectionHeader(L10n.t("discover.forYou"), sub: L10n.t("discover.forYouSub"))
                 Spacer(minLength: 8)
                 if case .ready = model.engineState {
-                    SpoolPill("refresh", size: .sm) { Task { await model.refreshEngine() } }
+                    SpoolPill(L10n.t("discover.refresh"), size: .sm) { Task { await model.refreshEngine() } }
                 }
             }
             engineBody
@@ -249,9 +249,9 @@ public struct DiscoverScreen: View {
                 }
             }
         case .empty:
-            sectionEmpty("no suggestions yet — rank a few movies to seed these")
+            sectionEmpty(L10n.t("discover.engineEmpty"))
         case .error:
-            sectionError("couldn't load suggestions") { await model.refreshEngine() }
+            sectionError(L10n.t("discover.engineError")) { await model.refreshEngine() }
         }
     }
 
@@ -270,7 +270,7 @@ public struct DiscoverScreen: View {
     @ViewBuilder
     private var newReleasesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("new releases", sub: "fresh in theaters and streaming")
+            sectionHeader(L10n.t("discover.newReleases"), sub: L10n.t("discover.newReleasesSub"))
             newReleasesBody
         }
     }
@@ -303,9 +303,9 @@ public struct DiscoverScreen: View {
                 .padding(.horizontal, 1)
             }
         case .empty:
-            sectionEmpty("no new releases right now")
+            sectionEmpty(L10n.t("discover.newReleasesEmpty"))
         case .error:
-            sectionError("couldn't load new releases") { await model.retryNewReleases() }
+            sectionError(L10n.t("discover.newReleasesError")) { await model.retryNewReleases() }
         }
     }
 
@@ -327,7 +327,7 @@ public struct DiscoverScreen: View {
                 Text(text)
                     .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
-                SpoolPill("try again", size: .sm) { Task { await retry() } }
+                SpoolPill(L10n.t("watchlist.tryAgain"), size: .sm) { Task { await retry() } }
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 6)
@@ -365,11 +365,11 @@ public struct DiscoverScreen: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 14) {
                 Spacer(minLength: 60)
-                Text("couldn't load discover")
+                Text(L10n.t("discover.loadFailed"))
                     .font(SpoolFonts.hand(15))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
-                SpoolPill("try again", size: .sm) { Task { await model.reload() } }
+                SpoolPill(L10n.t("watchlist.tryAgain"), size: .sm) { Task { await model.reload() } }
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -388,15 +388,15 @@ public struct DiscoverScreen: View {
                 Image(systemName: "person.2")
                     .font(.system(size: 26))
                     .foregroundStyle(t.inkSoft)
-                Text("follow some people")
+                Text(L10n.t("discover.followSomePeople"))
                     .font(SpoolFonts.serif(19))
                     .foregroundStyle(t.ink)
-                Text("this section fills up with what your friends love once you follow a few")
+                Text(L10n.t("discover.followSomePeopleSub"))
                     .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
                 if onFindFriends != nil {
-                    SpoolPill("find friends", filled: true, size: .sm) { onFindFriends?() }
+                    SpoolPill(L10n.t("discover.findFriends"), filled: true, size: .sm) { onFindFriends?() }
                         .padding(.top, 2)
                 }
             }
@@ -411,11 +411,11 @@ public struct DiscoverScreen: View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 10) {
                 Spacer(minLength: 20)
-                Text("nothing new from your friends yet")
+                Text(L10n.t("discover.quietTitle"))
                     .font(SpoolFonts.hand(15))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
-                Text("check back after they rank a few more")
+                Text(L10n.t("discover.quietSub"))
                     .font(SpoolFonts.hand(12))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
@@ -613,7 +613,7 @@ private struct CardActionRow: View {
                     HStack(spacing: 4) {
                         Image(systemName: saved ? "bookmark.fill" : "bookmark")
                             .font(.system(size: 10, weight: .semibold))
-                        Text(saved ? "saved" : "save")
+                        Text(saved ? L10n.t("discover.saved") : L10n.t("discover.save"))
                             .font(SpoolFonts.mono(9))
                             .tracking(0.5)
                     }
@@ -624,13 +624,13 @@ private struct CardActionRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(saved)
-                .accessibilityLabel(saved ? "saved for later" : "save for later")
+                .accessibilityLabel(saved ? L10n.t("discover.savedA11y") : L10n.t("discover.saveA11y"))
 
                 Button(action: onRankIt) {
                     HStack(spacing: 4) {
                         Image(systemName: "star")
                             .font(.system(size: 10, weight: .semibold))
-                        Text("rank it")
+                        Text(L10n.t("watchlist.rankIt"))
                             .font(SpoolFonts.mono(9))
                             .tracking(0.5)
                     }
@@ -640,7 +640,7 @@ private struct CardActionRow: View {
                     .background(Capsule().fill(t.ink))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("rank it")
+                .accessibilityLabel(L10n.t("watchlist.rankIt"))
 
                 Spacer(minLength: 0)
             }
@@ -804,23 +804,23 @@ enum DiscoverCardCopy {
     }
 
     /// Provenance-chip copy for an engine item's `pool` (Part B). The iOS twin
-    /// of web `discoverChips.chipLabelKeyForPool` + `i18n/en.ts` — iOS is EN-only
-    /// in views today (hardcoded strings, the existing screen idiom), so the copy
-    /// lives here rather than in an i18n table. Every pool with a distinct story
-    /// gets its own chip; `backfill`, any `.unknown`, and a nil pool fall back to
-    /// the safe "popular" chip so a new server pool never renders a raw enum or a
-    /// blank chip (web fallback parity).
+    /// of web `discoverChips.chipLabelKeyForPool` — now wired through `L10n.t`
+    /// REUSING the web `discover.chip.*` keys VERBATIM (C6-iOS Task 3), so the two
+    /// clients render identical chip copy. Every pool with a distinct story gets
+    /// its own chip; `backfill`, any `.unknown`, and a nil pool fall back to the
+    /// safe "popular" chip (`discover.chip.generic`) so a new server pool never
+    /// renders a raw enum or a blank chip (web fallback parity).
     static func chipCopy(for pool: SuggestionPool?) -> String {
         switch pool {
-        case .friend:     return "friends loved"
-        case .taste:      return "your taste"
-        case .similar:    return "because you ranked"
-        case .trending:   return "trending"
-        case .variety:    return "something different"
-        case .generic:    return "popular"
-        case .newRelease: return "new"
+        case .friend:     return L10n.t("discover.chip.friend")
+        case .taste:      return L10n.t("discover.chip.taste")
+        case .similar:    return L10n.t("discover.chip.similar")
+        case .trending:   return L10n.t("discover.chip.trending")
+        case .variety:    return L10n.t("discover.chip.variety")
+        case .generic:    return L10n.t("discover.chip.generic")
+        case .newRelease: return L10n.t("discover.chip.new_release")
         case .backfill, .unknown, .none:
-            return "popular"
+            return L10n.t("discover.chip.generic")
         }
     }
 
@@ -1205,11 +1205,11 @@ public final class DiscoverModel: ObservableObject {
         savedIds.insert(item.id)
         let ok = await save(item)
         if ok {
-            toast("saved \(item.title) for later", .success)
+            toast(L10n.t("discover.savedToast", ["title": item.title]), .success)
         } else {
             // Revert so the user can retry (web reverts its optimistic prepend).
             savedIds.remove(item.id)
-            toast("couldn't save \(item.title) — try again", .error)
+            toast(L10n.t("discover.saveFailedToast", ["title": item.title]), .error)
         }
     }
 

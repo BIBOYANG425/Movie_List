@@ -61,12 +61,12 @@ public struct SeasonSelectScreen: View {
                             .foregroundStyle(SpoolTokens.paper.ink)
                             .lineLimit(2)
                         Spacer()
-                        Button("cancel ✕", action: onClose)
+                        Button(L10n.t("rankEntry.cancel"), action: onClose)
                             .font(SpoolFonts.mono(13))
                             .foregroundStyle(SpoolTokens.paper.inkSoft)
                     }
 
-                    Text("which season?")
+                    Text(L10n.t("rankEntry.whichSeason"))
                         .font(SpoolFonts.script(20))
                         .foregroundStyle(SpoolTokens.paper.inkSoft)
                         .padding(.top, 4)
@@ -92,14 +92,14 @@ public struct SeasonSelectScreen: View {
             HStack {
                 Spacer()
                 ProgressView().tint(SpoolTokens.paper.accent)
-                Text("loading seasons…")
+                Text(L10n.t("rankEntry.loadingSeasons"))
                     .font(SpoolFonts.mono(11))
                     .foregroundStyle(SpoolTokens.paper.inkSoft)
                 Spacer()
             }
             .padding(.top, 40)
         } else if model.seasons.isEmpty {
-            Text("couldn't load seasons — go back and try again")
+            Text(L10n.t("rankEntry.seasonsLoadFailed"))
                 .font(SpoolFonts.hand(14))
                 .foregroundStyle(SpoolTokens.paper.inkSoft)
                 .frame(maxWidth: .infinity)

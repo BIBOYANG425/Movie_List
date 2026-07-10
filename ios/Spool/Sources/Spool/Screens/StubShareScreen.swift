@@ -45,7 +45,7 @@ public struct StubShareScreen: View {
             ) {
                 VStack(spacing: 0) {
                     HStack {
-                        Button("← BACK", action: onClose)
+                        Button(L10n.t("stubShare.back"), action: onClose)
                             .font(SpoolFonts.mono(12))
                             .tracking(1)
                             .foregroundStyle(t.ink)
@@ -54,7 +54,7 @@ public struct StubShareScreen: View {
                     .padding(.horizontal, 18)
                     .padding(.top, 50)
 
-                    Text("for your story ↓")
+                    Text(L10n.t("stubShare.forYourStory"))
                         .font(SpoolFonts.script(28))
                         .foregroundStyle(t.ink)
                         .padding(.top, 4)
@@ -69,15 +69,15 @@ public struct StubShareScreen: View {
                     .padding(.horizontal, 18)
 
                     HStack(spacing: 8) {
-                        SpoolPill("↗ IG", filled: true, action: { share(subject: "Instagram", mode: mode) })
-                        SpoolPill("↗ tiktok", action: { share(subject: "TikTok", mode: mode) })
-                        SpoolPill("↗ save", action: { saveToPhotos(mode: mode) })
+                        SpoolPill(L10n.t("stubShare.ig"), filled: true, action: { share(subject: "Instagram", mode: mode) })
+                        SpoolPill(L10n.t("stubShare.tiktok"), action: { share(subject: "TikTok", mode: mode) })
+                        SpoolPill(L10n.t("stubShare.save"), action: { saveToPhotos(mode: mode) })
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 24)
 
-                    SpoolPill("post to spool feed", action: {
-                        toast = "post to feed coming soon"
+                    SpoolPill(L10n.t("stubShare.postToFeed"), action: {
+                        toast = L10n.t("stubShare.comingSoon")
                     })
                         .padding(.horizontal, 18)
                         .padding(.top, 8)

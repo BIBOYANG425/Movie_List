@@ -113,7 +113,7 @@ public struct SettingsScreen: View {
         SpoolThemeReader { t, _ in
             HStack {
                 Button(action: onClose) {
-                    Text("close")
+                    Text(L10n.t("settings.close"))
                         .font(SpoolFonts.mono(12))
                         .tracking(1.5)
                         .foregroundStyle(t.ink)
@@ -122,14 +122,14 @@ public struct SettingsScreen: View {
                 }
                 .buttonStyle(.plain)
                 Spacer()
-                Text("settings")
+                Text(L10n.t("settings.title"))
                     .font(SpoolFonts.serif(22))
                     .tracking(-0.3)
                     .foregroundStyle(t.ink)
                 Spacer()
                 // Invisible balancer — keeps the title centered without
                 // math. Matches the close button's width.
-                Text("close").opacity(0).padding(.horizontal, 12).padding(.vertical, 8)
+                Text(L10n.t("settings.close")).opacity(0).padding(.horizontal, 12).padding(.vertical, 8)
             }
             .padding(.horizontal, 10)
             .padding(.top, 14)
@@ -143,12 +143,12 @@ public struct SettingsScreen: View {
     // MARK: account
 
     private var accountSection: some View {
-        section(title: "ACCOUNT") { t in
+        section(title: L10n.t("settings.sectionAccount")) { t in
             if let profile {
                 VStack(spacing: 0) {
                     row(title: profile.handle, subtitle: email ?? profile.displayedName, t: t)
                     divider(t: t)
-                    linkRow(title: "edit profile", t: t) { editing = true }
+                    linkRow(title: L10n.t("settings.editProfile"), t: t) { editing = true }
                 }
             } else if hasSession {
                 // Signed in, but neither profile fetch nor auth-session
@@ -156,15 +156,15 @@ public struct SettingsScreen: View {
                 // something honest — the sign-out path elsewhere in the
                 // sheet still works because it keys off `hasSession`.
                 row(
-                    title: email ?? "signed in",
+                    title: email ?? L10n.t("settings.signedIn"),
                     subtitle: email == nil
-                        ? "profile not loaded yet — pull to retry"
-                        : "profile not loaded yet",
+                        ? L10n.t("settings.profileNotLoadedRetry")
+                        : L10n.t("settings.profileNotLoaded"),
                     t: t
                 )
             } else {
-                row(title: "preview mode",
-                    subtitle: "sign in from the home screen to save your rankings",
+                row(title: L10n.t("settings.previewMode"),
+                    subtitle: L10n.t("settings.previewModeHint"),
                     t: t)
             }
         }
@@ -173,13 +173,26 @@ public struct SettingsScreen: View {
     // MARK: preferences
 
     private var preferencesSection: some View {
-        section(title: "APPEARANCE") { t in
+        section(title: L10n.t("settings.sectionAppearance")) { t in
             HStack(spacing: 8) {
                 ForEach(ThemePreference.allCases, id: \.self) { p in
-                    ThemeChip(label: p.label, selected: preference == p) { preference = p }
+                    ThemeChip(label: L10n.t(Self.themeLabelKey(p)), selected: preference == p) { preference = p }
                 }
                 Spacer(minLength: 0)
             }
+        }
+    }
+
+    /// The L10n key for a theme preference's display label. Kept here (not on
+    /// `ThemePreference`) so the copy sweep is a call-site string extraction and
+    /// the Theme model type stays free of localization concerns. The raw
+    /// preference value (`p.rawValue`) still drives persistence; only the
+    /// user-facing label is localized.
+    private static func themeLabelKey(_ p: ThemePreference) -> String {
+        switch p {
+        case .system: return "settings.themeSystem"
+        case .paper:  return "settings.themePaper"
+        case .dark:   return "settings.themeDark"
         }
     }
 
@@ -220,9 +233,9 @@ public struct SettingsScreen: View {
     /// Lowercase copy per spec: `profile visibility` with a public/friends/
     /// private picker and the footnote that closes the explore opt-in loop.
     private var visibilitySection: some View {
-        section(title: "PRIVACY") { t in
+        section(title: L10n.t("settings.sectionPrivacy")) { t in
             VStack(alignment: .leading, spacing: 8) {
-                Text("profile visibility")
+                Text(L10n.t("settings.profileVisibility"))
                     .font(SpoolFonts.serif(16))
                     .foregroundStyle(t.ink)
                     .padding(.horizontal, 14)
@@ -230,7 +243,10 @@ public struct SettingsScreen: View {
                 HStack(spacing: 8) {
                     ForEach(Self.visibilityOptions, id: \.self) { option in
                         VisibilityChip(
-                            label: option,
+                            // Localized DISPLAY label only; `option` (the raw
+                            // public/friends/private value) still drives the DB
+                            // write via setVisibility — never localize the value.
+                            label: L10n.t(Self.visibilityLabelKey(option)),
                             selected: visibility == option,
                             disabled: visibilityBusy
                         ) {
@@ -240,7 +256,7 @@ public struct SettingsScreen: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 14)
-                Text("public shows your activity in explore")
+                Text(L10n.t("settings.visibilityExploreHint"))
                     .font(SpoolFonts.hand(12))
                     .foregroundStyle(t.inkSoft)
                     .padding(.horizontal, 14)
@@ -250,6 +266,17 @@ public struct SettingsScreen: View {
     }
 
     static let visibilityOptions = ["public", "friends", "private"]
+
+    /// The L10n key for a visibility option's display label. The switch's input
+    /// is the RAW option value (the DB-persisted string); only the returned key's
+    /// resolved value is user-facing.
+    private static func visibilityLabelKey(_ option: String) -> String {
+        switch option {
+        case "friends": return "settings.visFriends"
+        case "private": return "settings.visPrivate"
+        default:        return "settings.visPublic"
+        }
+    }
 
     private func setVisibility(_ value: String) {
         guard value != visibility, !visibilityBusy else { return }
@@ -270,13 +297,13 @@ public struct SettingsScreen: View {
     // MARK: about
 
     private var aboutSection: some View {
-        section(title: "ABOUT") { t in
+        section(title: L10n.t("settings.sectionAbout")) { t in
             VStack(spacing: 0) {
-                linkRow(title: "privacy", t: t) { /* placeholder */ }
+                linkRow(title: L10n.t("settings.privacy"), t: t) { /* placeholder */ }
                 divider(t: t)
-                linkRow(title: "terms", t: t) { /* placeholder */ }
+                linkRow(title: L10n.t("settings.terms"), t: t) { /* placeholder */ }
                 divider(t: t)
-                row(title: "version", subtitle: Self.versionLabel, t: t)
+                row(title: L10n.t("settings.version"), subtitle: Self.versionLabel, t: t)
             }
         }
     }
@@ -288,7 +315,7 @@ public struct SettingsScreen: View {
             Button(action: signOut) {
                 HStack(spacing: 8) {
                     if signingOut { ProgressView().tint(t.ink) }
-                    Text(signingOut ? "signing out…" : "sign out")
+                    Text(signingOut ? L10n.t("settings.signingOut") : L10n.t("settings.signOut"))
                         .font(SpoolFonts.serif(16))
                         .tracking(0.2)
                         .foregroundStyle(t.ink)
@@ -488,7 +515,7 @@ private struct VisibilityChip: View {
             .buttonStyle(.plain)
             .disabled(disabled)
             .opacity(disabled && !selected ? 0.5 : 1)
-            .accessibilityLabel("\(label) visibility")
+            .accessibilityLabel(L10n.t("settings.visibilityA11y", ["label": label]))
             .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         }
     }
