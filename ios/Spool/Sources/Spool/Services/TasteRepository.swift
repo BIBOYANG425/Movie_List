@@ -15,9 +15,11 @@ import Supabase
 ///    Feeds the "recommend to @friend" row on TwinScreen.
 ///
 /// Scoring mirrors the web exactly so an iOS twin % matches the web twin %
-/// for the same pair.
+/// for the same pair. The friend-watchlist exclusion in
+/// `getRecommendationsForFriend` reads via `WatchlistRepository.listForUser`
+/// (C3 B3 fix) so it works under the new follower-SELECT movie policy.
 ///
-/// Header last reviewed: 2026-04-19
+/// Header last reviewed: 2026-07-09
 public actor TasteRepository {
 
     public static let shared = TasteRepository()
@@ -120,17 +122,20 @@ public actor TasteRepository {
             .eq("user_id", value: targetID.uuidString)
             .execute()
             .value
-        async let targetWatchlistIDs: [TasteIDRow] = client
-            .from("watchlist_items")
-            .select("tmdb_id")
-            .eq("user_id", value: targetID.uuidString)
-            .execute()
-            .value
+        // Read the target's MOVIE watchlist through WatchlistRepository, which
+        // owns the `watchlist_items` shape (B3 fix). This used to be a bare
+        // `watchlist_items` select here — under the pre-C3 owner-only movie
+        // SELECT policy that read silently returned 0 rows for a friend, so
+        // Twin recommended movies already on the friend's watchlist. C3's
+        // 20260709 follower-SELECT migration (Q2) makes a follower's read
+        // return rows, so `listForUser` now actually populates the exclusion.
+        async let targetWatchlist: [WatchlistItem] = WatchlistRepository.shared
+            .listForUser(userId: targetID, media: .movie)
 
-        let (picks, ranked, watchlist) = try await (viewerPicks, targetRankedIDs, targetWatchlistIDs)
+        let (picks, ranked, watchlist) = try await (viewerPicks, targetRankedIDs, targetWatchlist)
         var excluded = Set<String>()
         for row in ranked { excluded.insert(row.tmdb_id) }
-        for row in watchlist { excluded.insert(row.tmdb_id) }
+        for item in watchlist { excluded.insert(item.id) }
 
         // Sort client-side: tier score descending (S > A), break ties on
         // rank_position ascending (best rank first). Drops picks whose tier

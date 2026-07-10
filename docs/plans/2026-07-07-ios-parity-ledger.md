@@ -9,7 +9,7 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | C0 | Stub write fix | iOS build in final review | audits/2026-07-07-c0-stub-web-audit.md | #30 | (PR opens after final review) |
 | C1 | Feed + notifications | feed UI built on `feat/ios-parity-c1-feed-ui` (PR pending); data layer + web fixes already merged (#32, #34; migrations applied + probes passed 2026-07-08) | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
 | C2 | Journal + AI agent | web fixes merged (PR #33); iOS journal built on `feat/ios-parity-c2-journal` (PR pending) | audits/2026-07-08-c2-journal-web-audit.md | #33 | (PR pending) |
-| C3 | Watchlist + Discover | web blocking fixes in PR (B1/B2/B3a/B4/B5); iOS watchlist+discover port pending | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (PR pending, branch `fix/c3-watchlist-discover-web-blocking`) | — |
+| C3 | Watchlist + Discover | Part A shipped on `feat/ios-parity-c3-watchlist` (PR pending); Part B pending (owner prereq: TMDB_API_KEY secret) | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (PR pending, branch `fix/c3-watchlist-discover-web-blocking`) | `feat/ios-parity-c3-watchlist` (PR pending) |
 | C4 | Ranking management | blocking-fixes branch complete (Tasks 1-5 on `fix/c4-ranking-blocking`); iOS management UI is next sub-plan (pending owner design check) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | (PR pending) | — |
 | C5 | TV seasons + books | pending | — | — | — |
 | C6 | zh localization | pending | — | — | — |
@@ -46,6 +46,12 @@ Format per entry: `[cycle] [blocking|deferred] finding — disposition`.
 - [C3] [blocking] B3a `watchlist_items` had no UPDATE policy while `addToWatchlist` upserts merge-duplicates (ON CONFLICT DO UPDATE RLS-denied on stale pre-check) — fixed: migration `20260708_c3_watchlist_update_policy.sql` adds owner UPDATE mirroring tv/book
 - [C3] [blocking] B4 `trg_recompute_taste` fired O(tier-size) SECURITY DEFINER full-profile recomputes per rank into `user_taste_profiles`, which no client reads (verified LIVE in prod) — fixed: migration `20260708_c3_drop_taste_recompute.sql` drops trigger + `trigger_recompute_taste()` + `recompute_taste_profile(uuid)`; tables `user_taste_profiles`/`movie_credits_cache` PARKED (Q1 owner)
 - [C3] [deferred] 14 findings D1–D14 logged in audits/2026-07-08-c3-watchlist-discover-web-audit.md §3 (friend-pool sampling bias, no stale-request guard, variety pagination, dead-code cluster D7, whole-show `season_number 0` vs NULL D6, i18n misses; see doc) — not blocking the iOS port
+- [C3] [adjudication] Q2 movie watchlist visibility = FOLLOWER-VISIBLE (owner, 2026-07-09): aligns with tv/book, unblocks iOS Twin-exclusion; migration `20260709_c3_movie_watchlist_follower_select.sql` in Part A branch
+- [C3] [adjudication] Q6 iOS Discover = ONE MERGED SCREEN: social sections (friend recs + trending) now in Part A; engine grid + provenance chips = Part B (owner, 2026-07-09)
+- [C3] [adjudication] Q6 web DiscoverView = merged layout: friend sections + engine grid with provenance chips + New Releases row = Part B scope (owner, 2026-07-09)
+- [C3] [adjudication] Q5 provenance chips = YES, Part B (pool labels on iOS/web Discover cards)
+- [C3] [adjudication] Q4 tmdb-proxy = Part B (key stays in bundles until then)
+- [C3] [adjudication] Q7 threshold hard-coded at 3; Q3 MOOT (prod verified 0 bare ids)
 - [C4] [blocking] B1 same-tier drop-on-container wrote a duplicate `rank_position` and left a gap (single-row UPDATE, no reindex) + emitted `ranking_move` even on no-op — fixed on `fix/c4-ranking-blocking`: same-tier container drops route through the reindex helper + RPC; event suppressed when order unchanged
 - [C4] [blocking] B2 movie cross-tier migration never compacted the source tier — fixed: migration completion calls `set_tier_order` for the source tier (membership minus the departed id), matching TV/book dual-tier behavior
 - [C4] [blocking] B3 re-rank deleted the ranking before the new rank existed (cancel = permanent data loss); emitted `ranking_remove`+`ranking_add` instead of `ranking_move` — fixed: delete deferred to ceremony completion; re-rank flow non-destructive; completion emits single `ranking_move`
@@ -368,11 +374,84 @@ dispositions per the audit doc. **The discover EDGE FUNCTION (audit §2 —
 owner infra (TMDB secret in the function store + deploy) and product decisions
 (Q4 proxy, Q5 pool provenance, Q6 what "Discover" is on iOS) — not in this web-fix PR.
 
-**iOS gap (audit §4):** no watchlist/discover code exists on iOS. Needed —
-`WatchlistRepository` (3 tables, §1.1 contract), the watchlist tab UI,
-rank-from-watchlist with the CORRECTED B5 semantics (delete only on confirmed
-save), `SuggestionsClient` (`functions.invoke('suggestions')` per §2), and fixing
-`TasteRepository.getRecommendationsForFriend` per the B3 adjudication (Q2).
+**iOS gap (audit §4):** closed by C3-iOS Part A — see notes below.
+
+### C3-iOS Part A notes
+
+Built on `feat/ios-parity-c3-watchlist` per
+`docs/plans/2026-07-09-c3-ios-watchlist-discover-plan.md` (Tasks 1–6, 458 swift
+tests; baseline at branch start was 381).
+
+**Owner adjudications (2026-07-09 — do not relitigate):**
+
+- **Q2** movie watchlist SELECT = FOLLOWER-VISIBLE (aligned with tv/book). Migration
+  `20260709_c3_movie_watchlist_follower_select.sql` in branch — APPLY BEFORE MERGE.
+  iOS `TasteRepository.getRecommendationsForFriend` now gets real data for
+  Twin-exclusion; was silently returning 0 rows under owner-only RLS.
+- **Q6** iOS Discover = ONE MERGED SCREEN (friend recs + trending NOW; engine grid +
+  provenance chips arrive in Part B). The compass icon lives in the feed header tab;
+  the sheet is `.sheet`.
+- **Q5** provenance chips = YES, but Part B (pool labels: "Friends loved", "Because
+  you ranked X"). Part A cards are unlabeled.
+- **Q4** tmdb-proxy ships with Part B (not C3 Part A). `hasTmdbKey()` gating stays;
+  both bundles keep the key until then.
+- **Q7** generic-vs-smart threshold stays hard-coded at 3 (no owner tuning surface).
+- **Q3** MOOT — prod verified 0 bare-format `tmdb_id` rows; no one-shot backfill
+  needed.
+
+**What shipped in Part A:**
+
+- `WatchlistRepository` actor (3 tables, §1.1 contract, media-complete — tv/book
+  rows land with C5 UI; all read/write/allBookmarkedIds paths tested).
+- Watchlist tab (5th tab, **queue** icon in the nav; NOTE: the internal symbol name
+  is `queue` — owner taste determines final label, "queue" vs "watchlist"):
+  poster grid, media-type segmented switch, movie Rank It + Remove; TV/book render
+  Remove only (no Rank It until C5 ceremony).
+- Rank-from-watchlist: B5-corrected (delete bookmark only on confirmed
+  `RankPersistence.save` success), stale-origin guard (captures originating
+  `tmdb_id` before ceremony opens; does not delete if the saved item's id differs),
+  id-match guard (compare at delete time; failed delete = fire-and-forget + loud
+  log; never gates the rank-success UX).
+- Social Discover: `DiscoverRepository` + `DiscoverScreen` (two sections: "From your
+  friends" via `friendRecommendations(limit:20)`, "Trending with friends" via
+  `trendingAmongFriends(limit:15, days:30)`; cards per audit §1.2 field list;
+  pull-to-refresh; empty states for no-friends). Explicit slot comment marks where
+  Part B's engine grid slots in below the social sections.
+- Twin fix (B3): `TasteRepository.getRecommendationsForFriend` now reads
+  `watchlist_items` via `WatchlistRepository.listForUser` (working under Q2's
+  follower-SELECT policy); workaround reads removed.
+- Q2 migration `20260709_c3_movie_watchlist_follower_select.sql`: pin
+  **APPLY-BEFORE-MERGE** — Task 5 Twin read depends on it in prod; everything else
+  is additive.
+- Contract: `docs/contracts/shared-payloads.md` watchlist section updated (Q2 RLS
+  posture, B5 stale-origin/id-match guards, D6 0-or-NULL note).
+
+**Part B MUST-COVER (separate plan — gated on owner setting `TMDB_API_KEY` as a
+Supabase Edge Function secret):**
+
+- `suggestions` edge function (§2 of the audit) + companion `tmdb-proxy` (§2.4).
+- `SuggestionsClient` on iOS (mirrors `JournalAgentClient`'s invoke pattern).
+- Engine grid + provenance chips on iOS `DiscoverScreen` (slot already reserved).
+- Web `DiscoverView` migrated to the merged layout: friend sections + engine grid
+  with provenance chips + a dedicated "New releases" row (TMDB now-playing/upcoming
+  filtered by taste genres; feeds the iMessage agent's release radar later).
+- Web `AddMediaModal`/`AddTVSeasonModal`/`MovieOnboardingPage` swap
+  `getSmartSuggestions/Backfill` + `buildTasteProfile` for edge-function calls.
+- Info.plist TMDB key retired (with `tmdb-proxy` in place).
+- Discover card actions (save-for-later + movie tap): iOS Part A cards are inert on
+  tap; actions unlock in Part B when `SuggestionsClient` lands.
+- New Releases row on web (owner scope addition 2026-07-09).
+
+**Deferred minors from task reviews (not blocking Part A):**
+
+- Exclusion error-posture asymmetry (tv/book exclusion errors logged only; movie
+  exclusion errors propagate — align in a later cycle).
+- Pull-to-refresh teardown edge (Task teardown on swift concurrency; cosmetic in
+  current volume).
+- Reload-token dead code in `WatchlistScreen`/`SpoolAppRoot` (unused reload trigger left; W0.3
+  delete candidate).
+- Revert-duplicate and seed-item cases in WatchlistContractTests — already fixed
+  before review merge.
 
 ### Search gaps mini-cycle (2026-07-09) — SHIPPED (PR #38)
 
@@ -440,3 +519,29 @@ wrapped `begin; … rollback;`:
 
 **4. Merge the PR.** No deploy-window sensitivity — both migrations are
 apply-then-merge safe, so applying before or after the merge is fine.
+
+## C3-iOS Part A migration runbook (owner applies, before merge)
+
+One migration in `feat/ios-parity-c3-watchlist`. It is **APPLY-BEFORE-MERGE** —
+Task 5 Twin read (`TasteRepository.getRecommendationsForFriend`) depends on the
+follower-SELECT policy being live in prod; the rest of Part A is purely additive
+client code.
+
+**1. `supabase/migrations/20260709_c3_movie_watchlist_follower_select.sql`** —
+Q2: drops owner-only SELECT, recreates two-policy shape (owner SELECT + follower
+SELECT mirroring tv/book). Rollback (verbatim in the file):
+`DROP POLICY "Users can view followed users watchlist" ON watchlist_items;`
+`DROP POLICY "Users can view own watchlist" ON watchlist_items;`
+`CREATE POLICY "Users can view own watchlist" ON watchlist_items FOR SELECT USING (auth.uid() = user_id);`
+
+**2. Verification probes (from `docs/plans/audits/2026-07-09-c3-ios-verification.md`):**
+
+- **(1)** owner still reads own `watchlist_items` rows → non-zero count.
+- **(2)** follower reads followee's `watchlist_items` rows → non-zero count (SET
+  ROLE the follower's sub, SELECT WHERE `user_id = <followee>`).
+- **(3)** NON-follower gets 0 rows from followee's `watchlist_items`.
+- **(4)** follower cannot INSERT/UPDATE/DELETE a followee's watchlist row → RLS
+  denial (42501).
+- **(5)** `SELECT policyname FROM pg_policies WHERE tablename = 'watchlist_items' AND cmd = 'SELECT'` → exactly 2 rows: `"Users can view own watchlist"` and `"Users can view followed users watchlist"`.
+
+**3. Merge the PR.**

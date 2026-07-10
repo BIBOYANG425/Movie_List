@@ -48,6 +48,44 @@ public enum TMDBService {
         return Array(dedupByID(merged).prefix(12)).shuffled()
     }
 
+    // MARK: /movie/{id} — minimal details (vote_average enrichment)
+
+    /// Fetch just the `vote_average` for a movie by its numeric TMDB id. Used by
+    /// the C3 rank-from-watchlist path (Task 4): a `WatchlistItem` doesn't carry
+    /// the 0-10 rating, and dropping it regresses the ranking engine's prediction
+    /// signal for new users (see `Movie.voteAverage`). The normal search→rank
+    /// path already has this from the search result; this backfills it for the
+    /// watchlist path. Best-effort: returns `nil` on missing key / HTTP error /
+    /// transport failure so the caller falls back to a nil `voteAverage` (the
+    /// engine then uses the tier midpoint, exactly as before this field existed).
+    public static func movieVoteAverage(tmdbId: Int, timeout: TimeInterval = defaultTimeout) async -> Double? {
+        guard let key = apiKey, !key.isEmpty else { return nil }
+        var comps = URLComponents(string: "\(base)/movie/\(tmdbId)")!
+        comps.queryItems = [
+            URLQueryItem(name: "api_key", value: key),
+            URLQueryItem(name: "language", value: locale()),
+        ]
+        guard let url = comps.url else { return nil }
+
+        var req = URLRequest(url: url, timeoutInterval: timeout)
+        req.httpMethod = "GET"
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            let detail = try JSONDecoder().decode(TMDBDetailResponse.self, from: data)
+            return detail.voteAverage
+        } catch {
+            return nil
+        }
+    }
+
+    private struct TMDBDetailResponse: Decodable {
+        let voteAverage: Double?
+        enum CodingKeys: String, CodingKey {
+            case voteAverage = "vote_average"
+        }
+    }
+
     // MARK: /discover/movie
 
     private static func discover(
