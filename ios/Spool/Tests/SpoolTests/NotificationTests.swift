@@ -84,6 +84,49 @@ final class NotificationTests: XCTestCase {
         XCTAssertEqual(items[0].kind, .newFollower)   // renders as fallback
     }
 
+    // MARK: - badge_unlock bell rendering (C7-iOS Task 2 verification)
+
+    /// The RPC writes `badge_unlock` notification rows server-side; the bell MUST
+    /// render them, NOT drop/filter them. This pins the full decode → kind → icon
+    /// mapping: a raw `badge_unlock` row decodes, maps to `.badgeUnlock` (NOT the
+    /// `.newFollower` fallback), keeps its server title/body, and renders the
+    /// `rosette` glyph.
+    func testBadgeUnlockRowRendersWithRosetteIconAndServerCopy() throws {
+        // Wire row exactly as the RPC writes it (contract § badge_unlock shape:
+        // title 'Badge unlocked', reference_id = badge_key, self-authored).
+        let raw = """
+        {"id":"DDDDDDDD-0000-0000-0000-0000000000B1","user_id":"\(me.uuidString.lowercased())",
+         "type":"badge_unlock","title":"Badge unlocked","body":"First Rank",
+         "actor_id":"\(me.uuidString.lowercased())","reference_id":"first_rank",
+         "is_read":false,"created_at":"2026-07-10T10:00:00+00:00"}
+        """
+        let decoded = try JSONDecoder().decode(
+            NotificationRow.self, from: Data(raw.utf8)
+        )
+        XCTAssertEqual(decoded.type, "badge_unlock")
+
+        let items = NotificationAssembler.items(from: [decoded], actors: [])
+        let item = try XCTUnwrap(items.first)
+        // Maps to the real kind, NOT the unknown-type fallback.
+        XCTAssertEqual(item.kind, .badgeUnlock)
+        // Server copy carried verbatim (bell renders title + body from the row).
+        XCTAssertEqual(item.title, "Badge unlocked")
+        XCTAssertEqual(item.body, "First Rank")
+        XCTAssertEqual(item.referenceID, "first_rank")
+        // The bell's row icon comes from the kind → SF Symbol mapping.
+        XCTAssertEqual(item.kind.sfSymbol, "rosette")
+    }
+
+    /// Every known kind has a distinct, non-fallback SF Symbol — a regression
+    /// guard so `badge_unlock` (and the others) can't silently collapse onto the
+    /// follower glyph if the map is edited.
+    func testEachKindHasADistinctSFSymbol() {
+        let symbols = NotificationKind.allCases.map(\.sfSymbol)
+        XCTAssertEqual(Set(symbols).count, NotificationKind.allCases.count,
+                       "every kind must render a distinct icon")
+        XCTAssertEqual(NotificationKind.badgeUnlock.sfSymbol, "rosette")
+    }
+
     // MARK: - Mark-read id-picking (bell L83: only fetched AND unread)
 
     func testUnreadIDsPicksOnlyUnreadPreservingOrder() {

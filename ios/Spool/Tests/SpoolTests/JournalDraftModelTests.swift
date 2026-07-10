@@ -82,6 +82,8 @@ final class JournalDraftModelTests: XCTestCase {
         var reviewEvents: [JournalDraftModel.ReviewEventInput] = []
         var journalTags: [JournalDraftModel.JournalTagInput] = []
         var profileFetchCount = 0
+        /// C7-iOS Task 2: how many times the post-write achievement hook fired.
+        var grantCount = 0
     }
 
     /// Build a model with sensible no-op defaults; each test overrides the
@@ -131,6 +133,7 @@ final class JournalDraftModelTests: XCTestCase {
             fetchProfileVisibility: { rec.profileFetchCount += 1; return await profileVisibility() },
             emitReviewEvent: { rec.reviewEvents.append($0) },
             emitJournalTag: { rec.journalTags.append($0) },
+            grantAchievements: { rec.grantCount += 1 },
             currentUserID: userID
         )
     }
@@ -506,5 +509,60 @@ final class JournalDraftModelTests: XCTestCase {
         await model.save()
         XCTAssertNotNil(model.inlineError)
         XCTAssertFalse(model.saving)
+    }
+
+    // MARK: - Post-write achievement hook (C7-iOS Task 2)
+
+    /// The grant hook fires EXACTLY ONCE on a confirmed save — after the upsert
+    /// and side effects, never before (a partial/failed write must not grant).
+    func testGrantHook_firesOnceOnConfirmedSave() async {
+        let rec = Recorder()
+        let model = makeModel(rec: rec, probe: { _ in nil })
+        await model.openForEntry(tmdbId: "603", title: "The Matrix", posterUrl: "/p.jpg", seed: nil)
+        model.draft.reviewText = "great"
+
+        await model.save()
+
+        XCTAssertEqual(rec.upsertPayloads.count, 1, "the primary write must have landed")
+        XCTAssertEqual(rec.grantCount, 1, "grant fires once, only after a confirmed save")
+    }
+
+    /// A FAILED save (upsert throws) must NOT fire the grant hook — the primary
+    /// write never confirmed, so no badge may be granted.
+    func testGrantHook_noFireOnFailedSave() async {
+        let rec = Recorder()
+        let model = makeModel(rec: rec, probe: { _ in nil }, upsert: { _ in throw FakeError() })
+        await model.openForEntry(tmdbId: "603", title: "T", posterUrl: nil, seed: nil)
+
+        await model.save()
+
+        XCTAssertNotNil(model.inlineError, "the save failed")
+        XCTAssertEqual(rec.grantCount, 0, "a failed save must not grant achievements")
+    }
+
+    /// A save REFUSED because the model is still `.loading` (never opened) must
+    /// not grant — no write happened, so the hook is unreachable.
+    func testGrantHook_noFireWhenRefusedLoading() async {
+        let rec = Recorder()
+        let model = makeModel(rec: rec)   // never opened → phase .loading
+        await model.save()
+        XCTAssertTrue(rec.upsertPayloads.isEmpty)
+        XCTAssertEqual(rec.grantCount, 0, "a refused save must not grant achievements")
+    }
+
+    /// The SIDE-EFFECT-FREE photo mint (`addPhoto` on a new entry) upserts a
+    /// minimal row but must NOT fire the grant hook — grants belong only to the
+    /// user's explicit save, exactly like the review-event / journal_tag gate.
+    func testGrantHook_noFireOnPhotoMint() async {
+        let rec = Recorder()
+        let model = makeModel(rec: rec, probe: { _ in nil })
+        await model.openForEntry(tmdbId: "603", title: "The Matrix", posterUrl: "/p.jpg", seed: nil)
+
+        await model.addPhoto(data: Data([0x1]), ext: "jpg")
+        XCTAssertEqual(rec.grantCount, 0, "the photo mint must not grant achievements")
+
+        // The user's explicit save grants exactly once.
+        await model.save()
+        XCTAssertEqual(rec.grantCount, 1)
     }
 }

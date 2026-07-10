@@ -3,9 +3,11 @@ import SwiftUI
 /// Read-only friend profile. Reachable from FriendsScreen via a secondary
 /// "view profile" affordance — the primary tap target on a friend row still
 /// opens TwinScreen. Mirrors `ProfileScreen`'s paper-card structure (header,
-/// bio, top 4, recent stubs) minus anything self-referential (gear, edit,
-/// "currently obsessed" — obsessed uses "NOW PLAYING" copy that only makes
-/// sense as the viewer's own top S-tier).
+/// bio, top 4, recent stubs, achievements) minus anything self-referential
+/// (gear, edit, "currently obsessed" — obsessed uses "NOW PLAYING" copy that
+/// only makes sense as the viewer's own top S-tier). The achievements section
+/// (C7-iOS) is EARNED-only in `.viewer` mode, so a viewer never lights up
+/// locked cards on someone else's account.
 ///
 /// Two extra affordances that ProfileScreen doesn't have:
 ///   - Taste twin pill linking back to TwinScreen, so Profile ↔ Twin are

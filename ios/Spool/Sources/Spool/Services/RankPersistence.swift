@@ -45,6 +45,12 @@ import SwiftUI
 /// gates the watchlist-bookmark removal on that signal (B5-corrected) via the
 /// pure `shouldRemoveBookmarkAfterRank`.
 ///
+/// POST-WRITE ACHIEVEMENT HOOK (C7-iOS Task 2): on the confirmed-save path only,
+/// `save` fires `AchievementMilestones.grantAndEmitMilestones()` in a DETACHED
+/// task — fire-and-forget, never gating the rank UX. The preview-queue /
+/// not-configured branches (returning `false`) never reach it, so no badge is
+/// granted for a rank that didn't durably land.
+///
 /// The stage-a journal write is OUTCOME-AWARE (C3 Part B Task 0 — re-rank wipe
 /// fix): `save` threads `insertRanking`'s `InsertOutcome` through the pure
 /// `quickEntryDecision`. A fresh `.inserted` quick-writes as before; a `.moved`
@@ -190,6 +196,18 @@ public enum RankPersistence {
             }
             // Confirmed write landed — the caller may now run any post-save
             // side effect (C3 Task 4 deletes the watchlist bookmark here).
+            //
+            // POST-WRITE ACHIEVEMENT HOOK (C7-iOS Task 2). Fire-and-forget in a
+            // DETACHED task so it NEVER gates or delays the rank UX: the confirmed
+            // `user_rankings` write above is the primary action; `grant_achievements()`
+            // + any milestone-feed events are purely opportunistic (a failure or
+            // empty return has no effect on the rank). Runs ONLY on this
+            // confirmed-save path — the preview-queue and not-configured branches
+            // below (which return `false`) never reach here, so no badge is
+            // granted for a rank that didn't durably land. Mirrors web's
+            // recommended post-write grant (`docs/contracts/shared-payloads.md`
+            // § achievements — ranking add / re-rank).
+            Task.detached { await AchievementMilestones.grantAndEmitMilestones() }
             return true
         }
 
