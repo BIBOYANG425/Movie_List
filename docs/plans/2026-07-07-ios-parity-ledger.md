@@ -978,16 +978,13 @@ The iOS client has reached parity with the live web app.
     authenticated `tmdb-proxy` edge function (Supabase URL/anon key + session JWT).
     The `SpoolSimulator` target is fully clean (Info.plist + `.plist.example` both
     strip the key, with an explicit "do NOT add back" note).
-  - **RESIDUAL (owner action, tracked below):** the `SpoolApp` shipping target still
-    declares `TMDB_API_KEY = $(TMDB_API_KEY)` in `ios/SpoolApp/SpoolApp/Info.plist:92-93`
-    and `ios/SpoolApp/Secrets.example.xcconfig:14` still prompts for a TMDB v3 key.
-    No code reads it, but if a developer fills `Secrets.xcconfig` the (unread) value
-    would be embedded in the app-bundle Info.plist. The C3-Part-B cleanup that
-    stripped the Simulator target did NOT strip the `SpoolApp` target. **The DoD is
-    met for the code path (nothing reads the key on either platform); this leftover
-    placeholder is a hardening loose-end, not a live key read.** Fix: delete the
-    `TMDB_API_KEY` key from `SpoolApp/Info.plist` and the line from
-    `Secrets.example.xcconfig` (mirror the Simulator target).
+  - **Residual found and fixed in this cycle:** the `SpoolApp` shipping target still
+    declared `TMDB_API_KEY = $(TMDB_API_KEY)` in its Info.plist, and
+    `ios/SpoolApp/Secrets.example.xcconfig` still prompted for a TMDB v3 key — the
+    C3-Part-B cleanup stripped the Simulator target but not the `SpoolApp` target.
+    No code read it, but a filled `Secrets.xcconfig` would have embedded the (unread)
+    value in the app-bundle Info.plist. Removed in C7-iOS close-out (both files now
+    carry an explicit "do NOT add back" note, mirroring the Simulator target). **Met.**
 
 ### Remaining program items (post-parity)
 
@@ -1000,8 +997,6 @@ The iOS client has reached parity with the live web app.
      `com.yangb.spool` + regenerate provisioning; AASA goes live on the next prod
      deploy (Apple CDN cache can lag). Until then the `spool://` custom scheme works;
      the `https://rankspool.com/u/…` path opens the browser.
-   - **TMDB key residual (above):** strip the `SpoolApp` Info.plist/xcconfig
-     placeholder to match the Simulator target.
    - **Photon agent infra:** the iMessage agent build (spec merged in PR #40) is
      BLOCKED on owner Photon infra.
 3. **iMessage agent build:** follows the design-check cycle; blocked on the Photon
