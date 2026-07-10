@@ -245,6 +245,14 @@ final class RankEntryModelTests: XCTestCase {
                        "requiresSignIn must re-evaluate immediately after sign-in")
     }
 
+    // Movie-mode adjudication (Fix round 1 — wording correction): the original
+    // brief described deferring the movie suggestions grid as "no precedent on
+    // web". That was wrong. Web `AddMediaModal` (lines ~80-124) has an identical
+    // movie grid choreography (suggestions/backfill/session-excludes/consume-
+    // splice). Deferring is still the right call — this brief was scoped to
+    // tv/book — but it is a real web-parity gap that should live in the ledger,
+    // not be dismissed as "no precedent".
+
     // MARK: - TV suggestions grid (Task 7)
 
     /// A tv `SuggestionItem` fixture (`tv_{n}` show id, mediaType .tv).

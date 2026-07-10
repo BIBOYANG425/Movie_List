@@ -165,16 +165,24 @@ public struct RankEntryScreen: View {
         SearchField(text: $query, placeholder: model.searchPlaceholder)
             .padding(.top, 16)
             .onChange(of: query) { newValue in scheduleSearch(for: newValue) }
+            // Always-present view: observe the sign-in gate here so the
+            // true→false transition fires regardless of which branch is
+            // currently rendered. Attaching to `resultsSection` was wrong —
+            // that view only exists in the `else` branch, so it is being
+            // INSERTED (not updated) when requiresSignIn flips false, and
+            // SwiftUI never calls onChange on initial attachment.
+            .onChange(of: model.requiresSignIn) { nowRequires in
+                // After a signed-out user signs in from the nudge, load the
+                // tv/book suggestions that were suppressed behind the gate.
+                if !nowRequires && (model.mode == .tv || model.mode == .book) {
+                    if model.mode == .tv { model.loadTVSuggestions() }
+                }
+            }
 
         if model.requiresSignIn {
             signInNudge
         } else {
             resultsSection
-                // After a signed-out user signs in from the nudge, the live gate
-                // flips off — load the tv suggestions grid that was suppressed.
-                .onChange(of: model.requiresSignIn) { nowRequires in
-                    if !nowRequires && model.mode == .tv { model.loadTVSuggestions() }
-                }
         }
     }
 

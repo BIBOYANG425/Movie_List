@@ -472,7 +472,8 @@ public final class RankEntryModel: ObservableObject {
     /// route through `pickShow` (which loads the real season detail). The id is the
     /// suggestion's `tv_{n}` show id; seasons are nil (the grid pick re-fetches
     /// full detail). Genres/creators the suggestion payload doesn't carry are left
-    /// empty — `pickShow`'s detail load fills them for the season `Movie`.
+    /// empty — `applySeasonLoad` fills them on the `seasonMovie` that is built
+    /// from the tapped show's fields; the stage show itself is never swapped out.
     static func show(from item: SuggestionItem) -> TMDBTVShow {
         TMDBTVShow(
             id: item.id,
