@@ -54,7 +54,7 @@ const zh = {
 
   // ── Tier Row ─────────────────────────────────────────────────────────────
   'tier.pts': '分',
-  'tier.items': '部',
+  'tier.items': '个',
   'tier.nothingYet': '暂无内容',
 
   // ── 排名仪式 (TierPicker / NotesStep / ComparisonStep) ───────────────────
@@ -102,8 +102,8 @@ const zh = {
   // ── Watchlist ────────────────────────────────────────────────────────────
   'watchlist.title': '稍后观看',
   'watchlist.saved': '已保存',
-  'watchlist.empty': '还没有保存的电影',
-  'watchlist.emptyHint': '搜索电影时，点击书签图标将它们保存到这里。',
+  'watchlist.empty': '还没有保存的{media}',
+  'watchlist.emptyHint': '搜索{media}时，点击书签图标将它们保存到这里。',
   'watchlist.rankIt': '去排名',
   'watchlist.remove': '删除',
 

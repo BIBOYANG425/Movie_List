@@ -100,8 +100,8 @@ const en = {
   // ── Watchlist ────────────────────────────────────────────────────────────
   'watchlist.title': 'Watch Later',
   'watchlist.saved': 'saved',
-  'watchlist.empty': 'No saved movies yet',
-  'watchlist.emptyHint': 'When searching for movies, tap the bookmark icon to save them here for later.',
+  'watchlist.empty': 'No saved {media} yet',
+  'watchlist.emptyHint': 'When searching for {media}, tap the bookmark icon to save them here for later.',
   'watchlist.rankIt': 'Rank it',
   'watchlist.remove': 'Remove',
 
