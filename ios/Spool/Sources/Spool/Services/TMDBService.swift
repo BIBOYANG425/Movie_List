@@ -171,6 +171,169 @@ public enum TMDBService {
         }
     }
 
+    // MARK: /search/tv
+
+    /// TV-show search — same shape and best-effort contract as `searchMovies`,
+    /// mirror of web `searchTVShows` (`services/tmdbService.ts`).
+    ///
+    /// Poster filter parity: web filters `results` to entries WITH a `poster_path`
+    /// (`.filter(s => s.poster_path)`) BEFORE the 12-cap, so a posterless show is
+    /// dropped and does NOT consume a slot. The movie mapper instead drops
+    /// posterless rows in `compactMap` after `prefix(12)` — a subtle difference, so
+    /// here we replicate the web TV behavior exactly: filter first, then cap at 12.
+    ///
+    /// Zero-result typo-retry backoff shares the exact same `typoRetryVariants`
+    /// loop as `searchMovies`: HTTP-error (non-2xx) bails without retrying, a real
+    /// zero-result retries cheapest-first taking the first non-empty set, and
+    /// `Task.checkCancellation()` runs between variants so a cancelled (debounced)
+    /// search fires no further requests.
+    public static func searchTVShows(query: String, timeout: TimeInterval = defaultTimeout) async -> [TMDBTVShow] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        func fetchAndMap(_ term: String) async throws -> [TMDBTVShow]? {
+            let path = buildTVSearchQuery(term: term)
+            let (data, http) = try await proxyFetch(path, timeout: timeout)
+            guard http.statusCode == 200 else { return nil }
+            let wrapper = try JSONDecoder().decode(TMDBTVSearchResponse.self, from: data)
+            // Poster filter FIRST, then cap at 12 (web parity).
+            return wrapper.results
+                .filter { $0.posterPath != nil }
+                .prefix(12)
+                .map(mapTVSearchResult)
+        }
+
+        do {
+            let primary = try await fetchAndMap(trimmed)
+            guard let primary else { return [] }
+            if !primary.isEmpty { return primary }
+
+            for variant in typoRetryVariants(query) {
+                try Task.checkCancellation()
+                let retry = try await fetchAndMap(variant)
+                if retry == nil { break }
+                if let retry, !retry.isEmpty { return retry }
+            }
+
+            return primary
+        } catch {
+            return []
+        }
+    }
+
+    // MARK: /tv/{id} — full show details (seasons array)
+
+    /// Full TV show details incl. the seasons list. Mirror of web
+    /// `getTVShowDetails`. Filters out season 0 ("Specials", D6) so the season
+    /// grid only shows numbered seasons; `seasonCount` reflects that filtered
+    /// count. `genres` are the RAW TMDB genre names from the detail payload
+    /// (`genres[].name`), not id-mapped — normalization is a separate step.
+    /// `creators` are the `created_by[].name` entries. Best-effort: `nil` on
+    /// signed-out / HTTP error / transport failure.
+    public static func getTVShowDetails(showId: Int, timeout: TimeInterval = 5.0) async -> TMDBTVShow? {
+        guard showId != 0 else { return nil }
+        let path = "tv/\(showId)?language=\(locale())"
+        do {
+            let (data, http) = try await proxyFetch(path, timeout: timeout)
+            guard http.statusCode == 200 else { return nil }
+            let detail = try JSONDecoder().decode(TMDBTVDetailRaw.self, from: data)
+            return mapTVDetail(detail)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Pure mapper for a decoded `tv/{id}` payload → `TMDBTVShow`. Extracted so
+    /// the season-0 filter + shape can be tested against a fixture without a
+    /// network round-trip.
+    static func mapTVDetail(_ detail: TMDBTVDetailRaw) -> TMDBTVShow {
+        let seasons: [TMDBTVSeasonSummary] = (detail.seasons ?? [])
+            .filter { $0.seasonNumber > 0 }
+            .map { s in
+                TMDBTVSeasonSummary(
+                    seasonNumber: s.seasonNumber,
+                    name: s.name,
+                    posterUrl: s.posterPath.map { "\(imageBase)\($0)" },
+                    episodeCount: s.episodeCount ?? 0,
+                    airDate: s.airDate
+                )
+            }
+        return TMDBTVShow(
+            id: "tv_\(detail.id)",
+            tmdbId: detail.id,
+            name: detail.name,
+            year: detail.firstAirDate.flatMap { $0.count >= 4 ? String($0.prefix(4)) : nil } ?? "—",
+            posterUrl: detail.posterPath.map { "\(imageBase)\($0)" },
+            backdropUrl: detail.backdropPath.map { "\(imageBase)\($0)" },
+            genres: (detail.genres ?? []).map(\.name),
+            overview: detail.overview ?? "",
+            seasonCount: seasons.count,
+            status: detail.status ?? "",
+            creators: (detail.createdBy ?? []).map(\.name),
+            voteAverage: detail.voteAverage,
+            seasons: seasons
+        )
+    }
+
+    // MARK: /tv/{id}/season/{n} — one season's detail
+
+    /// Details for a single season. Mirror of web `getTVSeasonDetails`.
+    /// `episodeCount` is the length of the returned `episodes` array (web parity —
+    /// web uses `data.episodes.length`, NOT a summary `episode_count`). `name`
+    /// falls back to `"Season {n}"` when TMDB omits it. `showName` is passed
+    /// through unchanged for the ceremony header. Best-effort: `nil` on
+    /// signed-out / HTTP error / transport failure.
+    public static func getTVSeasonDetails(
+        showId: Int, seasonNumber: Int, showName: String = "", timeout: TimeInterval = 5.0
+    ) async -> TMDBTVSeason? {
+        guard showId != 0 else { return nil }
+        let path = "tv/\(showId)/season/\(seasonNumber)?language=\(locale())"
+        do {
+            let (data, http) = try await proxyFetch(path, timeout: timeout)
+            guard http.statusCode == 200 else { return nil }
+            let raw = try JSONDecoder().decode(TMDBTVSeasonRaw.self, from: data)
+            return mapTVSeason(raw, showId: showId, requestedSeason: seasonNumber, showName: showName)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Pure mapper for a decoded `tv/{id}/season/{n}` payload → `TMDBTVSeason`.
+    static func mapTVSeason(
+        _ raw: TMDBTVSeasonRaw, showId: Int, requestedSeason: Int, showName: String
+    ) -> TMDBTVSeason {
+        TMDBTVSeason(
+            id: raw.id,
+            showTmdbId: showId,
+            seasonNumber: raw.seasonNumber,
+            name: raw.name ?? "Season \(requestedSeason)",
+            showName: showName,
+            posterUrl: raw.posterPath.map { "\(imageBase)\($0)" },
+            episodeCount: (raw.episodes ?? []).count,
+            airDate: raw.airDate,
+            overview: raw.overview ?? ""
+        )
+    }
+
+    // MARK: /tv/{id} — global score (vote_average only)
+
+    /// Global average score (`vote_average`) for a TV show. Mirror of web
+    /// `getTVShowGlobalScore` and the same shape as `movieVoteAverage`. Returns
+    /// `nil` on signed-out / HTTP error / transport failure so the caller falls
+    /// back to a nil score (engine uses the tier midpoint).
+    public static func tvShowGlobalScore(showId: Int, timeout: TimeInterval = defaultTimeout) async -> Double? {
+        guard showId != 0 else { return nil }
+        let path = "tv/\(showId)?language=\(locale())"
+        do {
+            let (data, http) = try await proxyFetch(path, timeout: timeout)
+            guard http.statusCode == 200 else { return nil }
+            let detail = try JSONDecoder().decode(TMDBDetailResponse.self, from: data)
+            return detail.voteAverage
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Query builder
 
     /// Build the TMDB search path string for a given query term.
@@ -195,6 +358,21 @@ public enum TMDBService {
         let tmdbQuery = (comps.percentEncodedQuery ?? "")
             .replacingOccurrences(of: "+", with: "%2B")
         return "search/movie?\(tmdbQuery)"
+    }
+
+    /// Build the TMDB TV-search path string. Same param set / encoding rules as
+    /// `buildSearchQuery` (incl. the `+`→`%2B` fix) but against `search/tv`.
+    static func buildTVSearchQuery(term: String) -> String {
+        var comps = URLComponents()
+        comps.queryItems = [
+            URLQueryItem(name: "query", value: term),
+            URLQueryItem(name: "language", value: locale()),
+            URLQueryItem(name: "page", value: "1"),
+            URLQueryItem(name: "include_adult", value: "false"),
+        ]
+        let tmdbQuery = (comps.percentEncodedQuery ?? "")
+            .replacingOccurrences(of: "+", with: "%2B")
+        return "search/tv?\(tmdbQuery)"
     }
 
     // MARK: - Typo-retry variants
@@ -311,6 +489,120 @@ public enum TMDBService {
 
     private struct TMDBSearchResponse: Decodable {
         let results: [TMDBRaw]
+    }
+
+    // MARK: - TV decode + map
+
+    /// Map a decoded `search/tv` result row → `TMDBTVShow`. Mirror of web's TV
+    /// search mapper: `tv_<id>` show id, `name` (not `title`), first-air-date
+    /// year, `mapTVGenres` for id→name, and `seasonCount`/`status`/`creators`
+    /// left empty (not available in search results). Callers pre-filter posterless
+    /// rows, so `posterPath` is expected present, but the mapper is null-safe.
+    static func mapTVSearchResult(_ raw: TMDBTVRaw) -> TMDBTVShow {
+        let year = raw.firstAirDate.flatMap { $0.count >= 4 ? String($0.prefix(4)) : nil } ?? "—"
+        return TMDBTVShow(
+            id: "tv_\(raw.id)",
+            tmdbId: raw.id,
+            name: raw.name,
+            year: year,
+            posterUrl: raw.posterPath.map { "\(imageBase)\($0)" },
+            backdropUrl: raw.backdropPath.map { "\(imageBase)\($0)" },
+            genres: TMDBTVGenres.mapGenreIds(raw.genreIds ?? []),
+            overview: raw.overview ?? "",
+            seasonCount: 0,
+            status: "",
+            creators: [],
+            voteAverage: raw.voteAverage,
+            seasons: nil
+        )
+    }
+
+    private struct TMDBTVSearchResponse: Decodable {
+        let results: [TMDBTVRaw]
+    }
+
+    struct TMDBTVRaw: Decodable {
+        let id: Int
+        let name: String
+        let firstAirDate: String?
+        let posterPath: String?
+        let backdropPath: String?
+        let genreIds: [Int]?
+        let overview: String?
+        let voteAverage: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, overview
+            case firstAirDate = "first_air_date"
+            case posterPath = "poster_path"
+            case backdropPath = "backdrop_path"
+            case genreIds = "genre_ids"
+            case voteAverage = "vote_average"
+        }
+    }
+
+    /// Decoded `tv/{id}` detail payload. `genres` and `created_by` carry `name`s;
+    /// `seasons` carries the per-season summaries (season 0 filtered downstream).
+    struct TMDBTVDetailRaw: Decodable {
+        let id: Int
+        let name: String
+        let firstAirDate: String?
+        let posterPath: String?
+        let backdropPath: String?
+        let overview: String?
+        let status: String?
+        let voteAverage: Double?
+        let genres: [NamedRaw]?
+        let createdBy: [NamedRaw]?
+        let seasons: [SeasonSummaryRaw]?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, overview, status, genres, seasons
+            case firstAirDate = "first_air_date"
+            case posterPath = "poster_path"
+            case backdropPath = "backdrop_path"
+            case voteAverage = "vote_average"
+            case createdBy = "created_by"
+        }
+
+        struct NamedRaw: Decodable { let name: String }
+
+        struct SeasonSummaryRaw: Decodable {
+            let seasonNumber: Int
+            let name: String
+            let posterPath: String?
+            let episodeCount: Int?
+            let airDate: String?
+
+            enum CodingKeys: String, CodingKey {
+                case name
+                case seasonNumber = "season_number"
+                case posterPath = "poster_path"
+                case episodeCount = "episode_count"
+                case airDate = "air_date"
+            }
+        }
+    }
+
+    /// Decoded `tv/{id}/season/{n}` payload. `episodeCount` is derived from the
+    /// length of `episodes` (web parity), not a summary field.
+    struct TMDBTVSeasonRaw: Decodable {
+        let id: Int
+        let seasonNumber: Int
+        let name: String?
+        let posterPath: String?
+        let airDate: String?
+        let overview: String?
+        let episodes: [EpisodeRaw]?
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, overview, episodes
+            case seasonNumber = "season_number"
+            case posterPath = "poster_path"
+            case airDate = "air_date"
+        }
+
+        struct EpisodeRaw: Decodable {}
     }
 
     private struct TMDBRaw: Decodable {
