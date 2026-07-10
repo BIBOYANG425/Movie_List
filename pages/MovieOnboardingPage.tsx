@@ -4,6 +4,7 @@ import { ArrowLeft, Check, ChevronRight, Film, Loader2, RefreshCw, Search, X } f
 import { RankedItem, Tier, MediaType, Bracket } from '../types';
 import { TIER_COLORS, TIER_LABELS, TIERS, MIN_MOVIES_FOR_SCORES } from '../constants';
 import { fetchMovieSuggestions, hasTmdbKey, searchMovies, searchPeople, getPersonFilmography, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../services/tmdbService';
+import { shuffledFixturePool } from '../services/onboardingFixtures';
 import { classifyBracket } from '../services/rankingAlgorithm';
 import { RankingSession } from '../services/rankingSession';
 import { ComparisonRequest } from '../types';
@@ -41,6 +42,15 @@ const MovieOnboardingPage: React.FC = () => {
     const backfillPageRef = useRef(1);
     // Session-local consumed ids (cap 200); server owns ranking exclusions.
     const sessionExcludeRef = useRef<string[]>([]);
+
+    // Anonymous (no session) fallback: the live suggestions/search seams are
+    // authenticated, so signed-out callers get 401 → empty. Instead we page the
+    // signed-out grid through a curated fixture pool (shuffled once per session).
+    // `fixturePoolRef` holds the not-yet-shown remainder; a page shows up to
+    // SUGGESTIONS_PER_PAGE, Refresh advances, and consume splices from it.
+    const isAnon = !user;
+    const fixturePoolRef = useRef<TMDBMovie[]>([]);
+    const SUGGESTIONS_PER_PAGE = 12;
 
     // Search
     const [searchTerm, setSearchTerm] = useState('');
@@ -167,6 +177,21 @@ const MovieOnboardingPage: React.FC = () => {
     }, []);
 
     const loadSuggestions = useCallback((page: number) => {
+        // Anonymous: no session to authenticate the live engine. Page the grid
+        // through the curated fixture pool instead of firing a dead 401 request.
+        // The pool is shuffled on page 1 and consumed as a queue; Refresh
+        // (page > 1) pulls the next window. When the queue drains to empty it is
+        // reshuffled so Refresh always yields a fresh window.
+        if (isAnon) {
+            if (page <= 1 || fixturePoolRef.current.length === 0) {
+                fixturePoolRef.current = shuffledFixturePool();
+            }
+            const pageWindow = fixturePoolRef.current.slice(0, SUGGESTIONS_PER_PAGE);
+            fixturePoolRef.current = fixturePoolRef.current.slice(SUGGESTIONS_PER_PAGE);
+            setSuggestions(pageWindow);
+            setSuggestionsLoading(false);
+            return;
+        }
         if (!hasTmdbKey()) return;
         setSuggestionsLoading(true);
         fetchMovieSuggestions('suggestions', page, sessionExcludeRef.current).then(results => {
@@ -176,7 +201,7 @@ const MovieOnboardingPage: React.FC = () => {
         backfillPageRef.current = 1;
         backfillPoolRef.current = [];
         prefetchBackfill(1);
-    }, [prefetchBackfill]);
+    }, [prefetchBackfill, isAnon]);
 
     useEffect(() => {
         if (!loading) {
@@ -192,6 +217,23 @@ const MovieOnboardingPage: React.FC = () => {
 
     const consumeSuggestion = (movieId: string) => {
         noteConsumed(movieId);
+        // Anonymous: splice the picked card out and backfill from the remaining
+        // shuffled fixture pool so the grid stays full while picks accrue.
+        if (isAnon) {
+            setSuggestions(prev => {
+                const without = prev.filter(m => m.id !== movieId);
+                const existingIds = new Set(without.map(m => m.id));
+                while (fixturePoolRef.current.length > 0 && without.length < SUGGESTIONS_PER_PAGE) {
+                    const candidate = fixturePoolRef.current.shift()!;
+                    if (!existingIds.has(candidate.id)) {
+                        without.push(candidate);
+                        existingIds.add(candidate.id);
+                    }
+                }
+                return without;
+            });
+            return;
+        }
         setSuggestions(prev => {
             const without = prev.filter(m => m.id !== movieId);
             if (backfillPoolRef.current.length > 0) {
@@ -217,6 +259,10 @@ const MovieOnboardingPage: React.FC = () => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         const q = searchTerm.trim();
         if (!q) { setSearchResults([]); setPersonProfiles([]); setIsSearching(false); return; }
+        // Anonymous: the search seam is authenticated (would 401 per keystroke and
+        // log console noise), and the full catalog needs a session anyway. Skip the
+        // request entirely; the UI shows a gentle "sign in to search" prompt.
+        if (isAnon) { setSearchResults([]); setPersonProfiles([]); setIsSearching(false); return; }
         setIsSearching(true);
         debounceRef.current = setTimeout(async () => {
             const [tmdb, people] = await Promise.all([
@@ -228,7 +274,7 @@ const MovieOnboardingPage: React.FC = () => {
             setIsSearching(false);
         }, 350);
         return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-    }, [searchTerm]);
+    }, [searchTerm, isAnon]);
 
     const handleOpenPerson = async (person: PersonProfile) => {
         setPersonLoading(true);
@@ -628,8 +674,18 @@ const MovieOnboardingPage: React.FC = () => {
                     {isSearching && <Loader2 className="absolute right-3 top-3.5 text-muted-foreground animate-spin" size={18} />}
                 </div>
 
+                {/* Anonymous: full-catalog search needs a session. Show a gentle
+                    inline prompt instead of firing dead 401 requests. */}
+                {searchTerm.trim() && isAnon && (
+                    <div className="text-center py-8 text-muted-foreground text-sm space-y-1">
+                        <Search size={26} className="mx-auto mb-2 opacity-30" />
+                        <p>Sign in to search the full catalog.</p>
+                        <p className="text-xs text-muted-foreground/70">Pick from the suggestions below to get started.</p>
+                    </div>
+                )}
+
                 {/* Search results */}
-                {searchTerm.trim() && !selectedPerson && (
+                {searchTerm.trim() && !isAnon && !selectedPerson && (
                     <div className="space-y-3">
                         {isSearching && (
                             <div className="space-y-2">

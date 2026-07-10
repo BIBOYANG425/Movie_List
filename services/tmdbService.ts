@@ -21,11 +21,6 @@ import { supabase } from '../lib/supabase';
 import { typoRetryVariants } from './searchVariants';
 import { buildProxyUrl } from './tmdbProxy';
 
-/**
- * @deprecated Not a live fetch target anymore — the web client never hits TMDB
- * directly. Kept only as documentation of the upstream the proxy forwards to.
- */
-export const TMDB_BASE = 'https://api.themoviedb.org/3';
 /** TMDB public image CDN (no key required) — used to build poster/backdrop URLs. */
 export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 const DEFAULT_TMDB_SEARCH_TIMEOUT_MS = 4500;
@@ -199,7 +194,13 @@ export async function searchMovies(
     const res = await proxyFetch(`search/movie?${path.toString()}`, timeoutMs);
 
     if (!res.ok) {
-      console.error(`TMDB API error: ${res.status} ${res.statusText}`);
+      // A 401 here is the synthetic signed-out gate from proxyRequest (no session,
+      // no network hit) — an expected "no results" for anonymous callers, not a
+      // fault. Don't log it as an error; only surface genuine upstream failures
+      // (403/429/5xx). Either way we return null so the caller reads empty.
+      if (res.status !== 401) {
+        console.error(`TMDB API error: ${res.status} ${res.statusText}`);
+      }
       return null;
     }
 
