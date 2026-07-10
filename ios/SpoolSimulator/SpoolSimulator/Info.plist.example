@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Copy to Info.plist (gitignored) and fill in real values.
+  Without SUPABASE_URL / SUPABASE_ANON_KEY, SpoolClient.shared is nil and the
+  app runs signed-out preview mode forever ("can't login" — the 2026-07-09 bug).
+  The spool:// URL scheme is required for the Google OAuth callback
+  (AuthService.oauthRedirectURL = spool://auth-callback).
+  SUPABASE_ANON_KEY: Supabase dashboard → Settings → API (legacy anon key).
+  TMDB_API_KEY: same value as web's VITE_TMDB_API_KEY.
+-->
+<dict>
+	<key>SUPABASE_URL</key>
+	<string>https://YOUR-PROJECT.supabase.co</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>YOUR-ANON-KEY</string>
+	<key>TMDB_API_KEY</key>
+	<string>YOUR-TMDB-KEY</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.spool.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>spool</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
