@@ -1,12 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { Compass, Flame, Sparkles, TrendingUp, BookmarkPlus } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Compass, Flame, Sparkles, TrendingUp, BookmarkPlus, RefreshCw, Clapperboard } from 'lucide-react';
 import { useTranslation } from '../../contexts/LanguageContext';
+import type { TranslationKey } from '../../i18n';
 import { FriendRecommendation, TrendingMovie } from '../../types';
-import { TMDBMovie } from '../../services/tmdbService';
+import {
+    TMDBMovie,
+    MovieSuggestion,
+    fetchMovieSuggestionsWithProvenance,
+} from '../../services/tmdbService';
 import {
     getFriendRecommendations,
     getTrendingAmongFriends,
 } from '../../services/friendsService';
+import { chipLabelKeyForPool } from '../../services/discoverChips';
 import { SkeletonList } from '../shared/SkeletonCard';
 import { TIER_RADAR_HEX } from '../../constants';
 
@@ -17,6 +23,9 @@ const TIER_LABELS: Record<string, string> = {
     C: 'C-Tier',
     D: 'D-Tier',
 };
+
+const ENGINE_GRID_LIMIT = 12;
+const NEW_RELEASES_LIMIT = 10;
 
 interface DiscoverViewProps {
     userId: string;
@@ -48,6 +57,82 @@ function toWatchlistMovie(movie: { tmdbId: string; title: string; year?: string;
     };
 }
 
+/** Small provenance / "new" chip rendered on engine + new-release cards. */
+const ProvenanceChip: React.FC<{ labelKey: TranslationKey }> = ({ labelKey }) => {
+    const { t } = useTranslation();
+    return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-semibold bg-secondary/80 text-muted-foreground uppercase tracking-wide truncate max-w-full">
+            {t(labelKey)}
+        </span>
+    );
+};
+
+/**
+ * Engine suggestion poster card (used by the "for you" grid). Poster click →
+ * detail; hover action → save-to-watchlist. Suggestions arrive already
+ * tmdb_-prefixed, so id/movie pass straight to the parent callbacks.
+ */
+const SuggestionCard: React.FC<{
+    movie: MovieSuggestion;
+    onMovieClick?: (tmdbId: string) => void;
+    onSaveForLater?: (movie: TMDBMovie) => void;
+}> = ({ movie, onMovieClick, onSaveForLater }) => {
+    const { t } = useTranslation();
+    const chipKey = chipLabelKeyForPool(movie.pool);
+    return (
+        <div className="group relative rounded-xl overflow-hidden bg-card border border-border/50 hover:border-border transition-all hover:scale-[1.02]">
+            <div
+                className="aspect-[2/3] bg-secondary relative cursor-pointer"
+                onClick={() => onMovieClick?.(normalizeTmdbId(movie.id))}
+            >
+                {movie.posterUrl ? (
+                    <img
+                        src={movie.posterUrl}
+                        alt={movie.title}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                    />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground/60">
+                        <Compass size={32} />
+                    </div>
+                )}
+
+                {/* Provenance chip */}
+                <div className="absolute top-2 left-2 max-w-[calc(100%-1rem)]">
+                    <ProvenanceChip labelKey={chipKey} />
+                </div>
+
+                {/* Hover overlay with action */}
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onSaveForLater) {
+                                onSaveForLater(movie);
+                            } else {
+                                onMovieClick?.(normalizeTmdbId(movie.id));
+                            }
+                        }}
+                        className="flex items-center gap-1.5 bg-gold text-background px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-foreground/20 transition-colors"
+                    >
+                        <BookmarkPlus size={14} />
+                        {t('discover.saveToWatchlist')}
+                    </button>
+                </div>
+            </div>
+
+            <div className="p-2 sm:p-3">
+                <h3 className="text-xs sm:text-sm font-semibold text-foreground truncate">{movie.title}</h3>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+                    {movie.year}
+                    {movie.genres.length > 0 && ` · ${movie.genres.slice(0, 2).join(', ')}`}
+                </p>
+            </div>
+        </div>
+    );
+};
+
 export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick, onSaveForLater }) => {
     const { t } = useTranslation();
     const [recommendations, setRecommendations] = useState<FriendRecommendation[]>([]);
@@ -55,6 +140,16 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
     const [loading, setLoading] = useState(true);
     const [activeSection, setActiveSection] = useState<'recs' | 'trending'>('recs');
 
+    // Engine grid ("for you") — 12 suggestions with provenance chips.
+    const [engineItems, setEngineItems] = useState<MovieSuggestion[]>([]);
+    const [engineState, setEngineState] = useState<'loading' | 'ready' | 'error'>('loading');
+    const [enginePage, setEnginePage] = useState(1);
+
+    // New Releases row — movie-only, date-ascending, chip "new".
+    const [newReleases, setNewReleases] = useState<MovieSuggestion[]>([]);
+    const [newReleasesState, setNewReleasesState] = useState<'loading' | 'ready' | 'error'>('loading');
+
+    // Friend sections — unchanged (§1.2), loads once per mount.
     useEffect(() => {
         if (!userId) return;
 
@@ -77,6 +172,55 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
         load();
     }, [userId]);
 
+    // Engine grid — refetches whenever the page changes (Refresh = page+1).
+    const loadEngine = useCallback(async (page: number, cancelled: { current: boolean }) => {
+        setEngineState('loading');
+        try {
+            const items = await fetchMovieSuggestionsWithProvenance('suggestions', page, []);
+            if (cancelled.current) return;
+            setEngineItems(items.slice(0, ENGINE_GRID_LIMIT));
+            setEngineState('ready');
+        } catch (err) {
+            if (cancelled.current) return;
+            console.error('Discover engine load failed:', err);
+            setEngineState('error');
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!userId) return;
+        const cancelled = { current: false };
+        void loadEngine(enginePage, cancelled);
+        return () => {
+            cancelled.current = true;
+        };
+    }, [userId, enginePage, loadEngine]);
+
+    // New Releases — loads on mount and on explicit retry.
+    const [newReleasesRetry, setNewReleasesRetry] = useState(0);
+    useEffect(() => {
+        if (!userId) return;
+        let cancelled = false;
+        setNewReleasesState('loading');
+        fetchMovieSuggestionsWithProvenance('new_releases', 1, [])
+            .then((items) => {
+                if (cancelled) return;
+                setNewReleases(items.slice(0, NEW_RELEASES_LIMIT));
+                setNewReleasesState('ready');
+            })
+            .catch((err) => {
+                if (cancelled) return;
+                console.error('Discover new releases load failed:', err);
+                setNewReleasesState('error');
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [userId, newReleasesRetry]);
+
+    const refreshEngine = () => setEnginePage((p) => p + 1);
+    const retryNewReleases = () => setNewReleasesRetry((n) => n + 1);
+
     if (loading) {
         return (
             <div className="space-y-6">
@@ -92,7 +236,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-8">
             {/* Section tabs */}
             <div className="flex gap-2 bg-card/60 rounded-xl p-1 border border-border/50">
                 {[
@@ -319,7 +463,137 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({ userId, onMovieClick
                 </div>
             )}
 
+            {/* ── New Releases row (horizontal scroll) ─────────────────────────── */}
+            <div className="space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <Clapperboard size={18} className="text-sky-500 shrink-0" />
+                    <h2 className="text-base sm:text-lg font-bold">{t('discover.newReleases')}</h2>
+                    <span className="text-[11px] sm:text-xs text-muted-foreground">{t('discover.newReleasesHint')}</span>
+                </div>
 
+                {newReleasesState === 'loading' ? (
+                    <div className="flex gap-3 overflow-x-hidden">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                            <div key={i} className="w-28 sm:w-32 shrink-0">
+                                <div className="aspect-[2/3] rounded-xl bg-secondary animate-pulse" />
+                            </div>
+                        ))}
+                    </div>
+                ) : newReleasesState === 'error' ? (
+                    <div className="flex items-center gap-3">
+                        <p className="text-sm text-muted-foreground">{t('discover.newReleasesError')}</p>
+                        <button
+                            onClick={retryNewReleases}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-card/60 border border-border/50 text-muted-foreground hover:text-foreground hover:border-border transition-all"
+                        >
+                            <RefreshCw size={12} />
+                            {t('discover.refresh')}
+                        </button>
+                    </div>
+                ) : newReleases.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t('discover.newReleasesEmpty')}</p>
+                ) : (
+                    <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+                        {newReleases.map((movie) => (
+                            <div key={movie.id} className="w-28 sm:w-32 shrink-0 snap-start">
+                                <div className="group relative rounded-xl overflow-hidden bg-card border border-border/50 hover:border-border transition-all">
+                                    <div
+                                        className="aspect-[2/3] bg-secondary relative cursor-pointer"
+                                        onClick={() => onMovieClick?.(normalizeTmdbId(movie.id))}
+                                    >
+                                        {movie.posterUrl ? (
+                                            <img
+                                                src={movie.posterUrl}
+                                                alt={movie.title}
+                                                className="w-full h-full object-cover"
+                                                loading="lazy"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-muted-foreground/60">
+                                                <Compass size={28} />
+                                            </div>
+                                        )}
+                                        <div className="absolute top-2 left-2">
+                                            <ProvenanceChip labelKey={chipLabelKeyForPool('new_release')} />
+                                        </div>
+                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (onSaveForLater) {
+                                                        onSaveForLater(movie);
+                                                    } else {
+                                                        onMovieClick?.(normalizeTmdbId(movie.id));
+                                                    }
+                                                }}
+                                                className="flex items-center gap-1 bg-gold text-background px-2 py-1 rounded-lg text-[11px] font-semibold hover:bg-foreground/20 transition-colors"
+                                            >
+                                                <BookmarkPlus size={12} />
+                                                {t('discover.saveToWatchlist')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="p-2">
+                                        <h3 className="text-[11px] sm:text-xs font-semibold text-foreground truncate">{movie.title}</h3>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">{movie.year}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* ── Engine grid ("for you" suggestions) ──────────────────────────── */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <Sparkles size={18} className="text-gold shrink-0" />
+                    <h2 className="text-base sm:text-lg font-bold">{t('discover.forYouEngine')}</h2>
+                    <span className="text-[11px] sm:text-xs text-muted-foreground">{t('discover.forYouEngineHint')}</span>
+                    <button
+                        onClick={refreshEngine}
+                        disabled={engineState === 'loading'}
+                        className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-card/60 border border-border/50 text-muted-foreground hover:text-foreground hover:border-border transition-all disabled:opacity-50"
+                    >
+                        <RefreshCw size={14} className={engineState === 'loading' ? 'animate-spin' : ''} />
+                        {t('discover.refresh')}
+                    </button>
+                </div>
+
+                {engineState === 'loading' ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        <SkeletonList count={8} variant="discover" />
+                    </div>
+                ) : engineState === 'error' ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                        <Sparkles size={36} className="mx-auto mb-3 opacity-40" />
+                        <p className="text-sm">{t('discover.forYouError')}</p>
+                        <button
+                            onClick={refreshEngine}
+                            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
+                        >
+                            <RefreshCw size={14} />
+                            {t('discover.refresh')}
+                        </button>
+                    </div>
+                ) : engineItems.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                        <Sparkles size={36} className="mx-auto mb-3 opacity-40" />
+                        <p className="text-sm">{t('discover.forYouEmpty')}</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        {engineItems.map((movie) => (
+                            <SuggestionCard
+                                key={movie.id}
+                                movie={movie}
+                                onMovieClick={onMovieClick}
+                                onSaveForLater={onSaveForLater}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

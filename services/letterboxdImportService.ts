@@ -7,7 +7,7 @@
 
 import JSZip from 'jszip';
 import { parseCSV } from './csvParser';
-import { TMDB_BASE, TMDB_IMAGE_BASE, GENRE_MAP } from './tmdbService';
+import { TMDB_IMAGE_BASE, GENRE_MAP, proxyRequest } from './tmdbService';
 import { typoRetryVariants } from './searchVariants';
 import { classifyBracket } from './rankingAlgorithm';
 import { canonicalMovieTmdbId } from './watchlistRankHelpers';
@@ -231,16 +231,17 @@ async function fetchTMDBTerm(
   term: string,
   name: string,
   year: number | null,
-  apiKey: string,
   signal?: AbortSignal,
 ): Promise<ResolvedEntry | null | 'http-error'> {
-  const url = new URL(`${TMDB_BASE}/search/movie`);
-  url.searchParams.set('api_key', apiKey);
-  url.searchParams.set('query', term);
-  url.searchParams.set('include_adult', 'false');
-  if (year) url.searchParams.set('year', String(year));
+  const params = new URLSearchParams();
+  params.set('query', term);
+  params.set('include_adult', 'false');
+  if (year) params.set('year', String(year));
 
-  const res = await fetch(url.toString(), { signal });
+  // Proxy-routed (api_key injected server-side). Any proxy non-2xx (401/403/429/
+  // 502) maps to 'http-error' — same "stop, don't spray more requests" behavior
+  // the direct-TMDB 429/non-ok path had, preserving the backoff loop semantics.
+  const res = await proxyRequest(`search/movie?${params.toString()}`, signal);
 
   if (res.status === 429) return 'http-error';
   if (!res.ok) return 'http-error';
@@ -282,7 +283,6 @@ async function fetchTMDBTerm(
 async function searchTMDB(
   name: string,
   year: number | null,
-  apiKey: string,
   signal?: AbortSignal,
 ): Promise<ResolvedEntry | null> {
   let lastError: Error | null = null;
@@ -291,7 +291,7 @@ async function searchTMDB(
     if (signal?.aborted) return null;
 
     try {
-      const primary = await fetchTMDBTerm(name, name, year, apiKey, signal);
+      const primary = await fetchTMDBTerm(name, name, year, signal);
 
       if (primary === 'http-error') {
         if (attempt < MAX_RETRIES - 1) {
@@ -307,7 +307,7 @@ async function searchTMDB(
       // Zero-result path: try typo variants, same year, stop on HTTP error.
       for (const variant of typoRetryVariants(name)) {
         if (signal?.aborted) return null;
-        const retry = await fetchTMDBTerm(variant, name, year, apiKey, signal);
+        const retry = await fetchTMDBTerm(variant, name, year, signal);
         if (retry === 'http-error') return null;
         if (retry !== null) return retry;
       }
@@ -330,9 +330,6 @@ export async function resolveAllWithTMDB(
   onProgress?: (completed: number, total: number, currentTitle: string) => void,
   signal?: AbortSignal,
 ): Promise<{ resolved: ResolvedEntry[]; failed: string[] }> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) throw new Error('TMDB API key not configured');
-
   const resolved: ResolvedEntry[] = [];
   const failed: string[] = [];
   let completed = 0;
@@ -344,7 +341,7 @@ export async function resolveAllWithTMDB(
     const batch = entries.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
       batch.map(async (entry) => {
-        const result = await searchTMDB(entry.name, entry.year, apiKey, signal);
+        const result = await searchTMDB(entry.name, entry.year, signal);
         completed++;
         onProgress?.(completed, entries.length, entry.name);
         return { entry, result };

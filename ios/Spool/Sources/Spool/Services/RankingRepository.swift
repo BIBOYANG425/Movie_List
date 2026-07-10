@@ -68,8 +68,10 @@ public actor RankingRepository {
         return rows
     }
 
-    /// Search TMDB for movies matching `query`. Returns `[]` when `TMDB_API_KEY`
-    /// is missing. Does not require a Supabase session — this is a pure API call.
+    /// Search TMDB for movies matching `query`, routed through the authenticated
+    /// `tmdb-proxy` edge function (`TMDBService`). Returns `[]` when the proxy is
+    /// unreachable (unconfigured client) or the caller is signed out (synthetic
+    /// 401) — the key no longer lives in the bundle.
     public func searchMovies(query: String) async -> [TMDBMovie] {
         await TMDBService.searchMovies(query: query)
     }

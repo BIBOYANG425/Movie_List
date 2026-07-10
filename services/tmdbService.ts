@@ -1,24 +1,86 @@
 /**
- * TMDB (The Movie Database) API service
+ * TMDB (The Movie Database) API service — proxy-routed.
  * Docs: https://developer.themoviedb.org/docs
  *
- * Requires environment variable: VITE_TMDB_API_KEY
- * Add to Vercel: Project Settings → Environment Variables → VITE_TMDB_API_KEY
+ * The web bundle no longer holds a TMDB key. Every TMDB request goes through the
+ * authenticated `tmdb-proxy` edge function (see services/tmdbProxy.ts): the proxy
+ * injects `TMDB_API_KEY` server-side and enforces a path allowlist. Requests carry
+ * the caller's Supabase session JWT (Bearer) + the anon `apikey` header, mirroring
+ * how the app invokes other edge functions. Signed-out callers have no session, so
+ * proxyFetch short-circuits to a synthetic 401 — every consumer already treats a
+ * non-ok response as "no results", preserving the pre-migration signed-out behavior
+ * (fixtures / generic / empty).
+ *
+ * The 5-pool suggestion engine (getSmartSuggestions/getSmartBackfill + generic +
+ * friend picks + taste-profile builders, both media) moved server-side into the
+ * `suggestions` edge function (Task 1). Only the seams that still have client
+ * callers remain here: search, details, person, season, and zh-title fetches.
  */
 
-import { ALL_TMDB_GENRES, ALL_TV_GENRES, DEFAULT_POOL_SLOTS, SMART_SUGGESTION_THRESHOLD, TIER_WEIGHTS } from '../constants';
-import { TasteProfile } from '../types';
 import { supabase } from '../lib/supabase';
 import { typoRetryVariants } from './searchVariants';
+import { buildProxyUrl } from './tmdbProxy';
 
-export const TMDB_BASE = 'https://api.themoviedb.org/3';
+/** TMDB public image CDN (no key required) — used to build poster/backdrop URLs. */
 export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 const DEFAULT_TMDB_SEARCH_TIMEOUT_MS = 4500;
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 /** Read the user's locale from localStorage and return the TMDB language code. */
 function getTmdbLocale(): string {
   const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('spool_locale') : null;
   return saved === 'zh' ? 'zh-CN' : 'en-US';
+}
+
+/**
+ * Single fetch seam. Routes a bare TMDB path (with its own query string, minus
+ * api_key) through the tmdb-proxy edge function using the caller's session JWT.
+ *
+ * A signed-out caller (no session) returns a synthetic 401 Response WITHOUT
+ * hitting the network — callers already read non-ok as empty, so this is the
+ * signed-out gate. Any proxy non-2xx (401/403/429/502) is surfaced verbatim to
+ * the caller's ok-check, which keeps typo-retry's "non-2xx skips variants" rule
+ * intact now that proxy statuses stand in for the old direct-TMDB statuses.
+ */
+async function proxyFetch(tmdbPath: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await proxyRequest(tmdbPath, controller.signal);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Lower-level proxy request driven by an EXTERNAL AbortSignal instead of an
+ * internal timeout. Used by callers that own their own cancellation/backoff
+ * (letterboxdImportService). Same auth + signed-out semantics as proxyFetch: a
+ * missing session yields a synthetic 401 Response without touching the network.
+ */
+export async function proxyRequest(
+  tmdbPath: string,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) {
+    // Signed out — no session to authenticate the proxy. Synthetic 401 so every
+    // caller's `!res.ok` branch yields the same empty/generic result as before.
+    return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+  }
+
+  const url = buildProxyUrl(SUPABASE_URL, tmdbPath);
+  return fetch(url, {
+    signal,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: SUPABASE_ANON_KEY,
+      accept: 'application/json',
+    },
+  });
 }
 
 // Full genre map from TMDB (stable — rarely changes)
@@ -43,11 +105,6 @@ export const GENRE_MAP: Record<number, string> = {
   10752: 'War',
   37: 'Western',
 };
-
-// Reverse map: genre name → TMDB genre ID
-const GENRE_NAME_TO_ID: Record<string, number> = Object.fromEntries(
-  Object.entries(GENRE_MAP).map(([id, name]) => [name, Number(id)])
-);
 
 export interface TMDBMovie {
   id: string;
@@ -77,20 +134,17 @@ export interface StreamingAvailability {
   free?: StreamingProvider[];
 }
 
-/** Returns true if the TMDB API key is configured */
+/**
+ * Access gate that replaces the old `hasTmdbKey()`. TMDB access now depends on
+ * the Supabase edge functions (proxy + suggestions), not a client-bundled key,
+ * so the gate is "is Supabase configured" — true in every real deployment. The
+ * per-request session check lives in proxyFetch / functions.invoke, which return
+ * 401 when signed out, and every consumer reads that as an empty result. This
+ * preserves the pre-migration signed-out → generic/empty behavior without a key.
+ * Kept named `hasTmdbKey` for a drop-in swap at existing call sites.
+ */
 export function hasTmdbKey(): boolean {
-  return !!import.meta.env.VITE_TMDB_API_KEY;
-}
-
-async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, { signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
+  return !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
 }
 
 // ── Shared response mapper ──────────────────────────────────────────────────
@@ -114,735 +168,6 @@ function mapTmdbResult(m: any): TMDBMovie | null {
   };
 }
 
-/** Convert genre names (e.g. "Action") to TMDB genre IDs */
-export function genreNamesToIds(names: string[]): number[] {
-  return names
-    .map(n => GENRE_NAME_TO_ID[n])
-    .filter((id): id is number => id !== undefined);
-}
-
-// ── Shared helpers for discover fetching ─────────────────────────────────────
-
-function dedup(movies: TMDBMovie[]): TMDBMovie[] {
-  const seen = new Set<number>();
-  return movies.filter(m => {
-    if (seen.has(m.tmdbId)) return false;
-    seen.add(m.tmdbId);
-    return true;
-  });
-}
-
-function interleave(a: TMDBMovie[], b: TMDBMovie[]): TMDBMovie[] {
-  const mixed: TMDBMovie[] = [];
-  const maxLen = Math.max(a.length, b.length);
-  for (let i = 0; i < maxLen; i++) {
-    if (i < a.length) mixed.push(a[i]);
-    if (i < b.length) mixed.push(b[i]);
-  }
-  return mixed;
-}
-
-/** Fisher-Yates shuffle (returns a new shuffled array). */
-function shuffle<T>(arr: T[]): T[] {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-/**
- * Build a client-side taste profile from ranked items.
- * Uses tier-weighted genre scores, decade distribution, director frequency,
- * and identifies underexposed genres for variety injection.
- */
-export function buildTasteProfile(items: { id: string; genres: string[]; year: string; tier: string; director?: string }[]): TasteProfile {
-  if (items.length === 0) {
-    return {
-      weightedGenres: {},
-      topDirectors: [],
-      decadeDistribution: {},
-      preferredDecade: null,
-      underexposedGenres: [...ALL_TMDB_GENRES],
-      topMovieIds: [],
-      totalRanked: 0,
-    };
-  }
-
-  const tierWeights = TIER_WEIGHTS as Record<string, number>;
-
-  // Tier-weighted genre scores
-  const genreScores = new Map<string, number>();
-  for (const item of items) {
-    const w = tierWeights[item.tier] ?? 3;
-    for (const g of item.genres) {
-      genreScores.set(g, (genreScores.get(g) ?? 0) + w);
-    }
-  }
-
-  // Decade distribution (tier-weighted)
-  const decadeScores = new Map<string, number>();
-  for (const item of items) {
-    if (item.year && item.year.length >= 4) {
-      const yr = parseInt(item.year.slice(0, 4), 10);
-      if (!isNaN(yr)) {
-        const decade = `${Math.floor(yr / 10) * 10}s`;
-        const w = tierWeights[item.tier] ?? 3;
-        decadeScores.set(decade, (decadeScores.get(decade) ?? 0) + w);
-      }
-    }
-  }
-
-  // Preferred decade (highest weighted score)
-  let preferredDecade: string | null = null;
-  let maxDecadeScore = 0;
-  for (const [decade, score] of decadeScores) {
-    if (score > maxDecadeScore) {
-      maxDecadeScore = score;
-      preferredDecade = decade;
-    }
-  }
-
-  // Director frequency (tier-weighted)
-  const directorScores = new Map<string, number>();
-  for (const item of items) {
-    if (item.director) {
-      const w = tierWeights[item.tier] ?? 3;
-      directorScores.set(item.director, (directorScores.get(item.director) ?? 0) + w);
-    }
-  }
-  const topDirectors = [...directorScores.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([name, score]) => ({ name, score }));
-
-  // Underexposed genres (genres with < 2 rankings)
-  const genreCounts = new Map<string, number>();
-  for (const item of items) {
-    for (const g of item.genres) {
-      genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
-    }
-  }
-  const underexposedGenres = ALL_TMDB_GENRES.filter(g => (genreCounts.get(g) ?? 0) < 2);
-
-  // S/A tier movie IDs for /similar queries
-  const topMovieIds = items
-    .filter(i => i.tier === 'S' || i.tier === 'A')
-    .map(i => {
-      const match = i.id.match(/tmdb_(\d+)/);
-      return match ? parseInt(match[1], 10) : NaN;
-    })
-    .filter(id => !isNaN(id));
-
-  return {
-    weightedGenres: Object.fromEntries(genreScores),
-    topDirectors,
-    decadeDistribution: Object.fromEntries(decadeScores),
-    preferredDecade,
-    underexposedGenres,
-    topMovieIds,
-    totalRanked: items.length,
-  };
-}
-
-/**
- * Fetch random S/A-tier movies from friends that the user hasn't ranked.
- */
-export async function getFriendSuggestionPicks(
-  userId: string,
-  excludeIds: Set<string>,
-  limit: number = 2,
-): Promise<TMDBMovie[]> {
-  try {
-    const { data: follows } = await supabase
-      .from('friend_follows')
-      .select('following_id')
-      .eq('follower_id', userId);
-
-    const friendIds = follows?.map((f: { following_id: string }) => f.following_id) ?? [];
-    if (friendIds.length === 0) return [];
-
-    const { data: friendRankings } = await supabase
-      .from('user_rankings')
-      .select('tmdb_id, title, poster_url, year, genres')
-      .in('user_id', friendIds)
-      .in('tier', ['S', 'A'])
-      .limit(100);
-
-    if (!friendRankings || friendRankings.length === 0) return [];
-
-    const candidates = friendRankings
-      .filter((r: any) => !excludeIds.has(r.tmdb_id) && r.poster_url)
-      .reduce((acc: any[], r: any) => {
-        if (!acc.some((a: any) => a.tmdb_id === r.tmdb_id)) acc.push(r);
-        return acc;
-      }, []);
-
-    const picked = shuffle(candidates).slice(0, limit);
-
-    return picked.map((r: any): TMDBMovie => ({
-      id: r.tmdb_id,
-      tmdbId: parseInt(r.tmdb_id.replace('tmdb_', ''), 10) || 0,
-      title: r.title,
-      year: r.year ?? '—',
-      posterUrl: r.poster_url,
-      type: 'movie',
-      genres: r.genres ?? [],
-      overview: '',
-    }));
-  } catch (err) {
-    console.error('Friend suggestion picks failed:', err);
-    return [];
-  }
-}
-
-/**
- * Smart 5-pool suggestion system.
- * Pools: Similar (from S/A movies) | Taste (weighted genres + decade) |
- *        Trending | Variety (underexposed genres) | Friend picks
- */
-export async function getSmartSuggestions(
-  profile: TasteProfile,
-  excludeIds: Set<string> = new Set(),
-  page: number = 1,
-  excludeTitles: Set<string> = new Set(),
-  userId?: string,
-  poolSlots: Record<string, number> = DEFAULT_POOL_SLOTS,
-): Promise<TMDBMovie[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) return [];
-
-  if (profile.totalRanked < SMART_SUGGESTION_THRESHOLD) {
-    return getGenericSuggestions(excludeIds, page, excludeTitles);
-  }
-
-  const isExcluded = (m: TMDBMovie) =>
-    excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
-
-  const topGenres = Object.entries(profile.weightedGenres)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([name]) => name);
-  const genreParam = genreNamesToIds(topGenres).join(',');
-
-  const fetches: Promise<TMDBMovie[]>[] = [];
-
-  // Pool 1: Similar (from random S/A movie)
-  fetches.push((async (): Promise<TMDBMovie[]> => {
-    if (profile.topMovieIds.length === 0) return [];
-    const pickId = profile.topMovieIds[Math.floor(Math.random() * profile.topMovieIds.length)];
-    try {
-      const res = await fetch(
-        `${TMDB_BASE}/movie/${pickId}/similar?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`
-      );
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.results as any[])
-        .map(mapTmdbResult)
-        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
-        .slice(0, poolSlots.similar + 2);
-    } catch { return []; }
-  })());
-
-  // Pool 2: Taste (weighted genres + decade bias)
-  fetches.push((async (): Promise<TMDBMovie[]> => {
-    const url = new URL(`${TMDB_BASE}/discover/movie`);
-    url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('language', getTmdbLocale());
-    url.searchParams.set('sort_by', 'vote_average.desc');
-    url.searchParams.set('include_adult', 'false');
-    url.searchParams.set('vote_count.gte', '200');
-    if (genreParam) url.searchParams.set('with_genres', genreParam);
-
-    if (profile.preferredDecade) {
-      const decadeStart = parseInt(profile.preferredDecade, 10);
-      if (!isNaN(decadeStart) && Math.random() < 0.5) {
-        url.searchParams.set('primary_release_date.gte', `${decadeStart}-01-01`);
-        url.searchParams.set('primary_release_date.lte', `${decadeStart + 9}-12-31`);
-      }
-    }
-
-    url.searchParams.set('page', String(page + Math.floor(Math.random() * 3)));
-
-    try {
-      const res = await fetch(url.toString());
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.results as any[])
-        .map(mapTmdbResult)
-        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
-        .slice(0, poolSlots.taste + 2);
-    } catch { return []; }
-  })());
-
-  // Pool 3: Trending
-  fetches.push((async (): Promise<TMDBMovie[]> => {
-    try {
-      const res = await fetch(
-        `${TMDB_BASE}/trending/movie/week?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`
-      );
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.results as any[])
-        .map(mapTmdbResult)
-        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
-        .slice(0, poolSlots.trending + 2);
-    } catch { return []; }
-  })());
-
-  // Pool 4: Variety (underexposed genres)
-  fetches.push((async (): Promise<TMDBMovie[]> => {
-    if (profile.underexposedGenres.length === 0) return [];
-    const pickGenres = shuffle(profile.underexposedGenres).slice(0, 2);
-    const varietyGenreParam = genreNamesToIds(pickGenres).join(',');
-    if (!varietyGenreParam) return [];
-
-    const url = new URL(`${TMDB_BASE}/discover/movie`);
-    url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('language', getTmdbLocale());
-    url.searchParams.set('sort_by', 'popularity.desc');
-    url.searchParams.set('include_adult', 'false');
-    url.searchParams.set('vote_count.gte', '100');
-    url.searchParams.set('with_genres', varietyGenreParam);
-    url.searchParams.set('page', String(1 + Math.floor(Math.random() * 3)));
-
-    try {
-      const res = await fetch(url.toString());
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.results as any[])
-        .map(mapTmdbResult)
-        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
-        .slice(0, poolSlots.variety + 2);
-    } catch { return []; }
-  })());
-
-  // Pool 5: Friend picks
-  fetches.push(
-    userId
-      ? getFriendSuggestionPicks(userId, excludeIds, poolSlots.friend + 1)
-      : Promise.resolve([])
-  );
-
-  const [similarMovies, tasteMovies, trendingMovies, varietyMovies, friendMovies] =
-    await Promise.all(fetches);
-
-  const result: TMDBMovie[] = [];
-  const used = new Set<number>();
-
-  const take = (pool: TMDBMovie[], count: number) => {
-    for (const m of pool) {
-      if (result.length >= 12) break;
-      if (count <= 0) break;
-      if (used.has(m.tmdbId)) continue;
-      used.add(m.tmdbId);
-      result.push(m);
-      count--;
-    }
-  };
-
-  take(similarMovies, poolSlots.similar);
-  take(tasteMovies, poolSlots.taste);
-  take(trendingMovies, poolSlots.trending);
-  take(varietyMovies, poolSlots.variety);
-  take(friendMovies, poolSlots.friend);
-
-  const remaining = [...tasteMovies, ...similarMovies, ...trendingMovies, ...varietyMovies];
-  take(remaining, 12 - result.length);
-
-  return shuffle(result);
-}
-
-/**
- * Smart backfill: TMDB recommendations for random ranked movies.
- * Falls back to variety discover if insufficient.
- */
-export async function getSmartBackfill(
-  profile: TasteProfile,
-  excludeIds: Set<string> = new Set(),
-  page: number = 1,
-  excludeTitles: Set<string> = new Set(),
-): Promise<TMDBMovie[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) return [];
-
-  const isExcluded = (m: TMDBMovie) =>
-    excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
-
-  if (profile.topMovieIds.length === 0) {
-    return getGenericSuggestions(excludeIds, page, excludeTitles);
-  }
-
-  let movies: TMDBMovie[] = [];
-
-  const sampleIds = shuffle(profile.topMovieIds).slice(0, 2);
-  try {
-    const reqs = sampleIds.map(id =>
-      fetch(`${TMDB_BASE}/movie/${id}/recommendations?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`)
-        .then(r => r.ok ? r.json() : { results: [] })
-    );
-    const results = await Promise.all(reqs);
-    for (const data of results) {
-      const mapped = (data.results as any[])
-        .map(mapTmdbResult)
-        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
-      movies.push(...mapped);
-    }
-  } catch (err) {
-    console.error('Smart backfill recommendations failed:', err);
-  }
-
-  movies = dedup(movies);
-
-  if (movies.length < 12 && profile.underexposedGenres.length > 0) {
-    try {
-      const pickGenres = shuffle(profile.underexposedGenres).slice(0, 2);
-      const varietyParam = genreNamesToIds(pickGenres).join(',');
-      if (varietyParam) {
-        const url = new URL(`${TMDB_BASE}/discover/movie`);
-        url.searchParams.set('api_key', apiKey);
-        url.searchParams.set('language', getTmdbLocale());
-        url.searchParams.set('sort_by', 'popularity.desc');
-        url.searchParams.set('include_adult', 'false');
-        url.searchParams.set('vote_count.gte', '100');
-        url.searchParams.set('with_genres', varietyParam);
-        url.searchParams.set('page', String(page));
-
-        const res = await fetch(url.toString());
-        if (res.ok) {
-          const data = await res.json();
-          const varietyMovies = (data.results as any[])
-            .map(mapTmdbResult)
-            .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
-          movies = dedup([...movies, ...varietyMovies]);
-        }
-      }
-    } catch (err) {
-      console.error('Smart backfill variety fallback failed:', err);
-    }
-  }
-
-  return shuffle(movies).slice(0, 20);
-}
-
-/**
- * Fetch GENERIC suggestions: 50% popular new releases + 50% all-time classics.
- * No genre filter -- this is the initial batch shown when the modal opens.
- */
-export async function getGenericSuggestions(
-  excludeIds: Set<string> = new Set(),
-  page: number = 1,
-  excludeTitles: Set<string> = new Set(),
-): Promise<TMDBMovie[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) return [];
-
-  const currentYear = new Date().getFullYear();
-
-  try {
-    const recentUrl = new URL(`${TMDB_BASE}/discover/movie`);
-    recentUrl.searchParams.set('api_key', apiKey);
-    recentUrl.searchParams.set('language', getTmdbLocale());
-    recentUrl.searchParams.set('sort_by', 'popularity.desc');
-    recentUrl.searchParams.set('include_adult', 'false');
-    recentUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
-    recentUrl.searchParams.set('vote_count.gte', '50');
-    recentUrl.searchParams.set('page', String(page));
-
-    const classicUrl = new URL(`${TMDB_BASE}/discover/movie`);
-    classicUrl.searchParams.set('api_key', apiKey);
-    classicUrl.searchParams.set('language', getTmdbLocale());
-    classicUrl.searchParams.set('sort_by', 'vote_average.desc');
-    classicUrl.searchParams.set('include_adult', 'false');
-    classicUrl.searchParams.set('primary_release_date.lte', `${currentYear - 5}-12-31`);
-    classicUrl.searchParams.set('vote_count.gte', '1000');
-    classicUrl.searchParams.set('page', String(page));
-
-    const [recentRes, classicRes] = await Promise.all([
-      fetch(recentUrl.toString()),
-      fetch(classicUrl.toString()),
-    ]);
-
-    if (!recentRes.ok || !classicRes.ok) return [];
-
-    const [recentData, classicData] = await Promise.all([
-      recentRes.json(),
-      classicRes.json(),
-    ]);
-
-    const isExcluded = (m: TMDBMovie) =>
-      excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
-
-    const newFilms = (recentData.results as any[])
-      .map(mapTmdbResult)
-      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
-      .slice(0, 6);
-
-    const classics = (classicData.results as any[])
-      .map(mapTmdbResult)
-      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
-      .slice(0, 6);
-
-    return shuffle(dedup(interleave(newFilms, classics)).slice(0, 12));
-  } catch (err) {
-    console.error('TMDB generic suggestions failed:', err);
-    return [];
-  }
-}
-
-/**
- * @deprecated Use getSmartBackfill instead.
- * Fetch PERSONALIZED fills: genre-filtered discover results used to
- * backfill slots when the user ranks or bookmarks a generic suggestion.
- * Returns a larger buffer (~20 movies) so we rarely need to re-fetch.
- */
-export async function getPersonalizedFills(
-  topGenreNames: string[],
-  excludeIds: Set<string> = new Set(),
-  page: number = 1,
-  excludeTitles: Set<string> = new Set(),
-): Promise<TMDBMovie[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey || topGenreNames.length === 0) return [];
-
-  const genreParam = genreNamesToIds(topGenreNames).join(',');
-  if (!genreParam) return [];
-
-  const currentYear = new Date().getFullYear();
-
-  try {
-    const recentUrl = new URL(`${TMDB_BASE}/discover/movie`);
-    recentUrl.searchParams.set('api_key', apiKey);
-    recentUrl.searchParams.set('language', getTmdbLocale());
-    recentUrl.searchParams.set('sort_by', 'popularity.desc');
-    recentUrl.searchParams.set('include_adult', 'false');
-    recentUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
-    recentUrl.searchParams.set('vote_count.gte', '50');
-    recentUrl.searchParams.set('with_genres', genreParam);
-    recentUrl.searchParams.set('page', String(page));
-
-    const classicUrl = new URL(`${TMDB_BASE}/discover/movie`);
-    classicUrl.searchParams.set('api_key', apiKey);
-    classicUrl.searchParams.set('language', getTmdbLocale());
-    classicUrl.searchParams.set('sort_by', 'vote_average.desc');
-    classicUrl.searchParams.set('include_adult', 'false');
-    classicUrl.searchParams.set('primary_release_date.lte', `${currentYear - 5}-12-31`);
-    classicUrl.searchParams.set('vote_count.gte', '1000');
-    classicUrl.searchParams.set('with_genres', genreParam);
-    classicUrl.searchParams.set('page', String(page));
-
-    const [recentRes, classicRes] = await Promise.all([
-      fetch(recentUrl.toString()),
-      fetch(classicUrl.toString()),
-    ]);
-
-    if (!recentRes.ok || !classicRes.ok) return [];
-
-    const [recentData, classicData] = await Promise.all([
-      recentRes.json(),
-      classicRes.json(),
-    ]);
-
-    const isExcluded = (m: TMDBMovie) =>
-      excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
-
-    const newFilms = (recentData.results as any[])
-      .map(mapTmdbResult)
-      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
-
-    const classics = (classicData.results as any[])
-      .map(mapTmdbResult)
-      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
-
-    return dedup(interleave(newFilms, classics));
-  } catch (err) {
-    console.error('TMDB personalized fills failed:', err);
-    return [];
-  }
-}
-
-/**
- * @deprecated Use getSmartSuggestions instead.
- * Fetch DYNAMIC suggestions based on session fatigue (15% New / 30% Global / 55% Taste)
- * New falls off after 5 clicks in a session.
- */
-export async function getDynamicSuggestions(
-  topGenreNames: string[],
-  excludeIds: Set<string> = new Set(),
-  page: number = 1,
-  excludeTitles: Set<string> = new Set(),
-  sessionClickCount: number = 0,
-): Promise<TMDBMovie[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) return [];
-
-  const isFatigued = sessionClickCount >= 5;
-  const targetNew = isFatigued ? 0 : 2;
-  const targetGlobal = isFatigued ? 5 : 4;
-  const currentYear = new Date().getFullYear();
-
-  try {
-    const urls = [];
-
-    // 1. New Movies
-    if (targetNew > 0) {
-      const newUrl = new URL(`${TMDB_BASE}/discover/movie`);
-      newUrl.searchParams.set('api_key', apiKey);
-      newUrl.searchParams.set('language', getTmdbLocale());
-      newUrl.searchParams.set('sort_by', 'popularity.desc');
-      newUrl.searchParams.set('include_adult', 'false');
-      newUrl.searchParams.set('primary_release_date.gte', `${currentYear - 2}-01-01`);
-      newUrl.searchParams.set('vote_count.gte', '50');
-      newUrl.searchParams.set('page', String(page));
-      urls.push(fetch(newUrl.toString()));
-    }
-
-    // 2. Global Trending
-    const globalUrl = new URL(`${TMDB_BASE}/trending/movie/week`);
-    globalUrl.searchParams.set('api_key', apiKey);
-    globalUrl.searchParams.set('language', getTmdbLocale());
-    globalUrl.searchParams.set('page', String(page));
-    urls.push(fetch(globalUrl.toString()));
-
-    // 3. Taste / Random
-    const tasteUrl = new URL(`${TMDB_BASE}/discover/movie`);
-    tasteUrl.searchParams.set('api_key', apiKey);
-    tasteUrl.searchParams.set('language', getTmdbLocale());
-    tasteUrl.searchParams.set('sort_by', 'popularity.desc');
-    tasteUrl.searchParams.set('include_adult', 'false');
-    const genreParam = genreNamesToIds(topGenreNames).join(',');
-    if (genreParam) tasteUrl.searchParams.set('with_genres', genreParam);
-    // Add varying offsets to inject high randomness
-    tasteUrl.searchParams.set('page', String(page + Math.floor(Math.random() * 5)));
-    urls.push(fetch(tasteUrl.toString()));
-
-    const responses = await Promise.all(urls);
-    if (responses.some(r => !r.ok)) return [];
-
-    const data = await Promise.all(responses.map(r => r.json()));
-
-    let newIdx = 0;
-    const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
-
-    const extractAndFilter = (resData: any, count: number) => {
-      return (resData.results as any[])
-        .map(mapTmdbResult)
-        .filter((m): m is TMDBMovie => m !== null && !isExcluded(m))
-        .slice(0, count);
-    };
-
-    let newFilms: TMDBMovie[] = [];
-    if (targetNew > 0) {
-      newFilms = extractAndFilter(data[newIdx++], targetNew);
-    }
-    const globalFilms = extractAndFilter(data[newIdx++], targetGlobal);
-
-    // Ensure total sum to 12. If new or global missed their targets, taste fills the rest
-    const totalSoFar = newFilms.length + globalFilms.length;
-    const adjustedTasteTarget = 12 - totalSoFar;
-
-    const tasteFilms = extractAndFilter(data[newIdx++], adjustedTasteTarget);
-
-    const pool = shuffle([...newFilms, ...globalFilms, ...tasteFilms]);
-    return dedup(pool).slice(0, 12);
-  } catch (err) {
-    console.error('TMDB dynamic suggestions failed:', err);
-    return [];
-  }
-}
-
-/**
- * @deprecated Use getSmartBackfill instead.
- * Fetch EDITOR'S CHOICE fills: Sequels & Prequels of ranked movies
- * If no sequels/prequels are found, falls back to documentaries (genre 99)
- */
-export async function getEditorsChoiceFills(
-  rankedTmdbIds: number[],
-  excludeIds: Set<string> = new Set(),
-  page: number = 1,
-  excludeTitles: Set<string> = new Set(),
-): Promise<TMDBMovie[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) return [];
-
-  const isExcluded = (m: TMDBMovie) => excludeIds.has(m.id) || excludeTitles.has(m.title.toLowerCase());
-  let collectionFilms: TMDBMovie[] = [];
-
-  try {
-    if (rankedTmdbIds.length > 0) {
-      // Pick up to 5 random ranked movies to check for collections
-      const sampleIds = shuffle(rankedTmdbIds).slice(0, 5);
-
-      const moviePromises = sampleIds.map(id =>
-        fetch(`${TMDB_BASE}/movie/${id}?api_key=${apiKey}&language=${getTmdbLocale()}`).then(res => res.json())
-      );
-
-      const movies = await Promise.all(moviePromises);
-      const collectionIds = new Set<number>();
-
-      for (const m of movies) {
-        if (m.belongs_to_collection && m.belongs_to_collection.id) {
-          collectionIds.add(m.belongs_to_collection.id);
-        }
-      }
-
-      if (collectionIds.size > 0) {
-        const collectionPromises = Array.from(collectionIds).slice(0, 3).map(id =>
-          fetch(`${TMDB_BASE}/collection/${id}?api_key=${apiKey}&language=${getTmdbLocale()}`).then(res => res.json())
-        );
-
-        const collections = await Promise.all(collectionPromises);
-
-        for (const c of collections) {
-          if (c.parts) {
-            const parts = (c.parts as any[])
-              .map(mapTmdbResult)
-              .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
-            collectionFilms.push(...parts);
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error('TMDB collection fetch failed:', err);
-  }
-
-  // Deduplicate collection films
-  collectionFilms = dedup(collectionFilms);
-
-  // If we have enough from collections, return them
-  if (collectionFilms.length >= 12) {
-    return shuffle(collectionFilms).slice(0, 12);
-  }
-
-  // Otherwise, pad with the standard Documentary fallback
-  try {
-    const url = new URL(`${TMDB_BASE}/discover/movie`);
-    url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('language', getTmdbLocale());
-    url.searchParams.set('sort_by', 'popularity.desc');
-    url.searchParams.set('include_adult', 'false');
-    url.searchParams.set('with_genres', '99'); // Documentaries
-    url.searchParams.set('page', String(page));
-
-    const res = await fetch(url.toString());
-    if (!res.ok) return collectionFilms;
-
-    const data = await res.json();
-    const docFilms = (data.results as any[])
-      .map(mapTmdbResult)
-      .filter((m): m is TMDBMovie => m !== null && !isExcluded(m));
-
-    // Combine collections and docs, then deduplicate again in case of overlap
-    const combined = dedup([...collectionFilms, ...docFilms]);
-    return shuffle(combined).slice(0, 12);
-  } catch (err) {
-    console.error('TMDB editors choice fallback failed:', err);
-    return collectionFilms;
-  }
-}
-
 /**
  * Search TMDB for movies matching *query*.
  * Returns up to 10 results with real posters and metadata.
@@ -851,26 +176,31 @@ export async function searchMovies(
   query: string,
   timeoutMs: number = DEFAULT_TMDB_SEARCH_TIMEOUT_MS,
 ): Promise<TMDBMovie[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-
-  if (!apiKey || !query.trim()) return [];
+  if (!query.trim()) return [];
 
   // One fetch+map for a single query term. Reused verbatim by the zero-result
   // typo-retry loop below so retries share the exact same request/mapping path.
   // Returns null on a non-ok HTTP response so the caller can distinguish a real
-  // zero-result from an HTTP error (429/5xx/401) and skip the variant loop.
+  // zero-result from an HTTP error (429/5xx/401, now incl. proxy 401/403/429/502)
+  // and skip the variant loop.
   const fetchAndMap = async (term: string): Promise<TMDBMovie[] | null> => {
-    const url = new URL(`${TMDB_BASE}/search/movie`);
-    url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('query', term);
-    url.searchParams.set('language', getTmdbLocale());
-    url.searchParams.set('page', '1');
-    url.searchParams.set('include_adult', 'false');
+    const path = new URLSearchParams({
+      query: term,
+      language: getTmdbLocale(),
+      page: '1',
+      include_adult: 'false',
+    });
 
-    const res = await fetchWithTimeout(url.toString(), timeoutMs);
+    const res = await proxyFetch(`search/movie?${path.toString()}`, timeoutMs);
 
     if (!res.ok) {
-      console.error(`TMDB API error: ${res.status} ${res.statusText}`);
+      // A 401 here is the synthetic signed-out gate from proxyRequest (no session,
+      // no network hit) — an expected "no results" for anonymous callers, not a
+      // fault. Don't log it as an error; only surface genuine upstream failures
+      // (403/429/5xx). Either way we return null so the caller reads empty.
+      if (res.status !== 401) {
+        console.error(`TMDB API error: ${res.status} ${res.statusText}`);
+      }
       return null;
     }
 
@@ -930,18 +260,17 @@ export async function searchPeople(
   query: string,
   timeoutMs: number = DEFAULT_TMDB_SEARCH_TIMEOUT_MS,
 ): Promise<PersonProfile[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey || !query.trim()) return [];
+  if (!query.trim()) return [];
 
   try {
-    const url = new URL(`${TMDB_BASE}/search/person`);
-    url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('query', query);
-    url.searchParams.set('language', getTmdbLocale());
-    url.searchParams.set('page', '1');
-    url.searchParams.set('include_adult', 'false');
+    const path = new URLSearchParams({
+      query,
+      language: getTmdbLocale(),
+      page: '1',
+      include_adult: 'false',
+    });
 
-    const res = await fetchWithTimeout(url.toString(), timeoutMs);
+    const res = await proxyFetch(`search/person?${path.toString()}`, timeoutMs);
     if (!res.ok) return [];
 
     const data = await res.json();
@@ -994,13 +323,11 @@ export async function getPersonFilmography(
   personId: number,
   role: 'Director' | 'Actor' = 'Director',
 ): Promise<PersonDetail | null> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) return null;
-
   try {
+    const lang = getTmdbLocale();
     const [personRes, creditsRes] = await Promise.all([
-      fetch(`${TMDB_BASE}/person/${personId}?api_key=${apiKey}&language=${getTmdbLocale()}`),
-      fetch(`${TMDB_BASE}/person/${personId}/movie_credits?api_key=${apiKey}&language=${getTmdbLocale()}`),
+      proxyFetch(`person/${personId}?language=${lang}`, 5000),
+      proxyFetch(`person/${personId}/movie_credits?language=${lang}`, 5000),
     ]);
 
     if (!personRes.ok || !creditsRes.ok) return null;
@@ -1067,12 +394,11 @@ export const getDirectorFilmography = (personId: number) => getPersonFilmography
  * Returns a number 0.0–10.0, or undefined on failure.
  */
 export async function getMovieGlobalScore(tmdbNumericId: number): Promise<number | undefined> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey || !tmdbNumericId) return undefined;
+  if (!tmdbNumericId) return undefined;
 
   try {
-    const res = await fetchWithTimeout(
-      `${TMDB_BASE}/movie/${tmdbNumericId}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+    const res = await proxyFetch(
+      `movie/${tmdbNumericId}?language=${getTmdbLocale()}`,
       4000,
     );
     if (!res.ok) return undefined;
@@ -1080,6 +406,46 @@ export async function getMovieGlobalScore(tmdbNumericId: number): Promise<number
     return typeof data.vote_average === 'number' ? data.vote_average : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/** A single billed cast member as returned by TMDB credits. */
+export interface TMDBCastMember {
+  id: number;
+  name: string;
+  character: string;
+  profile_path: string | null;
+}
+
+/**
+ * Fetch the top-billed cast for a movie.
+ *
+ * The proxy allowlist rejects `movie/{id}/credits` (Task 2 review, binding item
+ * 1), so we ask for credits via the append_to_response on the base movie detail
+ * — which IS allowlisted — and read `data.credits.cast`. Returns [] on any
+ * failure (incl. signed-out 401) so the caller shows an empty cast list.
+ */
+export async function getMovieCredits(tmdbNumericId: number): Promise<TMDBCastMember[]> {
+  if (!tmdbNumericId) return [];
+
+  try {
+    const res = await proxyFetch(
+      `movie/${tmdbNumericId}?language=${getTmdbLocale()}&append_to_response=credits`,
+      5000,
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const cast = data?.credits?.cast;
+    if (!Array.isArray(cast)) return [];
+    return cast.map((c: any): TMDBCastMember => ({
+      id: c.id,
+      name: c.name,
+      character: c.character ?? '',
+      profile_path: c.profile_path ?? null,
+    }));
+  } catch (err) {
+    console.error('TMDB movie credits fetch failed:', err);
+    return [];
   }
 }
 
@@ -1092,12 +458,14 @@ export async function getExtendedMovieDetails(tmdbNumericId: number): Promise<{
   streaming: StreamingAvailability;
   director?: string;
 } | null> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey || !tmdbNumericId) return null;
+  if (!tmdbNumericId) return null;
 
   try {
-    const res = await fetchWithTimeout(
-      `${TMDB_BASE}/movie/${tmdbNumericId}?api_key=${apiKey}&language=${getTmdbLocale()}&append_to_response=watch/providers,credits`,
+    // append_to_response keeps its literal `watch/providers,credits` value; the
+    // proxy safelist pins exactly this set. The embedded '/' rides inside the
+    // packed `path` param and is preserved end-to-end.
+    const res = await proxyFetch(
+      `movie/${tmdbNumericId}?language=${getTmdbLocale()}&append_to_response=watch/providers,credits`,
       5000,
     );
     if (!res.ok) return null;
@@ -1235,6 +603,220 @@ function mapTVGenres(genreIds: number[]): string[] {
     .slice(0, 3);
 }
 
+// ── Suggestions edge-function client ─────────────────────────────────────────
+// The 5-pool engine lives in the `suggestions` edge function (Task 1). These
+// thin wrappers invoke it (JWT + apikey auto-attached by supabase.functions),
+// map the provenance-tagged items back to the client TMDBMovie / TMDBTVShow
+// shapes the modals + onboarding already render, and swallow errors → [] so a
+// 401 (signed out) / 429 / 502 degrades to "no suggestions" exactly like the
+// old key-gated engine returned [] when the key was absent.
+
+export type SuggestionMode = 'suggestions' | 'backfill' | 'new_releases';
+
+/** Engine provenance pool tag (mirrors the suggestions edge function §1.3). */
+export type SuggestionPool =
+  | 'similar'
+  | 'taste'
+  | 'trending'
+  | 'variety'
+  | 'friend'
+  | 'generic'
+  | 'backfill'
+  | 'new_release';
+
+interface SuggestionResponseItem {
+  id: string;
+  tmdbId: number;
+  title: string;
+  year: string;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  mediaType: 'movie' | 'tv';
+  genres: string[];
+  overview: string;
+  voteAverage?: number;
+  seasonCount?: number;
+  pool?: SuggestionPool;
+}
+
+/** A movie suggestion carrying its engine provenance pool (Discover grid). */
+export interface MovieSuggestion extends TMDBMovie {
+  pool?: SuggestionPool;
+}
+
+/**
+ * Invoke the `suggestions` edge function and return the raw item list.
+ *
+ * Error contract (provenance callers need reachable error UI):
+ *   - 401 from the function → empty array (auth-gate; signed-out users never
+ *     mount DiscoverView, but expired-token / relay 401 is treated as empty so
+ *     the UI shows the "no results" state, not an error banner).
+ *   - Any other HTTP error (4xx except 401, 5xx) → throws so the provenance
+ *     callers' catch blocks set engineState/newReleasesState = 'error'.
+ *   - Network / fetch failure → throws for the same reason.
+ *
+ * NON-PROVENANCE callers (fetchMovieSuggestions, fetchTVSuggestions) wrap this
+ * in a try/catch and return [] — preserving the AddMediaModal swallow-seam.
+ */
+async function invokeSuggestions(
+  mediaType: 'movie' | 'tv',
+  mode: SuggestionMode,
+  page: number,
+  sessionExcludeIds: string[],
+): Promise<SuggestionResponseItem[]> {
+  const { data, error } = await supabase.functions.invoke('suggestions', {
+    body: {
+      mediaType,
+      mode,
+      page,
+      locale: getTmdbLocale(),
+      // Session-local consumed ids only, capped at 200 to match the function's
+      // server-side cap (server also slices, this keeps the payload small).
+      sessionExcludeIds: sessionExcludeIds.slice(0, 200),
+    },
+  });
+
+  if (error) {
+    // A 401 means unauthenticated (anon relay or expired token) — treat as
+    // empty, not a fault. DiscoverView never mounts signed-out, but keep the
+    // semantics sane: auth problems → empty, outages → throw.
+    const status = (error as { context?: Response }).context?.status;
+    if (status === 401) return [];
+    throw error;
+  }
+
+  const items = (data as { items?: SuggestionResponseItem[] } | null)?.items;
+  return Array.isArray(items) ? items : [];
+}
+
+/**
+ * Fetch movie suggestions/backfill via the edge function, mapped to TMDBMovie.
+ * Swallows all errors → [] so AddMediaModal and other non-Discover callers
+ * are unaffected by the surfacing change in invokeSuggestions.
+ */
+export async function fetchMovieSuggestions(
+  mode: SuggestionMode,
+  page: number,
+  sessionExcludeIds: string[],
+): Promise<TMDBMovie[]> {
+  let items: SuggestionResponseItem[];
+  try {
+    items = await invokeSuggestions('movie', mode, page, sessionExcludeIds);
+  } catch {
+    return [];
+  }
+  return items.map((m): TMDBMovie => ({
+    id: m.id,
+    tmdbId: m.tmdbId,
+    title: m.title,
+    year: m.year,
+    posterUrl: m.posterUrl,
+    backdropUrl: m.backdropUrl,
+    type: 'movie',
+    genres: m.genres ?? [],
+    overview: m.overview ?? '',
+    voteAverage: m.voteAverage,
+  }));
+}
+
+/**
+ * Fetch movie suggestions for the Discover engine grid, preserving each item's
+ * engine provenance `pool` (used to render the "why" chip). Distinct from
+ * fetchMovieSuggestions, which drops the pool for the ranking modal that doesn't
+ * surface provenance.
+ *
+ * Unlike fetchMovieSuggestions this function does NOT swallow errors: a real
+ * outage (non-401 HTTP error or network failure) propagates so DiscoverView's
+ * engineState/newReleasesState = 'error' UI fires. A 401 (anon / token-expired)
+ * resolves to [] so DiscoverView shows the empty-state instead.
+ *
+ * `mode` defaults to "suggestions" (the ≤12 5-pool grid). Pass "new_releases"
+ * for the date-ascending new-releases row (movie-only, ≤10, chip "new").
+ */
+export async function fetchMovieSuggestionsWithProvenance(
+  mode: SuggestionMode = 'suggestions',
+  page: number = 1,
+  sessionExcludeIds: string[] = [],
+): Promise<MovieSuggestion[]> {
+  const items = await invokeSuggestions('movie', mode, page, sessionExcludeIds);
+  return items.map((m): MovieSuggestion => ({
+    id: m.id,
+    tmdbId: m.tmdbId,
+    title: m.title,
+    year: m.year,
+    posterUrl: m.posterUrl,
+    backdropUrl: m.backdropUrl,
+    type: 'movie',
+    genres: m.genres ?? [],
+    overview: m.overview ?? '',
+    voteAverage: m.voteAverage,
+    pool: m.pool,
+  }));
+}
+
+/**
+ * Fetch TV suggestions/backfill via the edge function, mapped to TMDBTVShow.
+ * Swallows all errors → [] (same swallow-seam as fetchMovieSuggestions).
+ */
+export async function fetchTVSuggestions(
+  mode: SuggestionMode,
+  page: number,
+  sessionExcludeIds: string[],
+): Promise<TMDBTVShow[]> {
+  let items: SuggestionResponseItem[];
+  try {
+    items = await invokeSuggestions('tv', mode, page, sessionExcludeIds);
+  } catch {
+    return [];
+  }
+  return items.map((s): TMDBTVShow => ({
+    id: s.id,
+    tmdbId: s.tmdbId,
+    name: s.title,
+    year: s.year,
+    posterUrl: s.posterUrl,
+    backdropUrl: s.backdropUrl,
+    genres: s.genres ?? [],
+    overview: s.overview ?? '',
+    seasonCount: s.seasonCount ?? 0,
+    status: '',
+    creators: [],
+    voteAverage: s.voteAverage,
+  }));
+}
+
+/**
+ * Fetch a single item's localized (Chinese) title + overview by Spool id.
+ *
+ * Powers the useLocalizedItems hook. Accepts the Spool composite id form:
+ *   - `tv_{showId}` or `tv_{showId}_s{n}` → GET tv/{showId}?language=zh-CN
+ *   - `tmdb_{movieId}`                    → GET movie/{movieId}?language=zh-CN
+ * Returns null on any failure (incl. signed-out 401), so the hook falls back to
+ * the original title exactly as before.
+ */
+export async function fetchLocalizedTitle(
+  id: string,
+  language: string = 'zh-CN',
+): Promise<{ title: string; overview?: string } | null> {
+  try {
+    const tvMatch = id.match(/^tv_(\d+)(?:_s\d+)?$/);
+    if (tvMatch) {
+      const res = await proxyFetch(`tv/${tvMatch[1]}?language=${language}`, 5000);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return { title: data.name as string, overview: data.overview as string | undefined };
+    }
+
+    const numericId = id.replace('tmdb_', '');
+    const res = await proxyFetch(`movie/${numericId}?language=${language}`, 5000);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return { title: data.title as string, overview: data.overview as string | undefined };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Search TMDB for TV shows matching *query*.
  */
@@ -1242,22 +824,22 @@ export async function searchTVShows(
   query: string,
   timeoutMs: number = DEFAULT_TMDB_SEARCH_TIMEOUT_MS,
 ): Promise<TMDBTVShow[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey || !query.trim()) return [];
+  if (!query.trim()) return [];
 
   // One fetch+map for a single query term. Reused verbatim by the zero-result
   // typo-retry loop below so retries share the exact same request/mapping path.
   // Returns null on a non-ok HTTP response so the caller can distinguish a real
-  // zero-result from an HTTP error (429/5xx/401) and skip the variant loop.
+  // zero-result from an HTTP error (429/5xx/401, now incl. proxy 401/403/429/502)
+  // and skip the variant loop.
   const fetchAndMap = async (term: string): Promise<TMDBTVShow[] | null> => {
-    const url = new URL(`${TMDB_BASE}/search/tv`);
-    url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('query', term);
-    url.searchParams.set('language', getTmdbLocale());
-    url.searchParams.set('page', '1');
-    url.searchParams.set('include_adult', 'false');
+    const path = new URLSearchParams({
+      query: term,
+      language: getTmdbLocale(),
+      page: '1',
+      include_adult: 'false',
+    });
 
-    const res = await fetchWithTimeout(url.toString(), timeoutMs);
+    const res = await proxyFetch(`search/tv?${path.toString()}`, timeoutMs);
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -1308,12 +890,11 @@ export async function searchTVShows(
  * Filters out season 0 (specials).
  */
 export async function getTVShowDetails(showId: number): Promise<TMDBTVShow | null> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey || !showId) return null;
+  if (!showId) return null;
 
   try {
-    const res = await fetchWithTimeout(
-      `${TMDB_BASE}/tv/${showId}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+    const res = await proxyFetch(
+      `tv/${showId}?language=${getTmdbLocale()}`,
       5000,
     );
     if (!res.ok) return null;
@@ -1359,12 +940,11 @@ export async function getTVSeasonDetails(
   seasonNum: number,
   showName: string = '',
 ): Promise<TMDBTVSeason | null> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey || !showId) return null;
+  if (!showId) return null;
 
   try {
-    const res = await fetchWithTimeout(
-      `${TMDB_BASE}/tv/${showId}/season/${seasonNum}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+    const res = await proxyFetch(
+      `tv/${showId}/season/${seasonNum}?language=${getTmdbLocale()}`,
       5000,
     );
     if (!res.ok) return null;
@@ -1391,12 +971,11 @@ export async function getTVSeasonDetails(
  * Fetch the global average score (vote_average) for a TV show.
  */
 export async function getTVShowGlobalScore(showId: number): Promise<number | undefined> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey || !showId) return undefined;
+  if (!showId) return undefined;
 
   try {
-    const res = await fetchWithTimeout(
-      `${TMDB_BASE}/tv/${showId}?api_key=${apiKey}&language=${getTmdbLocale()}`,
+    const res = await proxyFetch(
+      `tv/${showId}?language=${getTmdbLocale()}`,
       4000,
     );
     if (!res.ok) return undefined;
@@ -1405,544 +984,4 @@ export async function getTVShowGlobalScore(showId: number): Promise<number | und
   } catch {
     return undefined;
   }
-}
-
-// ── TV Smart Suggestions ──────────────────────────────────────────────────────
-
-/** Reverse map: TV genre name → TMDB TV genre ID */
-const TV_GENRE_NAME_TO_ID: Record<string, number> = Object.fromEntries(
-  Object.entries(TV_GENRE_MAP).map(([id, name]) => [name, Number(id)])
-);
-
-/**
- * Maps normalized genre names (from tv_rankings, e.g. "Action", "Sci-Fi")
- * back to TMDB TV genre IDs for /discover/tv queries.
- * Handles compound mappings: "Action" → 10759 (Action & Adventure),
- * "Sci-Fi" or "Fantasy" → 10765 (Sci-Fi & Fantasy), "Drama" → 18, etc.
- */
-export function tvGenreNamesToIds(names: string[]): number[] {
-  const NORMALIZED_TO_TV_ID: Record<string, number> = {
-    'Action': 10759,       // Action & Adventure
-    'Adventure': 10759,    // Action & Adventure
-    'Sci-Fi': 10765,       // Sci-Fi & Fantasy
-    'Fantasy': 10765,      // Sci-Fi & Fantasy
-    'War': 10768,          // War & Politics
-    // Direct matches (same ID in both movie and TV)
-    'Animation': 16,
-    'Comedy': 35,
-    'Crime': 80,
-    'Documentary': 99,
-    'Drama': 18,
-    'Family': 10751,
-    'Mystery': 9648,
-    'Western': 37,
-  };
-
-  const ids = new Set<number>();
-  for (const name of names) {
-    const id = NORMALIZED_TO_TV_ID[name] ?? TV_GENRE_NAME_TO_ID[name];
-    if (id !== undefined) ids.add(id);
-  }
-  return [...ids];
-}
-
-/** Map a raw TMDB TV result (from discover/similar/trending) to TMDBTVShow */
-function mapTmdbTVResult(s: any): TMDBTVShow | null {
-  if (!s.poster_path) return null;
-  return {
-    id: `tv_${s.id}`,
-    tmdbId: s.id,
-    name: s.name ?? s.original_name ?? '',
-    year: s.first_air_date ? s.first_air_date.slice(0, 4) : '—',
-    posterUrl: `${TMDB_IMAGE_BASE}${s.poster_path}`,
-    genres: mapTVGenres(s.genre_ids ?? []),
-    overview: s.overview ?? '',
-    seasonCount: s.number_of_seasons ?? 0,
-    status: '',
-    creators: [],
-  };
-}
-
-function dedupTV(shows: TMDBTVShow[]): TMDBTVShow[] {
-  const seen = new Set<number>();
-  return shows.filter(s => {
-    if (seen.has(s.tmdbId)) return false;
-    seen.add(s.tmdbId);
-    return true;
-  });
-}
-
-function interleaveTV(a: TMDBTVShow[], b: TMDBTVShow[]): TMDBTVShow[] {
-  const mixed: TMDBTVShow[] = [];
-  const maxLen = Math.max(a.length, b.length);
-  for (let i = 0; i < maxLen; i++) {
-    if (i < a.length) mixed.push(a[i]);
-    if (i < b.length) mixed.push(b[i]);
-  }
-  return mixed;
-}
-
-/**
- * Build a taste profile from ranked TV items.
- * Uses `creator` instead of `director`, extracts show TMDB IDs from
- * `tv_{showId}_s{n}` pattern, and uses ALL_TV_GENRES for underexposed detection.
- */
-export function buildTVTasteProfile(items: { id: string; genres: string[]; year: string; tier: string; creator?: string }[]): TasteProfile {
-  if (items.length === 0) {
-    return {
-      weightedGenres: {},
-      topDirectors: [],
-      decadeDistribution: {},
-      preferredDecade: null,
-      underexposedGenres: [...ALL_TV_GENRES],
-      topMovieIds: [],
-      totalRanked: 0,
-    };
-  }
-
-  const tierWeights = TIER_WEIGHTS as Record<string, number>;
-
-  // Tier-weighted genre scores
-  const genreScores = new Map<string, number>();
-  for (const item of items) {
-    const w = tierWeights[item.tier] ?? 3;
-    for (const g of item.genres) {
-      genreScores.set(g, (genreScores.get(g) ?? 0) + w);
-    }
-  }
-
-  // Decade distribution (tier-weighted)
-  const decadeScores = new Map<string, number>();
-  for (const item of items) {
-    if (item.year && item.year.length >= 4) {
-      const yr = parseInt(item.year.slice(0, 4), 10);
-      if (!isNaN(yr)) {
-        const decade = `${Math.floor(yr / 10) * 10}s`;
-        const w = tierWeights[item.tier] ?? 3;
-        decadeScores.set(decade, (decadeScores.get(decade) ?? 0) + w);
-      }
-    }
-  }
-
-  let preferredDecade: string | null = null;
-  let maxDecadeScore = 0;
-  for (const [decade, score] of decadeScores) {
-    if (score > maxDecadeScore) {
-      maxDecadeScore = score;
-      preferredDecade = decade;
-    }
-  }
-
-  // Creator frequency (tier-weighted) — stored in topDirectors for type reuse
-  const creatorScores = new Map<string, number>();
-  for (const item of items) {
-    if (item.creator) {
-      const w = tierWeights[item.tier] ?? 3;
-      creatorScores.set(item.creator, (creatorScores.get(item.creator) ?? 0) + w);
-    }
-  }
-  const topDirectors = [...creatorScores.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([name, score]) => ({ name, score }));
-
-  // Underexposed TV genres (raw TV genre names for /discover/tv queries).
-  // Items store normalized genres ("Action", "Sci-Fi"), so we reverse-map:
-  // a raw TV genre is "exposed" if any of its normalized forms have >= 2 counts.
-  const genreCounts = new Map<string, number>();
-  for (const item of items) {
-    for (const g of item.genres) {
-      genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
-    }
-  }
-  const TV_GENRE_NORMALIZED_FORMS: Record<string, string[]> = {
-    'Action & Adventure': ['Action', 'Adventure'],
-    'Sci-Fi & Fantasy': ['Sci-Fi', 'Fantasy'],
-    'War & Politics': ['War'],
-    'Kids': ['Family'],
-    'Soap': ['Drama'],
-    // These normalize to [] in normalizeTVGenres() — non-rankable content.
-    // Empty array here ensures they're never injected into the variety pool.
-    'News': [],
-    'Reality': [],
-    'Talk': [],
-  };
-  const underexposedGenres = ALL_TV_GENRES.filter(rawGenre => {
-    const normalizedForms = TV_GENRE_NORMALIZED_FORMS[rawGenre] ?? [rawGenre];
-    // Genres with no normalized forms (News/Reality/Talk) are skipped entirely
-    if (normalizedForms.length === 0) return false;
-    return !normalizedForms.some(n => (genreCounts.get(n) ?? 0) >= 2);
-  });
-
-  // S/A tier show TMDB IDs — extract from tv_{showId}_s{n} pattern, deduplicated
-  const showIdSet = new Set<number>();
-  for (const item of items) {
-    if (item.tier === 'S' || item.tier === 'A') {
-      const match = item.id.match(/^tv_(\d+)_s\d+$/);
-      if (match) showIdSet.add(parseInt(match[1], 10));
-    }
-  }
-  const topMovieIds = [...showIdSet];
-
-  return {
-    weightedGenres: Object.fromEntries(genreScores),
-    topDirectors,
-    decadeDistribution: Object.fromEntries(decadeScores),
-    preferredDecade,
-    underexposedGenres,
-    topMovieIds,
-    totalRanked: items.length,
-  };
-}
-
-/**
- * Fetch random S/A-tier TV shows from friends that the user hasn't ranked.
- * Deduplicates by show_tmdb_id since friends may rank different seasons.
- */
-export async function getFriendTVSuggestionPicks(
-  userId: string,
-  excludeIds: Set<string>,
-  limit: number = 2,
-): Promise<TMDBTVShow[]> {
-  try {
-    const { data: follows } = await supabase
-      .from('friend_follows')
-      .select('following_id')
-      .eq('follower_id', userId);
-
-    const friendIds = follows?.map((f: { following_id: string }) => f.following_id) ?? [];
-    if (friendIds.length === 0) return [];
-
-    const { data: friendRankings } = await supabase
-      .from('tv_rankings')
-      .select('tmdb_id, show_tmdb_id, title, poster_url, year, genres')
-      .in('user_id', friendIds)
-      .in('tier', ['S', 'A'])
-      .limit(100);
-
-    if (!friendRankings || friendRankings.length === 0) return [];
-
-    // Deduplicate by show_tmdb_id
-    const candidates = friendRankings
-      .filter((r: any) => !excludeIds.has(`tv_${r.show_tmdb_id}`) && r.poster_url)
-      .reduce((acc: any[], r: any) => {
-        if (!acc.some((a: any) => a.show_tmdb_id === r.show_tmdb_id)) acc.push(r);
-        return acc;
-      }, []);
-
-    const picked = shuffle(candidates).slice(0, limit);
-
-    return picked.map((r: any): TMDBTVShow => ({
-      id: `tv_${r.show_tmdb_id}`,
-      tmdbId: r.show_tmdb_id,
-      name: r.title,
-      year: r.year ?? '—',
-      posterUrl: r.poster_url,
-      genres: r.genres ?? [],
-      overview: '',
-      seasonCount: 0,
-      status: '',
-      creators: [],
-    }));
-  } catch (err) {
-    console.error('Friend TV suggestion picks failed:', err);
-    return [];
-  }
-}
-
-/**
- * Fetch GENERIC TV suggestions: 50% popular recent + 50% classic high-rated.
- */
-export async function getGenericTVSuggestions(
-  excludeIds: Set<string> = new Set(),
-  page: number = 1,
-  excludeTitles: Set<string> = new Set(),
-): Promise<TMDBTVShow[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) return [];
-
-  const currentYear = new Date().getFullYear();
-
-  const isExcluded = (s: TMDBTVShow) =>
-    excludeIds.has(s.id) || excludeTitles.has(s.name.toLowerCase());
-
-  try {
-    const recentUrl = new URL(`${TMDB_BASE}/discover/tv`);
-    recentUrl.searchParams.set('api_key', apiKey);
-    recentUrl.searchParams.set('language', getTmdbLocale());
-    recentUrl.searchParams.set('sort_by', 'popularity.desc');
-    recentUrl.searchParams.set('include_adult', 'false');
-    recentUrl.searchParams.set('first_air_date.gte', `${currentYear - 2}-01-01`);
-    recentUrl.searchParams.set('vote_count.gte', '30');
-    recentUrl.searchParams.set('page', String(page));
-
-    const classicUrl = new URL(`${TMDB_BASE}/discover/tv`);
-    classicUrl.searchParams.set('api_key', apiKey);
-    classicUrl.searchParams.set('language', getTmdbLocale());
-    classicUrl.searchParams.set('sort_by', 'vote_average.desc');
-    classicUrl.searchParams.set('include_adult', 'false');
-    classicUrl.searchParams.set('first_air_date.lte', `${currentYear - 5}-12-31`);
-    classicUrl.searchParams.set('vote_count.gte', '500');
-    classicUrl.searchParams.set('page', String(page));
-
-    const [recentRes, classicRes] = await Promise.all([
-      fetch(recentUrl.toString()),
-      fetch(classicUrl.toString()),
-    ]);
-
-    if (!recentRes.ok || !classicRes.ok) return [];
-
-    const [recentData, classicData] = await Promise.all([
-      recentRes.json(),
-      classicRes.json(),
-    ]);
-
-    const newShows = (recentData.results as any[])
-      .map(mapTmdbTVResult)
-      .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
-      .slice(0, 6);
-
-    const classics = (classicData.results as any[])
-      .map(mapTmdbTVResult)
-      .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
-      .slice(0, 6);
-
-    return shuffle(dedupTV(interleaveTV(newShows, classics)).slice(0, 12));
-  } catch (err) {
-    console.error('TMDB generic TV suggestions failed:', err);
-    return [];
-  }
-}
-
-/**
- * Smart 5-pool TV suggestion system.
- * Pools: Similar | Taste (weighted genres + decade) | Trending | Variety | Friend
- */
-export async function getSmartTVSuggestions(
-  profile: TasteProfile,
-  excludeIds: Set<string> = new Set(),
-  page: number = 1,
-  excludeTitles: Set<string> = new Set(),
-  userId?: string,
-  poolSlots: Record<string, number> = DEFAULT_POOL_SLOTS,
-): Promise<TMDBTVShow[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) return [];
-
-  if (profile.totalRanked < SMART_SUGGESTION_THRESHOLD) {
-    return getGenericTVSuggestions(excludeIds, page, excludeTitles);
-  }
-
-  const isExcluded = (s: TMDBTVShow) =>
-    excludeIds.has(s.id) || excludeTitles.has(s.name.toLowerCase());
-
-  const topGenres = Object.entries(profile.weightedGenres)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([name]) => name);
-  const genreParam = tvGenreNamesToIds(topGenres).join(',');
-
-  const fetches: Promise<TMDBTVShow[]>[] = [];
-
-  // Pool 1: Similar (from random S/A show)
-  fetches.push((async (): Promise<TMDBTVShow[]> => {
-    if (profile.topMovieIds.length === 0) return [];
-    const pickId = profile.topMovieIds[Math.floor(Math.random() * profile.topMovieIds.length)];
-    try {
-      const res = await fetch(
-        `${TMDB_BASE}/tv/${pickId}/similar?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`
-      );
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.results as any[])
-        .map(mapTmdbTVResult)
-        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
-        .slice(0, poolSlots.similar + 2);
-    } catch { return []; }
-  })());
-
-  // Pool 2: Taste (weighted genres + decade bias)
-  fetches.push((async (): Promise<TMDBTVShow[]> => {
-    const url = new URL(`${TMDB_BASE}/discover/tv`);
-    url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('language', getTmdbLocale());
-    url.searchParams.set('sort_by', 'vote_average.desc');
-    url.searchParams.set('include_adult', 'false');
-    url.searchParams.set('vote_count.gte', '100');
-    if (genreParam) url.searchParams.set('with_genres', genreParam);
-
-    if (profile.preferredDecade) {
-      const decadeStart = parseInt(profile.preferredDecade, 10);
-      if (!isNaN(decadeStart) && Math.random() < 0.5) {
-        url.searchParams.set('first_air_date.gte', `${decadeStart}-01-01`);
-        url.searchParams.set('first_air_date.lte', `${decadeStart + 9}-12-31`);
-      }
-    }
-
-    url.searchParams.set('page', String(page + Math.floor(Math.random() * 3)));
-
-    try {
-      const res = await fetch(url.toString());
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.results as any[])
-        .map(mapTmdbTVResult)
-        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
-        .slice(0, poolSlots.taste + 2);
-    } catch { return []; }
-  })());
-
-  // Pool 3: Trending
-  fetches.push((async (): Promise<TMDBTVShow[]> => {
-    try {
-      const res = await fetch(
-        `${TMDB_BASE}/trending/tv/week?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`
-      );
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.results as any[])
-        .map(mapTmdbTVResult)
-        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
-        .slice(0, poolSlots.trending + 2);
-    } catch { return []; }
-  })());
-
-  // Pool 4: Variety (underexposed genres, lower vote threshold)
-  fetches.push((async (): Promise<TMDBTVShow[]> => {
-    if (profile.underexposedGenres.length === 0) return [];
-    const pickGenres = shuffle(profile.underexposedGenres).slice(0, 2);
-    // underexposedGenres are raw TV genre names, map directly
-    const varietyIds = pickGenres
-      .map(g => TV_GENRE_NAME_TO_ID[g])
-      .filter((id): id is number => id !== undefined);
-    if (varietyIds.length === 0) return [];
-
-    const url = new URL(`${TMDB_BASE}/discover/tv`);
-    url.searchParams.set('api_key', apiKey);
-    url.searchParams.set('language', getTmdbLocale());
-    url.searchParams.set('sort_by', 'popularity.desc');
-    url.searchParams.set('include_adult', 'false');
-    url.searchParams.set('vote_count.gte', '50');
-    url.searchParams.set('with_genres', varietyIds.join(','));
-    url.searchParams.set('page', String(1 + Math.floor(Math.random() * 3)));
-
-    try {
-      const res = await fetch(url.toString());
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.results as any[])
-        .map(mapTmdbTVResult)
-        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s))
-        .slice(0, poolSlots.variety + 2);
-    } catch { return []; }
-  })());
-
-  // Pool 5: Friend picks
-  fetches.push(
-    userId
-      ? getFriendTVSuggestionPicks(userId, excludeIds, poolSlots.friend + 1)
-      : Promise.resolve([])
-  );
-
-  const [similarShows, tasteShows, trendingShows, varietyShows, friendShows] =
-    await Promise.all(fetches);
-
-  const result: TMDBTVShow[] = [];
-  const used = new Set<number>();
-
-  const take = (pool: TMDBTVShow[], count: number) => {
-    for (const s of pool) {
-      if (result.length >= 12) break;
-      if (count <= 0) break;
-      if (used.has(s.tmdbId)) continue;
-      used.add(s.tmdbId);
-      result.push(s);
-      count--;
-    }
-  };
-
-  take(similarShows, poolSlots.similar);
-  take(tasteShows, poolSlots.taste);
-  take(trendingShows, poolSlots.trending);
-  take(varietyShows, poolSlots.variety);
-  take(friendShows, poolSlots.friend);
-
-  const remaining = [...tasteShows, ...similarShows, ...trendingShows, ...varietyShows];
-  take(remaining, 12 - result.length);
-
-  return shuffle(result);
-}
-
-/**
- * Smart TV backfill: TMDB recommendations for random ranked shows.
- * Falls back to variety discover if insufficient.
- */
-export async function getSmartTVBackfill(
-  profile: TasteProfile,
-  excludeIds: Set<string> = new Set(),
-  page: number = 1,
-  excludeTitles: Set<string> = new Set(),
-): Promise<TMDBTVShow[]> {
-  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-  if (!apiKey) return [];
-
-  const isExcluded = (s: TMDBTVShow) =>
-    excludeIds.has(s.id) || excludeTitles.has(s.name.toLowerCase());
-
-  if (profile.topMovieIds.length === 0) {
-    return getGenericTVSuggestions(excludeIds, page, excludeTitles);
-  }
-
-  let shows: TMDBTVShow[] = [];
-
-  const sampleIds = shuffle(profile.topMovieIds).slice(0, 2);
-  try {
-    const reqs = sampleIds.map(id =>
-      fetch(`${TMDB_BASE}/tv/${id}/recommendations?api_key=${apiKey}&language=${getTmdbLocale()}&page=${page}`)
-        .then(r => r.ok ? r.json() : { results: [] })
-    );
-    const results = await Promise.all(reqs);
-    for (const data of results) {
-      const mapped = (data.results as any[])
-        .map(mapTmdbTVResult)
-        .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s));
-      shows.push(...mapped);
-    }
-  } catch (err) {
-    console.error('Smart TV backfill recommendations failed:', err);
-  }
-
-  shows = dedupTV(shows);
-
-  if (shows.length < 12 && profile.underexposedGenres.length > 0) {
-    try {
-      const pickGenres = shuffle(profile.underexposedGenres).slice(0, 2);
-      const varietyIds = pickGenres
-        .map(g => TV_GENRE_NAME_TO_ID[g])
-        .filter((id): id is number => id !== undefined);
-      if (varietyIds.length > 0) {
-        const url = new URL(`${TMDB_BASE}/discover/tv`);
-        url.searchParams.set('api_key', apiKey);
-        url.searchParams.set('language', getTmdbLocale());
-        url.searchParams.set('sort_by', 'popularity.desc');
-        url.searchParams.set('include_adult', 'false');
-        url.searchParams.set('vote_count.gte', '50');
-        url.searchParams.set('with_genres', varietyIds.join(','));
-        url.searchParams.set('page', String(page));
-
-        const res = await fetch(url.toString());
-        if (res.ok) {
-          const data = await res.json();
-          const varietyShows = (data.results as any[])
-            .map(mapTmdbTVResult)
-            .filter((s): s is TMDBTVShow => s !== null && !isExcluded(s));
-          shows = dedupTV([...shows, ...varietyShows]);
-        }
-      }
-    } catch (err) {
-      console.error('Smart TV backfill variety fallback failed:', err);
-    }
-  }
-
-  return shuffle(shows).slice(0, 20);
 }

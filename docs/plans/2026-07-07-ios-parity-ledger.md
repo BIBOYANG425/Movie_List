@@ -9,11 +9,12 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 | C0 | Stub write fix | iOS build in final review | audits/2026-07-07-c0-stub-web-audit.md | #30 | (PR opens after final review) |
 | C1 | Feed + notifications | feed UI built on `feat/ios-parity-c1-feed-ui` (PR pending); data layer + web fixes already merged (#32, #34; migrations applied + probes passed 2026-07-08) | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
 | C2 | Journal + AI agent | web fixes merged (PR #33); iOS journal built on `feat/ios-parity-c2-journal` (PR pending) | audits/2026-07-08-c2-journal-web-audit.md | #33 | (PR pending) |
-| C3 | Watchlist + Discover | Part A shipped on `feat/ios-parity-c3-watchlist` (PR pending); Part B pending (owner prereq: TMDB_API_KEY secret) | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (PR pending, branch `fix/c3-watchlist-discover-web-blocking`) | `feat/ios-parity-c3-watchlist` (PR pending) |
+| C3 | Watchlist + Discover | FULLY COMPLETE (Parts A + B) — edge functions deployed, both clients migrated off direct TMDB key, TMDB key DoD met, merged Discover on both platforms (chips + New Releases + card actions), journal wipe fix T0, anon onboarding fixtures | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (Part A: branch `fix/c3-watchlist-discover-web-blocking`; Part B: `feat/c3-part-b-suggestions`) | `feat/ios-parity-c3-watchlist` (Part A) + `feat/c3-part-b-suggestions` (Part B) |
 | C4 | Ranking management | COMPLETE — web fixes PR #39 + iOS management UI SHIPPED on `feat/ios-parity-c4-mgmt-ui` (PR pending): edit-mode drag-to-reorder (FullListScreen shelf), long-press menu (move tier / edit notes w/ probe-before-edit + wipe guard / re-rank via corrected ceremony / delete w/ confirm + ranking_remove); ceremony re-rank correction landed (Task 2 — deviation retired) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | #39 | `feat/ios-parity-c4-mgmt-ui` (PR pending) |
 | C5 | TV seasons + books | pending | — | — | — |
 | C6 | zh localization | pending | — | — | — |
 | C7 | Smaller items | pending | — | — | — |
+| — | iOS design-check | queued after C5–C7 (owner, 2026-07-10); screenshot seed list in progress ledger | — | — | — |
 
 ## Audit findings
 
@@ -455,6 +456,33 @@ Supabase Edge Function secret):**
   delete candidate).
 - Revert-duplicate and seed-item cases in WatchlistContractTests — already fixed
   before review merge.
+
+### C3-iOS Part B notes (2026-07-10, branch `feat/c3-part-b-suggestions`)
+
+**What shipped in Part B:**
+
+- `suggestions` edge function deployed (5-pool engine, modes: suggestions / backfill / new_releases; auth + rate-limiting; pure engine in `engine.ts` exercised by vitest).
+- `tmdb-proxy` edge function deployed (authenticated GET; hard path allowlist + query safelist; pure rules in `rules.ts` exercised by vitest).
+- Both clients migrated off direct TMDB key: web `VITE_TMDB_API_KEY` removed; iOS `Info.plist` `TMDB_API_KEY` retired. **TMDB key DoD met.**
+- Web `DiscoverView` merged layout: friend sections + engine grid with provenance pool chips (`similar` / `taste` / `trending` / `variety` / `friend` / `generic`) + New Releases row (TMDB now_playing + upcoming, taste-filtered, date-asc).
+- iOS `DiscoverScreen` engine grid: `SuggestionsClient` wired, provenance chips rendered, New Releases section, card actions (save-for-later + rank tap).
+- Web `AddMediaModal` / `AddTVSeasonModal` / `MovieOnboardingPage` swap old `getSmartSuggestions/Backfill` + `buildTasteProfile` for edge-function calls via `invokeSuggestions` in `services/tmdbService.ts`.
+- Anonymous onboarding: `services/onboardingFixtures.ts` static pool (~48 curated movies) serves `MovieOnboardingPage` when there is no session — restores the try-before-signup funnel after the TMDB key was removed from the web bundle.
+- Journal quick-write wipe fix (T0): ceremony stage-A no longer overwrites an existing rich journal entry when `.moved` (`InsertOutcome` guard).
+- Contract: `docs/contracts/shared-payloads.md` §suggestions-function and §tmdb-proxy.
+
+**Deferred (ledger open items):**
+
+- `releaseDate` wire field: present internally on `new_release` items but stripped by `toResponseItem`. When wired, New Releases rows on both platforms can display the actual release date. Until then, year-only display.
+- `seedTitle` wire field: the title of the S/A-tier seed movie used by the `similar` pool — for the "Because you ranked X" chip. Not yet populated by the engine.
+- `region` param for `new_releases`: `movie/now_playing` + `movie/upcoming` are called without a region param (release-date API v1); region handling is a deferred follow-up.
+- `social .failed` suppresses engine sections: when the social Discover sections (`friendRecommendations` / `trendingAmongFriends`) error, the engine grid sections should be hidden too (design-cycle item; current posture: sections fail independently).
+- Preview-mode search sign-in nudge: anon users who land on the search surface from an onboarding fixture tap see an empty result (search requires auth via tmdb-proxy). A sign-in nudge at that seam is a design-cycle item.
+- zh retry label: when the typo-retry backoff produces zero results, the "no results" label is shown in English even in zh locale. Deferred.
+- `onboardingFixtures.ts` header threshold: header originally said "≥10 movies" but `REQUIRED_MOVIES = MIN_MOVIES_FOR_SCORES = 5`. **Corrected in this PR** to "≥5 movies".
+- CORS `Access-Control-Allow-Origin: *` — both `suggestions` and `tmdb-proxy` ship `*`. Tightening to the deployed Vercel origin is a security audit action item (CORS origin-tightening tension; deferred).
+
+**iOS design-check cycle:** queued after C5–C7 (owner, 2026-07-10); screenshot seed list in progress ledger.
 
 ### Search gaps mini-cycle (2026-07-09) — SHIPPED (PR #38)
 

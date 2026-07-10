@@ -116,6 +116,39 @@ public enum JournalEntryContract {
         probed ?? passed
     }
 
+    /// Re-rank MERGE seam (C3 Part B Task 0 — the wipe fix). A ceremony re-rank
+    /// (`InsertOutcome == .moved`) of a movie with an EXISTING rich journal entry
+    /// must never blind-replace it with the near-blank quick draft. Instead we
+    /// hydrate the full draft from the freshly-probed owner row (every rich field
+    /// — review_text, favorite_moments, standout_performances, photos,
+    /// personal_takeaway, visibility_override, watch context, rewatch fields —
+    /// preserved verbatim) and fold in ONLY the ceremony's new signals:
+    ///  - `newMoods` REPLACE `mood_tags` (the ceremony's mood picker is the fresh
+    ///    selection — an empty pick is honored so a re-rank that cleared moods
+    ///    lands as empty, mirroring the composer's replace-not-append semantics);
+    ///  - `newLine` folds into `review_text` ONLY when non-empty; an empty
+    ///    one-liner PRESERVES the existing review (a moods-only re-rank must not
+    ///    wipe rich review text).
+    ///
+    /// `watched_date` ADJUDICATION: the EXISTING row's `watched_date` is kept — a
+    /// re-rank is a re-ranking, not a new watch, so the original watch day
+    /// survives (never bumped to today). This mirrors the journal-is-per-movie
+    /// (`is_rewatch` on the same row), not per-watch, contract.
+    ///
+    /// The result is a FULL draft, so `upsertPayload(from:)` still emits all 20
+    /// columns — the merge makes the contract's full-replace SAFE rather than
+    /// degrading it into a partial-column update that would diverge from the
+    /// journal contract.
+    public static func merge(newMoods: [String], newLine: String, onto row: JournalRow) -> JournalDraft {
+        var draft = draft(from: row)
+        draft.moodTags = newMoods
+        let trimmedLine = newLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedLine.isEmpty {
+            draft.reviewText = trimmedLine
+        }
+        return draft
+    }
+
     /// Emit a `review` activity event ONLY when the review is non-empty AND the
     /// resolved visibility is public. Friends-only review bodies must never
     /// leak into explore (the old `!== 'private'` gate regression).

@@ -269,21 +269,52 @@ struct OnbGrid: View {
 
     private let tierOptions: [Tier] = [.S, .A, .B, .C, .D]
 
-    /// Fallback pool used when `TMDB_API_KEY` isn't set or the network fails.
-    /// Same titles the HTML prototype showed so the demo path stays consistent.
+    /// Seed pool for onboarding's pre-auth tier placement (the `suggestions`
+    /// edge function needs a session that doesn't exist yet). Verbatim from
+    /// web's `services/onboardingFixtures.ts` — real TMDB ids, real poster
+    /// paths served from the keyless image.tmdb.org CDN. 12 broadly
+    /// recognisable titles across decades and genres.
+    ///
+    /// Using real ids means fixture picks that persist (via `OnboardingQueue`
+    /// flush on a subsequent sign-in, or via the signed-in error-fallback path)
+    /// write valid TMDB rows — no data-integrity concern.
     private static let fallbackPool: [TMDBMovie] = [
-        .fixture(id: "fx_past_lives",    title: "Past Lives",                year: 2023, seed: 0),
-        .fixture(id: "fx_itmfl",         title: "In the Mood for Love",      year: 2000, seed: 2),
-        .fixture(id: "fx_portrait",      title: "Portrait of a Lady on Fire",year: 2019, seed: 7),
-        .fixture(id: "fx_moonlight",     title: "Moonlight",                 year: 2016, seed: 4),
-        .fixture(id: "fx_challengers",   title: "Challengers",               year: 2024, seed: 5),
-        .fixture(id: "fx_paris_texas",   title: "Paris, Texas",              year: 1984, seed: 8),
-        .fixture(id: "fx_poor_things",   title: "Poor Things",               year: 2023, seed: 3),
-        .fixture(id: "fx_drive",         title: "Drive",                     year: 2011, seed: 6),
-        .fixture(id: "fx_aftersun",      title: "Aftersun",                  year: 2022, seed: 1),
-        .fixture(id: "fx_dune_2",        title: "Dune Pt 2",                 year: 2024, seed: 5),
-        .fixture(id: "fx_parasite",      title: "Parasite",                  year: 2019, seed: 2),
-        .fixture(id: "fx_lady_bird",     title: "Lady Bird",                 year: 2017, seed: 3),
+        TMDBMovie(id: "tmdb_238",    tmdbId: 238,    title: "The Godfather",
+                  year: "1972", posterUrl: "https://image.tmdb.org/t/p/w500/3bhkrj58Vtu7enYsRolD1fZdja1.jpg",
+                  genres: ["Drama", "Crime"],                  overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_155",    tmdbId: 155,    title: "The Dark Knight",
+                  year: "2008", posterUrl: "https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg",
+                  genres: ["Action", "Crime", "Thriller"],     overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_680",    tmdbId: 680,    title: "Pulp Fiction",
+                  year: "1994", posterUrl: "https://image.tmdb.org/t/p/w500/vQWk5YBFWF4bZaofAbv0tShwBvQ.jpg",
+                  genres: ["Thriller", "Crime", "Comedy"],     overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_550",    tmdbId: 550,    title: "Fight Club",
+                  year: "1999", posterUrl: "https://image.tmdb.org/t/p/w500/jSziioSwPVrOy9Yow3XhWIBDjq1.jpg",
+                  genres: ["Drama", "Thriller"],               overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_13",     tmdbId: 13,     title: "Forrest Gump",
+                  year: "1994", posterUrl: "https://image.tmdb.org/t/p/w500/Cw4hIUIAmSYfK9QfaUW5igp9La.jpg",
+                  genres: ["Comedy", "Drama", "Romance"],      overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_27205",  tmdbId: 27205,  title: "Inception",
+                  year: "2010", posterUrl: "https://image.tmdb.org/t/p/w500/xlaY2zyzMfkhk0HSC5VUwzoZPU1.jpg",
+                  genres: ["Action", "Sci-Fi", "Adventure"],   overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_157336", tmdbId: 157336, title: "Interstellar",
+                  year: "2014", posterUrl: "https://image.tmdb.org/t/p/w500/yQvGrMoipbRoddT0ZR8tPoR7NfX.jpg",
+                  genres: ["Adventure", "Drama", "Sci-Fi"],    overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_597",    tmdbId: 597,    title: "Titanic",
+                  year: "1997", posterUrl: "https://image.tmdb.org/t/p/w500/9xjZS2rlVxm8SFx8kPC3aIGCOYQ.jpg",
+                  genres: ["Drama", "Romance"],                overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_424",    tmdbId: 424,    title: "Schindler's List",
+                  year: "1993", posterUrl: "https://image.tmdb.org/t/p/w500/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg",
+                  genres: ["Drama", "History", "War"],         overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_578",    tmdbId: 578,    title: "Jaws",
+                  year: "1975", posterUrl: "https://image.tmdb.org/t/p/w500/lxM6kqilAdpdhqUl2biYp5frUxE.jpg",
+                  genres: ["Horror", "Thriller", "Adventure"], overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_105",    tmdbId: 105,    title: "Back to the Future",
+                  year: "1985", posterUrl: "https://image.tmdb.org/t/p/w500/vN5B5WgYscRGcQpVhHl6p9DDTP0.jpg",
+                  genres: ["Adventure", "Comedy", "Sci-Fi"],   overview: "", voteAverage: nil),
+        TMDBMovie(id: "tmdb_8587",   tmdbId: 8587,   title: "The Lion King",
+                  year: "1994", posterUrl: "https://image.tmdb.org/t/p/w500/sKCr78MXSLixwmZ8DyJLrpMsd15.jpg",
+                  genres: ["Animation", "Family", "Drama"],    overview: "", voteAverage: nil),
     ]
 
     var body: some View {
@@ -412,14 +443,79 @@ struct OnbGrid: View {
         .buttonStyle(.plain)
     }
 
+    // Injected at init for testing; production code uses `SuggestionsClient.fetch`.
+    var fetchSuggestions: (
+        _ mode: SuggestionMode, _ mediaType: SuggestionMediaType,
+        _ page: Int, _ sessionExcludeIds: [String], _ limit: Int?
+    ) async throws -> SuggestionsResponse = { mode, mediaType, page, ids, limit in
+        try await SuggestionsClient.fetch(
+            mode: mode, mediaType: mediaType, page: page,
+            sessionExcludeIds: ids, limit: limit
+        )
+    }
+
     private func load() async {
         if !suggestions.isEmpty { return }
         loading = true
-        let results = await TMDBService.getGenericSuggestions()
+        let hasSession = (try? await SpoolClient.shared?.auth.session) != nil
+        let pool = await Self.resolvePool(
+            hasSession: hasSession,
+            fallbackPool: Self.fallbackPool,
+            fetchSuggestions: fetchSuggestions
+        )
         await MainActor.run {
-            suggestions = results.isEmpty ? Self.fallbackPool : results
+            suggestions = pool
             loading = false
         }
+    }
+
+    /// Package-internal: the decision seam for which pool to show.
+    ///
+    /// When `hasSession` is true, calls `fetchSuggestions` to get a live generic
+    /// pool from the server (0 rankings → threshold fallback). On error or an empty
+    /// response, falls through to `fallbackPool`. When `hasSession` is false, skips
+    /// the network call entirely and returns `fallbackPool`.
+    ///
+    /// `finish()` is called on every path (both signed-in and skipped). Fixture
+    /// picks can therefore reach the database via two routes: (a) `OnboardingQueue
+    /// .replace` stores them when signed-out, and `OnboardingQueue.flush` writes
+    /// them to `user_rankings` after a subsequent sign-in — with no tmdbId
+    /// filtering; (b) the signed-in error-fallback path writes them immediately
+    /// via `insertRanking`. Because `fallbackPool` now carries real TMDB ids and
+    /// real poster URLs (verbatim from web's `onboardingFixtures.ts`), persisted
+    /// fixture rows are valid data — the data-integrity concern evaporates.
+    static func resolvePool(
+        hasSession: Bool,
+        fallbackPool: [TMDBMovie],
+        fetchSuggestions: (
+            _ mode: SuggestionMode, _ mediaType: SuggestionMediaType,
+            _ page: Int, _ sessionExcludeIds: [String], _ limit: Int?
+        ) async throws -> SuggestionsResponse
+    ) async -> [TMDBMovie] {
+        if hasSession {
+            do {
+                let response = try await fetchSuggestions(.suggestions, .movie, 1, [], nil)
+                let live: [TMDBMovie] = response.items.map { item in
+                    TMDBMovie(
+                        id: item.id,
+                        tmdbId: item.tmdbId,
+                        title: item.title,
+                        year: item.year,
+                        posterUrl: item.posterUrl,
+                        genres: item.genres,
+                        overview: item.overview,
+                        voteAverage: item.voteAverage
+                    )
+                }
+                if !live.isEmpty { return live }
+            } catch {
+                NSLog("[OnbGrid] live fetch failed, falling back to fixtures: \(error)")
+            }
+        }
+        // Signed-out or fetch error: use static fixture pool so the grid
+        // always shows something. Fixture entries carry real TMDB ids and
+        // real poster URLs, so any picks that persist are valid rows.
+        return fallbackPool
     }
 
     private func finish() {
@@ -434,32 +530,6 @@ struct OnbGrid: View {
 
     private func tierOrder(_ t: Tier) -> Int {
         switch t { case .S: 0; case .A: 1; case .B: 2; case .C: 3; case .D: 4 }
-    }
-}
-
-extension TMDBMovie {
-    /// Local fallback when TMDB is unreachable — posterUrl nil so PosterBlock's
-    /// synthetic palette kicks in. `tmdbId` is a deterministic FNV-1a hash of
-    /// the string id, negated to stay out of real TMDB id space and to remain
-    /// stable across app launches (String.hashValue is randomized per-run,
-    /// which would corrupt queued rankings and poster seeds).
-    static func fixture(id: String, title: String, year: Int, seed: Int) -> TMDBMovie {
-        TMDBMovie(
-            id: id, tmdbId: stableFixtureId(id), title: title,
-            year: String(year), posterUrl: nil, genres: [],
-            overview: "", voteAverage: nil
-        )
-    }
-
-    /// FNV-1a 32-bit over the UTF-8 bytes, negated. Deterministic across
-    /// launches and distinct from any real (positive) TMDB id.
-    private static func stableFixtureId(_ s: String) -> Int {
-        var hash: UInt32 = 0x811c9dc5
-        for byte in s.utf8 {
-            hash ^= UInt32(byte)
-            hash = hash &* 0x01000193
-        }
-        return -Int(hash)
     }
 }
 

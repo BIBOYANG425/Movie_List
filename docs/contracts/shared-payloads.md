@@ -428,7 +428,9 @@ Migration: `supabase/migrations/20260709_set_tier_order_rpc.sql`.
 
 ### Title-locale pin
 
-The persisted `title` in `user_rankings`, `activity_events.media_title`, and `movie_stubs.title` is the TMDB **default-locale** title — never a localized (e.g., zh-CN) one. Web's `useLocalizedItems` replaces `title` with zh-CN strings for display only; the management handlers that write to persistence must look up the raw item by id before persisting. iOS has no localization layer today; the pin is a forward contract.
+The persisted `title` in `user_rankings`, `activity_events.media_title`, and `movie_stubs.title` is the TMDB **default-locale** title — never a localized (e.g., zh-CN) one. Web's `useLocalizedItems` replaces `title` with zh-CN strings for display only; the management handlers that write to persistence must look up the raw item by id before persisting.
+
+iOS follows device locale for TMDB fetches (`TMDBService.locale()` → zh-CN for Chinese devices, en-US otherwise), matching web's `getTmdbLocale` surfaces. However, when a user ranks an item via the ceremony (or from a Discover suggestion), `RankingRepository.insertRanking` uses the title that came back from the `suggestions` edge function. The `suggestions` function receives the caller's `locale` param and fetches from TMDB with the corresponding language. The locale-fetched title is persisted on BOTH platforms at that same seam — exact web parity (web's `onRerank` handler looks up the raw item from the unlocalized `items` array, so re-ranks are pinned; the Discover-rank path carries the suggestion's title directly). The strict default-locale pin applies to the re-rank/raw-item paths (where the unlocalized item is always available) and to the raw DB read paths. A zh-CN `suggestions` response for a fresh rank will persist a zh-CN title; this is the same behavior as web's Discover rank path and is accepted.
 
 ### Deliberate orphan semantics on delete
 
@@ -615,3 +617,198 @@ Tests: `services/__tests__/watchlistRankHelpers.test.ts`
 (`shouldRemoveBookmarkAfterRank` truth, `canonicalMovieTmdbId` idempotency/prefix,
 `tvWatchlistItemFromShow` shape); `services/__tests__/letterboxdImportIds.test.ts`
 (import writes canonical ids at all sites).
+
+## suggestions function (since C3 Part B, branch `feat/c3-part-b-suggestions`)
+
+Server-side 5-pool suggestion engine (`supabase/functions/suggestions/index.ts`).
+Reads the caller's rankings + watchlist under their forwarded JWT (RLS-scoped, no
+service role), builds the taste profile + exclusions, runs the TMDB pools, and returns
+provenance-tagged items. Pure engine logic lives in `supabase/functions/suggestions/engine.ts`
+(import-clean; exercised by `services/__tests__/suggestionsEngine.test.ts`).
+
+### Auth + method
+
+Authenticated `POST` (`Authorization: Bearer <supabase-jwt>`). Missing/invalid token
+→ 401. Per-user in-memory token bucket (~30 req/min per isolate) → 429 on excess.
+Only `POST` accepted; other methods → 405.
+
+### Request body (JSON)
+
+```json
+{
+  "mediaType": "movie" | "tv",
+  "mode": "suggestions" | "backfill" | "new_releases",
+  "page": 1,
+  "poolSlots": { "similar": 3, "taste": 4, "trending": 2, "variety": 2, "friend": 1 },
+  "locale": "zh-CN",
+  "sessionExcludeIds": ["tmdb_603", "tmdb_238"],
+  "limit": 10
+}
+```
+
+- `mediaType`: required. `new_releases` mode supports `"movie"` only (400 if `tv`).
+- `mode`: required. `"suggestions"` = smart 5-pool (generic fallback when below threshold
+  3); `"backfill"` = recommendations-of-top-ids, variety pad, cap 20; `"new_releases"` =
+  now_playing + upcoming, taste-filtered, date-asc, movie only. `new_releases`
+  exclusions are a SUPERSET of the old client behavior: server-side ranked +
+  watchlisted + the caller's `sessionExcludeIds` all apply.
+- `page`: positive integer, defaults to 1 if omitted.
+- `poolSlots`: optional; any keys override `DEFAULT_POOL_SLOTS` (similar:3, taste:4,
+  trending:2, variety:2, friend:1; Σ=12). Values must be non-negative numbers.
+- `locale`: optional string; `zh*` prefix → TMDB language `zh-CN`, anything else →
+  `en-US`. Mirrors `getTmdbLocale` / `TMDBService.locale()` on both clients.
+- `sessionExcludeIds`: optional array of strings; items to suppress this session (already
+  seen in the UI). **Cap: 200 ids. Sending more than 200 → 400.** Server slices to 200
+  as a defense-in-depth measure; callers must not rely on that silent slice.
+- `limit`: positive integer, optional; effective only for `new_releases` (capped at 10).
+
+### Response — 200 OK
+
+```json
+{
+  "items": [
+    {
+      "id": "tmdb_603",
+      "tmdbId": 603,
+      "title": "The Matrix",
+      "year": "1999",
+      "posterUrl": "https://image.tmdb.org/t/p/w500/...",
+      "backdropUrl": null,
+      "mediaType": "movie",
+      "genres": ["Action", "Sci-Fi"],
+      "overview": "...",
+      "voteAverage": 8.2,
+      "seasonCount": 0,
+      "pool": "similar"
+    }
+  ],
+  "totalRanked": 47
+}
+```
+
+`pool` ∈ `"similar" | "taste" | "trending" | "variety" | "friend" | "generic" | "backfill" | "new_release"` —
+provenance tag for the chip label on Discover cards. `totalRanked` is the caller's
+ranked-item count (informs the below-threshold/generic fallback branch).
+
+**`items` may be empty** (empty array, 200 status) when TMDB fetch calls inside the
+engine all return null. The most common cause on a fresh deploy is a missing or invalid
+`TMDB_API_KEY` secret — an empty 200 is the signal to check the secret, not a protocol
+error. Clients show an empty state rather than an error.
+
+**Deferred wire fields (not yet in the response):**
+- `releaseDate` (ISO string) — present internally on `new_release` items for date-asc
+  sort but stripped by `toResponseItem` before transmission. When this field is wired,
+  web/iOS New Releases rows can show the actual release date rather than year-only.
+- `seedTitle` (string) — optional; the title of the S/A-tier movie the `similar` pool
+  used as its TMDB seed. Useful for the "Because you ranked X" provenance chip. Not yet
+  populated by the engine.
+
+### Error codes
+
+| Status | Meaning |
+|---|---|
+| 400 | Validation failure — missing/wrong field, `sessionExcludeIds` > 200, `new_releases` with `tv` |
+| 401 | Missing or invalid `Authorization` header / expired token |
+| 405 | Method not `POST` |
+| 429 | Per-user rate limit exceeded (~30 req/min per isolate) |
+| 502 | DB read failure (`user_rankings` / `watchlist_items` query errored) or upstream TMDB network error |
+| 500 | Unexpected server error (e.g. missing `SUPABASE_URL` env var) |
+
+**DB read failure = 502:** if `loadMovieData` / `loadTVData` throws (Supabase query
+returns `.error`), the function catches and returns `{ error: "upstream error" }` with
+status 502. Clients treat 502 as a transient failure and show an empty/error state.
+
+### Harmless engine divergence
+
+`loadMovieData` coerces bare numeric `tmdb_id` values from the DB (e.g. `603`) into
+`tmdb_603` form for the taste profile (`id: \`tmdb_${String(r.tmdb_id).replace(/^tmdb_/, '')}\``),
+rather than dropping them. This differs from the client-side `buildTasteProfile` which
+only sees items already normalized to `tmdb_` form. Effect: a bare-id row that would
+have been silently excluded from `topMovieIds` on the client now correctly seeds the
+similar/backfill pools server-side. Since prod has 0 bare-format rows (B1 preventive),
+the divergence is harmless in practice.
+
+### CORS
+
+Both functions ship `Access-Control-Allow-Origin: *`. A future tightening to the
+deployed Vercel origin is a security audit action item (audit §2.4 — deferred; CORS
+origin-tightening tension noted in the parity ledger).
+
+Implementations: `supabase/functions/suggestions/index.ts` (HTTP shell),
+`supabase/functions/suggestions/engine.ts` (pure engine).
+Tests: `services/__tests__/suggestionsEngine.test.ts`.
+iOS client: `ios/Spool/Sources/Spool/Services/SuggestionsClient.swift`.
+Web client: `invokeSuggestions` + wrappers in `services/tmdbService.ts`.
+
+## tmdb-proxy (since C3 Part B, branch `feat/c3-part-b-suggestions`)
+
+Authenticated, allowlisted TMDB passthrough (`supabase/functions/tmdb-proxy/index.ts`).
+With the `suggestions` function this retires the TMDB key from BOTH app bundles — the
+key lives only in the function's secret store as `TMDB_API_KEY` and is injected
+server-side. **DoD met: `VITE_TMDB_API_KEY` removed from the web bundle; iOS
+`Info.plist` `TMDB_API_KEY` entry retired.** Both clients' TMDB fetch layers route through
+this proxy.
+
+### Auth + method
+
+Authenticated `GET` (`Authorization: Bearer <supabase-jwt>`). Missing/invalid token →
+401. Same per-user in-memory token bucket as `suggestions` (~30 req/min per isolate) →
+429. Only `GET` accepted; other methods → 405.
+
+### Path allowlist
+
+The `?path=<tmdb path>` parameter is validated against a HARD allowlist (deny-by-default,
+fully anchored regex). Non-matching paths, traversal (`..`), encoded slashes/dots (`%`),
+backslashes, absolute/protocol-relative URLs → 403 (generic message, attempted path never
+echoed). The pure logic lives in `supabase/functions/tmdb-proxy/rules.ts` (exercised by
+`services/__tests__/tmdbProxyRules.test.ts`).
+
+**Allowed paths (exact allowlist — `\d+` = numeric id):**
+
+```
+search/movie
+search/tv
+search/person
+movie/{id}
+movie/{id}/similar
+movie/{id}/recommendations
+movie/now_playing
+movie/upcoming
+tv/{id}
+tv/{id}/season/{id}
+person/{id}
+person/{id}/movie_credits
+trending/(movie|tv)/(day|week)
+discover/movie
+discover/tv
+```
+
+A single leading `/` is stripped before matching; everything else — extra slashes,
+encoded bytes, dots, query/fragment characters, whitespace — falls through to the deny
+path.
+
+### Query param safelist
+
+All query params are stripped to an explicit allowlist before forwarding. `api_key` is
+**always stripped from the client request** and injected by the function from the secret
+store. Unknown keys are silently dropped.
+
+**Forwarded params:**
+`query`, `page`, `language`, `include_adult`, `year`, `primary_release_year`,
+`with_genres`, `sort_by`, `vote_count.gte`, `vote_average.gte`,
+`primary_release_date.gte`, `primary_release_date.lte`,
+`first_air_date.gte`, `first_air_date.lte`, `region`, `append_to_response`.
+
+`append_to_response` is further constrained: the comma-separated value is only forwarded
+if every element is in `{ "watch/providers", "credits" }` — any other sub-response drops
+the whole param.
+
+### Upstream behavior
+
+5 s timeout; upstream non-2xx → 502 generic (TMDB response body never echoed, prevents
+key-path / account leakage); 2xx JSON passed through with the same status code. CORS
+mirrors `suggestions` (`Access-Control-Allow-Origin: *`; same tightening caveat).
+
+Implementations: `supabase/functions/tmdb-proxy/index.ts` (HTTP shell),
+`supabase/functions/tmdb-proxy/rules.ts` (pure allowlist + sanitize).
+Tests: `services/__tests__/tmdbProxyRules.test.ts`.

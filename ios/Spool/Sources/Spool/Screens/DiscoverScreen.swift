@@ -20,10 +20,29 @@ import SwiftUI
 /// Loading / empty / error states are distinct (a thrown read is `.failed`,
 /// not `.empty` — the feed convention); a no-friends viewer gets a dedicated
 /// empty state that nudges toward follows. Pull-to-refresh reloads both
-/// sections. The suggestion-engine grid (Part B) mounts in the marked slot
-/// below the two sections — no dead UI ships for it here.
+/// sections.
 ///
-/// Header last reviewed: 2026-07-09
+/// Part B (C3) added the suggestion-engine sections below the two social ones,
+/// closing the Part-A "cards inert" deferral:
+///  3. "new releases" — a horizontal row of ≤10 `mode: .newReleases` movie
+///     suggestions, each chipped "new".
+///  4. "for you" engine grid — a 2-column grid of 12 `mode: .suggestions` items
+///     with a provenance chip per card (pool → copy, twin of web
+///     `discoverChips`), a Refresh (page+1, whole-set swap) affordance, and an
+///     error-vs-empty split (`notAuthenticated` → empty since the screen is
+///     auth-gated; http/transport → error + retry). These two sections load
+///     independently of the social ones (they're auth-gated, not friends-gated),
+///     so they still surface for a no-friends viewer.
+///
+/// Every card (social + engine) now carries two actions: SAVE FOR LATER
+/// (`WatchlistRepository.add`, optimistic + toast, de-duped per id) and RANK IT
+/// (map the RAW card → `Movie`, fire `onRankIt` → the root's ceremony preseed,
+/// NO watchlist origin — a Discover rank must never delete a bookmark, mirroring
+/// `rerankFromShelf`). The rank hand-off is threaded FeedScreen (which presents
+/// Discover as a `.sheet`) → `SpoolAppRoot.rankItFromDiscover`; the sheet
+/// dismisses first so the rank screens aren't stacked under the cover.
+///
+/// Header last reviewed: 2026-07-10
 public struct DiscoverScreen: View {
 
     @StateObject private var model: DiscoverModel
@@ -36,26 +55,37 @@ public struct DiscoverScreen: View {
     private let onFindFriends: (() -> Void)?
     /// Dismiss (the sheet's close affordance).
     private let onClose: (() -> Void)?
+    /// Rank-it hand-off — the caller closes the Discover sheet, then seeds the
+    /// root's rank ceremony with the RAW mapped `Movie` (no watchlist origin,
+    /// mirroring `rerankFromShelf`). Bound onto the model on appear so the
+    /// production model (built by `@StateObject` in `init`) can receive it after
+    /// construction (the `RankManageModel.bindRerank` precedent). Inert when nil.
+    private let onRankIt: ((Movie) -> Void)?
 
-    /// Production entry — the model binds its two loads to `DiscoverRepository`.
+    /// Production entry — the model binds its loads to `DiscoverRepository` /
+    /// `SuggestionsClient` / `WatchlistRepository`.
     public init(onOpenActor: ((UUID, String?) -> Void)? = nil,
                 onFindFriends: (() -> Void)? = nil,
-                onClose: (() -> Void)? = nil) {
+                onClose: (() -> Void)? = nil,
+                onRankIt: ((Movie) -> Void)? = nil) {
         _model = StateObject(wrappedValue: DiscoverModel())
         self.onOpenActor = onOpenActor
         self.onFindFriends = onFindFriends
         self.onClose = onClose
+        self.onRankIt = onRankIt
     }
 
     /// Test/preview seam — inject a pre-built (fixture-loaded) model.
     init(model: DiscoverModel,
          onOpenActor: ((UUID, String?) -> Void)? = nil,
          onFindFriends: (() -> Void)? = nil,
-         onClose: (() -> Void)? = nil) {
+         onClose: (() -> Void)? = nil,
+         onRankIt: ((Movie) -> Void)? = nil) {
         _model = StateObject(wrappedValue: model)
         self.onOpenActor = onOpenActor
         self.onFindFriends = onFindFriends
         self.onClose = onClose
+        self.onRankIt = onRankIt
     }
 
     public var body: some View {
@@ -70,6 +100,9 @@ public struct DiscoverScreen: View {
             }
         }
         .task { await model.loadIfNeeded() }
+        .task { await model.loadEngineIfNeeded() }
+        .task { await model.loadNewReleasesIfNeeded() }
+        .onAppear { if let onRankIt { model.bindRankIt(onRankIt) } }
     }
 
     // MARK: header trailing
@@ -98,32 +131,48 @@ public struct DiscoverScreen: View {
         case .failed:
             failedState
         case .noFriends:
-            noFriendsState
+            // The social sections are empty, but the engine grid + New Releases
+            // are auth-gated independently and still surface — render the scroll
+            // with the no-friends nudge in the social slot.
+            scrollBody(recs: [], trending: [], socialSlot: .noFriends)
         case .loaded(let recs, let trending):
-            loaded(recs: recs, trending: trending)
+            scrollBody(recs: recs, trending: trending,
+                       socialSlot: (recs.isEmpty && trending.isEmpty) ? .quiet : .cards)
         }
     }
 
+    /// Which social state the scroll's social slot renders (the engine grid +
+    /// New Releases always follow, regardless of this).
+    private enum SocialSlot { case cards, noFriends, quiet }
+
     @ViewBuilder
-    private func loaded(recs: [FriendRecommendation], trending: [TrendingMovie]) -> some View {
+    private func scrollBody(recs: [FriendRecommendation], trending: [TrendingMovie],
+                            socialSlot: SocialSlot) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
-                friendsSection(recs)
-                trendingSection(trending)
-
-                // Part B: suggestion engine grid mounts here (provenance chips).
-                // The 5-pool edge-function suggestions surface is a later plan;
-                // no placeholder UI ships until it exists.
-
-                if recs.isEmpty && trending.isEmpty {
+                switch socialSlot {
+                case .cards:
+                    friendsSection(recs)
+                    trendingSection(trending)
+                case .noFriends:
+                    noFriendsInline
+                case .quiet:
                     quietState
                 }
+
+                // Part B: the suggestion-engine grid + New Releases mount here.
+                newReleasesSection
+                engineSection
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 110)
         }
-        .refreshable { await model.reload() }
+        .refreshable {
+            await model.reload()
+            await model.refreshEngine()
+            await model.retryNewReleases()
+        }
     }
 
     // MARK: sections
@@ -135,7 +184,12 @@ public struct DiscoverScreen: View {
                 sectionHeader("from your friends",
                               sub: "loved by people you follow")
                 ForEach(recs) { rec in
-                    FriendRecCard(rec: rec, onOpenActor: onOpenActor)
+                    FriendRecCard(
+                        rec: rec, onOpenActor: onOpenActor,
+                        saved: model.isSaved(rec.tmdbId),
+                        onSave: { Task { await model.saveForLater(rec) } },
+                        onRankIt: { model.rankIt(rec) }
+                    )
                 }
             }
         }
@@ -148,9 +202,135 @@ public struct DiscoverScreen: View {
                 sectionHeader("trending with friends",
                               sub: "most-ranked this month")
                 ForEach(trending) { movie in
-                    TrendingCard(movie: movie, onOpenActor: onOpenActor)
+                    TrendingCard(
+                        movie: movie, onOpenActor: onOpenActor,
+                        saved: model.isSaved(movie.tmdbId),
+                        onSave: { Task { await model.saveForLater(movie) } },
+                        onRankIt: { model.rankIt(movie) }
+                    )
                 }
             }
+        }
+    }
+
+    // MARK: - Part B sections (engine grid + New Releases)
+
+    /// "for you" engine grid — 12 provenance-tagged movie suggestions in a
+    /// 2-column grid. Web `forYouEngine` section: whole-set swap + a Refresh
+    /// (page+1) affordance; error-vs-empty split.
+    @ViewBuilder
+    private var engineSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                sectionHeader("for you", sub: "picked from your taste")
+                Spacer(minLength: 8)
+                if case .ready = model.engineState {
+                    SpoolPill("refresh", size: .sm) { Task { await model.refreshEngine() } }
+                }
+            }
+            engineBody
+        }
+    }
+
+    @ViewBuilder
+    private var engineBody: some View {
+        switch model.engineState {
+        case .loading:
+            engineSkeletonGrid
+        case .ready(let items):
+            LazyVGrid(columns: engineColumns, spacing: 12) {
+                ForEach(items) { item in
+                    SuggestionGridCard(
+                        item: item,
+                        saved: model.isSaved(item.id),
+                        onSave: { Task { await model.saveForLater(item) } },
+                        onRankIt: { model.rankIt(item) }
+                    )
+                }
+            }
+        case .empty:
+            sectionEmpty("no suggestions yet — rank a few movies to seed these")
+        case .error:
+            sectionError("couldn't load suggestions") { await model.refreshEngine() }
+        }
+    }
+
+    private var engineColumns: [GridItem] {
+        [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    }
+
+    private var engineSkeletonGrid: some View {
+        LazyVGrid(columns: engineColumns, spacing: 12) {
+            ForEach(0..<4, id: \.self) { _ in SuggestionSkeletonCard() }
+        }
+    }
+
+    /// "new releases" — a horizontal row of ≤10 movie-only suggestions, each
+    /// chipped "new". Web `newReleases` section: date-ascending, chip "new".
+    @ViewBuilder
+    private var newReleasesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("new releases", sub: "fresh in theaters and streaming")
+            newReleasesBody
+        }
+    }
+
+    @ViewBuilder
+    private var newReleasesBody: some View {
+        switch model.newReleasesState {
+        case .loading:
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        SuggestionSkeletonCard().frame(width: 110)
+                    }
+                }
+            }
+        case .ready(let items):
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(items) { item in
+                        SuggestionGridCard(
+                            item: item,
+                            chipOverride: DiscoverCardCopy.chipCopy(for: .newRelease),
+                            saved: model.isSaved(item.id),
+                            onSave: { Task { await model.saveForLater(item) } },
+                            onRankIt: { model.rankIt(item) }
+                        )
+                        .frame(width: 110)
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+        case .empty:
+            sectionEmpty("no new releases right now")
+        case .error:
+            sectionError("couldn't load new releases") { await model.retryNewReleases() }
+        }
+    }
+
+    // MARK: - Part B shared section states
+
+    private func sectionEmpty(_ text: String) -> some View {
+        SpoolThemeReader { t, _ in
+            Text(text)
+                .font(SpoolFonts.hand(13))
+                .foregroundStyle(t.inkSoft)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+        }
+    }
+
+    private func sectionError(_ text: String, retry: @escaping () async -> Void) -> some View {
+        SpoolThemeReader { t, _ in
+            HStack(spacing: 10) {
+                Text(text)
+                    .font(SpoolFonts.hand(13))
+                    .foregroundStyle(t.inkSoft)
+                SpoolPill("try again", size: .sm) { Task { await retry() } }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 6)
         }
     }
 
@@ -197,28 +377,32 @@ public struct DiscoverScreen: View {
         }
     }
 
-    private var noFriendsState: some View {
+    /// No-friends nudge as an INLINE section: the social sections are empty, but
+    /// the engine grid + New Releases (auth-gated, not friends-gated) still
+    /// follow below, so this renders inside the scroll rather than replacing the
+    /// whole screen (the Part-A full-screen version is gone — Part B always has
+    /// engine content to show a connected-but-friendless viewer).
+    private var noFriendsInline: some View {
         SpoolThemeReader { t, _ in
-            VStack(spacing: 12) {
-                Spacer(minLength: 60)
+            VStack(spacing: 10) {
                 Image(systemName: "person.2")
-                    .font(.system(size: 30))
+                    .font(.system(size: 26))
                     .foregroundStyle(t.inkSoft)
                 Text("follow some people")
-                    .font(SpoolFonts.serif(20))
+                    .font(SpoolFonts.serif(19))
                     .foregroundStyle(t.ink)
-                Text("discover fills up with what your friends love once you follow a few")
-                    .font(SpoolFonts.hand(14))
+                Text("this section fills up with what your friends love once you follow a few")
+                    .font(SpoolFonts.hand(13))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
                 if onFindFriends != nil {
                     SpoolPill("find friends", filled: true, size: .sm) { onFindFriends?() }
-                        .padding(.top, 4)
+                        .padding(.top, 2)
                 }
-                Spacer()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 28)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+            .padding(.horizontal, 24)
         }
     }
 
@@ -226,7 +410,7 @@ public struct DiscoverScreen: View {
     private var quietState: some View {
         SpoolThemeReader { t, _ in
             VStack(spacing: 10) {
-                Spacer(minLength: 40)
+                Spacer(minLength: 20)
                 Text("nothing new from your friends yet")
                     .font(SpoolFonts.hand(15))
                     .foregroundStyle(t.inkSoft)
@@ -235,7 +419,7 @@ public struct DiscoverScreen: View {
                     .font(SpoolFonts.hand(12))
                     .foregroundStyle(t.inkSoft)
                     .multilineTextAlignment(.center)
-                Spacer(minLength: 40)
+                Spacer(minLength: 20)
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 24)
@@ -250,6 +434,9 @@ public struct DiscoverScreen: View {
 private struct FriendRecCard: View {
     let rec: FriendRecommendation
     let onOpenActor: ((UUID, String?) -> Void)?
+    let saved: Bool
+    let onSave: () -> Void
+    let onRankIt: () -> Void
 
     var body: some View {
         SpoolThemeReader { t, _ in
@@ -280,6 +467,9 @@ private struct FriendRecCard: View {
                                                                             avgTier: rec.avgTier),
                                   onOpenActor: onOpenActor)
                         .padding(.top, 2)
+
+                    CardActionRow(saved: saved, onSave: onSave, onRankIt: onRankIt)
+                        .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -298,6 +488,9 @@ private struct FriendRecCard: View {
 private struct TrendingCard: View {
     let movie: TrendingMovie
     let onOpenActor: ((UUID, String?) -> Void)?
+    let saved: Bool
+    let onSave: () -> Void
+    let onRankIt: () -> Void
 
     var body: some View {
         SpoolThemeReader { t, _ in
@@ -334,6 +527,9 @@ private struct TrendingCard: View {
                                                                            avgTier: movie.avgTier),
                                   onOpenActor: onOpenActor)
                         .padding(.top, 2)
+
+                    CardActionRow(saved: saved, onSave: onSave, onRankIt: onRankIt)
+                        .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -378,6 +574,140 @@ private struct TierBadge: View {
                 .frame(width: 22, height: 22)
                 .background(Circle().fill(DiscoverCardCopy.tierColor(tier, palette: t)))
                 .overlay(Circle().stroke(t.ink, lineWidth: 1.2))
+        }
+    }
+}
+
+// MARK: - Part B card pieces (provenance chip, action row, engine card)
+
+/// A small provenance chip ("your taste", "trending", "new", …) overlaid on
+/// engine + New Releases cards. Uppercase mono in the ticket idiom.
+private struct ProvenanceChip: View {
+    let copy: String
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            Text(copy.uppercased())
+                .font(SpoolFonts.mono(8, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(t.cream)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(t.ink.opacity(0.82)))
+                .lineLimit(1)
+        }
+    }
+}
+
+/// The two card actions closing Part A's "cards inert" deferral: save-for-later
+/// (bookmark) + rank-it (enter the ceremony). Shared by the social cards and the
+/// engine cards. `saved` swaps the bookmark glyph to a filled "saved" state.
+private struct CardActionRow: View {
+    let saved: Bool
+    let onSave: () -> Void
+    let onRankIt: () -> Void
+
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            HStack(spacing: 8) {
+                Button(action: onSave) {
+                    HStack(spacing: 4) {
+                        Image(systemName: saved ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(saved ? "saved" : "save")
+                            .font(SpoolFonts.mono(9))
+                            .tracking(0.5)
+                    }
+                    .foregroundStyle(t.ink)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .overlay(Capsule().stroke(t.ink, lineWidth: 1.2))
+                }
+                .buttonStyle(.plain)
+                .disabled(saved)
+                .accessibilityLabel(saved ? "saved for later" : "save for later")
+
+                Button(action: onRankIt) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("rank it")
+                            .font(SpoolFonts.mono(9))
+                            .tracking(0.5)
+                    }
+                    .foregroundStyle(t.cream)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(t.ink))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("rank it")
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+}
+
+/// One engine / New Releases suggestion card: a 2:3 poster with a provenance
+/// chip overlaid top-left, title + year/genre meta, and the save/rank action
+/// row. Used both in the 2-column "for you" grid and the horizontal New
+/// Releases row (with a "new" chip override).
+private struct SuggestionGridCard: View {
+    let item: SuggestionItem
+    var chipOverride: String? = nil
+    let saved: Bool
+    let onSave: () -> Void
+    let onRankIt: () -> Void
+
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            VStack(alignment: .leading, spacing: 6) {
+                PosterBlock(
+                    title: item.title,
+                    year: Int(item.year),
+                    director: "—",
+                    seed: DiscoverCardCopy.stableSeed(item.id),
+                    cornerRadius: 6,
+                    posterUrl: (item.posterUrl?.isEmpty == false) ? item.posterUrl : nil
+                )
+                .aspectRatio(2.0 / 3.0, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .overlay(alignment: .topLeading) {
+                    ProvenanceChip(copy: chipOverride ?? DiscoverCardCopy.chipCopy(for: item.pool))
+                        .padding(6)
+                }
+
+                Text(item.title)
+                    .font(SpoolFonts.serif(14))
+                    .tracking(-0.2)
+                    .foregroundStyle(t.ink)
+                    .lineLimit(1)
+
+                Text(DiscoverCardCopy.metaLine(year: item.year, genres: Array(item.genres.prefix(2))))
+                    .font(SpoolFonts.mono(9))
+                    .tracking(0.8)
+                    .foregroundStyle(t.inkSoft)
+                    .lineLimit(1)
+
+                CardActionRow(saved: saved, onSave: onSave, onRankIt: onRankIt)
+            }
+        }
+    }
+}
+
+/// A striped placeholder card while an engine section loads (poster idiom).
+private struct SuggestionSkeletonCard: View {
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            VStack(alignment: .leading, spacing: 6) {
+                StripePattern(a: t.cream3, b: t.cream2, spacing: 4)
+                    .aspectRatio(2.0 / 3.0, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(t.ink.opacity(0.4), lineWidth: 1))
+                RoundedRectangle(cornerRadius: 3).fill(t.cream3).frame(height: 10)
+                RoundedRectangle(cornerRadius: 3).fill(t.cream3).frame(width: 60, height: 8)
+            }
         }
     }
 }
@@ -473,6 +803,127 @@ enum DiscoverCardCopy {
         }
     }
 
+    /// Provenance-chip copy for an engine item's `pool` (Part B). The iOS twin
+    /// of web `discoverChips.chipLabelKeyForPool` + `i18n/en.ts` — iOS is EN-only
+    /// in views today (hardcoded strings, the existing screen idiom), so the copy
+    /// lives here rather than in an i18n table. Every pool with a distinct story
+    /// gets its own chip; `backfill`, any `.unknown`, and a nil pool fall back to
+    /// the safe "popular" chip so a new server pool never renders a raw enum or a
+    /// blank chip (web fallback parity).
+    static func chipCopy(for pool: SuggestionPool?) -> String {
+        switch pool {
+        case .friend:     return "friends loved"
+        case .taste:      return "your taste"
+        case .similar:    return "because you ranked"
+        case .trending:   return "trending"
+        case .variety:    return "something different"
+        case .generic:    return "popular"
+        case .newRelease: return "new"
+        case .backfill, .unknown, .none:
+            return "popular"
+        }
+    }
+
+    /// Map an engine `SuggestionItem` (a MOVIE — the grid is movie-only) into a
+    /// `WatchlistItem` for the save-for-later write. The id arrives already
+    /// `tmdb_`-prefixed from the function; `year`/`posterUrl` coalesce to the
+    /// watchlist's `''`-when-null convention.
+    static func watchlistItem(from item: SuggestionItem) -> WatchlistItem {
+        WatchlistItem(
+            id: item.id,
+            title: item.title,
+            year: item.year,
+            posterUrl: item.posterUrl ?? "",
+            mediaType: .movie,
+            genres: item.genres,
+            addedAt: Date(),
+            director: nil
+        )
+    }
+
+    /// Map an engine `SuggestionItem` into the `Movie` the rank ceremony
+    /// consumes. RAW — no watchlist origin (a discover rank must never delete a
+    /// bookmark; mirrors `rerankFromShelf`). `voteAverage` rides along (the
+    /// engine carries it; the ceremony's prediction signal uses it directly).
+    static func movie(from item: SuggestionItem) -> Movie {
+        Movie(
+            id: item.id,
+            title: item.title,
+            year: Int(item.year) ?? 0,
+            director: "—",
+            seed: stableSeed(item.id),
+            genres: item.genres,
+            posterUrl: (item.posterUrl?.isEmpty == false) ? item.posterUrl : nil,
+            voteAverage: item.voteAverage
+        )
+    }
+
+    /// Map a social "from your friends" card into a `WatchlistItem` for the
+    /// save-for-later write (movie media; social Discover is movie-only).
+    ///
+    /// `normalizeTmdbId` is applied here — the B1 seam — so bare-numeric ids
+    /// from legacy `user_rankings` rows are prefix-normalized before they enter
+    /// the watchlist (web `normalizeTmdbId` parity).
+    static func watchlistItem(from rec: FriendRecommendation) -> WatchlistItem {
+        WatchlistItem(
+            id: normalizeTmdbId(rec.tmdbId), title: rec.title, year: rec.year ?? "",
+            posterUrl: rec.posterUrl ?? "", mediaType: .movie, genres: rec.genres,
+            addedAt: Date(), director: nil
+        )
+    }
+
+    /// Map a social "trending with friends" card into a `WatchlistItem`.
+    ///
+    /// `normalizeTmdbId` applied at the B1 seam (same as the `FriendRecommendation`
+    /// variant above).
+    static func watchlistItem(from movie: TrendingMovie) -> WatchlistItem {
+        WatchlistItem(
+            id: normalizeTmdbId(movie.tmdbId), title: movie.title, year: movie.year ?? "",
+            posterUrl: movie.posterUrl ?? "", mediaType: .movie, genres: movie.genres,
+            addedAt: Date(), director: nil
+        )
+    }
+
+    /// Map a social card's `WatchlistItem` into the ceremony `Movie` (RAW, no
+    /// origin). Mirrors `RankFromWatchlistCoordinator.movie(from:)` field-for-
+    /// field (movies only, `stableSeed`, `''`-poster → nil); inlined rather than
+    /// called because that helper is `@MainActor` and this mapper is a pure,
+    /// nonisolated enum used from the view layer.
+    static func movie(from item: WatchlistItem) -> Movie? {
+        guard item.mediaType == .movie else { return nil }
+        return Movie(
+            id: item.id,
+            title: item.title,
+            year: Int(item.year) ?? 0,
+            director: item.director ?? "—",
+            seed: stableSeed(item.id),
+            genres: item.genres,
+            posterUrl: item.posterUrl.isEmpty ? nil : item.posterUrl
+        )
+    }
+
+    /// Normalizes a social-card TMDB id at the save/rank seam (B1 quirk — legacy
+    /// `user_rankings.tmdb_id` rows can be bare-numeric e.g. "27205").
+    ///
+    /// Web normalizes at this exact seam (`normalizeTmdbId`); iOS mirrors it here
+    /// so bare ids never persist into the watchlist or ranking ceremony:
+    ///   - bare digits ("27205")       → "tmdb_27205"
+    ///   - already prefixed ("tmdb_1") → unchanged
+    ///   - other formats               → unchanged (tv_…, etc.)
+    ///
+    /// Engine items (`SuggestionItem.id`) are already guaranteed prefixed by the
+    /// server; only the social-card path (FriendRecommendation / TrendingMovie)
+    /// needs this normalizer.
+    static func normalizeTmdbId(_ raw: String) -> String {
+        guard !raw.isEmpty else { return raw }
+        // Already prefixed — pass through.
+        if raw.hasPrefix("tmdb_") || raw.hasPrefix("tv_") { return raw }
+        // Bare numeric — prefix.
+        if raw.allSatisfy(\.isNumber) { return "tmdb_\(raw)" }
+        // Other format (future-proofed) — pass through unchanged.
+        return raw
+    }
+
     /// Deterministic 0-19 poster seed from a `tmdb_`/`tv_` id (WatchlistCard
     /// precedent — trailing digits, else a djb2 digest).
     static func stableSeed(_ id: String) -> Int {
@@ -506,6 +957,18 @@ public final class DiscoverModel: ObservableObject {
         case failed
     }
 
+    /// The load state of ONE suggestion-engine section (engine grid /
+    /// New Releases). Distinct from the social sections' `State`: an engine
+    /// section splits empty from error per the web outage-vs-401 contract —
+    /// `notAuthenticated` → `.empty` (the screen is auth-gated anyway), an
+    /// `.http`/`.transport`/`.decoding` failure → `.error` (a retry affordance).
+    public enum SectionState: Equatable {
+        case loading
+        case ready([SuggestionItem])
+        case empty
+        case error
+    }
+
     /// Injected loads. Both throw so a broken read → `.failed`.
     public typealias LoadRecs = () async throws -> [FriendRecommendation]
     public typealias LoadTrending = () async throws -> [TrendingMovie]
@@ -513,33 +976,103 @@ public final class DiscoverModel: ObservableObject {
     /// true when unknowable so an all-empty result reads as "nothing new"
     /// rather than falsely telling a well-connected user to find friends.
     public typealias HasFriends = () async -> Bool
+    /// A suggestion-engine load (engine grid / New Releases). Throws the
+    /// `SuggestionsClient` errors so the model can split empty (notAuthenticated)
+    /// from error (http/transport/decoding). `(mode, page)` mirror web's
+    /// `fetchMovieSuggestionsWithProvenance(mode, page, [])`.
+    public typealias LoadSuggestions = (SuggestionMode, Int) async throws -> [SuggestionItem]
+    /// Save-for-later — `WatchlistRepository.add`; returns success so the model
+    /// can toast the outcome (web reverts its optimistic prepend on failure).
+    public typealias SaveForLater = (WatchlistItem) async -> Bool
+    /// A user-visible message (bound to `ToastCenter.shared.show` in prod).
+    public typealias Toast = (String, ToastLevel) -> Void
+    /// The rank-it entry point — the view wires this to the root's ceremony
+    /// preseed (RAW `Movie`, no watchlist origin). Rebindable via `bindRankIt`
+    /// so the production model (built by the view's `@StateObject`) can hand the
+    /// closure in after init, mirroring `RankManageModel.bindRerank`.
+    public typealias OnRankIt = (Movie) -> Void
+
+    /// The engine-grid cap (web `ENGINE_GRID_LIMIT`).
+    static let engineGridLimit = 12
+    /// The New Releases cap (web `NEW_RELEASES_LIMIT`).
+    static let newReleasesLimit = 10
 
     @Published public private(set) var state: State = .loading
+    /// The engine grid ("for you") section state.
+    @Published public private(set) var engineState: SectionState = .loading
+    /// The New Releases row state.
+    @Published public private(set) var newReleasesState: SectionState = .loading
+    /// Optimistic "already saved" ids — suppresses a duplicate `add` on a second
+    /// tap and lets the card show a saved affordance. Owned/bookmarked items are
+    /// excluded server-side for the grid; this de-dups the user's own taps.
+    @Published public private(set) var savedIds: Set<String> = []
 
     private let loadRecs: LoadRecs
     private let loadTrending: LoadTrending
     private let hasFriends: HasFriends
+    private let loadEngine: LoadSuggestions
+    private let loadNewReleases: LoadSuggestions
+    private let save: SaveForLater
+    private let toast: Toast
+    private var onRankIt: OnRankIt = { _ in }
     private var didLoad = false
+    private var didLoadEngine = false
+    private var didLoadNewReleases = false
+    /// Engine page — Refresh advances it (web `Refresh = page+1`).
+    private var enginePage = 1
 
     public init(loadRecs: @escaping LoadRecs,
                 loadTrending: @escaping LoadTrending,
-                hasFriends: @escaping HasFriends) {
+                hasFriends: @escaping HasFriends,
+                loadEngine: @escaping LoadSuggestions = { _, _ in [] },
+                loadNewReleases: @escaping LoadSuggestions = { _, _ in [] },
+                save: @escaping SaveForLater = { _ in false },
+                toast: @escaping Toast = { _, _ in }) {
         self.loadRecs = loadRecs
         self.loadTrending = loadTrending
         self.hasFriends = hasFriends
+        self.loadEngine = loadEngine
+        self.loadNewReleases = loadNewReleases
+        self.save = save
+        self.toast = toast
     }
 
-    /// Production init — bind to `DiscoverRepository`. `hasFriends` probes the
+    /// Production init — bind to `DiscoverRepository` + `SuggestionsClient` +
+    /// `WatchlistRepository` + the shared toast center. `hasFriends` probes the
     /// same follow edge the repository reads; a failure there is treated as
     /// "unknown → assume connected" so a transient blip never mislabels the
-    /// empty state.
+    /// empty state. The engine loads request MOVIE suggestions (the grid is
+    /// movie-only), passing an empty `sessionExcludeIds` (the function reads the
+    /// caller's owned/bookmarked exclusions server-side under their JWT).
     public convenience init() {
         self.init(
             loadRecs: { try await DiscoverRepository.shared.friendRecommendations(limit: 20) },
             loadTrending: { try await DiscoverRepository.shared.trendingAmongFriends(limit: 15, days: 30) },
-            hasFriends: { await DiscoverRepository.shared.hasFollows() }
+            hasFriends: { await DiscoverRepository.shared.hasFollows() },
+            loadEngine: { mode, page in
+                try await SuggestionsClient.fetch(
+                    mode: mode, mediaType: .movie, page: page, sessionExcludeIds: []
+                ).items
+            },
+            loadNewReleases: { mode, page in
+                try await SuggestionsClient.fetch(
+                    mode: mode, mediaType: .movie, page: page, sessionExcludeIds: [],
+                    limit: DiscoverModel.newReleasesLimit
+                ).items
+            },
+            save: { item in await WatchlistRepository.shared.add(item: item) },
+            toast: { text, level in ToastCenter.shared.show(text, level: level) }
         )
     }
+
+    /// Wire the rank-it entry point after init (the view builds the production
+    /// model, then hands in the root's ceremony-preseed closure). Idempotent —
+    /// the last bind wins.
+    public func bindRankIt(_ handler: @escaping OnRankIt) {
+        onRankIt = handler
+    }
+
+    // MARK: - Social sections (Part A — unchanged)
 
     /// First appearance — load once. Re-appearances keep the loaded state.
     public func loadIfNeeded() async {
@@ -566,6 +1099,141 @@ public final class DiscoverModel: ObservableObject {
             state = .failed
         }
     }
+
+    // MARK: - Engine grid section (Part B)
+
+    /// First appearance — load the engine grid once (page 1). Refresh is the
+    /// re-fetch (web loads once per mount; Refresh advances the page).
+    public func loadEngineIfNeeded() async {
+        guard !didLoadEngine else { return }
+        didLoadEngine = true
+        await fetchEngine(page: enginePage)
+    }
+
+    /// Refresh the engine grid — advance the page and whole-set swap (web
+    /// parity: `Refresh = page+1`, replace not append).
+    public func refreshEngine() async {
+        enginePage += 1
+        await fetchEngine(page: enginePage)
+    }
+
+    private func fetchEngine(page: Int) async {
+        engineState = .loading
+        do {
+            let items = try await loadEngine(.suggestions, page)
+            engineState = items.isEmpty ? .empty : .ready(Array(items.prefix(Self.engineGridLimit)))
+        } catch {
+            engineState = Self.sectionState(for: error)
+        }
+    }
+
+    /// The engine grid's items (empty for any non-`.ready` state).
+    public var engineItems: [SuggestionItem] {
+        if case .ready(let items) = engineState { return items }
+        return []
+    }
+
+    // MARK: - New Releases section (Part B)
+
+    /// First appearance — load New Releases once. Retry re-fetches on error.
+    public func loadNewReleasesIfNeeded() async {
+        guard !didLoadNewReleases else { return }
+        didLoadNewReleases = true
+        await fetchNewReleases()
+    }
+
+    /// Retry the New Releases load (the error state's affordance).
+    public func retryNewReleases() async {
+        await fetchNewReleases()
+    }
+
+    private func fetchNewReleases() async {
+        newReleasesState = .loading
+        do {
+            let items = try await loadNewReleases(.newReleases, 1)
+            newReleasesState = items.isEmpty ? .empty : .ready(Array(items.prefix(Self.newReleasesLimit)))
+        } catch {
+            newReleasesState = Self.sectionState(for: error)
+        }
+    }
+
+    /// The New Releases items (empty for any non-`.ready` state).
+    public var newReleasesItems: [SuggestionItem] {
+        if case .ready(let items) = newReleasesState { return items }
+        return []
+    }
+
+    /// Error-vs-empty split for an engine section (web outage-vs-401 contract):
+    /// `notAuthenticated` → `.empty` (the screen is auth-gated); a wire HTTP 401
+    /// also maps to `.empty` — the server returned 401 which is the same auth-
+    /// failure signal, and retry would simply 401 again (web maps wire 401 →
+    /// empty at the same seam); every other `SuggestionsClient` failure
+    /// (http/transport/decoding) and any unexpected throw → `.error` (retry).
+    private static func sectionState(for error: Error) -> SectionState {
+        if case SuggestionsClient.SuggestionsError.notAuthenticated = error {
+            return .empty
+        }
+        if case SuggestionsClient.SuggestionsError.http(401) = error {
+            return .empty
+        }
+        return .error
+    }
+
+    // MARK: - Card actions (Part B — on BOTH social + engine cards)
+
+    /// Save an engine item for later (optimistic + toast). De-dups a second tap
+    /// on the same id via `savedIds`. Owned/bookmarked items are excluded
+    /// server-side for the grid; this suppresses the user's own repeats.
+    public func saveForLater(_ item: SuggestionItem) async {
+        await performSave(DiscoverCardCopy.watchlistItem(from: item))
+    }
+
+    /// Save a social "from your friends" card for later.
+    public func saveForLater(_ rec: FriendRecommendation) async {
+        await performSave(DiscoverCardCopy.watchlistItem(from: rec))
+    }
+
+    /// Save a social "trending with friends" card for later.
+    public func saveForLater(_ movie: TrendingMovie) async {
+        await performSave(DiscoverCardCopy.watchlistItem(from: movie))
+    }
+
+    private func performSave(_ item: WatchlistItem) async {
+        guard !savedIds.contains(item.id) else { return }
+        // Optimistic mark so a rapid second tap is a no-op and the card can show
+        // saved state immediately.
+        savedIds.insert(item.id)
+        let ok = await save(item)
+        if ok {
+            toast("saved \(item.title) for later", .success)
+        } else {
+            // Revert so the user can retry (web reverts its optimistic prepend).
+            savedIds.remove(item.id)
+            toast("couldn't save \(item.title) — try again", .error)
+        }
+    }
+
+    /// True when `id` has been saved this session (drives the card's saved
+    /// affordance).
+    public func isSaved(_ id: String) -> Bool { savedIds.contains(id) }
+
+    /// Rank an engine item — map to the RAW ceremony `Movie` (no watchlist
+    /// origin) and fire the injected entry point.
+    public func rankIt(_ item: SuggestionItem) {
+        onRankIt(DiscoverCardCopy.movie(from: item))
+    }
+
+    /// Rank a social "from your friends" card.
+    public func rankIt(_ rec: FriendRecommendation) {
+        guard let movie = DiscoverCardCopy.movie(from: DiscoverCardCopy.watchlistItem(from: rec)) else { return }
+        onRankIt(movie)
+    }
+
+    /// Rank a social "trending with friends" card.
+    public func rankIt(_ movie: TrendingMovie) {
+        guard let m = DiscoverCardCopy.movie(from: DiscoverCardCopy.watchlistItem(from: movie)) else { return }
+        onRankIt(m)
+    }
 }
 
 // MARK: - Previews
@@ -576,7 +1244,9 @@ private func previewModel(
     recs: [FriendRecommendation] = [],
     trending: [TrendingMovie] = [],
     hasFriends: Bool = true,
-    fail: Bool = false
+    fail: Bool = false,
+    engine: [SuggestionItem] = sampleEngine,
+    newReleases: [SuggestionItem] = sampleNewReleases
 ) -> DiscoverModel {
     DiscoverModel(
         loadRecs: {
@@ -587,9 +1257,36 @@ private func previewModel(
             if fail { struct Boom: Error {}; throw Boom() }
             return trending
         },
-        hasFriends: { hasFriends }
+        hasFriends: { hasFriends },
+        loadEngine: { _, _ in engine },
+        loadNewReleases: { _, _ in newReleases },
+        save: { _ in true },
+        toast: { _, _ in }
     )
 }
+
+private func suggestion(_ n: Int, _ title: String, pool: SuggestionPool) -> SuggestionItem {
+    SuggestionItem(
+        id: "tmdb_\(n)", tmdbId: n, title: title, year: "2024", posterUrl: nil,
+        backdropUrl: nil, mediaType: .movie, genres: ["Action", "Drama"],
+        overview: "", voteAverage: 7.5, seasonCount: 0, pool: pool
+    )
+}
+
+private let sampleEngine: [SuggestionItem] = [
+    suggestion(1, "Dune: Part Two", pool: .taste),
+    suggestion(2, "Poor Things", pool: .similar),
+    suggestion(3, "The Zone of Interest", pool: .variety),
+    suggestion(4, "Anatomy of a Fall", pool: .trending),
+    suggestion(5, "Past Lives", pool: .friend),
+    suggestion(6, "The Holdovers", pool: .generic),
+]
+
+private let sampleNewReleases: [SuggestionItem] = [
+    suggestion(11, "Furiosa", pool: .newRelease),
+    suggestion(12, "Challengers", pool: .newRelease),
+    suggestion(13, "Civil War", pool: .newRelease),
+]
 
 private func chip(_ n: Int, _ name: String) -> FriendProfileChip {
     FriendProfileChip(userId: UUID(), username: name,
