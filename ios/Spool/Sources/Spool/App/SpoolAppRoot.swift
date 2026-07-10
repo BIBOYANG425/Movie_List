@@ -146,7 +146,10 @@ public struct SpoolAppRoot: View {
             })
         }
         .sheet(isPresented: $showFullList) {
-            FullListScreen(onClose: { showFullList = false })
+            FullListScreen(
+                onClose: { showFullList = false },
+                onRerank: { item in rerankFromShelf(item) }
+            )
         }
         .sheet(isPresented: $showSettings) {
             SettingsScreen(
@@ -494,6 +497,46 @@ public struct SpoolAppRoot: View {
                 let vote = await TMDBService.movieVoteAverage(tmdbId: tmdbId)
                 guard let vote else { return }
                 // Only patch if the user hasn't moved on to a DIFFERENT movie.
+                if rankMovie?.id == item.id {
+                    rankMovie?.voteAverage = vote
+                }
+            }
+        }
+    }
+
+    /// Re-rank an ALREADY-RANKED item from the shelf's long-press menu (C4 Task
+    /// 4). The shelf sheet has already dismissed itself (`onClose` before
+    /// `onRerank`), so this just seeds the ceremony with the RAW item and enters
+    /// the tier pick — NO watchlist origin (a re-rank must never delete a
+    /// bookmark), and NO up-front delete (B3: the ceremony's `(user_id,tmdb_id)`
+    /// upsert replaces the row non-destructively and the Task-2-corrected path
+    /// compacts both tiers + emits a single `ranking_move`; cancel = zero writes).
+    /// Movies only — the shelf reads `user_rankings` exclusively.
+    private func rerankFromShelf(_ item: RankedItem) {
+        rankMovie = Movie(
+            id: item.id,
+            title: item.title,
+            year: item.year ?? 0,
+            director: item.director,
+            seed: item.seed,
+            genres: item.genres,
+            posterUrl: item.posterUrl
+        )
+        rankTier = nil
+        rankMoods = []
+        rankLine = ""
+        // A re-rank is NOT a watchlist-origin rank — clear any stale origin so a
+        // confirmed save can never delete an unrelated bookmark (B5).
+        rankWatchlistOrigin = nil
+        flow = .tier
+
+        // Enrich the prediction signal with vote_average, same as the watchlist
+        // path: the shelf `RankedItem` doesn't carry it, and dropping it regresses
+        // the predicted score. Fetch async while the tier screen is already up.
+        if let tmdbId = Int(item.id.filter(\.isNumber)), !item.id.isEmpty {
+            Task {
+                let vote = await TMDBService.movieVoteAverage(tmdbId: tmdbId)
+                guard let vote else { return }
                 if rankMovie?.id == item.id {
                     rankMovie?.voteAverage = vote
                 }

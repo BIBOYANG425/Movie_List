@@ -24,16 +24,31 @@ import SwiftUI
 /// optimistic-apply/revert-on-throw, in-flight guard, rank renumbering, and the
 /// single `ranking_move` emission — lives in the injected-closure
 /// `RankManageModel` (`RankManageModelTests`). The screen only binds the model's
-/// IO and renders an editable per-tier `List` with `.onMove` while editing (drag
-/// is confined to one tier; cross-tier moves belong to the long-press context
-/// menu, Task 4). When edit mode exits the screen syncs its read-only `items`
-/// from `manage.flatItems` (local copy, no network) so the shelf render and
-/// `#rank` badges reflect the dragged order immediately. Movies only — the shelf
-/// reads `user_rankings` exclusively.
+/// IO and renders an editable per-tier `List` with `.onMove` while editing.
+///
+/// Long-press menu (C4 management-UI Task 4): each read-only ranked card carries
+/// a `.contextMenu` — move to another tier (submenu), edit notes, re-rank,
+/// delete. The move/notes/delete actions route through `RankManageModel`
+/// (`moveTo`/`fetchNotes`+`saveNotes`/`delete` — optimistic + revert + toast,
+/// tested); the read-only list renders from `manage.items(in:)` so those
+/// optimistic mutations reflect instantly. Edit-notes opens `RankNotesSheet`
+/// seeded from a live-row `getNotes` probe (the shelf item has no notes column);
+/// delete first opens a destructive confirmation dialog NAMING the movie;
+/// re-rank closes this sheet and enters the ceremony preseeded with the RAW item
+/// (NO watchlist origin) via the `onRerank` hand-off wired in `SpoolAppRoot`.
+/// When edit mode exits the screen syncs its read-only `items` from
+/// `manage.flatItems` (local copy, no network) so `#rank` badges reflect the
+/// dragged order immediately. Movies only — the shelf reads `user_rankings`
+/// exclusively, so every card is a movie and the menu needs no media-kind guard.
 ///
 /// Header last reviewed: 2026-07-09
 public struct FullListScreen: View {
     public var onClose: () -> Void
+    /// Re-rank hand-off (Task 4): the long-press "re-rank" action needs to close
+    /// this sheet and enter the ceremony preseeded with the RAW item, NO
+    /// watchlist origin. `SpoolAppRoot` owns that choreography and injects it
+    /// here; the default no-op keeps previews / tests self-contained.
+    public var onRerank: (RankedItem) -> Void
 
     @State private var items: [RankedItem] = []
     @State private var hasSession: Bool = false
@@ -42,13 +57,29 @@ public struct FullListScreen: View {
     /// predecessor before mutating state. We also snapshot `hasSession` at
     /// fetch start and reject late responses whose session context changed.
     @State private var loadTask: Task<Void, Never>? = nil
-    /// Edit-mode drag-to-reorder model. Owns the per-tier membership + all
-    /// reorder IO (injected closures, tested). While editing, the list renders
-    /// from `manage.items(in:)`; otherwise the read-only render uses `items`.
+    /// Edit-mode drag-to-reorder + long-press menu model. Owns the per-tier
+    /// membership + all management IO (injected closures, tested). Both the
+    /// editable list AND the read-only render read from `manage.items(in:)` so
+    /// an optimistic move/delete reflects on screen immediately; `items` gates
+    /// the loading/empty/preview states.
     @StateObject private var manage = RankManageModel()
 
-    public init(onClose: @escaping () -> Void = {}) {
+    /// The row whose notes the "edit notes" sheet is editing (nil = closed). The
+    /// sheet seeds its draft from a `fetchNotes` probe of the LIVE row so an edit
+    /// never blanks an existing note (the shelf item carries no notes column).
+    @State private var notesTarget: RankedItem? = nil
+    @State private var notesDraft: String = ""
+    @State private var notesLoading: Bool = false
+    /// The row a destructive delete is confirming (nil = no dialog). The
+    /// confirmation dialog names the movie before anything is removed.
+    @State private var deleteTarget: RankedItem? = nil
+
+    public init(
+        onClose: @escaping () -> Void = {},
+        onRerank: @escaping (RankedItem) -> Void = { _ in }
+    ) {
         self.onClose = onClose
+        self.onRerank = onRerank
     }
 
     public var body: some View {
@@ -75,6 +106,76 @@ public struct FullListScreen: View {
             }
         }
         .task { triggerReload() }
+        .onAppear {
+            // Wire the re-rank hand-off once: the model can't build this closure
+            // itself (it needs this screen's sheet-dismiss + flow-entry
+            // choreography), so it defers to `bindRerank`.
+            manage.bindRerank { item in
+                onClose()          // dismiss the shelf sheet…
+                onRerank(item)     // …then enter the ceremony preseeded (no origin)
+            }
+        }
+        .sheet(item: notesSheetBinding) { target in
+            RankNotesSheet(
+                title: target.title,
+                initialNotes: notesDraft,
+                loading: notesLoading,
+                onSave: { text in
+                    let item = target
+                    notesTarget = nil
+                    Task { await manage.saveNotes(item: item, notes: text) }
+                },
+                onCancel: { notesTarget = nil }
+            )
+        }
+        .confirmationDialog(
+            deleteTarget.map { "delete \($0.title)?" } ?? "delete?",
+            isPresented: deleteDialogBinding,
+            titleVisibility: .visible
+        ) {
+            Button("delete", role: .destructive) {
+                if let item = deleteTarget {
+                    deleteTarget = nil
+                    Task {
+                        await manage.delete(item: item)
+                        // Sync the empty-state gate so deleting the last row
+                        // flips the shelf to its "nothing ranked" prompt.
+                        items = manage.flatItems
+                    }
+                }
+            }
+            Button("cancel", role: .cancel) { deleteTarget = nil }
+        } message: {
+            Text("this removes it from your shelf. it won't return to your watchlist.")
+        }
+    }
+
+    /// `sheet(item:)` binding for the notes editor — presents when `notesTarget`
+    /// is set, clears it on dismiss.
+    private var notesSheetBinding: Binding<RankedItem?> {
+        Binding(get: { notesTarget }, set: { if $0 == nil { notesTarget = nil } })
+    }
+
+    /// `confirmationDialog` presentation binding driven by `deleteTarget`.
+    private var deleteDialogBinding: Binding<Bool> {
+        Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } })
+    }
+
+    /// Open the "edit notes" sheet for `item`: set the target, then probe the
+    /// LIVE row's notes so the editor seeds from the real value (never blanks an
+    /// existing note). A slow probe shows the sheet in a loading state.
+    private func openNotes(for item: RankedItem) {
+        notesTarget = item
+        notesDraft = ""
+        notesLoading = true
+        Task {
+            let existing = await manage.fetchNotes(item: item)
+            // Only apply if the user hasn't closed / switched targets meanwhile.
+            if notesTarget?.id == item.id {
+                notesDraft = existing ?? ""
+                notesLoading = false
+            }
+        }
     }
 
     private func triggerReload() {
@@ -211,27 +312,18 @@ public struct FullListScreen: View {
 
     private var populatedList: some View {
         // Tier enum iteration order is already S → D, which matches the
-        // visual "best at the top" layout we want.
+        // visual "best at the top" layout we want. Rows come from the model's
+        // per-tier membership so an optimistic long-press move/delete reflects
+        // instantly (the model is seeded from the same fetch that set `items`).
         LazyVStack(alignment: .leading, spacing: 22) {
             ForEach(Tier.allCases, id: \.self) { tier in
-                let tierItems = itemsByTier[tier] ?? []
+                let tierItems = manage.items(in: tier)
                 if !tierItems.isEmpty {
                     tierSection(tier: tier, rows: tierItems)
                 }
             }
         }
         .padding(.top, 14)
-    }
-
-    private var itemsByTier: [Tier: [RankedItem]] {
-        // Pre-sort by rank so every section renders in the correct order
-        // without the view recomputing it each frame.
-        var out: [Tier: [RankedItem]] = [:]
-        for item in items { out[item.tier, default: []].append(item) }
-        for tier in out.keys {
-            out[tier]?.sort { $0.rank < $1.rank }
-        }
-        return out
     }
 
     // MARK: editable list (edit mode)
@@ -286,6 +378,54 @@ public struct FullListScreen: View {
         }
     }
 
+    // MARK: long-press context menu (Task 4)
+
+    /// The long-press management menu for one ranked card: move to another tier,
+    /// edit notes, re-rank, delete. Every shelf row is a movie (the surface reads
+    /// `user_rankings` exclusively), so the movies-only rule is satisfied by
+    /// construction — no media-kind branch is needed here. All actions route
+    /// through the injected-closure `RankManageModel` (optimistic + revert +
+    /// toast, tested); this builder only shapes the menu.
+    @ViewBuilder
+    private func rankMenu(for item: RankedItem) -> some View {
+        // Move to tier — a submenu of every tier EXCEPT the one it's in. Each
+        // move appends to the target tier's tail (menu moves never pick a slot).
+        Menu("move to tier") {
+            ForEach(Tier.allCases.filter { $0 != item.tier }, id: \.self) { tier in
+                Button {
+                    Task {
+                        await manage.moveTo(tier: tier, item: item)
+                        // Keep the empty-state gate (`items`) in step with the
+                        // model's post-move membership — no network.
+                        items = manage.flatItems
+                    }
+                } label: {
+                    Text("\(tier.rawValue) · \(tier.label)")
+                }
+            }
+        }
+
+        Button {
+            openNotes(for: item)
+        } label: {
+            Label("edit notes", systemImage: "square.and.pencil")
+        }
+
+        Button {
+            manage.requestRerank(item: item)
+        } label: {
+            Label("re-rank", systemImage: "arrow.up.arrow.down")
+        }
+
+        // Destructive delete — the actual removal waits on the confirmation
+        // dialog (which names the movie); this only opens it.
+        Button(role: .destructive) {
+            deleteTarget = item
+        } label: {
+            Label("delete", systemImage: "trash")
+        }
+    }
+
     // MARK: tier section
 
     @ViewBuilder
@@ -311,6 +451,8 @@ public struct FullListScreen: View {
                 VStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { idx, item in
                         row(item: item, t: t, mode: mode)
+                            .contentShape(Rectangle())
+                            .contextMenu { rankMenu(for: item) }
                         if idx < rows.count - 1 {
                             Rectangle().fill(t.rule.opacity(0.5)).frame(height: 1)
                         }
@@ -422,6 +564,111 @@ public struct FullListScreen: View {
 
     private static func firstWord(_ s: String) -> String {
         s.split(separator: " ").first.map(String.init) ?? s
+    }
+}
+
+/// Editor for a ranking's freeform notes (C4 Task 4, "edit notes" menu action).
+/// Seeds from `initialNotes` (fetched from the LIVE row by the presenter so an
+/// edit never blanks an existing note); shows a loading placeholder while that
+/// probe is in flight. `onSave` hands the raw draft up — trimming and nil-
+/// normalization happen in `RankManageModel.saveNotes` (tested), keeping the
+/// view dumb.
+struct RankNotesSheet: View {
+    let title: String
+    let initialNotes: String
+    let loading: Bool
+    var onSave: (String) -> Void
+    var onCancel: () -> Void
+
+    @State private var draft: String = ""
+    @State private var seeded: Bool = false
+
+    var body: some View {
+        SpoolScreen {
+            SpoolThemeReader { t, _ in
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Button("cancel", action: onCancel)
+                            .font(SpoolFonts.mono(12))
+                            .tracking(1.5)
+                            .foregroundStyle(t.ink)
+                            .buttonStyle(.plain)
+                        Spacer()
+                        Button("save") { onSave(draft) }
+                            .font(SpoolFonts.mono(12))
+                            .tracking(1.5)
+                            .foregroundStyle(loading ? t.inkSoft : t.ink)
+                            .buttonStyle(.plain)
+                            .disabled(loading)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+
+                    Text(title)
+                        .font(SpoolFonts.serif(22))
+                        .tracking(-0.3)
+                        .foregroundStyle(t.ink)
+                        .lineLimit(2)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+
+                    Text("YOUR NOTES")
+                        .font(SpoolFonts.mono(10))
+                        .tracking(2.5)
+                        .foregroundStyle(t.inkSoft)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 18)
+                        .padding(.bottom, 6)
+
+                    editor(t)
+                        .padding(.horizontal, 16)
+
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .onAppear {
+            // Seed once from the (probe-resolved) initial value. Guarding with
+            // `seeded` keeps later parent re-renders from stomping the user's
+            // in-progress edit.
+            if !seeded {
+                draft = initialNotes
+                seeded = true
+            }
+        }
+        .onChange(of: initialNotes) { newValue in
+            // The probe resolves AFTER first render (initialNotes flips from ""
+            // to the fetched value); adopt it as long as the user hasn't typed.
+            if draft.isEmpty { draft = newValue }
+        }
+    }
+
+    @ViewBuilder
+    private func editor(_ t: SpoolPalette) -> some View {
+        Group {
+            if loading {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("loading your notes…")
+                        .font(SpoolFonts.hand(13))
+                        .foregroundStyle(t.inkSoft)
+                }
+                .frame(maxWidth: .infinity, minHeight: 140, alignment: .center)
+            } else {
+                TextEditor(text: $draft)
+                    .scrollContentBackground(.hidden)
+                    .font(SpoolFonts.serif(16))
+                    .foregroundStyle(t.ink)
+                    .frame(minHeight: 140)
+                    .padding(10)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.cream2.opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(t.rule, lineWidth: 1)
+        )
     }
 }
 

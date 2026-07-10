@@ -2,7 +2,9 @@ import Foundation
 import Supabase
 
 /// End-to-end ranking writes: `user_rankings` + `activity_events`, plus the
-/// C4 management ops (reorder / cross-tier move / notes edit / delete). All
+/// C4 management ops (reorder / cross-tier move / notes edit / delete) and the
+/// `getNotes` fetch-before-edit read the long-press "edit notes" sheet probes
+/// (the shelf's `RankedItem` projection carries no notes column). All
 /// tier-position writes go through the `set_tier_order` RPC on a FULL intended
 /// membership computed by the pure `TierOrder` helpers (source of truth:
 /// `docs/contracts/shared-payloads.md` § `user_rankings ordering`; web
@@ -87,6 +89,30 @@ public actor RankingRepository {
             .execute()
             .value
         return rows.compactMap(Self.rowToRankedItem)
+    }
+
+    /// Read the freeform `notes` currently stored on a ranking row, keyed on
+    /// `(user_id, tmdb_id)`. The fetch-before-edit seam for the long-press
+    /// "edit notes" sheet (C4 Task 4): the shelf's `RankedItem` projection has
+    /// NO notes column, so the sheet MUST probe the live row first, or a save
+    /// after an empty-seeded editor would blank an existing note (the journal
+    /// probe-before-edit lesson). Returns nil when the row is absent OR its
+    /// notes column is null. Throws on a genuine I/O failure so the caller can
+    /// decide whether to open the editor blank or toast.
+    public func getNotes(tmdbId: String, media: String = "movie") async throws -> String? {
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+        guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
+        let table = Self.rankingsTable(forType: media)
+
+        let rows: [NotesRow] = try await client
+            .from(table)
+            .select("notes")
+            .eq("user_id", value: userID.uuidString)
+            .eq("tmdb_id", value: tmdbId)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first?.notes
     }
 
     private static func rowToRankedItem(_ row: RankingRow) -> RankedItem? {
@@ -642,6 +668,13 @@ public struct StubRow: Codable, Sendable, Hashable {
 private struct TierIdRow: Decodable {
     let tmdb_id: String
     let tier: String?
+}
+
+/// Projection for the fetch-before-edit notes probe (`getNotes`,
+/// `select("notes")`). `notes` is nullable — an absent row decodes to `[]`
+/// (caller reads nil), a present row with a null column decodes `notes: nil`.
+private struct NotesRow: Decodable {
+    let notes: String?
 }
 
 // MARK: - Encodable payloads (snake_case fields for PostgREST)
