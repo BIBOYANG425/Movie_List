@@ -1,7 +1,7 @@
 -- ============================================================================
 -- C3-iOS Part A, Task 1 — movie watchlist FOLLOWER-VISIBLE SELECT (Q2)
 --
--- Plan:  docs/plans/2026-07-09-c3-ios-part-a.md (Task 1)
+-- Plan:  docs/plans/2026-07-09-c3-ios-watchlist-discover-plan.md (Task 1)
 -- Audit: docs/plans/audits/2026-07-08-c3-watchlist-discover-web-audit.md (C3 RLS
 --        asymmetry — the three-table watchlist SELECT split)
 -- Verify: docs/plans/audits/2026-07-09-c3-ios-verification.md (controller probes)

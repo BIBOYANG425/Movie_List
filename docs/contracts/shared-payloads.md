@@ -537,17 +537,27 @@ canon:
    `shouldRemoveBookmarkAfterRank(saveSucceeded)` is true
    (`services/watchlistRankHelpers.ts` — returns the flag verbatim; pinned by a
    vitest), and only AFTER `onAdd` resolves (existing ordering).
+3. **Stale-origin guard [client]:** the rank-from-watchlist entry point must
+   capture the originating watchlist item's `tmdb_id` before the ceremony opens.
+   If the ceremony completes with a different movie id (user changed the selection
+   mid-ceremony), do NOT delete the watchlist bookmark — the completed save does
+   not correspond to this watchlist item.
+4. **Id-match guard [client]:** when the delete executes, compare the saved
+   item's canonical id against the captured watchlist `tmdb_id`; if they do not
+   match (stale origin slipped through), skip the delete and log loudly. A failed
+   delete is fire-and-forget (the item reappears on next load — self-healing);
+   never gate the rank-success UX on the bookmark delete.
 
 **iOS C3 MUST copy this CORRECTED semantics, NOT the shipped web behavior** —
-delete the watchlist row only on confirmed rank save. Same rule for all three
-verticals. Whole-show TV bookmarks route through season selection before the tier
-step; season bookmarks go straight to tier.
+delete the watchlist row only on confirmed rank save with a matching id. Same rule
+for all three verticals. Whole-show TV bookmarks route through season selection
+before the tier step; season bookmarks go straight to tier.
 
-### RLS (post-B3a)
+### RLS (post-Q2 migration)
 
 | | `watchlist_items` | `tv_watchlist_items` | `book_watchlist_items` |
 |---|---|---|---|
-| SELECT | **owner only** [server] | owner **+ followers** | owner + followers |
+| SELECT | owner **+ followers** [server] | owner **+ followers** | owner + followers |
 | INSERT | owner | owner | owner |
 | UPDATE | owner (**added by B3a**) | owner | owner |
 | DELETE | owner | owner | owner |
@@ -559,16 +569,19 @@ step; season bookmarks go straight to tier.
   `ON CONFLICT DO UPDATE` path was RLS-denied → save failed with revert+toast.
   `20260708_c3_watchlist_update_policy.sql` adds the owner policy
   `USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)`, mirroring the
-  tv/book tables. iOS upsert-on-conflict now works once this migration is live.
-- **[server] Movie SELECT is owner-only — PENDING owner decision Q2 (FLAG).** The
-  tv/book watchlist tables are follower-visible; `watchlist_items` SELECT is
-  owner-only. iOS `TasteRepository.getRecommendationsForFriend` already reads the
-  TARGET's `watchlist_items` for its Twin-exclusion, which silently returns 0 rows
-  under owner-only RLS (recommends movies already on the friend's watchlist). One
-  side must move: either add the follower-SELECT policy (align with tv/book,
-  unblock the iOS exclusion) or declare movie watchlists private and drop that iOS
-  read. **Owner adjudication required — it changes what friends can see.** Until
-  decided, treat movie watchlists as owner-only.
+  tv/book tables. iOS upsert-on-conflict works once this migration is live.
+- **[server] Q2 adjudication (owner, 2026-07-09) — movie watchlist is now
+  FOLLOWER-VISIBLE.** `20260709_c3_movie_watchlist_follower_select.sql` drops the
+  original owner-only combined SELECT and recreates the tv/book two-policy shape
+  verbatim: an owner SELECT plus a follower SELECT keyed on `friend_follows`
+  (`follower_id = auth.uid() AND following_id = watchlist_items.user_id`). Postgres
+  OR-combines permissive SELECT policies, so owner rows AND followee rows are both
+  visible — identical to `tv_watchlist_items` (`supabase_tv_rankings.sql:88-99`)
+  and `book_watchlist_items` (`supabase_book_rankings.sql:92-103`). iOS
+  `TasteRepository.getRecommendationsForFriend` can now read a friend's
+  `watchlist_items` for Twin-exclusion (was silently returning 0 rows under the
+  prior owner-only policy). Followers still cannot INSERT/UPDATE/DELETE another
+  user's watchlist rows.
 
 ### Write / remove paths [client]
 
