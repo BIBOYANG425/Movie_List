@@ -91,11 +91,12 @@ public enum ProfileDeepLink {
 
     // MARK: - private
 
-    /// Split a path into non-empty, percent-decoded segments.
+    /// Split a path into non-empty segments. `URLComponents.path` is already
+    /// percent-decoded by the system, so no further decoding is applied here —
+    /// calling `.removingPercentEncoding` a second time would double-decode
+    /// sequences like `%2540` (literal `%40`) into `@` instead of `%40`.
     private static func pathSegments(_ path: String) -> [String] {
-        path.split(separator: "/", omittingEmptySubsequences: true).map {
-            String($0).removingPercentEncoding ?? String($0)
-        }
+        path.split(separator: "/", omittingEmptySubsequences: true).map { String($0) }
     }
 
     /// A profile route iff there is EXACTLY ONE non-empty username segment.

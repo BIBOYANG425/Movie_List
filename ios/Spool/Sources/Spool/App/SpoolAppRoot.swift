@@ -173,10 +173,17 @@ public struct SpoolAppRoot: View {
             }
             // Reuse the exact seam FeedScreen.onOpenActor uses: build a Friend
             // carrying the resolved userID (FriendProfileScreen loads everything
-            // from userID) and set friendProfileOpen. Clear any competing modal
-            // so the profile lands cleanly on top.
+            // from userID) and set friendProfileOpen. Clear every state that
+            // outranks `friendProfileOpen` in the `screen` builder priority chain
+            // (flow > stubShare > stubDetail > friendProfileOpen > twinOpen) so
+            // the profile lands cleanly on top regardless of what is up.
+            // Also dismiss the settings sheet — it sits above the screen layer
+            // and would otherwise obscure the profile.
             flow = nil
+            stubShare = nil
+            stubDetail = nil
             twinOpen = nil
+            showSettings = false
             friendProfileOpen = Friend(
                 handle: row.handle,
                 name: row.displayedName,

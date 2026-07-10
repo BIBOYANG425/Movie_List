@@ -34,6 +34,29 @@ final class ProfileDeepLinkTests: XCTestCase {
         XCTAssertEqual(route("spool://u/%40bobby"), .profile(username: "bobby"))
     }
 
+    func testCustomSchemeDoesNotDoubleDecodePercent() {
+        // %2540 is a literal percent-encoded '%40' (i.e. the two-char sequence
+        // "%40" in the username, NOT an '@'). URLComponents.path is already
+        // percent-decoded once by the system, so %25 → '%' and %40 stays as
+        // "%40" — the username becomes "%40bobby", NOT "@bobby" (which double-
+        // decoding would produce). Stripping the leading '@' rule does not fire
+        // here because the leading character is '%', so the result must NOT be
+        // `.profile(username: "bobby")`.
+        let result = route("spool://u/%2540bobby")
+        XCTAssertNotEqual(result, .profile(username: "bobby"),
+            "double-percent-decode bug: %2540 must not collapse to 'bobby' (via @bobby)")
+        // It should resolve to a profile with the literal %40 in the name.
+        XCTAssertEqual(result, .profile(username: "%40bobby"))
+    }
+
+    func testUniversalLinkDoesNotDoubleDecodePercent() {
+        // Same invariant for the universal-link surface.
+        let result = route("https://rankspool.com/u/%2540bobby")
+        XCTAssertNotEqual(result, .profile(username: "bobby"),
+            "double-percent-decode bug: %2540 must not collapse to 'bobby' (via @bobby)")
+        XCTAssertEqual(result, .profile(username: "%40bobby"))
+    }
+
     func testCustomSchemeBareProfilePathIsUnhandled() {
         XCTAssertEqual(route("spool://u/"), .unhandled)
         XCTAssertEqual(route("spool://u"), .unhandled)
