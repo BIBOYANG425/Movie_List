@@ -18,7 +18,17 @@ import SwiftUI
 /// re-entry (sheet open → close → reopen) can't step on itself, mirroring the
 /// cancellation guard in `StubsScreen`.
 ///
-/// Header last reviewed: 2026-04-19
+/// Edit mode (C4 management-UI Task 3): an "edit" affordance in the header
+/// toggles drag-to-reorder WITHIN a tier. All reorder logic — no-op
+/// suppression, full-membership persistence via `RankingRepository.reorderTier`,
+/// optimistic-apply/revert-on-throw, and the single `ranking_move` emission —
+/// lives in the injected-closure `RankManageModel` (`RankManageModelTests`).
+/// The screen only binds the model's IO and renders an editable per-tier `List`
+/// with `.onMove` while editing (drag is confined to one tier; cross-tier moves
+/// belong to the long-press context menu, Task 4). Movies only — the shelf reads
+/// `user_rankings` exclusively.
+///
+/// Header last reviewed: 2026-07-09
 public struct FullListScreen: View {
     public var onClose: () -> Void
 
@@ -29,6 +39,10 @@ public struct FullListScreen: View {
     /// predecessor before mutating state. We also snapshot `hasSession` at
     /// fetch start and reject late responses whose session context changed.
     @State private var loadTask: Task<Void, Never>? = nil
+    /// Edit-mode drag-to-reorder model. Owns the per-tier membership + all
+    /// reorder IO (injected closures, tested). While editing, the list renders
+    /// from `manage.items(in:)`; otherwise the read-only render uses `items`.
+    @StateObject private var manage = RankManageModel()
 
     public init(onClose: @escaping () -> Void = {}) {
         self.onClose = onClose
@@ -39,14 +53,21 @@ public struct FullListScreen: View {
             VStack(spacing: 0) {
                 header
 
-                ScrollView {
-                    content
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 40)
-                }
-                .refreshable {
-                    triggerReload()
-                    await loadTask?.value
+                if manage.isEditing {
+                    // Editable list: a `List` with per-tier `Section`s so
+                    // `.onMove` reorders WITHIN one tier only. No pull-to-refresh
+                    // here — a refetch mid-edit would fight the optimistic order.
+                    editableList
+                } else {
+                    ScrollView {
+                        content
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 40)
+                    }
+                    .refreshable {
+                        triggerReload()
+                        await loadTask?.value
+                    }
                 }
             }
         }
@@ -78,9 +99,7 @@ public struct FullListScreen: View {
                     .tracking(-0.3)
                     .foregroundStyle(t.ink)
                 Spacer()
-                // Invisible balancer — same trick SettingsScreen uses to keep
-                // the title centered without doing layout math.
-                Text("close").opacity(0).padding(.horizontal, 12).padding(.vertical, 8)
+                editToggle(t)
             }
             .padding(.horizontal, 10)
             .padding(.top, 14)
@@ -88,6 +107,33 @@ public struct FullListScreen: View {
             .overlay(alignment: .bottom) {
                 Rectangle().fill(t.rule).frame(height: 1).padding(.horizontal, 18)
             }
+        }
+    }
+
+    /// The edit affordance. Only shown once the signed-in shelf has rows —
+    /// there is nothing to reorder in the preview/empty/loading states. Balances
+    /// the `close` button's width when hidden so the title stays centered (same
+    /// invisible-balancer trick SettingsScreen uses).
+    @ViewBuilder
+    private func editToggle(_ t: SpoolPalette) -> some View {
+        if hasSession && !items.isEmpty {
+            Button {
+                manage.toggleEditing()
+            } label: {
+                Text(manage.isEditing ? "done" : "edit")
+                    .font(SpoolFonts.mono(12))
+                    .tracking(1.5)
+                    .foregroundStyle(manage.isEditing ? t.cream : t.ink)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(manage.isEditing ? t.ink : Color.clear)
+                    )
+            }
+            .buttonStyle(.plain)
+        } else {
+            // Invisible balancer keeps the title centered when no toggle shows.
+            Text("edit").opacity(0).padding(.horizontal, 12).padding(.vertical, 8)
         }
     }
 
@@ -174,6 +220,58 @@ public struct FullListScreen: View {
             out[tier]?.sort { $0.rank < $1.rank }
         }
         return out
+    }
+
+    // MARK: editable list (edit mode)
+
+    /// The drag-to-reorder list. A `List` with one `Section` per non-empty tier
+    /// so `.onMove` reorders WITHIN a tier only — SwiftUI scopes a section's
+    /// `.onMove` to that section's own rows, which is exactly the single-tier
+    /// confinement the plan requires. Each move forwards to `manage.moveRow`,
+    /// which computes the tier's full new membership, suppresses no-ops,
+    /// persists optimistically, and reverts + toasts on failure. `.active` edit
+    /// mode surfaces the standard drag handles.
+    private var editableList: some View {
+        SpoolThemeReader { t, mode in
+            List {
+                ForEach(Tier.allCases, id: \.self) { tier in
+                    let rows = manage.items(in: tier)
+                    if !rows.isEmpty {
+                        Section {
+                            ForEach(rows, id: \.id) { item in
+                                row(item: item, t: t, mode: mode)
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 18))
+                                    .listRowBackground(Color.clear)
+                            }
+                            .onMove { source, destination in
+                                Task { await manage.moveRow(tier: tier, from: source, to: destination) }
+                            }
+                        } header: {
+                            editableTierHeader(tier: tier, count: rows.count, t: t, mode: mode)
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .activeEditMode()
+        }
+    }
+
+    private func editableTierHeader(tier: Tier, count: Int, t: SpoolPalette, mode: SpoolMode) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(tier.rawValue)
+                .font(SpoolFonts.serif(22))
+                .foregroundStyle(tierColor(tier, mode: mode))
+            Text(tier.label)
+                .font(SpoolFonts.hand(12))
+                .foregroundStyle(t.inkSoft)
+            Spacer()
+            Text("\(count)")
+                .font(SpoolFonts.mono(11))
+                .tracking(2)
+                .foregroundStyle(t.inkSoft)
+        }
     }
 
     // MARK: tier section
@@ -274,6 +372,10 @@ public struct FullListScreen: View {
         guard sessionAtStart else {
             if !Task.isCancelled {
                 items = []
+                // A signed-out shelf can't be edited — drop any stale edit
+                // state so the toggle never survives a session change.
+                manage.endEditing()
+                manage.setItems([])
             }
             NSLog("[FullListScreen] loaded 0 items (no session)")
             return
@@ -283,6 +385,12 @@ public struct FullListScreen: View {
             let fetched = try await RankingRepository.shared.getAllRankedItems()
             if Task.isCancelled { return }
             items = fetched
+            // Re-seed the edit model's per-tier membership from the fresh shelf.
+            // Editing ends on a reload so a refetched order never fights an
+            // in-flight optimistic drag (pull-to-refresh is disabled while
+            // editing anyway; this covers the initial load + session flips).
+            manage.endEditing()
+            manage.setItems(fetched)
             NSLog("[FullListScreen] loaded \(fetched.count) items")
         } catch {
             if Task.isCancelled { return }
@@ -302,6 +410,21 @@ public struct FullListScreen: View {
 
     private static func firstWord(_ s: String) -> String {
         s.split(separator: " ").first.map(String.init) ?? s
+    }
+}
+
+private extension View {
+    /// Force the standard `.active` edit mode so the `List`'s `.onMove` drag
+    /// handles are always visible while the edit-mode list is shown. `editMode`
+    /// is iOS-only (unavailable on the package's macOS tooling target), so the
+    /// modifier is a no-op elsewhere — the drag affordance is an iOS surface.
+    @ViewBuilder
+    func activeEditMode() -> some View {
+        #if os(iOS)
+        self.environment(\.editMode, .constant(.active))
+        #else
+        self
+        #endif
     }
 }
 
