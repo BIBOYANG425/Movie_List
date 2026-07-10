@@ -23,7 +23,14 @@ import SwiftUI
 /// gates the watchlist-bookmark removal on that signal (B5-corrected) via the
 /// pure `shouldRemoveBookmarkAfterRank`.
 ///
-/// Header last reviewed: 2026-07-09
+/// The stage-a journal write is OUTCOME-AWARE (C3 Part B Task 0 — re-rank wipe
+/// fix): `save` threads `insertRanking`'s `InsertOutcome` through the pure
+/// `quickEntryDecision`. A fresh `.inserted` quick-writes as before; a `.moved`
+/// re-rank with no ceremony input skips the write; a `.moved` with input takes a
+/// PROBED MERGE (`JournalQuickEntry.writeMergingReRank`) that folds only the new
+/// moods + one-liner onto the full owner row so a rich entry is never wiped.
+///
+/// Header last reviewed: 2026-07-10
 public enum RankPersistence {
 
     /// Persist the movie into the user's shelf. Fire-and-forget from the
@@ -83,8 +90,9 @@ public enum RankPersistence {
                 rankPosition: rank,
                 notes: line.isEmpty ? nil : line
             )
+            let outcome: RankingRepository.InsertOutcome
             do {
-                _ = try await RankingRepository.shared.insertRanking(insert)
+                outcome = try await RankingRepository.shared.insertRanking(insert)
             } catch {
                 NSLog("[RankPersistence] insertRanking failed: \(error)")
                 await MainActor.run {
@@ -100,21 +108,44 @@ public enum RankPersistence {
             // save, and palette extraction runs detached.
             await StubWriter.writeStub(movie: movie, tier: tier)
 
-            // STAGE-A journal write (audit stage-a): a PLAIN rank produces a real
-            // journal_entries row from the ceremony's moods + one-liner, so
-            // ranking and journaling never drift. This does NOT replace the
-            // `user_rankings.notes` write above (RankingInsert still carries the
-            // line as `notes`); it ADDS the journal row so the Stubs→journal
-            // list and the composer's probe-before-edit both find it. Full
-            // replace on `(user_id, tmdb_id)`, so a later "write more" edit
-            // round-trips through the same conflict key.
+            // STAGE-A journal write (audit stage-a), now OUTCOME-AWARE (C3 Part B
+            // Task 0 — the re-rank wipe fix). The quick-write is a FULL-REPLACE
+            // upsert on `(user_id, tmdb_id)`; on a RE-RANK of a movie whose entry
+            // is already rich (review text, moments, photos, takeaway,
+            // visibility), a blank quick draft would WIPE all of it. So the write
+            // decision folds in the insert outcome + whether the ceremony
+            // captured any moods/one-liner:
+            //  - `.inserted` (fresh rank) → plain quick-write, unchanged (still
+            //    guarantees the audit stage-a row even with no input);
+            //  - `.moved` + NO input → NO journal write at all (nothing to merge,
+            //    a blank full-replace would wipe the existing entry);
+            //  - `.moved` + input → PROBED MERGE: fetch the full owner row and
+            //    fold ONLY the new moods + one-liner onto it, preserving every
+            //    other field (probe failure → skip + log loudly; no existing row
+            //    → plain quick-write). Never a blind full-replace on `.moved`.
             //
-            // SKIPPED on the "write more" path (`writeJournalQuickEntry == false`):
-            // there, the composer's explicit save is the authoritative journal
-            // write, so firing the quick-write too would double-write / race on
-            // the same key. Mutually exclusive by construction.
-            if shouldWriteQuickEntry(writeJournalQuickEntry: writeJournalQuickEntry) {
+            // SKIPPED entirely on the "write more" path
+            // (`writeJournalQuickEntry == false`): the composer's explicit save is
+            // the authoritative journal write, so firing the quick-write too would
+            // double-write / race on the same key. Mutually exclusive by
+            // construction. No review-event / journal_tag side effects fire on
+            // any of these paths (the quick-write and merge are ROW-only — the
+            // review event is the composer's job on an explicit public save), so
+            // C2's emission exclusivity is preserved.
+            switch quickEntryDecision(
+                writeJournalQuickEntry: writeJournalQuickEntry,
+                outcome: outcome,
+                hasInput: Self.hasCeremonyInput(moods: moods, line: line)
+            ) {
+            case .skip:
+                break
+            case .quickWrite:
                 await JournalQuickEntry.write(
+                    tmdbId: movie.id, title: movie.title, posterUrl: movie.posterUrl,
+                    line: line, moods: moods
+                )
+            case .probedMerge:
+                await JournalQuickEntry.writeMergingReRank(
                     tmdbId: movie.id, title: movie.title, posterUrl: movie.posterUrl,
                     line: line, moods: moods
                 )
@@ -158,8 +189,54 @@ public enum RankPersistence {
     /// (`true`) and is SKIPPED on the "write more" finish (`false`), keeping the
     /// stage-a quick-write and the composer's authoritative save mutually
     /// exclusive so they never double-write / race on `(user_id, tmdb_id)`.
+    /// Retained as the base gate; `quickEntryDecision` layers the outcome-aware
+    /// re-rank wipe guard on top.
     static func shouldWriteQuickEntry(writeJournalQuickEntry: Bool) -> Bool {
         writeJournalQuickEntry
+    }
+
+    /// What the stage-a journal write should do, folding the base gate together
+    /// with the re-rank wipe guard (C3 Part B Task 0). Pure + tested
+    /// (`RankPersistenceLogicTests`).
+    enum QuickEntryDecision: Equatable {
+        /// No journal write at all (write-more path, or a re-rank with nothing to
+        /// merge — a blank full-replace would wipe the existing rich entry).
+        case skip
+        /// Plain full-replace quick-write from the ceremony's moods + one-liner
+        /// (a fresh rank, or a re-rank with input but no existing row to merge —
+        /// the latter is resolved inside `writeMergingReRank`).
+        case quickWrite
+        /// Probed merge: fetch the full owner row and fold ONLY the new moods +
+        /// one-liner onto it, preserving every other field. Never a blind replace.
+        case probedMerge
+    }
+
+    /// The re-rank wipe guard's decision table (tested). `writeJournalQuickEntry
+    /// == false` (write-more) always `.skip`s — the composer owns the write. A
+    /// fresh `.inserted` always `.quickWrite`s (unchanged, input or not). A
+    /// `.moved` re-rank `.skip`s with no input (nothing to merge, a blank replace
+    /// would wipe the rich row) and `.probedMerge`s with input.
+    static func quickEntryDecision(
+        writeJournalQuickEntry: Bool,
+        outcome: RankingRepository.InsertOutcome,
+        hasInput: Bool
+    ) -> QuickEntryDecision {
+        guard shouldWriteQuickEntry(writeJournalQuickEntry: writeJournalQuickEntry) else {
+            return .skip
+        }
+        switch outcome {
+        case .inserted:
+            return .quickWrite
+        case .moved:
+            return hasInput ? .probedMerge : .skip
+        }
+    }
+
+    /// Did the ceremony capture any journal signal? True when EITHER the moods or
+    /// the one-liner is present. On a re-rank with neither, there is nothing to
+    /// merge and the write is skipped (the wipe guard).
+    static func hasCeremonyInput(moods: [String], line: String) -> Bool {
+        !moods.isEmpty || !line.isEmpty
     }
 
     /// Pure gate for the C3 Task 4 watchlist-bookmark removal (tested —

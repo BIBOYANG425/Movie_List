@@ -24,4 +24,66 @@ final class RankPersistenceLogicTests: XCTestCase {
     func testWriteMoreFinishSkipsQuickEntry() {
         XCTAssertFalse(RankPersistence.shouldWriteQuickEntry(writeJournalQuickEntry: false))
     }
+
+    // MARK: - Re-rank wipe guard (C3 Part B Task 0)
+
+    /// The full decision seam folds `writeJournalQuickEntry`, the insert outcome,
+    /// and whether the ceremony captured any moods/one-liner into one of three
+    /// outcomes: `.skip`, `.quickWrite` (fresh full-replace), or `.probedMerge`
+    /// (re-rank preserving the existing rich row). These pins fix the truth table
+    /// so a re-rank can NEVER blind-replace a rich entry.
+
+    /// "WRITE MORE" always wins: the composer owns the write, so the quick-write
+    /// path is skipped regardless of outcome or input.
+    func testWriteMoreSkipsEverything() {
+        XCTAssertEqual(
+            RankPersistence.quickEntryDecision(
+                writeJournalQuickEntry: false, outcome: .inserted, hasInput: true),
+            .skip)
+        XCTAssertEqual(
+            RankPersistence.quickEntryDecision(
+                writeJournalQuickEntry: false, outcome: .moved(fromTier: "B"), hasInput: true),
+            .skip)
+    }
+
+    /// A FRESH rank (`.inserted`) is unchanged — plain full-replace quick-write,
+    /// input or not (an empty quick row still guarantees the audit stage-a row).
+    func testFreshInsertAlwaysQuickWrites() {
+        XCTAssertEqual(
+            RankPersistence.quickEntryDecision(
+                writeJournalQuickEntry: true, outcome: .inserted, hasInput: true),
+            .quickWrite)
+        XCTAssertEqual(
+            RankPersistence.quickEntryDecision(
+                writeJournalQuickEntry: true, outcome: .inserted, hasInput: false),
+            .quickWrite)
+    }
+
+    /// A RE-RANK (`.moved`) with NO new moods and NO one-liner writes NOTHING —
+    /// there is nothing to merge, and a blank full-replace would wipe the existing
+    /// rich entry. This is the core wipe guard.
+    func testReRankNoInputSkips() {
+        XCTAssertEqual(
+            RankPersistence.quickEntryDecision(
+                writeJournalQuickEntry: true, outcome: .moved(fromTier: "B"), hasInput: false),
+            .skip)
+    }
+
+    /// A RE-RANK (`.moved`) WITH new moods/one-liner takes the probed-merge path:
+    /// fetch the full owner row and merge only the new fields onto it (never a
+    /// blind full-replace of a near-blank quick draft).
+    func testReRankWithInputMerges() {
+        XCTAssertEqual(
+            RankPersistence.quickEntryDecision(
+                writeJournalQuickEntry: true, outcome: .moved(fromTier: "B"), hasInput: true),
+            .probedMerge)
+    }
+
+    /// `hasInput` is true when EITHER moods or the one-liner is present.
+    func testHasCeremonyInputIsMoodsOrLine() {
+        XCTAssertTrue(RankPersistence.hasCeremonyInput(moods: ["thrilled"], line: ""))
+        XCTAssertTrue(RankPersistence.hasCeremonyInput(moods: [], line: "a line"))
+        XCTAssertTrue(RankPersistence.hasCeremonyInput(moods: ["x"], line: "y"))
+        XCTAssertFalse(RankPersistence.hasCeremonyInput(moods: [], line: ""))
+    }
 }

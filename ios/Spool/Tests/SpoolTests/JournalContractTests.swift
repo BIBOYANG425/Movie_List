@@ -406,4 +406,90 @@ final class JournalContractTests: XCTestCase {
         XCTAssertEqual(JournalConstants.journalMaxPhotos, 6)
         XCTAssertEqual(JournalConstants.journalPhotoSignedURLTTL, 2_592_000)
     }
+
+    // MARK: - Re-rank merge seam (C3 Part B Task 0)
+
+    /// A RICH existing owner row — the exact shape a probe returns for a movie the
+    /// user has fleshed out (review, moments, performances, photos, takeaway,
+    /// visibility override, watch context). The re-rank merge must preserve ALL of
+    /// these verbatim while folding in only the ceremony's new moods + one-liner.
+    private func richRow() -> JournalRow {
+        JournalRow(
+            id: UUID(uuidString: "22222222-0000-0000-0000-000000000002")!,
+            user_id: uid, tmdb_id: "603", title: "The Matrix",
+            poster_url: "/p.jpg", rating_tier: "loved",
+            review_text: "a machine dreamt of us.", contains_spoilers: true,
+            mood_tags: ["nostalgic"], vibe_tags: ["late_night"],
+            favorite_moments: ["the lobby", "red pill"],
+            standout_performances: [
+                StandoutPerformance(personId: 6384, name: "Keanu Reeves", character: "Neo"),
+            ],
+            watched_date: "2026-06-01", watched_location: "home",
+            watched_with_user_ids: [friendA], watched_platform: "netflix",
+            is_rewatch: true, rewatch_note: "still holds up",
+            personal_takeaway: "choose your reality", photo_paths: ["u/603/0.jpg"],
+            visibility_override: "public", like_count: 3,
+            created_at: "2026-06-01T00:00:00+00:00"
+        )
+    }
+
+    /// MERGE preserves every rich field verbatim and folds in ONLY the new moods
+    /// + one-liner. review_text takes the new line; mood_tags take the new moods.
+    func testMergePreservesRichFieldsAndFoldsNewMoodsAndLine() {
+        let merged = JournalEntryContract.merge(
+            newMoods: ["thrilled", "amazed"], newLine: "second time hits harder.",
+            onto: richRow())
+
+        // Folded in from the ceremony:
+        XCTAssertEqual(merged.reviewText, "second time hits harder.")
+        XCTAssertEqual(merged.moodTags, ["thrilled", "amazed"])
+
+        // Preserved verbatim from the existing rich row:
+        XCTAssertEqual(merged.favoriteMoments, ["the lobby", "red pill"])
+        XCTAssertEqual(merged.standoutPerformances.first?.name, "Keanu Reeves")
+        XCTAssertEqual(merged.personalTakeaway, "choose your reality")
+        XCTAssertEqual(merged.photoPaths, ["u/603/0.jpg"])
+        XCTAssertEqual(merged.visibilityOverride, .pub)
+        XCTAssertEqual(merged.vibeTags, ["late_night"])
+        XCTAssertEqual(merged.watchedLocation, "home")
+        XCTAssertEqual(merged.watchedWithUserIds, [friendA])
+        XCTAssertEqual(merged.watchedPlatform, "netflix")
+        XCTAssertTrue(merged.isRewatch)
+        XCTAssertEqual(merged.rewatchNote, "still holds up")
+        XCTAssertTrue(merged.containsSpoilers)
+    }
+
+    /// ADJUDICATION: a re-rank keeps the EXISTING row's watched_date — it is a
+    /// re-rank, not a new watch, so the original watch day must survive the merge
+    /// (never bumped to today).
+    func testMergeKeepsExistingWatchedDate() {
+        let merged = JournalEntryContract.merge(
+            newMoods: ["thrilled"], newLine: "again.", onto: richRow())
+        XCTAssertEqual(merged.watchedDate, "2026-06-01")
+        XCTAssertNotEqual(merged.watchedDate, StubWriteContract.localDateString())
+    }
+
+    /// An EMPTY new one-liner must NOT wipe the existing review — only moods
+    /// change on a moods-only re-rank.
+    func testMergeEmptyLinePreservesExistingReview() {
+        let merged = JournalEntryContract.merge(
+            newMoods: ["thrilled"], newLine: "", onto: richRow())
+        XCTAssertEqual(merged.reviewText, "a machine dreamt of us.")
+        XCTAssertEqual(merged.moodTags, ["thrilled"])
+    }
+
+    /// The merged draft round-trips through the full-replace payload with ALL 20
+    /// columns still present (the merge makes full-replace safe — it never
+    /// degrades into a partial-column update).
+    func testMergedDraftUpsertPayloadCarriesAllColumnsAndRichData() throws {
+        let merged = JournalEntryContract.merge(
+            newMoods: ["thrilled"], newLine: "again.", onto: richRow())
+        let payload = JournalEntryContract.upsertPayload(
+            userID: uid, ratingTier: "loved", from: merged)
+        XCTAssertEqual(try jsonKeys(payload), expectedUpsertKeys)
+        XCTAssertEqual(payload.personal_takeaway, "choose your reality")
+        XCTAssertEqual(payload.photo_paths, ["u/603/0.jpg"])
+        XCTAssertEqual(payload.watched_date, "2026-06-01")
+        XCTAssertEqual(payload.visibility_override, "public")
+    }
 }

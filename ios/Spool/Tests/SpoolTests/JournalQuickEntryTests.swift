@@ -51,4 +51,110 @@ final class JournalQuickEntryTests: XCTestCase {
         )
         XCTAssertEqual(draft.watchedDate, StubWriteContract.localDateString())
     }
+
+    // MARK: - Re-rank merge flow (C3 Part B Task 0 — the wipe fix)
+
+    private let uid = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+
+    private struct ProbeThrew: Error {}
+
+    /// A recorder for the injected merge-flow IO — captures what `writeMerging`
+    /// probed and upserted with zero network.
+    private final class Recorder: @unchecked Sendable {
+        var probeCount = 0
+        var upsertPayloads: [JournalUpsertPayload] = []
+    }
+
+    private func richRow() -> JournalRow {
+        JournalRow(
+            id: UUID(uuidString: "22222222-0000-0000-0000-000000000002")!,
+            user_id: uid, tmdb_id: "603", title: "The Matrix",
+            poster_url: "/p.jpg", rating_tier: "loved",
+            review_text: "a machine dreamt of us.", contains_spoilers: true,
+            mood_tags: ["nostalgic"], vibe_tags: ["late_night"],
+            favorite_moments: ["the lobby", "red pill"],
+            standout_performances: [
+                StandoutPerformance(personId: 6384, name: "Keanu Reeves", character: "Neo"),
+            ],
+            watched_date: "2026-06-01", watched_location: "home",
+            watched_with_user_ids: [], watched_platform: "netflix",
+            is_rewatch: true, rewatch_note: "still holds up",
+            personal_takeaway: "choose your reality", photo_paths: ["u/603/0.jpg"],
+            visibility_override: "public", like_count: 3,
+            created_at: "2026-06-01T00:00:00+00:00"
+        )
+    }
+
+    private func echo(_ payload: JournalUpsertPayload) -> JournalRow {
+        JournalRow(
+            id: UUID(), user_id: payload.user_id, tmdb_id: payload.tmdb_id,
+            title: payload.title, poster_url: payload.poster_url,
+            rating_tier: payload.rating_tier, review_text: payload.review_text,
+            contains_spoilers: payload.contains_spoilers, mood_tags: payload.mood_tags,
+            vibe_tags: payload.vibe_tags, favorite_moments: payload.favorite_moments,
+            standout_performances: payload.standout_performances,
+            watched_date: payload.watched_date, watched_location: payload.watched_location,
+            watched_with_user_ids: payload.watched_with_user_ids,
+            watched_platform: payload.watched_platform, is_rewatch: payload.is_rewatch,
+            rewatch_note: payload.rewatch_note, personal_takeaway: payload.personal_takeaway,
+            photo_paths: payload.photo_paths, visibility_override: payload.visibility_override,
+            like_count: 0, created_at: ""
+        )
+    }
+
+    /// `.moved` + new moods/line + an existing rich row → probed MERGE: the
+    /// upsert preserves every rich field and folds in only the new moods + line,
+    /// keeping the existing watched_date. Never a blank full-replace.
+    func testMergeFlowMovedWithExistingRowPreservesRichFields() async {
+        let rec = Recorder()
+        await JournalQuickEntry.writeMerging(
+            userID: uid, tmdbId: "603", title: "The Matrix", posterUrl: "/p.jpg",
+            line: "second time hits harder.", moods: ["thrilled"], ratingTier: "loved",
+            probe: { _ in rec.probeCount += 1; return self.richRow() },
+            upsert: { p in rec.upsertPayloads.append(p); return self.echo(p) }
+        )
+        XCTAssertEqual(rec.probeCount, 1)
+        XCTAssertEqual(rec.upsertPayloads.count, 1)
+        let p = rec.upsertPayloads[0]
+        XCTAssertEqual(p.review_text, "second time hits harder.")
+        XCTAssertEqual(p.mood_tags, ["thrilled"])
+        XCTAssertEqual(p.personal_takeaway, "choose your reality")
+        XCTAssertEqual(p.photo_paths, ["u/603/0.jpg"])
+        XCTAssertEqual(p.favorite_moments, ["the lobby", "red pill"])
+        XCTAssertEqual(p.visibility_override, "public")
+        XCTAssertEqual(p.watched_date, "2026-06-01")   // existing date kept
+    }
+
+    /// `.moved` + new input but NO existing row (probe returns nil) → a plain
+    /// quick-write full-replace (nothing to merge, nothing to wipe).
+    func testMergeFlowMovedWithNoExistingRowQuickWrites() async {
+        let rec = Recorder()
+        await JournalQuickEntry.writeMerging(
+            userID: uid, tmdbId: "603", title: "The Matrix", posterUrl: "/p.jpg",
+            line: "fresh line.", moods: ["thrilled"], ratingTier: "loved",
+            probe: { _ in rec.probeCount += 1; return nil },
+            upsert: { p in rec.upsertPayloads.append(p); return self.echo(p) }
+        )
+        XCTAssertEqual(rec.probeCount, 1)
+        XCTAssertEqual(rec.upsertPayloads.count, 1)
+        let p = rec.upsertPayloads[0]
+        XCTAssertEqual(p.review_text, "fresh line.")
+        XCTAssertEqual(p.mood_tags, ["thrilled"])
+        XCTAssertNil(p.personal_takeaway)   // brand-new quick draft, nothing rich
+    }
+
+    /// PROBE FAILURE on the merge path → skip the write ENTIRELY (never a blind
+    /// full-replace) + log loudly. The wipe-guard posture: a read hiccup must NOT
+    /// let a near-blank draft clobber the rich row.
+    func testMergeFlowProbeThrowSkipsWriteEntirely() async {
+        let rec = Recorder()
+        await JournalQuickEntry.writeMerging(
+            userID: uid, tmdbId: "603", title: "The Matrix", posterUrl: "/p.jpg",
+            line: "line.", moods: ["thrilled"], ratingTier: "loved",
+            probe: { _ in rec.probeCount += 1; throw ProbeThrew() },
+            upsert: { p in rec.upsertPayloads.append(p); return self.echo(p) }
+        )
+        XCTAssertEqual(rec.probeCount, 1)
+        XCTAssertTrue(rec.upsertPayloads.isEmpty, "probe failure must NOT upsert")
+    }
 }
