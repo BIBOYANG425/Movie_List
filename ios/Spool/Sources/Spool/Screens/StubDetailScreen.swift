@@ -5,6 +5,12 @@ public struct StubDetailScreen: View {
     public var onClose: () -> Void
     public var onShare: () -> Void
 
+    /// The signed-in user's own `@handle`, stamped onto the stub card. Loaded
+    /// from the real profile on `.task`; empty until it resolves (and in preview
+    /// / signed-out mode) so the card omits the handle rather than showing the
+    /// old "@yurui" default. Mirrors StubShareScreen.loadHandle.
+    @State private var handle: String = ""
+
     public init(stub: WatchedDay, onClose: @escaping () -> Void, onShare: @escaping () -> Void) {
         self.stub = stub
         self.onClose = onClose
@@ -42,6 +48,10 @@ public struct StubDetailScreen: View {
                             // back to the day-only label for legacy fixtures
                             // that don't carry full date info.
                             date: Self.formatDate(day: stub.day, month: stub.month, year: stub.year),
+                            // Signed-in user's own handle (loaded on `.task`);
+                            // empty until it resolves → the card omits it rather
+                            // than showing the "@yurui" default.
+                            handle: handle,
                             // Day-of-month alone collapses to the same ID
                             // for different stubs, so encode the full date
                             // as YYYYMMDD when it's available. Fixture
@@ -85,6 +95,16 @@ public struct StubDetailScreen: View {
                     .padding(.bottom, 12)
                 }
             }
+        }
+        .task { await loadHandle() }
+    }
+
+    /// Resolve the signed-in user's own handle from the real profile so the stub
+    /// card is stamped with their `@handle`, never the literal "@yurui". No-op
+    /// (leaves `handle` empty) when signed out or in preview mode.
+    private func loadHandle() async {
+        if let profile = try? await ProfileRepository.shared.getMyProfile() {
+            await MainActor.run { handle = profile.handle }
         }
     }
 }

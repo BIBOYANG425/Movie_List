@@ -16,6 +16,12 @@ public struct RankPrintedScreen: View {
 
     @State private var printed: Bool = false
 
+    /// The signed-in user's own `@handle`, stamped onto the freshly-printed stub
+    /// card. Loaded from the real profile on `.task`; empty until it resolves
+    /// (and in preview / signed-out mode) so the card omits the handle rather
+    /// than showing the old "@yurui" default. Mirrors StubShareScreen.loadHandle.
+    @State private var handle: String = ""
+
     public init(movie: Movie, tier: Tier, moods: [String], line: String,
                 finalRank: Int = 0, finalScore: Double = 0,
                 onClose: @escaping () -> Void, onFinish: @escaping () -> Void,
@@ -121,13 +127,26 @@ public struct RankPrintedScreen: View {
                 }
             }
         }
+        .task { await loadHandle() }
+    }
+
+    /// Resolve the signed-in user's own handle from the real profile so the
+    /// printed stub is stamped with their `@handle`, never the literal "@yurui".
+    /// No-op (leaves `handle` empty) when signed out or in preview mode.
+    private func loadHandle() async {
+        if let profile = try? await ProfileRepository.shared.getMyProfile() {
+            await MainActor.run { handle = profile.handle }
+        }
     }
 
     private var stubWithTape: some View {
         ZStack(alignment: .top) {
             AdmitStub(
                 movie: movie, tier: tier, line: line, moods: moods,
-                date: formattedToday(), stubNo: "#0128"
+                date: formattedToday(),
+                // Signed-in user's own handle (loaded on `.task`); empty until
+                // it resolves → the card omits it rather than showing "@yurui".
+                handle: handle, stubNo: "#0128"
             )
             Tape()
                 .rotationEffect(.degrees(-4))

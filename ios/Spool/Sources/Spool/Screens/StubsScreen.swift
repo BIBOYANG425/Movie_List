@@ -28,6 +28,11 @@ public struct StubsScreen: View {
     /// Empty in preview mode (fixtures have no rows).
     @State private var rowsByDay: [Int: StubRow] = [:]
     @State private var lastStub: StubRow?
+    /// The signed-in user's own `@handle`, stamped onto the "last watched" stub
+    /// card. Loaded from the real profile on `reload()`; empty until it resolves
+    /// (and in preview / signed-out mode) so the card omits the handle rather
+    /// than showing the old "@yurui" default. Mirrors StubShareScreen.loadHandle.
+    @State private var handle: String = ""
     @State private var monthTierCounts: [Tier: Int] = [:]
     @State private var hasSession: Bool = false
     @State private var loading: Bool = true
@@ -238,6 +243,10 @@ public struct StubsScreen: View {
                 line: stub.stub_line ?? "",
                 moods: stub.mood_tags,
                 date: StubFormat.admitDate(stub.watched_date),
+                // The signed-in user's own handle (loaded in `reload()`), so the
+                // card shows THEIR @handle, never the "@yurui" demo default.
+                // Empty until it resolves → the card omits the handle briefly.
+                handle: handle,
                 // "Last watched" is the newest stub across ALL time, so the
                 // sequence number should reflect the global count (total
                 // stubs ever), not just this month. `totalStubsCount` is
@@ -292,6 +301,9 @@ public struct StubsScreen: View {
                 lastStub = nil
                 totalStubsCount = 0
                 cachedForUserID = nil
+                // No signed-in profile → no handle. The fixture card omits it
+                // rather than showing "@yurui".
+                handle = ""
             }
             return
         }
@@ -301,7 +313,17 @@ public struct StubsScreen: View {
         if cachedForUserID != userID {
             lastStub = nil
             totalStubsCount = 0
+            handle = ""
             cachedForUserID = userID
+        }
+
+        // Resolve the signed-in user's own handle so the "last watched" card is
+        // stamped with THEIR @handle, never the "@yurui" default. Best-effort:
+        // a failure leaves `handle` empty and the card simply omits it.
+        if handle.isEmpty,
+           let profile = try? await ProfileRepository.shared.getMyProfile() {
+            if Task.isCancelled { return }
+            handle = profile.handle
         }
 
         do {
