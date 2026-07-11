@@ -276,13 +276,21 @@ public struct SpoolAppRoot: View {
                 // ~y14) and crowded FeedScreen's compass+bell cluster. Every
                 // screen's leading title/wordmark sits ~50–62pt down (behind the
                 // header top padding), so the leading gutter at ~y6 is empty on
-                // ALL of them — feed, stubs, watchlist, friends, profile — and on
-                // the full-screen flows too (their "back" buttons are at ~y50).
+                // ALL of them — feed, stubs, watchlist, friends, profile.
                 // Pushing the toggle DOWN instead can't clear every screen: no
                 // single top offset clears both FeedScreen's ~y60 header cluster
                 // and WatchlistScreen's ~y88 first card, so the leading move is
                 // the one inset that breaks nothing.
-                .overlay(alignment: .topLeading) { paletteToggle }
+                //
+                // Gate on `!navHidden` (design-check A1 follow-up): full-screen
+                // flows (rank ceremony, StubDetail, StubShareScreen, TwinScreen,
+                // FriendProfileScreen, rank tier/H2H) each show their own back
+                // button at ~y50 in the top-leading gutter. Without this gate the
+                // toggle floats only ~14pt above those back buttons — a margin
+                // Dynamic Type or a larger safe-area inset could erase into an
+                // overlap. Flows don't need a palette toggle, so suppress it
+                // entirely when `navHidden` is true (matching the bottom-bar gate).
+                .overlay(alignment: .topLeading) { if !navHidden { paletteToggle } }
         }
         .spoolMode(mode)
         .preferredColorScheme(forcedColorScheme)
