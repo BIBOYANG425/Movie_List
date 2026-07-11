@@ -341,6 +341,7 @@ public struct ProfileScreen: View {
                 SpoolPill(L10n.t("profile.tasteTwin", ["handle": twin.handle, "score": "\(twin.score)"]), size: .sm)
             }
             // Recap pill hidden until the monthly-recap experience is real.
+            Spacer(minLength: 0)
         }
     }
 

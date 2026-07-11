@@ -370,6 +370,7 @@ public struct FriendProfileScreen: View {
                 SpoolPill(L10n.t("friendProfile.mutual", ["n": "\(mutualCount)"]), size: .sm)
             }
             SpoolPill(L10n.t("friendProfile.stubsPill", ["n": "\(stubsCount)"]), size: .sm)
+            Spacer(minLength: 0)
         }
     }
 
