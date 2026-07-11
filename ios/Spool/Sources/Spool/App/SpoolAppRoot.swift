@@ -269,7 +269,20 @@ public struct SpoolAppRoot: View {
                         }
                     }
                 }
-                .overlay(alignment: .topTrailing) { paletteToggle }
+                // Palette toggle lives in the top-LEADING gutter (design-check
+                // A1). It used to sit top-TRAILING at `.top+6/.trailing+14`,
+                // which shares the corner every screen fills with a trailing
+                // control: it overlapped ProfileScreen's gear button (top-corner,
+                // ~y14) and crowded FeedScreen's compass+bell cluster. Every
+                // screen's leading title/wordmark sits ~50–62pt down (behind the
+                // header top padding), so the leading gutter at ~y6 is empty on
+                // ALL of them — feed, stubs, watchlist, friends, profile — and on
+                // the full-screen flows too (their "back" buttons are at ~y50).
+                // Pushing the toggle DOWN instead can't clear every screen: no
+                // single top offset clears both FeedScreen's ~y60 header cluster
+                // and WatchlistScreen's ~y88 first card, so the leading move is
+                // the one inset that breaks nothing.
+                .overlay(alignment: .topLeading) { paletteToggle }
         }
         .spoolMode(mode)
         .preferredColorScheme(forcedColorScheme)
@@ -952,7 +965,7 @@ public struct SpoolAppRoot: View {
         }
         .buttonStyle(.plain)
         .padding(.top, 6)
-        .padding(.trailing, 14)
+        .padding(.leading, 14)
         .opacity(0.6)
     }
 }
