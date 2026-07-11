@@ -16,7 +16,7 @@ public enum EN {
         // Bottom nav tab labels (BottomNav.swift `tabButton` labels).
         "nav.feed": "feed",
         "nav.stubs": "stubs",
-        "nav.queue": "queue",
+        "nav.queue": "watchlist",
         "nav.friends": "friends",
         "nav.me": "me",
 
