@@ -41,7 +41,10 @@ public struct JournalListView: View {
                 content
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
-                    .padding(.bottom, 110)
+                    // Bottom bar reserved by the root's `.safeAreaInset` (this
+                    // list is the Stubs tab's journal segment, which lives under
+                    // the bar); small breathing pad only (was 110).
+                    .padding(.bottom, 12)
             }
         }
         .task { if !model.didLoad { await model.load() } }

@@ -207,12 +207,30 @@ public struct SpoolAppRoot: View {
             .ignoresSafeArea()
 
             screen
-                .overlay(alignment: .bottom) {
-                    VStack(spacing: 0) {
-                        if previewMode && !navHidden {
-                            previewBanner
-                        }
-                        if !navHidden {
+                // Bottom bar via `safeAreaInset` (design-check 1, 2, A3): this
+                // both DRAWS the banner+nav AND shrinks the safe area every
+                // screen's `ScrollView` respects, so scroll content can never
+                // slide UNDER the bar. That kills the old failure mode where a
+                // fixed `.padding(.bottom, 110)` reserve only covered the nav
+                // and the taller preview-banner state overlapped the last card.
+                //
+                // When `navHidden` is true (rank flow, stub detail/share, twin,
+                // friend profile) the inset contributes an EMPTY view — zero
+                // height, zero reserve — so those full-screen flows get no bar
+                // and no phantom gap at the bottom.
+                //
+                // The VStack `spacing: 14` gives the banner clearance above the
+                // nav's floating "+" FAB, which pokes 22pt out of the capsule's
+                // own bounds (BottomNav reserves that overhang with `.top, 22`).
+                // Without the gap the banner's bottom edge and the FAB's top
+                // edge land in the same band and visually collide (design-check
+                // 2). 14pt + the banner's own 6pt bottom pad clears the overhang.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if !navHidden {
+                        VStack(spacing: 14) {
+                            if previewMode {
+                                previewBanner
+                            }
                             BottomNav(active: tab, onTab: onTab)
                         }
                     }

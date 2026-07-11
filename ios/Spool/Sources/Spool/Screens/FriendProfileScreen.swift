@@ -62,7 +62,10 @@ public struct FriendProfileScreen: View {
                         footerPills.padding(.top, 16)
                     }
                     .padding(.horizontal, 18)
-                    .padding(.bottom, 110)
+                    // Rendered with the bottom bar HIDDEN (`navHidden`), so 110
+                    // over-reserved for an absent nav; the ScrollView already
+                    // stops at the home-indicator safe area. Small pad (was 110).
+                    .padding(.bottom, 12)
                 }
                 .refreshable { await reload() }
             }

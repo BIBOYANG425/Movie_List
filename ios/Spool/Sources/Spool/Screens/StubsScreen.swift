@@ -131,7 +131,9 @@ public struct StubsScreen: View {
                 // we can flip this back on without a rewrite.
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 110)
+            // The bottom bar is reserved by the root's `.safeAreaInset` now, so
+            // this is only a small breathing pad below the last card (was 110).
+            .padding(.bottom, 12)
         }
         .refreshable {
             // `refreshable` wants to suspend until the pull-to-refresh

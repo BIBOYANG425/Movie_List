@@ -32,7 +32,9 @@ public struct FriendsScreen: View {
                 ScrollView {
                     content
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 110)
+                        // Bottom bar reserved by the root's `.safeAreaInset`;
+                        // small breathing pad below the last row (was 110).
+                        .padding(.bottom, 12)
                 }
                 .refreshable { await reload() }
             }

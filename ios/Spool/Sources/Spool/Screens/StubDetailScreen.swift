@@ -77,7 +77,12 @@ public struct StubDetailScreen: View {
                             .padding(.top, 4)
                     }
                     .padding(.horizontal, 18)
-                    .padding(.bottom, 110)
+                    // This screen renders with the bottom bar HIDDEN
+                    // (`navHidden` in SpoolAppRoot), so the old 110 over-reserved
+                    // for a nav that isn't here. The ScrollView already stops at
+                    // the home-indicator safe area; a small breathing pad is all
+                    // that's needed (was 110).
+                    .padding(.bottom, 12)
                 }
             }
         }
