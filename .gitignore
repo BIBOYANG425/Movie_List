@@ -46,3 +46,11 @@ ios/SpoolSimulator/SpoolSimulator.xcodeproj/project.xcworkspace/
 
 # Simulator harness secrets (real keys — commit the .example instead)
 ios/SpoolSimulator/SpoolSimulator/Info.plist
+
+# macOS/iCloud conflict-copy duplicates. This repo lives under ~/Documents
+# (iCloud-synced), which spawns "Name 2.swift" / "Name 3.md" conflict copies.
+# Duplicate Swift files break `swift build` with redeclaration errors. Ignore
+# the whole pattern so they can never be staged; delete them locally when they
+# appear (git clean -fdx, or the Finder).
+* [0-9].*
+* [0-9][0-9].*
