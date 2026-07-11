@@ -12,7 +12,7 @@ public struct AdmitStub: View {
 
     public init(movie: Movie, tier: Tier = .S, line: String = "",
                 moods: [String] = [], date: String = Self.defaultDate(),
-                handle: String = "@yurui", stubNo: String = "#0127",
+                handle: String = "", stubNo: String = "",
                 compact: Bool = false) {
         self.movie = movie
         self.tier = tier
@@ -41,6 +41,14 @@ public struct AdmitStub: View {
         return "\(m) · \(d) · \(y)"
     }
 
+    /// The top-left chrome line. "ADMIT ONE · #0042" when a sequence number is
+    /// supplied, plain "ADMIT ONE" when it's empty — so an unnumbered card never
+    /// renders a dangling "ADMIT ONE · " with nothing after it. Pure + static so
+    /// the empty-guard is unit-testable without a view host.
+    public static func admitLine(stubNo: String) -> String {
+        stubNo.isEmpty ? "ADMIT ONE" : "ADMIT ONE · \(stubNo)"
+    }
+
     public var body: some View {
         SpoolThemeReader { t, _ in
             HStack(spacing: 0) {
@@ -60,7 +68,7 @@ public struct AdmitStub: View {
     @ViewBuilder
     private func leftSide(t: SpoolPalette) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("ADMIT ONE · \(stubNo)")
+            Text(Self.admitLine(stubNo: stubNo))
                 .font(SpoolFonts.mono(9))
                 .tracking(2)
                 .foregroundStyle(t.inkSoft)
@@ -107,7 +115,12 @@ public struct AdmitStub: View {
 
             Divider().overlay(t.rule).padding(.top, compact ? 10 : 14)
             HStack {
-                Text(handle)
+                // Omit the handle entirely when it's empty (no signed-in profile
+                // resolved yet, or preview mode) rather than rendering a fake
+                // default — the Spacer still pushes `date` to the right.
+                if !handle.isEmpty {
+                    Text(handle)
+                }
                 Spacer()
                 Text(date)
             }
@@ -196,11 +209,16 @@ struct FlowLayout: Layout {
 }
 
 #Preview("paper") {
+    // Illustrative demo data (handle/stubNo passed explicitly) so the preview
+    // shows a fully-populated card. These literals are preview-only and never
+    // reach a real user — the shipped DEFAULT is empty (see `init`).
     AdmitStub(
         movie: SpoolData.subject,
         tier: .S,
         line: "cried on the 6 train.",
-        moods: ["tender", "devastating"]
+        moods: ["tender", "devastating"],
+        handle: "@yurui",
+        stubNo: "#0127"
     )
     .padding()
     .background(SpoolTokens.paper.cream)
@@ -212,7 +230,9 @@ struct FlowLayout: Layout {
         movie: SpoolData.subject,
         tier: .S,
         line: "cried on the 6 train.",
-        moods: ["tender", "devastating"]
+        moods: ["tender", "devastating"],
+        handle: "@yurui",
+        stubNo: "#0127"
     )
     .padding()
     .background(SpoolTokens.dark.cream)
