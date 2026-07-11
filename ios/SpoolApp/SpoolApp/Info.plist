@@ -91,5 +91,12 @@
 	<string>$(SUPABASE_ANON_KEY)</string>
 	<!-- No TMDB key: all TMDB traffic goes through the tmdb-proxy edge
 	     function, which injects the key server-side. Do NOT add it back. -->
+
+	<!-- Export compliance: the app uses only standard HTTPS/TLS (exempt
+	     encryption), so no CCATS/self-classification is required. Declaring
+	     this here skips the "Missing Compliance" prompt on every TestFlight
+	     upload. If you ever add non-exempt/proprietary crypto, revisit this. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
