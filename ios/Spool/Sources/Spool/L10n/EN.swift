@@ -24,31 +24,32 @@ public enum EN {
         "nav.rankNew": "Rank a new movie",
 
         // Rank flow toasts (RankH2H / rank persistence sites).
-        "toast.rankSaveFailed": "couldn't save your rank — check connection",
-        "toast.reRankFailed": "couldn't re-rank this show — try again",
+        "toast.rankSaveFailed": "couldn't save your rank. check connection",
+        "toast.reRankFailed": "couldn't re-rank this show. try again",
         // Preview-mode queue refused a tv/book rank (session died mid-ceremony).
         // iOS-only path (RankPersistence). New zh below.
-        "toast.rankSaveSignIn": "couldn't save your rank — sign in and try again",
+        "toast.rankSaveSignIn": "couldn't save your rank. sign in and try again",
 
         // Shelf/watchlist manage-action failure toasts (RankManageModel /
         // WatchlistModel). Each carries a {title} token (the item that failed).
         // iOS-only surfaces (web has no equivalent per-item error toasts). New zh.
-        "toast.removeFailed": "couldn't remove {title} — try again",
-        "toast.reorderFailed": "couldn't reorder {title} — try again",
-        "toast.moveFailed": "couldn't move {title} — try again",
-        "toast.deleteFailed": "couldn't delete {title} — try again",
+        "toast.removeFailed": "couldn't remove {title}. try again",
+        "toast.reorderFailed": "couldn't reorder {title}. try again",
+        "toast.moveFailed": "couldn't move {title}. try again",
+        "toast.deleteFailed": "couldn't delete {title}. try again",
         // Notes-edit sheet probe/save failures (RankManageModel). iOS-only. New zh.
-        "toast.noteLoadFailed": "couldn't load your existing note — saving may overwrite it",
-        "toast.noteSaveFailed": "couldn't save notes — try again",
+        "toast.noteLoadFailed": "couldn't load your existing note. saving may overwrite it",
+        "toast.noteSaveFailed": "couldn't save notes. try again",
 
         // Ranking-management confirm (carries a {label} token — proves
         // interpolation + placeholder-set parity with zh; mirrors web
         // 'ranking.resetConfirm').
         "ranking.resetConfirm": "Reset your {label} list? This cannot be undone.",
 
-        // A generic failure toast — verbatim web 'ranking.failedSave' en copy
-        // (i18n/en.ts). Em-dash ban is zh-only; en value is faithful to web.
-        "toast.saveFailed": "Failed to save — please try again",
+        // A generic failure toast, ported from web 'ranking.failedSave' (i18n/
+        // en.ts). Recast dash-free per the owner's EN prose no-em-dash rule
+        // (2026-07-11), so it diverges from web's em-dashed original by design.
+        "toast.saveFailed": "Failed to save. please try again",
 
         // Deep-link profile resolution failed (C7-iOS Task 5): a spool://u/…
         // or rankspool.com/u/… link named a username with no matching profile,
@@ -72,16 +73,16 @@ public enum EN {
         "feed.emptyFriendsHint": "follow people to see their rankings, reviews, and lists here",
         "feed.findYourPeople": "find your people",
         "feed.emptyExploreTitle": "explore is empty",
-        "feed.emptyExploreHint": "public profiles appear here — make yours public in settings",
+        "feed.emptyExploreHint": "public profiles appear here. make yours public in settings",
         "feed.openSettings": "open settings",
         // Ticket front: mute-title menu + spoiler shield (web localizes spoilers).
         "feed.muteTitle": "mute this title",
-        "feed.spoilersTapReveal": "spoilers — tap to reveal",
+        "feed.spoilersTapReveal": "spoilers. tap to reveal",
         // Ticket back: thread empty/error, composer, a11y ({title}/{body}/{error}
         // carry dynamic content).
         "feed.ticketBackFor": "ticket back for {title}",
         "feed.reactionsLoadFailed": "couldn't load reactions",
-        "feed.noRepliesYet": "no replies yet — be first",
+        "feed.noRepliesYet": "no replies yet. be first",
         "feed.deleteComment": "delete",
         "feed.replyPrefix": "reply: {body}",
         "feed.commentDeleteHint": "your comment, long-press to delete",
@@ -91,7 +92,7 @@ public enum EN {
         // Composer inline validation + send-failure (TicketEngagementModel emitter).
         "feed.composerEmpty": "say something",
         "feed.composerTooLong": "keep it under 500",
-        "feed.composerPostFailed": "couldn't post — try again",
+        "feed.composerPostFailed": "couldn't post. try again",
         "feed.flipBackA11y": "flip back to the ticket front",
 
         // ── Notifications (NotificationBellView) ──────────────────────────────
@@ -110,7 +111,7 @@ public enum EN {
         // rebuild risks drift/mixed script. Standalone copy localizes. {n}/{current}
         // /{total}/{saved} carry dynamic content.
         "onb.savingPicks": "saving your picks…",
-        "onb.picksPartialSave": "saved {saved} of {total} picks — we'll retry on next sign-in",
+        "onb.picksPartialSave": "saved {saved} of {total} picks. we'll retry on next sign-in",
         "onb.tonightOnly": "TONIGHT · ONLY",
         "onb.privatePalace": "a private picture palace\nof everything you watch.",
         "onb.noSignupYet": "no sign-up yet.\nrank first. we'll talk later.",
@@ -119,7 +120,7 @@ public enum EN {
         "onb.logInA11y": "Log in",
         "onb.ticketShelf": "your ticket,\nyour shelf.",
         "onb.saveStubsHint": "save your stubs across devices.\nfind friends' shelves. pick up where you left off.",
-        "onb.continueWithoutAccount": "continue without account — preview only",
+        "onb.continueWithoutAccount": "continue without account. preview only",
         "onb.theRules": "— THE RULES —",
         "onb.seenItTierIt": "seen it? tier it.",
         "onb.loadingPicks": "loading this week's picks…",
@@ -129,7 +130,7 @@ public enum EN {
         "onb.challenger": "CHALLENGER",
         "onb.vs": "vs",
         "onb.winnerStays": "winner stays. we climb the ladder.\n{n} more to go.",
-        "onb.needMorePicks": "need more picks to compare — skip ahead.",
+        "onb.needMorePicks": "need more picks to compare. skip ahead.",
         "onb.opener": "OPENER",
         "onb.reigningChampion": "REIGNING CHAMPION",
         "onb.skipArrow": "skip →",
@@ -149,10 +150,10 @@ public enum EN {
         "onb.findYourPeopleTitle": "find your\npeople.",
         "onb.done": "done →",
         "onb.searchHandle": "search a handle to follow someone.",
-        "onb.needSignInFriends": "you need to be signed in to find friends.\nyou can always come back — they'll still be here.",
+        "onb.needSignInFriends": "you need to be signed in to find friends.\nyou can always come back. they'll still be here.",
         "onb.handlePlaceholder": "handle",
         "onb.searching": "searching…",
-        "onb.noHandleMatch": "no one by that handle — yet.",
+        "onb.noHandleMatch": "no one by that handle yet.",
         "onb.following": "following",
         "onb.follow": "follow",
         "onb.skip": "skip",
@@ -166,7 +167,7 @@ public enum EN {
         "auth.reserveSeat": "— RESERVE YOUR SEAT —",
         "auth.saveRankings": "save your\nrankings.",
         "auth.stubsAcrossDevices": "your stubs live across devices.\nsign in to keep what you just ranked.",
-        "auth.notNow": "not now — keep previewing",
+        "auth.notNow": "not now. keep previewing",
         "auth.emailLabel": "EMAIL",
         "auth.emailPlaceholder": "you@spool.co",
         "auth.passcodeLabel": "PASSCODE",
@@ -264,9 +265,9 @@ public enum EN {
         "twin.spoolTasteTwin": "SPOOL · TASTE TWIN",
         "twin.noSharedFilms": "no shared films yet.",
         "twin.rankMoreFillsIn": "rank a few more and the taste map fills in.",
-        "twin.comeBackMath": "then come back — we'll do the math.",
+        "twin.comeBackMath": "then come back. we'll do the math.",
         "twin.noDisagreements": "no big disagreements yet. rank more to find friction.",
-        "twin.nothingToRecommend": "nothing to recommend yet — rank more S/A films.",
+        "twin.nothingToRecommend": "nothing to recommend yet. rank more S/A films.",
         "twin.argue": "argue →",
         "twin.youOnly": "you only",
         "twin.filmsCount": "{n} films",
@@ -312,7 +313,7 @@ public enum EN {
         // Search placeholder reuses web journal.search register; empty states are
         // iOS copy (new zh).
         "journal.searchPlaceholder": "search your journal…",
-        "journal.listEmpty": "no entries yet — rank something and write about it",
+        "journal.listEmpty": "no entries yet. rank something and write about it",
         "journal.nothingMatches": "nothing matches",
         // Journal visibility labels REUSE the web journal.vis* keys VERBATIM.
         "journal.visDefault": "default",              // web journal.visDefault
@@ -381,7 +382,7 @@ public enum EN {
         "shelf.deleteTitle": "delete {title}?",
         "shelf.deleteTitleGeneric": "delete?",
         "shelf.deleteMessage": "this removes it from your shelf. it won't return to your watchlist.",
-        "shelf.refreshFailed": "couldn't refresh — check connection",
+        "shelf.refreshFailed": "couldn't refresh. check connection",
         "shelf.yourNotes": "YOUR NOTES",
         "shelf.loadingNotes": "loading your notes…",
 
@@ -405,7 +406,7 @@ public enum EN {
         "discover.forYou": "for you",                    // web discover.forYou register
         "discover.forYouSub": "picked from your taste",
         "discover.refresh": "refresh",                   // web discover.refresh
-        "discover.engineEmpty": "no suggestions yet — rank a few movies to seed these",
+        "discover.engineEmpty": "no suggestions yet. rank a few movies to seed these",
         "discover.engineError": "couldn't load suggestions",
         "discover.newReleases": "new releases",          // web discover.newReleases register
         "discover.newReleasesSub": "fresh in theaters and streaming",
@@ -423,7 +424,7 @@ public enum EN {
         "discover.savedA11y": "saved for later",
         // {title} carries the item name.
         "discover.savedToast": "saved {title} for later",
-        "discover.saveFailedToast": "couldn't save {title} — try again",
+        "discover.saveFailedToast": "couldn't save {title}. try again",
 
         // ── Watchlist (WatchlistScreen + WatchlistCard) ───────────────────────
         // Header + card actions. rank it / remove reuse web watchlist.* register.
@@ -432,9 +433,9 @@ public enum EN {
         "watchlist.title": "watchlist",
         "watchlist.loadFailed": "couldn't load your watchlist",
         "watchlist.tryAgain": "try again",
-        "watchlist.emptyMovies": "no movies saved yet — bookmark something to watch later",
-        "watchlist.emptyShows": "no shows saved yet — bookmark a season to watch later",
-        "watchlist.emptyBooks": "no books saved yet — bookmark one to read later",
+        "watchlist.emptyMovies": "no movies saved yet. bookmark something to watch later",
+        "watchlist.emptyShows": "no shows saved yet. bookmark a season to watch later",
+        "watchlist.emptyBooks": "no books saved yet. bookmark one to read later",
         "watchlist.rankIt": "rank it",              // web watchlist.rankIt
         "watchlist.remove": "remove",               // web watchlist.remove
         "watchlist.rankA11y": "Rank {title}",
@@ -529,7 +530,7 @@ public enum EN {
         "rankEntry.retry": "retry",
         "rankEntry.searchShowHint": "search a show to rank a season",
         "rankEntry.searchFilmHint": "search a film to rank it",
-        "rankEntry.seasonsLoadFailed": "couldn't load seasons — go back and try again",
+        "rankEntry.seasonsLoadFailed": "couldn't load seasons. go back and try again",
         "rankEntry.pickSeason": "pick a season",
         "rankEntry.whichSeason": "which season?",
         "rankEntry.loadingSeasons": "loading seasons…",
@@ -537,7 +538,7 @@ public enum EN {
         "rankEntry.noResults": "no results",                  // web search.noResults
         "rankEntry.signInShows": "sign in to rank shows",
         "rankEntry.signInBooks": "sign in to rank books",
-        "rankEntry.signInHint": "tv and books save to your account — sign in first.",
+        "rankEntry.signInHint": "tv and books save to your account. sign in first.",
         "rankEntry.signIn": "sign in",
         "rankEntry.onList": "on list",
         // {year}: the show's year (or an em-dash placeholder when unknown).
@@ -553,12 +554,12 @@ public enum EN {
         "rankEntry.saveA11y": "save for later",
         "rankEntry.savedA11y": "saved for later",
         "rankEntry.savedToast": "saved {title} for later",
-        "rankEntry.saveFailedToast": "couldn't save {title} — try again",
+        "rankEntry.saveFailedToast": "couldn't save {title}. try again",
 
         // App chrome (SpoolAppRoot). Preview-mode banner shown above the tab bar
         // to a user who onboarded without signing in — iOS-only surface (web has
         // no equivalent banner key). Em dash in en is fine (zh recast dash-free).
-        "app.previewBanner": "preview mode — sign in to save your rankings",
+        "app.previewBanner": "preview mode. sign in to save your rankings",
 
         // Settings → language row (C6-iOS Task 2). Web has no settings.* keys yet,
         // so these are iOS-first; the two option labels reuse the web
@@ -577,7 +578,7 @@ public enum EN {
         "settings.sectionAccount": "account",
         "settings.editProfile": "edit profile",
         "settings.signedIn": "signed in",
-        "settings.profileNotLoadedRetry": "profile not loaded yet — pull to retry",
+        "settings.profileNotLoadedRetry": "profile not loaded yet. pull to retry",
         "settings.profileNotLoaded": "profile not loaded yet",
         "settings.previewMode": "preview mode",
         "settings.previewModeHint": "sign in from the home screen to save your rankings",

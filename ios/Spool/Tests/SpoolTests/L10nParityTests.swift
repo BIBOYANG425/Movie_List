@@ -71,6 +71,33 @@ final class L10nParityTests: XCTestCase {
         XCTAssertEqual(offenders, [], "zh values with em dashes: \(offenders.joined(separator: ", "))")
     }
 
+    /// The owner's no-em-dash prose rule (2026-07-11) applies to EN as well.
+    /// A small set of keys use em dashes as DECORATIVE marquee framing
+    /// (`— THE RULES —`, `— vs —`) — an intentional ticket-stub stylistic
+    /// choice, not sentence punctuation — and are allowlisted here. Any NEW
+    /// sentence em dash in EN fails this test; recast it with a period.
+    func testNoEnProseValueContainsEmDash() {
+        let decorativeAllowlist: Set<String> = [
+            "onb.theRules",
+            "onb.headToHead",
+            "onb.whoShallWeSeat",
+            "onb.findYourPeople",
+            "onb.comingThisYear",
+            "auth.reserveSeat",
+            "stubDetail.friendsWatched",
+            "stubDetail.notes",
+            "ceremony.vs",
+        ]
+        let offenders = EN.table
+            .filter { !decorativeAllowlist.contains($0.key) }
+            .filter { $0.value.rangeOfCharacter(from: emDash) != nil }
+            .keys.sorted()
+        XCTAssertEqual(
+            offenders, [],
+            "en prose values with em dashes (recast with a period): \(offenders.joined(separator: ", "))"
+        )
+    }
+
     // MARK: - Interpolation parity (ports web's placeholder case)
 
     func testZhCarriesSamePlaceholdersAsEn() {
