@@ -50,7 +50,8 @@ public enum AchievementsClient {
     ///
     /// - Throws: `AchievementsError.notConfigured` when the client is missing;
     ///   any transport/decode/HTTP error from the RPC (the caller decides
-    ///   whether to swallow — `grantQuietly()` always does).
+    ///   whether to swallow — callers run this via `AchievementMilestones.grantAndEmitMilestones()`
+    ///   in a `Task.detached`, which swallows errors internally).
     public static func grant() async throws -> [String] {
         guard let client = SpoolClient.shared else {
             NSLog("[AchievementsClient] grant: no client (not configured)")

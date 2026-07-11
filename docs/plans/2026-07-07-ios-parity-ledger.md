@@ -6,14 +6,14 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 
 | Cycle | Feature | Status | Audit doc | Web-fix PR | iOS PR |
 |---|---|---|---|---|---|
-| C0 | Stub write fix | iOS build in final review | audits/2026-07-07-c0-stub-web-audit.md | #30 | (PR opens after final review) |
-| C1 | Feed + notifications | feed UI built on `feat/ios-parity-c1-feed-ui` (PR pending); data layer + web fixes already merged (#32, #34; migrations applied + probes passed 2026-07-08) | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
-| C2 | Journal + AI agent | web fixes merged (PR #33); iOS journal built on `feat/ios-parity-c2-journal` (PR pending) | audits/2026-07-08-c2-journal-web-audit.md | #33 | (PR pending) |
-| C3 | Watchlist + Discover | FULLY COMPLETE (Parts A + B) — edge functions deployed, both clients migrated off direct TMDB key, TMDB key DoD met, merged Discover on both platforms (chips + New Releases + card actions), journal wipe fix T0, anon onboarding fixtures | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (Part A: branch `fix/c3-watchlist-discover-web-blocking`; Part B: `feat/c3-part-b-suggestions`) | `feat/ios-parity-c3-watchlist` (Part A) + `feat/c3-part-b-suggestions` (Part B) |
-| C4 | Ranking management | COMPLETE — web fixes PR #39 + iOS management UI SHIPPED on `feat/ios-parity-c4-mgmt-ui` (PR pending): edit-mode drag-to-reorder (FullListScreen shelf), long-press menu (move tier / edit notes w/ probe-before-edit + wipe guard / re-rank via corrected ceremony / delete w/ confirm + ranking_remove); ceremony re-rank correction landed (Task 2 — deviation retired) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | #39 | `feat/ios-parity-c4-mgmt-ui` (PR pending) |
-| C5 | TV seasons + books | COMPLETE — web fixes PR #46 + iOS 8-task branch `feat/ios-parity-c5-tv-books` (PR pending): per-media payloads/reads, TMDB TV endpoints, OpenLibrary client, media-generic ceremony (same-media H2H), TV season UI + preselect router + coordinator whole-show identity fix, TV suggestions grid, contracts | audits/2026-07-10-c5-tv-books-web-audit.md | #46 | `feat/ios-parity-c5-tv-books` (PR pending) |
-| C6 | zh localization | COMPLETE (both halves) — web PR #48 merged; iOS on `feat/ios-parity-c6-zh` (PR pending) | audits/2026-07-10-c6-zh-web-audit.md | #48 | `feat/ios-parity-c6-zh` (PR pending) |
-| C7 | Smaller items | COMPLETE (both halves) — web half PR `fix/c7-web-blocking` (achievements RLS + `grant_achievements()` RPC, D2 toast gate, descopes); iOS half on `feat/ios-parity-c7` (5 shipped tasks: achievements surface + server grant, movie-mode suggestions grid, Discover owned-filter + save-consumes, shelf-emission notes, profile deep links + AASA/entitlements). iOS 782 → 854. | — | `fix/c7-web-blocking` | `feat/ios-parity-c7` (PR pending) |
+| C0 | Stub write fix | COMPLETE (both halves) | audits/2026-07-07-c0-stub-web-audit.md | #30 | #31 |
+| C1 | Feed + notifications | COMPLETE (both halves) — data layer #34 + feed UI #35; migrations applied + probes passed 2026-07-08 | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 + #35 |
+| C2 | Journal + AI agent | COMPLETE (both halves) | audits/2026-07-08-c2-journal-web-audit.md | #33 | #37 |
+| C3 | Watchlist + Discover | FULLY COMPLETE (Parts A + B) — edge functions deployed, both clients migrated off direct TMDB key, TMDB key DoD met, merged Discover on both platforms (chips + New Releases + card actions), journal wipe fix T0, anon onboarding fixtures | audits/2026-07-08-c3-watchlist-discover-web-audit.md | Part A: #36; Part B: #45 | #42 (Part A) + #45 (Part B) |
+| C4 | Ranking management | COMPLETE (both halves) — edit-mode drag-to-reorder (FullListScreen shelf), long-press menu (move tier / edit notes w/ probe-before-edit + wipe guard / re-rank via corrected ceremony / delete w/ confirm + ranking_remove); ceremony re-rank correction landed (Task 2 — deviation retired) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | #39 | #44 |
+| C5 | TV seasons + books | COMPLETE (both halves) — per-media payloads/reads, TMDB TV endpoints, OpenLibrary client, media-generic ceremony (same-media H2H), TV season UI + preselect router + coordinator whole-show identity fix, TV suggestions grid, contracts | audits/2026-07-10-c5-tv-books-web-audit.md | #46 | #47 |
+| C6 | zh localization | COMPLETE (both halves) | audits/2026-07-10-c6-zh-web-audit.md | #48 | #49 |
+| C7 | Smaller items | COMPLETE (both halves) — web half PR #50 (achievements RLS + `grant_achievements()` RPC, D2 toast gate, descopes); iOS half on `feat/ios-parity-c7` (5 shipped tasks: achievements surface + server grant, movie-mode suggestions grid, Discover owned-filter + save-consumes, shelf-emission notes, profile deep links + AASA/entitlements). iOS 782 → 854. | audits/2026-07-11-c7-smalls-web-audit.md | #50 | `feat/ios-parity-c7` (PR pending) |
 | — | iOS design-check | NEXT (queued after C5–C7; owner, 2026-07-10). Seed = owner overlay screenshot: preview banner over Recent Stubs, floating `+` over banner/nav, "4 friends" pill clipped, settings ghost circle. | — | — | — |
 
 ## Audit findings
@@ -881,19 +881,22 @@ Baseline: 782 iOS tests (C6-iOS end). Final: 854 (832 after T4; +20 T5; +2 fix r
 
 - **T1 (achievements surface):** `AchievementsClient` — `grant()` via
   `.rpc("grant_achievements")` (`AchievementsClient.swift:61`; POST, returns the
-  newly-granted keys), fire-and-forget `grantQuietly()`, badge reads from
-  `user_achievements`, and the pure 16-badge `BadgeCatalog` (`key:` count verified
-  = 16, pinned to web's 16-entry `BADGE_CATALOG` in
-  `components/social/AchievementsView.tsx`). `AchievementsSection` on `ProfileScreen`
+  newly-granted keys), badge reads from `user_achievements`, and the pure 16-badge
+  `BadgeCatalog` (`key:` count verified = 16, pinned to web's 16-entry `BADGE_CATALOG`
+  in `components/social/AchievementsView.tsx`). `AchievementsSection` on `ProfileScreen`
   (own profile: all 16, unearned dimmed) and `FriendProfileScreen` (earned only).
-  Granting stays SERVER-side (the RPC owns the `badge_unlock` notification write and
-  the milestone-copy) — the client never writes `badge_unlock` rows.
+  Granting stays SERVER-side; `grant()` is called via
+  `AchievementMilestones.grantAndEmitMilestones()` in a `Task.detached` so it never
+  delays the primary write — the client never writes `badge_unlock` rows (the RPC
+  owns that notification write; body = initcap badge label per
+  `20260711_achievements_server_grant.sql`).
 - **T2 (grant hooks + milestones):** grant fired after confirmed writes in
   `RankPersistence`, `JournalDraftModel` (via `Task.detached` — does NOT delay
   composer dismissal), and `FollowRepository` (new-edge only). Milestone activity
   events emitted ONLY for newly-granted keys (`AchievementMilestones.grantAndEmitMilestones`,
-  `BADGE_MILESTONE_COPY`). Clients never write `badge_unlock` notifications
-  (server-side RPC does).
+  `BADGE_MILESTONE_COPY` — CLIENT-SIDE iOS copy map, mirroring web
+  `services/achievementService.ts` `BADGE_MILESTONE_COPY`). Clients never write
+  `badge_unlock` notifications (server-side RPC does).
 - **T3 (movie-mode in-flow suggestions grid — deferred-sweep #2):** the C5 TV
   suggestions grid PARAMETERIZED (not forked) for movie mode (`SuggestionsClient .movie`,
   consume-splice on pick, backfill refill, refresh, session-excludes capped 200).
@@ -920,9 +923,9 @@ Baseline: 782 iOS tests (C6-iOS end). Final: 854 (832 after T4; +20 T5; +2 fix r
 **Descopes (owner-reviewable, recorded in the C7 web ledger row §Descopes):** NO
 curated lists on iOS (never launched — zero UI callers, empty prod rows); NO
 send-3-recs (never shipped on any platform); NO Letterboxd import on iOS (web-only
-migration utility, permanent platform divergence). The C7-iOS plan
-(`docs/plans/2026-07-11-c7-ios-plan.md`) predates these adjudications and still lists
-them as candidate work — the ledger Descopes section is the settled state.
+migration utility, permanent platform divergence). The program-design doc
+(`docs/plans/2026-07-07-ios-parity-program-design.md`, line 33) still lists
+them as candidate C7 scope — the ledger Descopes section is the settled state.
 
 **Owner infra outstanding (blocks the `https` universal-link half only; the
 `spool://` custom-scheme half works with no infra):**

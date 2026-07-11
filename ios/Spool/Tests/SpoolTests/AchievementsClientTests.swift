@@ -10,8 +10,9 @@ import XCTest
 ///    15 grantable keys equal the RPC's grantable set, category ordering + copy,
 ///  - `EarnedBadge` decodes the `user_achievements` SELECT projection
 ///    (`badge_key`, `unlocked_at`) with the snake_case → camelCase mapping,
-///  - `grantQuietly()` swallows every error (never throws) — the fire-and-forget
-///    post-write contract posture.
+///  - `grant()` is called via `AchievementMilestones.grantAndEmitMilestones()` in a
+///    `Task.detached` at each hook site — errors are swallowed there, never thrown
+///    to the primary write path (fire-and-forget post-write contract posture).
 final class AchievementsClientTests: XCTestCase {
 
     private let decoder = JSONDecoder()
