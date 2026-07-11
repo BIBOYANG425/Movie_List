@@ -50,6 +50,11 @@ public enum EN {
         // (i18n/en.ts). Em-dash ban is zh-only; en value is faithful to web.
         "toast.saveFailed": "Failed to save — please try again",
 
+        // Deep-link profile resolution failed (C7-iOS Task 5): a spool://u/…
+        // or rankspool.com/u/… link named a username with no matching profile,
+        // or the lookup failed. iOS-only surface. New zh below.
+        "toast.profileNotFound": "couldn't find that profile",
+
         // ── Feed (FeedScreen, FeedTicket, FeedTicketBack) ─────────────────────
         // Discover header a11y reuses web nav.discover. Mode switcher: the
         // friends pill is iOS-short "friends" (feed.modeFriends, new zh); explore
@@ -232,6 +237,21 @@ public enum EN {
         "friendProfile.theirTop4": "THEIR TOP 4 · S-TIER",
         "friendProfile.mutual": "◉ {n} mutual",
         "friendProfile.stubsPill": "{n} stubs",
+
+        // ── Achievements section (AchievementsSection on Profile / FriendProfile) ─
+        // Section CHROME localizes; badge NAMES + DESCRIPTIONS stay EN proper
+        // nouns (web's BADGE_CATALOG copy lives in AchievementsView.tsx, NOT the
+        // i18n tables — web zh mode shows the same EN badge names). Category
+        // labels mirror web CATEGORY_STYLES.label.
+        "achievements.title": "ACHIEVEMENTS",
+        "achievements.count": "{earned}/{total} UNLOCKED",
+        "achievements.noneYet": "no badges yet.",
+        "achievements.loading": "loading badges…",
+        "achievements.locked": "locked",
+        "achievements.category.milestone": "MILESTONES",
+        "achievements.category.social": "SOCIAL",
+        "achievements.category.taste": "TASTE",
+        "achievements.category.special": "SPECIAL",
 
         // ── Taste twin (TwinScreen) ───────────────────────────────────────────
         // The narrative summary/fight SENTENCES (concatenated Text + markText,
@@ -508,6 +528,7 @@ public enum EN {
         "rankEntry.suggestionsLoadFailed": "couldn't load suggestions",
         "rankEntry.retry": "retry",
         "rankEntry.searchShowHint": "search a show to rank a season",
+        "rankEntry.searchFilmHint": "search a film to rank it",
         "rankEntry.seasonsLoadFailed": "couldn't load seasons — go back and try again",
         "rankEntry.pickSeason": "pick a season",
         "rankEntry.whichSeason": "which season?",
@@ -525,6 +546,14 @@ public enum EN {
         "rankEntry.episodeSingular": "{n} episode",
         "rankEntry.episodePlural": "{n} episodes",
         "rankEntry.ranked": "ranked",
+        // Rank-flow suggestion-grid save affordance (C7-iOS Task 4) — the small
+        // bookmark on a movie/show suggestion card. Mirrors web's modal-grid
+        // bookmark (`AddMediaModal`/`AddTVSeasonModal` `handleBookmark*`). A11y
+        // labels + optimistic-save toasts. {title}: the movie/show title.
+        "rankEntry.saveA11y": "save for later",
+        "rankEntry.savedA11y": "saved for later",
+        "rankEntry.savedToast": "saved {title} for later",
+        "rankEntry.saveFailedToast": "couldn't save {title} — try again",
 
         // App chrome (SpoolAppRoot). Preview-mode banner shown above the tab bar
         // to a user who onboarded without signing in — iOS-only surface (web has

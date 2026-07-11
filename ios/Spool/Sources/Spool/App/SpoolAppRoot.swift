@@ -133,6 +133,67 @@ public struct SpoolAppRoot: View {
             // modals. Mounted once at the root so every screen shares one toast.
             ToastHost()
         }
+        // Inbound deep links (C7-iOS Task 5): both the `spool://u/{username}`
+        // custom scheme AND real universal links on rankspool.com land here.
+        // The pure `ProfileDeepLink` router classifies the URL; only profile
+        // links are handled. The OAuth callback (`spool://auth-callback`) is
+        // recognised and left ENTIRELY to the existing ASWebAuthenticationSession
+        // machinery in AuthService — this handler early-returns without touching
+        // it. Anything unroutable is ignored (the OS may deliver unrelated URLs).
+        .onOpenURL { url in handleDeepLink(url) }
+    }
+
+    /// Route an inbound deep-link URL. Profile links resolve the username to a
+    /// real profile row and present `FriendProfileScreen` via the same
+    /// `friendProfileOpen` seam feed/friends taps use; an unknown username (or a
+    /// lookup failure) surfaces the not-found toast. `.authCallback` and
+    /// `.unhandled` are deliberately no-ops here.
+    private func handleDeepLink(_ url: URL) {
+        switch ProfileDeepLink.route(for: url) {
+        case .profile(let username):
+            Task { await presentProfile(forUsername: username) }
+        case .authCallback, .unhandled:
+            // authCallback belongs to AuthService's OAuth session; unhandled
+            // URLs are not ours. Both are intentional no-ops.
+            break
+        }
+    }
+
+    /// Resolve `username` → profile row and present the read-only profile. Runs
+    /// on the main actor (SpoolAppRoot is a `View`, so state writes are already
+    /// main-actor-isolated) and hops through `ProfileRepository`. A nil row or a
+    /// thrown error both show the not-found toast — a deep link that can't land
+    /// on a person should tell the user, not fail silently.
+    @MainActor
+    private func presentProfile(forUsername username: String) async {
+        do {
+            guard let row = try await ProfileRepository.shared.getProfileByUsername(username) else {
+                ToastCenter.shared.show(L10n.t("toast.profileNotFound"), level: .error)
+                return
+            }
+            // Reuse the exact seam FeedScreen.onOpenActor uses: build a Friend
+            // carrying the resolved userID (FriendProfileScreen loads everything
+            // from userID) and set friendProfileOpen. Clear every state that
+            // outranks `friendProfileOpen` in the `screen` builder priority chain
+            // (flow > stubShare > stubDetail > friendProfileOpen > twinOpen) so
+            // the profile lands cleanly on top regardless of what is up.
+            // Also dismiss the settings sheet — it sits above the screen layer
+            // and would otherwise obscure the profile.
+            flow = nil
+            stubShare = nil
+            stubDetail = nil
+            twinOpen = nil
+            showSettings = false
+            friendProfileOpen = Friend(
+                handle: row.handle,
+                name: row.displayedName,
+                twin: 0,
+                userID: row.id
+            )
+        } catch {
+            NSLog("[SpoolAppRoot] deep-link profile resolve failed for '\(username)': \(error)")
+            ToastCenter.shared.show(L10n.t("toast.profileNotFound"), level: .error)
+        }
     }
 
     private var mainApp: some View {

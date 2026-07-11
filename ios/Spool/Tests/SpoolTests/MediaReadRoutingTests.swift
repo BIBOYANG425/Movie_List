@@ -45,7 +45,7 @@ final class MediaReadRoutingTests: XCTestCase {
         director: String? = nil, creator: String? = nil, author: String? = nil,
         seasonTitle: String? = nil, seasonNumber: Int? = nil,
         olRatingsAverage: Double? = nil,
-        genres: [String] = ["Drama"], year: String? = "2011"
+        genres: [String] = ["Drama"], year: String? = "2011", notes: String? = nil
     ) -> RankingRow {
         RankingRow(
             id: UUID(), user_id: UUID(), tmdb_id: tmdbId, title: title,
@@ -55,7 +55,7 @@ final class MediaReadRoutingTests: XCTestCase {
             season_number: seasonNumber, season_title: seasonTitle,
             creator: creator, episode_count: nil,
             author: author, ol_ratings_average: olRatingsAverage,
-            tier: tier, rank_position: rank, notes: nil
+            tier: tier, rank_position: rank, notes: notes
         )
     }
 
@@ -69,6 +69,19 @@ final class MediaReadRoutingTests: XCTestCase {
         XCTAssertEqual(item.tier, .S)
         XCTAssertEqual(item.rank, 0)
         XCTAssertNil(item.seasonTitle, "movies carry no season line")
+        XCTAssertNil(item.notes, "a row with a null notes column projects nil notes")
+    }
+
+    /// C7-iOS Task 4: `rankedItem(from:)` projects the row's `notes` column onto
+    /// the shelf item so the management emissions (`RankMove`/`RankRemoveEmitter`)
+    /// can thread `{notes?, year?}` like web. The `.select()` already returns the
+    /// column; before this task the mapper dropped it, forcing `notes: nil`.
+    func testRowProjectsNotesOntoRankedItem() throws {
+        let r = row(tmdbId: "tmdb_42", title: "Heat", tier: "S", rank: 0,
+                    director: "Michael Mann", notes: "the diner scene")
+        let item = try XCTUnwrap(RankingRepository.rankedItem(from: r))
+        XCTAssertEqual(item.notes, "the diner scene",
+                       "the row's notes column is projected onto RankedItem.notes")
     }
 
     func testTVRowMapsCreatorAsAttributionAndCarriesSeasonTitle() throws {

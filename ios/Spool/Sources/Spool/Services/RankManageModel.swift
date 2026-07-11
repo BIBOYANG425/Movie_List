@@ -24,8 +24,10 @@ import SwiftUI
 ///     `moveRanking` persists (append ⇒ atIndex nil). ONE `ranking_move` with
 ///     the TARGET tier on success; revert both tiers + toast on throw.
 ///  B. EDIT NOTES (`fetchNotes` + `saveNotes`). `fetchNotes` PROBES the live
-///     row's notes so the sheet never blanks an existing note (the shelf's
-///     `RankedItem` has no notes column). Returns `.success(notes?)` on a clean
+///     row's notes so the sheet never blanks an existing note: the shelf's
+///     `RankedItem.notes` is a projection snapshot (C7-iOS Task 4) that a
+///     concurrent edit elsewhere may have superseded, so the sheet reads the
+///     live row rather than trusting the cached value. Returns `.success(notes?)` on a clean
 ///     probe or `.probeFailed` on a throw — the sheet shows a warning and blocks
 ///     blank saves on the failed-probe path so a whitespace commit can never wipe
 ///     a real note. A toast also fires on probe failure. `saveNotes` trims /
@@ -65,8 +67,8 @@ import SwiftUI
 ///     then persisted. A throw REVERTS that tier to the exact prior order and
 ///     toasts. Only a CONFIRMED change emits ONE `ranking_move` (metadata
 ///     `{notes?, year?}` from the moved item — NEVER watched-with, per the
-///     `activity_events` contract; `RankedItem` carries no notes, so notes is
-///     always nil here).
+///     `activity_events` contract; `notes` rides from the projected
+///     `RankedItem.notes`, C7-iOS Task 4, matching web's move sites).
 ///
 ///  5. IN-FLIGHT GUARD. `isReordering` blocks a second concurrent drop while an
 ///     RPC is already in flight (same pattern as `JournalDraftModel`'s `saving`
@@ -97,9 +99,10 @@ public final class RankManageModel: ObservableObject {
 
     /// The `ranking_move` emission input for one confirmed in-tier reorder. The
     /// media columns come from the MOVED item; metadata is `{notes?, year?}`
-    /// (watched-with STRIPPED — the move sites never carry it). `RankedItem`
-    /// has no notes field, so `notes` is always nil for a drag reorder; `year`
-    /// is the moved item's year as a string when present.
+    /// (watched-with STRIPPED — the move sites never carry it). `notes` rides
+    /// from the projected `RankedItem.notes` (C7-iOS Task 4), nil when the row's
+    /// notes column is empty; `year` is the moved item's year as a string when
+    /// present.
     public struct MoveEvent: Equatable, Sendable {
         public let tmdbId: String
         public let title: String
@@ -123,7 +126,8 @@ public final class RankManageModel: ObservableObject {
     /// Same shape as `MoveEvent`: media columns from the deleted item, metadata
     /// `{notes?, year?}` (watched-with STRIPPED — web's `ranking_remove` writer
     /// passes only `{notes, year}`). `tier` is the tier the row was removed
-    /// FROM. `RankedItem` carries no notes, so `notes` is nil on the menu path.
+    /// FROM. `notes` rides from the projected `RankedItem.notes` (C7-iOS Task 4),
+    /// nil when the row's notes column is empty.
     public struct RemoveEvent: Equatable, Sendable {
         public let tmdbId: String
         public let title: String
@@ -434,14 +438,17 @@ public final class RankManageModel: ObservableObject {
             // read-only render (sorted by rank) stay consistent mid-edit and
             // after edit mode exits.
             tiers[tier] = Self.renumbered(reordered)
-            // ONE ranking_move for the moved item.
+            // ONE ranking_move for the moved item. `notes` rides from the
+            // projected shelf item (C7-iOS Task 4 — the `RankedItem` now carries
+            // the row's notes) so a drag reorder's `{notes?, year?}` metadata
+            // matches web's move sites.
             let event = MoveEvent(
                 tmdbId: movedItem.id,
                 title: movedItem.title,
                 tier: tier.rawValue,
                 posterUrl: movedItem.posterUrl,
                 year: movedItem.year.map(String.init),
-                notes: nil
+                notes: movedItem.notes
             )
             await emitIO(event)
         } catch {
@@ -493,13 +500,14 @@ public final class RankManageModel: ObservableObject {
             // the UI has moved on; skip the emission and let a reload reconcile.
             guard media == opMedia else { return }
             // ONE ranking_move for the moved item, carrying the TARGET tier.
+            // `notes` rides from the projected shelf item (C7-iOS Task 4).
             await emitIO(MoveEvent(
                 tmdbId: item.id,
                 title: item.title,
                 tier: target.rawValue,
                 posterUrl: item.posterUrl,
                 year: item.year.map(String.init),
-                notes: nil
+                notes: item.notes
             ))
         } catch {
             guard media == opMedia else { return }
@@ -601,13 +609,15 @@ public final class RankManageModel: ObservableObject {
             // Media switched mid-flight — skip the emission; the delete landed on
             // the old table and a reload on return reflects it.
             guard media == opMedia else { return }
+            // `notes` rides from the projected shelf item (C7-iOS Task 4) so a
+            // delete's `ranking_remove` `{notes?, year?}` matches web's writer.
             await emitRemoveIO(RemoveEvent(
                 tmdbId: item.id,
                 title: item.title,
                 tier: tier.rawValue,
                 posterUrl: item.posterUrl,
                 year: item.year.map(String.init),
-                notes: nil
+                notes: item.notes
             ))
         } catch {
             guard media == opMedia else { return }

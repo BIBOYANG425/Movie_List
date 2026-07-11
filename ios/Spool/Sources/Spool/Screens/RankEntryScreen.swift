@@ -3,16 +3,23 @@ import SwiftUI
 /// The rank-flow entry screen (C5-iOS Task 6). A `movie | tv | book` segmented
 /// switch drives three search modes off one `RankEntryModel`:
 ///
-///  * MOVIE — film search → tap → `onPick(movie)` (byte-identical to pre-C5).
+///  * MOVIE — an empty search field surfaces a SUGGESTIONS grid (MOVIES, C7-iOS
+///    Task 3, signed-in only) via `SuggestionsClient.fetch(mediaType: .movie)`;
+///    typing swaps it for film search. Tap a suggested/searched movie →
+///    `onPick(movie)` STRAIGHT to the ceremony (no season grid); a picked
+///    suggestion threads `voteAverage` (`RankEntryModel.rankMovie(from:)`) so the ceremony's
+///    prediction seeds. Signed-out movie keeps its demo-fixtures search path and
+///    shows NO grid (the engine 401s signed-out).
 ///  * TV — an empty search field surfaces a SUGGESTIONS grid (SHOWS, Task 7) via
 ///    `SuggestionsClient.fetch(mediaType: .tv)`; typing swaps it for show search.
 ///    Tap a suggested/searched show → season grid (Specials filtered by
 ///    `getTVShowDetails`, already-ranked seasons disabled) → tap season →
 ///    `onPick(seasonMovie)` with the composite `tv_{show}_s{n}` id + real tv
 ///    fields (T5's construction conventions via `Movie.tvSeason`). The grid's
-///    consume-splice / backfill / Refresh choreography lives in `RankEntryModel`.
+///    consume-splice / backfill / Refresh choreography lives in `RankEntryModel`,
+///    ONE media-parameterized implementation shared with movie mode.
 ///  * BOOK — OpenLibrary search → tap book → `onPick(bookMovie)` (`ol_` id,
-///    author, `olRatingsAverage`; `voteAverage` stays nil).
+///    author, `olRatingsAverage`; `voteAverage` stays nil). No grid.
 ///
 /// tv/book modes require sign-in (the fixture pool is movie-shaped); the model's
 /// `requiresSignIn` gates the results with a sign-in nudge. `onSignIn` bubbles a
@@ -29,6 +36,11 @@ public struct RankEntryScreen: View {
     @StateObject private var model: RankEntryModel
     @State private var query: String = ""
     @State private var searchDebounce: Task<Void, Never>? = nil
+    /// One-shot guard so the initial-mode suggestions grid loads exactly once on
+    /// first appearance (the default movie mode never fires a `setMode`, which is
+    /// what loads the tv grid — without this the default movie grid would stay
+    /// empty until the user tabbed away and back).
+    @State private var didLoadInitialSuggestions = false
 
     public init(
         onPick: @escaping (Movie) -> Void,
@@ -82,6 +94,14 @@ public struct RankEntryScreen: View {
                 .padding(.top, 60)
                 .padding(.bottom, 40)
             }
+        }
+        .onAppear {
+            // Load the initial-mode suggestions grid once (the default movie mode
+            // opens without a setMode, which is the tv grid's load trigger). Gated
+            // internally: signed-out movie / book are no-ops.
+            guard !didLoadInitialSuggestions else { return }
+            didLoadInitialSuggestions = true
+            model.loadTVSuggestions()
         }
     }
 
@@ -165,18 +185,21 @@ public struct RankEntryScreen: View {
         SearchField(text: $query, placeholder: model.searchPlaceholder)
             .padding(.top, 16)
             .onChange(of: query) { newValue in scheduleSearch(for: newValue) }
-            // Always-present view: observe the sign-in gate here so the
-            // true→false transition fires regardless of which branch is
-            // currently rendered. Attaching to `resultsSection` was wrong —
-            // that view only exists in the `else` branch, so it is being
-            // INSERTED (not updated) when requiresSignIn flips false, and
-            // SwiftUI never calls onChange on initial attachment.
-            .onChange(of: model.requiresSignIn) { nowRequires in
-                // After a signed-out user signs in from the nudge, load the
-                // tv/book suggestions that were suppressed behind the gate.
-                if !nowRequires && (model.mode == .tv || model.mode == .book) {
-                    if model.mode == .tv { model.loadTVSuggestions() }
-                }
+            // Always-present view: observe the raw suggestions gate so the
+            // gate-open transition fires for BOTH movie and tv regardless of
+            // which branch is currently rendered. Attaching to `resultsSection`
+            // was wrong — that view only exists in the `else` branch, so it is
+            // being INSERTED (not updated) when the gate opens, and SwiftUI
+            // never calls onChange on initial attachment.
+            //
+            // A single gate observer covers all modes: tv mode's gate opens
+            // when `requiresSignIn` flips false (session lands); movie mode's
+            // gate opens when `isSignedInIO` flips true (same event, but movie
+            // mode's `requiresSignIn` never flips — it is always false because
+            // movie keeps a fixtures search fallback). Book mode never opens the
+            // gate (`modeHasSuggestionGrid == false`), so it is a no-op.
+            .onChange(of: model.suggestionsGateOpen) { gateOpen in
+                if gateOpen { model.loadTVSuggestions() }
             }
 
         if model.requiresSignIn {
@@ -189,9 +212,14 @@ public struct RankEntryScreen: View {
     @ViewBuilder
     private var resultsSection: some View {
         if query.trimmingCharacters(in: .whitespaces).isEmpty {
-            // Empty query: tv mode surfaces the suggestions grid (SHOWS); movie/book
-            // show nothing until the user types (movie's grid lives on Discover).
-            if model.mode == .tv { tvSuggestionsGrid }
+            // Empty query: movie mode surfaces a MOVIES grid (signed-in only;
+            // signed-out movie shows nothing here, its fixtures render only on a
+            // typed query); tv mode surfaces a SHOWS grid; book shows nothing.
+            switch model.mode {
+            case .movie: movieSuggestionsGrid
+            case .tv:    tvSuggestionsGrid
+            case .book:  EmptyView()
+            }
         } else {
             switch model.mode {
             case .movie: movieResults
@@ -281,7 +309,11 @@ public struct RankEntryScreen: View {
                                 GridItem(.flexible(), spacing: 10)],
                       spacing: 12) {
                 ForEach(model.tvSuggestions) { show in
-                    SuggestedShowCard(show: show) { model.pickSuggestedShow(show) }
+                    SuggestedShowCard(
+                        show: show,
+                        saved: model.isSaved(show.id),
+                        onSave: { Task { await model.saveShowSuggestion(show) } }
+                    ) { model.pickSuggestedShow(show) }
                 }
             }
             .padding(.top, 12)
@@ -297,6 +329,70 @@ public struct RankEntryScreen: View {
         } else {
             // No suggestions (fresh account / server empty) — a quiet hint to search.
             Text(L10n.t("rankEntry.searchShowHint"))
+                .font(SpoolFonts.hand(14))
+                .foregroundStyle(SpoolTokens.paper.inkSoft)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 24)
+        }
+    }
+
+    // MARK: movie suggestions grid (C7-iOS Task 3) — shown under an empty search field
+
+    @ViewBuilder
+    private var movieSuggestionsGrid: some View {
+        // Signed-out movie shows NO grid (the engine 401s; the fixtures path only
+        // renders on a typed query). Only render when the gate is open.
+        if !model.suggestionsGateOpen {
+            EmptyView()
+        } else if model.isLoadingTVSuggestions {
+            searchingRow
+        } else if !model.movieSuggestions.isEmpty {
+            HStack {
+                Text((model.tvSuggestionsHasBackfill ? L10n.t("rankEntry.basedOnTaste") : L10n.t("rankEntry.popularNow")).uppercased())
+                    .font(SpoolFonts.mono(10))
+                    .tracking(2)
+                    .foregroundStyle(SpoolTokens.paper.inkSoft)
+                Spacer()
+                Button(action: { model.refreshTVSuggestions() }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(L10n.t("rankEntry.refresh"))
+                            .font(SpoolFonts.mono(10))
+                    }
+                    .foregroundStyle(SpoolTokens.paper.inkSoft)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 18)
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10),
+                                GridItem(.flexible(), spacing: 10),
+                                GridItem(.flexible(), spacing: 10)],
+                      spacing: 12) {
+                ForEach(model.movieSuggestions) { movie in
+                    SuggestedMovieCard(
+                        movie: movie,
+                        saved: model.isSaved(movie.id),
+                        onSave: { Task { await model.saveMovieSuggestion(movie) } }
+                    ) {
+                        if let picked = model.pickSuggestedMovie(movie) { onPick(picked) }
+                    }
+                }
+            }
+            .padding(.top, 12)
+        } else if model.tvSuggestionsFailed {
+            VStack(spacing: 10) {
+                Text(L10n.t("rankEntry.suggestionsLoadFailed"))
+                    .font(SpoolFonts.hand(14))
+                    .foregroundStyle(SpoolTokens.paper.inkSoft)
+                SpoolPill(L10n.t("rankEntry.retry"), size: .sm) { model.loadTVSuggestions() }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 24)
+        } else {
+            // No suggestions (fresh account / server empty) — a quiet hint to search.
+            Text(L10n.t("rankEntry.searchFilmHint"))
                 .font(SpoolFonts.hand(14))
                 .foregroundStyle(SpoolTokens.paper.inkSoft)
                 .frame(maxWidth: .infinity)
@@ -539,10 +635,14 @@ struct ShowRow: View {
     }
 }
 
-/// A suggested SHOW poster card in the tv suggestions grid (Task 7). Tapping it
-/// routes into the same season-grid flow as a search pick (`pickSuggestedShow`).
+/// A suggested SHOW poster card in the tv suggestions grid (Task 7). Tapping the
+/// card routes into the same season-grid flow as a search pick
+/// (`pickSuggestedShow`). A bookmark overlaid on the poster (C7-iOS Task 4) saves
+/// the WHOLE SHOW for later without leaving the grid (web `handleBookmarkSuggestion`).
 struct SuggestedShowCard: View {
     let show: TMDBTVShow
+    var saved: Bool = false
+    var onSave: (() -> Void)? = nil
     let action: () -> Void
 
     var body: some View {
@@ -552,6 +652,12 @@ struct SuggestedShowCard: View {
                     PosterBlock(title: firstWord(show.name), year: Int(show.year),
                                 director: show.creators.first ?? "—",
                                 seed: seed(show.id), posterUrl: show.posterUrl)
+                        .overlay(alignment: .topTrailing) {
+                            if let onSave {
+                                SuggestionBookmarkButton(saved: saved, action: onSave)
+                                    .padding(5)
+                            }
+                        }
                     Text(show.name)
                         .font(SpoolFonts.serif(13))
                         .foregroundStyle(t.ink)
@@ -574,6 +680,80 @@ struct SuggestedShowCard: View {
         var h: UInt64 = 5381
         for b in id.utf8 { h = (h &* 33) &+ UInt64(b) }
         return Int(h % 1000)
+    }
+}
+
+/// A suggested MOVIE poster card in the movie suggestions grid (C7-iOS Task 3).
+/// Tapping the card consumes the suggestion and routes STRAIGHT to the ceremony
+/// (no season grid). A small bookmark overlaid on the poster (C7-iOS Task 4)
+/// saves the movie for later without leaving the grid — web modal-grid parity.
+struct SuggestedMovieCard: View {
+    let movie: TMDBMovie
+    var saved: Bool = false
+    var onSave: (() -> Void)? = nil
+    let action: () -> Void
+
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            Button(action: action) {
+                VStack(alignment: .leading, spacing: 4) {
+                    PosterBlock(title: firstWord(movie.title), year: Int(movie.year),
+                                director: "—",
+                                seed: seed(movie.id), posterUrl: movie.posterUrl)
+                        .overlay(alignment: .topTrailing) {
+                            if let onSave {
+                                SuggestionBookmarkButton(saved: saved, action: onSave)
+                                    .padding(5)
+                            }
+                        }
+                    Text(movie.title)
+                        .font(SpoolFonts.serif(13))
+                        .foregroundStyle(t.ink)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(movie.year.isEmpty ? "—" : movie.year)
+                        .font(SpoolFonts.mono(9))
+                        .foregroundStyle(t.inkSoft)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func firstWord(_ s: String) -> String {
+        s.split(separator: " ").first.map(String.init) ?? s
+    }
+    private func seed(_ id: String) -> Int {
+        var h: UInt64 = 5381
+        for b in id.utf8 { h = (h &* 33) &+ UInt64(b) }
+        return Int(h % 1000)
+    }
+}
+
+/// The small save-for-later bookmark overlaid on a suggestion poster (C7-iOS
+/// Task 4). Filled + disabled once saved this session. Its own `Button` sits
+/// ON TOP of the card's tap button, so `.plain` + a hit area keeps the two taps
+/// distinct (a bookmark tap saves; a card tap picks). Shared by the movie + show
+/// suggestion cards.
+struct SuggestionBookmarkButton: View {
+    let saved: Bool
+    let action: () -> Void
+
+    var body: some View {
+        SpoolThemeReader { t, _ in
+            Button(action: action) {
+                Image(systemName: saved ? "bookmark.fill" : "bookmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(t.ink)
+                    .padding(5)
+                    .background(Circle().fill(t.cream.opacity(0.92)))
+                    .overlay(Circle().stroke(t.ink, lineWidth: 1.2))
+            }
+            .buttonStyle(.plain)
+            .disabled(saved)
+            .accessibilityLabel(saved ? L10n.t("rankEntry.savedA11y") : L10n.t("rankEntry.saveA11y"))
+        }
     }
 }
 

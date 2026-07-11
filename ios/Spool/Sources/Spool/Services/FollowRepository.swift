@@ -14,7 +14,14 @@ import Supabase
 /// in `followUser` — the existing RLS policy on `notifications` handles the
 /// permission check; we just fire-and-forget the insert.
 ///
-/// Header last reviewed: 2026-07-07
+/// POST-WRITE ACHIEVEMENT HOOK (C7-iOS Task 2): after a CONFIRMED new follow
+/// edge (`follow` → `return true`), `follow` fires
+/// `AchievementMilestones.grantAndEmitMilestones()` in a DETACHED task —
+/// fire-and-forget, never gating the follow. The already-following no-op and a
+/// genuine insert failure never reach it, so a badge lands only on a real new
+/// follow.
+///
+/// Header last reviewed: 2026-07-10
 public actor FollowRepository {
 
     public static let shared = FollowRepository()
@@ -173,6 +180,17 @@ public actor FollowRepository {
             // because the notification insert hiccupped.
             NSLog("[FollowRepository] follow notification insert failed: \(error)")
         }
+
+        // POST-WRITE ACHIEVEMENT HOOK (C7-iOS Task 2). Fire-and-forget in a
+        // DETACHED task so it never gates the follow: the `friend_follows` insert
+        // above is the primary action; `grant_achievements()` (which may award
+        // `first_follow` to the caller, keyed off `auth.uid()`) + any milestone
+        // events are purely opportunistic. Runs ONLY on this new-edge path — the
+        // already-following no-op (`return false` above) and a genuine insert
+        // failure (re-thrown above) never reach here, so a badge is granted only
+        // when a NEW follow actually landed. Mirrors web's recommended post-write
+        // grant (`docs/contracts/shared-payloads.md` § achievements — follow).
+        Task.detached { await AchievementMilestones.grantAndEmitMilestones() }
         return true
     }
 

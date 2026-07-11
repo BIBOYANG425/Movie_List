@@ -86,6 +86,20 @@ them fine but loses `notes`/`year` (profile activity,
 `services/activityService.ts:103-104`) and "watched with". The C1 iOS PR
 adopts the shapes above.
 
+**iOS management emissions — `{notes?, year?}` (both clients identical since
+C7-iOS Task 4):** the iOS management surface (`RankMoveEmitter`/
+`RankRemoveEmitter`, bound through `RankManageModel`) writes `ranking_move`
+(drag reorder / tier move) and `ranking_remove` (delete) with metadata
+`{notes?, year?}` and never `watched_with_user_ids` — the same shape as web's
+move/remove writer sites above. Until C7-iOS the shelf projection dropped the
+`notes` column, so these emissions carried `{year?}` only (the C4-UI analytics
+divergence). C7-iOS Task 4 added `RankedItem.notes` (projected from `row.notes`
+by `RankingRepository.rankedItem(from:)`) and threaded it into both emitters
+(`ios/Spool/Sources/Spool/Services/RankMoveEmitter.swift`,
+`RankRemoveEmitter.swift`), so both clients now write identical move/remove
+metadata. `notes` is nil when the row's column is empty (omit-empty via
+`ActivityMetadata`).
+
 **Dead path:** `metadata.bracket` is read (`services/feedService.ts:316`,
 `:391`; rendered by `FeedRankingCard.tsx`) but NO writer ever sets it —
 adjudicated D1: stays unwritten; delete-or-write is a W0.3 candidate. Do

@@ -4,8 +4,9 @@ import Supabase
 /// End-to-end ranking writes: the three vertical tables (`user_rankings` /
 /// `tv_rankings` / `book_rankings`) + `activity_events`, plus the C4 management
 /// ops (reorder / cross-tier move / notes edit / delete) and the `getNotes`
-/// fetch-before-edit read the long-press "edit notes" sheet probes (the shelf's
-/// `RankedItem` projection carries no notes column). C5 Task 2 media-parameterized
+/// fetch-before-edit read the long-press "edit notes" sheet probes (the shelf
+/// snapshot may be stale — a concurrent edit elsewhere could have changed the
+/// note since the last load). C5 Task 2 media-parameterized
 /// the READS: `getTierItems(tier:media:)` / `getAllRankedItems(media:)` route by
 /// the same `rankingsTable(forType:)` mapping the writes use, so the H2H engine
 /// walk, the shelf, and the management layer all operate on ONE selected vertical.
@@ -94,7 +95,9 @@ public actor RankingRepository {
     /// layer all operate on the SAME vertical the caller selected. Defaults to
     /// `"movie"` for the unchanged movie callers. Rows map to per-media
     /// `RankedItem`s via `rankedItem(from:)` — `attribution` fills the subtitle
-    /// slot (director/creator/author) and a tv row's `season_title` rides along.
+    /// slot (director/creator/author), a tv row's `season_title` rides along, and
+    /// (C7-iOS Task 4) the row's `notes` are projected so the management emissions
+    /// carry `{notes?, year?}` (the `.select()` already returns the column).
     public func getAllRankedItems(media: String = "movie") async throws -> [RankedItem] {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
         guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
@@ -112,12 +115,14 @@ public actor RankingRepository {
 
     /// Read the freeform `notes` currently stored on a ranking row, keyed on
     /// `(user_id, tmdb_id)`. The fetch-before-edit seam for the long-press
-    /// "edit notes" sheet (C4 Task 4): the shelf's `RankedItem` projection has
-    /// NO notes column, so the sheet MUST probe the live row first, or a save
-    /// after an empty-seeded editor would blank an existing note (the journal
-    /// probe-before-edit lesson). Returns nil when the row is absent OR its
-    /// notes column is null. Throws on a genuine I/O failure so the caller can
-    /// decide whether to open the editor blank or toast.
+    /// "edit notes" sheet (C4 Task 4): although `RankedItem` now projects
+    /// `notes` from the row, the shelf snapshot may be stale (a concurrent edit
+    /// elsewhere could have changed the note since the last load), so the sheet
+    /// still probes the live row first — a save after a stale-seeded editor would
+    /// blank an existing note (the journal probe-before-edit lesson). Returns nil
+    /// when the row is absent OR its notes column is null. Throws on a genuine
+    /// I/O failure so the caller can decide whether to open the editor blank or
+    /// toast.
     public func getNotes(tmdbId: String, media: String = "movie") async throws -> String? {
         guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
         guard let userID = await SpoolClient.currentUserID() else { throw RepoError.notAuthenticated }
@@ -162,7 +167,12 @@ public actor RankingRepository {
             bracket: bracket,
             globalScore: row.ol_ratings_average.map { $0 * 2 },
             seed: 0,
-            posterUrl: row.poster_url, seasonTitle: row.season_title
+            posterUrl: row.poster_url, seasonTitle: row.season_title,
+            // C7-iOS Task 4: project the row's notes so the management emissions
+            // (`RankMoveEmitter`/`RankRemoveEmitter`) carry `{notes?, year?}` like
+            // web's move/remove sites. The `.select()` already returns the column;
+            // it was previously dropped here, forcing emissions to `notes: nil`.
+            notes: row.notes
         )
     }
 

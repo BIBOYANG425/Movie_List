@@ -44,6 +44,22 @@ public enum NotificationKind: String, CaseIterable, Sendable {
     public static func orFallback(_ raw: String) -> NotificationKind {
         NotificationKind(rawValue: raw) ?? .newFollower
     }
+
+    /// SF Symbol the bell renders for this kind. Lives here (not in the view) so
+    /// the kind → icon mapping is unit-testable without SwiftUI. Total over the
+    /// six cases — `badge_unlock` renders `rosette` (the C7 achievement bell row;
+    /// the RPC writes these rows server-side, so the bell MUST render them, not
+    /// filter them). `NotificationBellView` delegates to this.
+    public var sfSymbol: String {
+        switch self {
+        case .newFollower:    return "person.badge.plus"
+        case .reviewLike:     return "heart.fill"
+        case .listLike:       return "list.star"
+        case .badgeUnlock:    return "rosette"
+        case .rankingComment: return "bubble.left.fill"
+        case .journalTag:     return "tag.fill"
+        }
+    }
 }
 
 // MARK: - Wire rows

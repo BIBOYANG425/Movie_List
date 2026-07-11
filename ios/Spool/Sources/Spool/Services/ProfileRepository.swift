@@ -6,13 +6,14 @@ import Supabase
 ///  - `getMyProfile` / `getProfile(id:)` for Profile tab
 ///  - `getProfilesByIds(_:)` for bulk hydration (friends, followers)
 ///  - `searchByHandle(_:)` for future "+ add friend" UX
+///  - `getProfileByUsername(_:)` for deep-link resolution (spool://u/… + universal links)
 ///  - `currentVisibility()` / `updateVisibility(_:)` for Settings explore opt-in read/write
 ///
 /// Returns `nil` (or empty) when `SpoolClient.shared` is nil so callers can
 /// fall back to fixtures without a thrown error. Row-level errors throw
 /// `RepoError` — caller decides whether to surface a toast.
 ///
-/// Header last reviewed: 2026-07-08
+/// Header last reviewed: 2026-07-10
 public actor ProfileRepository {
 
     public static let shared = ProfileRepository()
@@ -55,6 +56,37 @@ public actor ProfileRepository {
         map.reserveCapacity(rows.count)
         for row in rows { map[row.id] = row }
         return map
+    }
+
+    /// Exact-username lookup for deep-link resolution (C7-iOS Task 5). A
+    /// `spool://u/{name}` / `https://rankspool.com/u/{name}` link carries a
+    /// bare handle, not a UUID, so this resolves it to the profile row the
+    /// deep-link router can then present. Unlike `searchByHandle` (substring
+    /// `ilike` for "+ add friend" UX), this is an EXACT match — a deep link
+    /// must land on one specific person, never a prefix cousin. Usernames are
+    /// stored lowercase; the handle is lowercased before the `.eq` so the
+    /// lookup is case-tolerant without using `ilike` (which would mis-match
+    /// usernames containing `_` or `%` — valid username characters that are
+    /// LIKE metacharacters). Returns nil when no row matches (unknown username)
+    /// so the caller shows the not-found toast. A single leading `@` is
+    /// stripped (matching the parser's normalisation in `ProfileDeepLink`) so
+    /// both `/u/bob` and `/u/@bob` resolve. No session required — public
+    /// profiles are readable per RLS.
+    public func getProfileByUsername(_ username: String) async throws -> ProfileRow? {
+        var handle = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        if handle.hasPrefix("@") { handle = String(handle.dropFirst()) }
+        let lowered = handle.lowercased()
+        guard !lowered.isEmpty else { return nil }
+        guard let client = SpoolClient.shared else { throw RepoError.notConfigured }
+
+        let rows: [ProfileRow] = try await client
+            .from("profiles")
+            .select("id, username, display_name, bio, avatar_url, avatar_path")
+            .eq("username", value: lowered)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first
     }
 
     // MARK: writes

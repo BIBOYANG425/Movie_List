@@ -55,11 +55,18 @@ import SwiftUI
 ///     b. one `journal_tag` notification per `watchedWithUserIds` friend
 ///        (body = first 100 chars of review) — fires REGARDLESS of visibility
 ///        and re-fires on every save (audit D2 known flaw; mirrored as-is).
+///     c. POST-WRITE ACHIEVEMENT HOOK (C7-iOS Task 2, injected
+///        `grantAchievements`): `grant_achievements()` + one milestone-feed
+///        event per newly-granted badge. Fires ONLY on the confirmed-save path
+///        (after a/b), never on a throw/refused save/photo-mint. Opportunistic +
+///        fire-and-forget — the DEFAULT production binding spawns a detached
+///        task so the grant RPC NEVER delays composer dismissal; a grant
+///        failure never fails the save.
 ///
 /// `guard !saving` re-entrancy: overlapping saves are dropped (a double-tapped
 /// Save button must not double-write).
 ///
-/// Header last reviewed: 2026-07-07
+/// Header last reviewed: 2026-07-10
 @MainActor
 public final class JournalDraftModel: ObservableObject {
 
@@ -91,6 +98,11 @@ public final class JournalDraftModel: ObservableObject {
     /// Emit one `journal_tag` notification for a tagged friend (`notifications`
     /// insert). Injected so the fan-out is testable.
     public typealias EmitJournalTag = (JournalTagInput) async -> Void
+    /// Post-write achievement hook — fired ONCE after a CONFIRMED composer save
+    /// (`grant_achievements()` + milestone-feed events). Injected so the "fires
+    /// only on confirmed success" decision seam is testable with zero network;
+    /// the screen binds it to `AchievementMilestones.grantAndEmitMilestones()`.
+    public typealias GrantAchievements = () async -> Void
     /// The signed-in user id (`SpoolClient.currentUserID`).
     public typealias CurrentUserID = () async -> UUID?
 
@@ -148,6 +160,7 @@ public final class JournalDraftModel: ObservableObject {
     private let fetchProfileVisibility: FetchProfileVisibility
     private let emitReviewEvent: EmitReviewEvent
     private let emitJournalTag: EmitJournalTag
+    private let grantAchievements: GrantAchievements
     private let currentUserID: CurrentUserID
 
     public init(
@@ -159,6 +172,7 @@ public final class JournalDraftModel: ObservableObject {
         fetchProfileVisibility: @escaping FetchProfileVisibility,
         emitReviewEvent: @escaping EmitReviewEvent,
         emitJournalTag: @escaping EmitJournalTag,
+        grantAchievements: @escaping GrantAchievements = { Task.detached { await AchievementMilestones.grantAndEmitMilestones() } },
         currentUserID: @escaping CurrentUserID
     ) {
         self.probeOwnEntry = probeOwnEntry
@@ -169,6 +183,7 @@ public final class JournalDraftModel: ObservableObject {
         self.fetchProfileVisibility = fetchProfileVisibility
         self.emitReviewEvent = emitReviewEvent
         self.emitJournalTag = emitJournalTag
+        self.grantAchievements = grantAchievements
         self.currentUserID = currentUserID
         // A placeholder empty draft until `openForEntry` populates it — the
         // composer stays `.loading` so this is never rendered/editable.
@@ -225,6 +240,17 @@ public final class JournalDraftModel: ObservableObject {
             let row = try await performUpsert()
             loadedEntryID = row.id
             await runSideEffects(for: row)
+            // POST-WRITE ACHIEVEMENT HOOK (C7-iOS Task 2): fires ONLY here, after
+            // a CONFIRMED composer upsert — never on the failed-save `catch`
+            // below (a throw skips straight to the error branch), never on a
+            // refused save (`.ready`/re-entrancy guards return above), and never
+            // on the side-effect-free photo mint (`mintMinimalEntry` has its own
+            // upsert and deliberately does NOT run this). `grant_achievements()`
+            // + milestone events are opportunistic; the production binding is
+            // fire-and-forget (errors swallowed), so a grant hiccup never fails
+            // the save. Mirrors web's recommended post-write grant
+            // (`docs/contracts/shared-payloads.md` § achievements — journal save).
+            await grantAchievements()
             inlineError = nil
             return row
         } catch {
@@ -256,6 +282,9 @@ public final class JournalDraftModel: ObservableObject {
     }
 
     /// Web order: (1) review activity event (gated), (2) journal_tag per friend.
+    /// The post-write achievement hook (3) runs AFTER this returns, in `save()`
+    /// — kept out of here so the photo-mint path (which never calls
+    /// `runSideEffects`) also never grants.
     private func runSideEffects(for row: JournalRow) async {
         await emitReviewEventIfPublic(row: row)
         await emitJournalTags(row: row)

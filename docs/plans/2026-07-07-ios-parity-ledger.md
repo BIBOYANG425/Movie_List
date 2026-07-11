@@ -6,15 +6,15 @@ Living record for the program defined in `2026-07-07-ios-parity-program-design.m
 
 | Cycle | Feature | Status | Audit doc | Web-fix PR | iOS PR |
 |---|---|---|---|---|---|
-| C0 | Stub write fix | iOS build in final review | audits/2026-07-07-c0-stub-web-audit.md | #30 | (PR opens after final review) |
-| C1 | Feed + notifications | feed UI built on `feat/ios-parity-c1-feed-ui` (PR pending); data layer + web fixes already merged (#32, #34; migrations applied + probes passed 2026-07-08) | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 MERGED |
-| C2 | Journal + AI agent | web fixes merged (PR #33); iOS journal built on `feat/ios-parity-c2-journal` (PR pending) | audits/2026-07-08-c2-journal-web-audit.md | #33 | (PR pending) |
-| C3 | Watchlist + Discover | FULLY COMPLETE (Parts A + B) — edge functions deployed, both clients migrated off direct TMDB key, TMDB key DoD met, merged Discover on both platforms (chips + New Releases + card actions), journal wipe fix T0, anon onboarding fixtures | audits/2026-07-08-c3-watchlist-discover-web-audit.md | (Part A: branch `fix/c3-watchlist-discover-web-blocking`; Part B: `feat/c3-part-b-suggestions`) | `feat/ios-parity-c3-watchlist` (Part A) + `feat/c3-part-b-suggestions` (Part B) |
-| C4 | Ranking management | COMPLETE — web fixes PR #39 + iOS management UI SHIPPED on `feat/ios-parity-c4-mgmt-ui` (PR pending): edit-mode drag-to-reorder (FullListScreen shelf), long-press menu (move tier / edit notes w/ probe-before-edit + wipe guard / re-rank via corrected ceremony / delete w/ confirm + ranking_remove); ceremony re-rank correction landed (Task 2 — deviation retired) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | #39 | `feat/ios-parity-c4-mgmt-ui` (PR pending) |
-| C5 | TV seasons + books | COMPLETE — web fixes PR #46 + iOS 8-task branch `feat/ios-parity-c5-tv-books` (PR pending): per-media payloads/reads, TMDB TV endpoints, OpenLibrary client, media-generic ceremony (same-media H2H), TV season UI + preselect router + coordinator whole-show identity fix, TV suggestions grid, contracts | audits/2026-07-10-c5-tv-books-web-audit.md | #46 | `feat/ios-parity-c5-tv-books` (PR pending) |
-| C6 | zh localization | COMPLETE (both halves) — web PR #48 merged; iOS on `feat/ios-parity-c6-zh` (PR pending) | audits/2026-07-10-c6-zh-web-audit.md | #48 | `feat/ios-parity-c6-zh` (PR pending) |
-| C7 | Smaller items | web half in PR `fix/c7-web-blocking` (HEAD e7b1616, probe-caught SQL fix); migration `20260711_achievements_server_grant.sql` + `array_append` fix APPLIED to prod; probes green (INSERT 42501, 6-badge grant, idempotent, unauth RAISE); iOS half pending | — | `fix/c7-web-blocking` | — |
-| — | iOS design-check | queued after C5–C7 (owner, 2026-07-10); screenshot seed list in progress ledger | — | — | — |
+| C0 | Stub write fix | COMPLETE (both halves) | audits/2026-07-07-c0-stub-web-audit.md | #30 | #31 |
+| C1 | Feed + notifications | COMPLETE (both halves) — data layer #34 + feed UI #35; migrations applied + probes passed 2026-07-08 | audits/2026-07-07-c1-feed-web-audit.md | #32 | #34 + #35 |
+| C2 | Journal + AI agent | COMPLETE (both halves) | audits/2026-07-08-c2-journal-web-audit.md | #33 | #37 |
+| C3 | Watchlist + Discover | FULLY COMPLETE (Parts A + B) — edge functions deployed, both clients migrated off direct TMDB key, TMDB key DoD met, merged Discover on both platforms (chips + New Releases + card actions), journal wipe fix T0, anon onboarding fixtures | audits/2026-07-08-c3-watchlist-discover-web-audit.md | Part A: #36; Part B: #45 | #42 (Part A) + #45 (Part B) |
+| C4 | Ranking management | COMPLETE (both halves) — edit-mode drag-to-reorder (FullListScreen shelf), long-press menu (move tier / edit notes w/ probe-before-edit + wipe guard / re-rank via corrected ceremony / delete w/ confirm + ranking_remove); ceremony re-rank correction landed (Task 2 — deviation retired) | audits/2026-07-09-c4-ranking-mgmt-web-audit.md | #39 | #44 |
+| C5 | TV seasons + books | COMPLETE (both halves) — per-media payloads/reads, TMDB TV endpoints, OpenLibrary client, media-generic ceremony (same-media H2H), TV season UI + preselect router + coordinator whole-show identity fix, TV suggestions grid, contracts | audits/2026-07-10-c5-tv-books-web-audit.md | #46 | #47 |
+| C6 | zh localization | COMPLETE (both halves) | audits/2026-07-10-c6-zh-web-audit.md | #48 | #49 |
+| C7 | Smaller items | COMPLETE (both halves) — web half PR #50 (achievements RLS + `grant_achievements()` RPC, D2 toast gate, descopes); iOS half on `feat/ios-parity-c7` (5 shipped tasks: achievements surface + server grant, movie-mode suggestions grid, Discover owned-filter + save-consumes, shelf-emission notes, profile deep links + AASA/entitlements). iOS 782 → 854. | audits/2026-07-11-c7-smalls-web-audit.md | #50 | `feat/ios-parity-c7` (PR pending) |
+| — | iOS design-check | NEXT (queued after C5–C7; owner, 2026-07-10). Seed = owner overlay screenshot: preview banner over Recent Stubs, floating `+` over banner/nav, "4 friends" pill clipped, settings ghost circle. | — | — | — |
 
 ## Audit findings
 
@@ -870,3 +870,143 @@ The iOS half of C7 (separate branch, follows web PR merge):
 
 After C7: iOS design-check cycle (overlap audit, Bobby's screenshot seed list),
 then STOP before iMessage agent build (blocked on owner Photon infra).
+
+### C7-iOS notes (2026-07-10, branch `feat/ios-parity-c7`)
+
+The iOS half of C7 — achievements, the two suggestions/Discover gaps, shelf-emission
+notes, and profile deep links. 5 tasks (T1–T5, all reviewed + approved on-branch).
+Baseline: 782 iOS tests (C6-iOS end). Final: 854 (832 after T4; +20 T5; +2 fix round).
+
+**What shipped:**
+
+- **T1 (achievements surface):** `AchievementsClient` — `grant()` via
+  `.rpc("grant_achievements")` (`AchievementsClient.swift:61`; POST, returns the
+  newly-granted keys), badge reads from `user_achievements`, and the pure 16-badge
+  `BadgeCatalog` (`key:` count verified = 16, pinned to web's 16-entry `BADGE_CATALOG`
+  in `components/social/AchievementsView.tsx`). `AchievementsSection` on `ProfileScreen`
+  (own profile: all 16, unearned dimmed) and `FriendProfileScreen` (earned only).
+  Granting stays SERVER-side; `grant()` is called via
+  `AchievementMilestones.grantAndEmitMilestones()` in a `Task.detached` so it never
+  delays the primary write — the client never writes `badge_unlock` rows (the RPC
+  owns that notification write; body = initcap badge label per
+  `20260711_achievements_server_grant.sql`).
+- **T2 (grant hooks + milestones):** grant fired after confirmed writes in
+  `RankPersistence`, `JournalDraftModel` (via `Task.detached` — does NOT delay
+  composer dismissal), and `FollowRepository` (new-edge only). Milestone activity
+  events emitted ONLY for newly-granted keys (`AchievementMilestones.grantAndEmitMilestones`,
+  `BADGE_MILESTONE_COPY` — CLIENT-SIDE iOS copy map, mirroring web
+  `services/achievementService.ts` `BADGE_MILESTONE_COPY`). Clients never write
+  `badge_unlock` notifications (server-side RPC does).
+- **T3 (movie-mode in-flow suggestions grid — deferred-sweep #2):** the C5 TV
+  suggestions grid PARAMETERIZED (not forked) for movie mode (`SuggestionsClient .movie`,
+  consume-splice on pick, backfill refill, refresh, session-excludes capped 200).
+  Signed-out movie mode keeps the demo fixtures. Closes the real web-parity gap
+  (web `AddMediaModal` had the grid; iOS movie mode did not).
+- **T4 (Discover owned-filter + save-consumes + shelf-emission notes — deferred-sweep
+  #3/#6):** Discover owned-filter (`rankedIds` + `visibleEngineItems` /
+  `visibleNewReleasesItems` projections); save-consumes-the-suggestion at
+  `RankEntryModel` (web parity); `RankedItem` gains `notes` (projected from `row.notes`),
+  threaded into `RankMoveEmitter`/`RankRemoveEmitter` so move/remove metadata is
+  `{notes?, year?}` — identical to web (the C4-UI `{year?}`-only analytics divergence
+  is closed; see `shared-payloads.md` `## activity_events` iOS management-emission note).
+- **T5 (profile deep links):** `ProfileDeepLink` parser (`spool://u/{username}` +
+  `https://rankspool.com/u/{username}` + the `www.` variant, single-decode, garbage
+  rejected, deeper paths refused); `ProfileRepository.getProfileByUsername` (exact
+  `.eq` match); `presentProfile` clears any outranking modals first;
+  `SpoolApp.entitlements` (`applinks:rankspool.com` + `applinks:www.rankspool.com`)
+  wired via `CODE_SIGN_ENTITLEMENTS`; `PRODUCT_BUNDLE_IDENTIFIER` reconciled to
+  `com.yangb.spool` (owner's stated bundle id); AASA at
+  `public/.well-known/apple-app-site-association`
+  (`appIDs: ["J5FN3M53L4.com.yangb.spool"]`, `components: [{ "/": "/u/*" }]`) +
+  `vercel.json` `Content-Type: application/json` header for that path.
+
+**Descopes (owner-reviewable, recorded in the C7 web ledger row §Descopes):** NO
+curated lists on iOS (never launched — zero UI callers, empty prod rows); NO
+send-3-recs (never shipped on any platform); NO Letterboxd import on iOS (web-only
+migration utility, permanent platform divergence). The program-design doc
+(`docs/plans/2026-07-07-ios-parity-program-design.md`, line 33) still lists
+them as candidate C7 scope — the ledger Descopes section is the settled state.
+
+**Owner infra outstanding (blocks the `https` universal-link half only; the
+`spool://` custom-scheme half works with no infra):**
+
+- Enable the Associated Domains capability on App ID `com.yangb.spool` + regenerate
+  provisioning.
+- AASA goes live on the next production deploy (Apple CDN cache can lag).
+
+**Deferred-sweep dispositions after C7 (from the C7 web audit,
+`docs/plans/audits/2026-07-11-c7-smalls-web-audit.md`):** items #1 (D2 success-toast,
+web) + #2 (movie suggestions grid) + #3 (Discover card actions) + #6 (notes in
+shelf emissions) CLOSED by C7. Remaining ledgered: #4 (stage-A quick-write full-
+replace) already retired in C3-B T0 (`InsertOutcome == .moved` guard); #5 (journal
+AI agent chat client) is its own later slice; #7 (localized-title display twin) and
+#8 (zh typography + chip alignment) are later / design-cycle items.
+
+---
+
+## PARITY PROGRAM COMPLETE (2026-07-10)
+
+All cycles **C0–C7** plus the mini-cycles (search-gaps PR #38, movie-search-fuzzy
+PR #41) are SHIPPED on both platforms. Every C-row above is COMPLETE (both halves).
+The iOS client has reached parity with the live web app.
+
+### Definition-of-Done check
+
+- **Every live web feature has an iOS equivalent** (descopes ledgered): stub writes
+  (C0), feed + notifications (C1), journal + review emission (C2), watchlist +
+  Discover incl. the 5-pool suggestions engine and New Releases (C3 A+B), ranking
+  management — reorder / re-tier / re-rank / delete / notes (C4), TV seasons + books
+  (C5), zh localization (C6), and the C7 smalls (achievements, the two suggestions
+  gaps, deep links). The three parity DESCOPES are owner-adjudicated and permanent:
+  curated lists (never launched), send-3-recs (never shipped anywhere), Letterboxd
+  import on iOS (web-only utility). DoD covers LIVE features only — met.
+- **Both clients write identical shapes:** the `activity_events` metadata contract
+  (`ranking_add` / `ranking_move` / `ranking_remove` / `review` / `list_create` /
+  `milestone`), the `set_tier_order` position-integrity RPC, and the per-media
+  `user_rankings` / `tv_rankings` / `book_rankings` row shapes are shared and
+  contract-pinned in `docs/contracts/shared-payloads.md`. The last iOS shape gap —
+  management `ranking_move` / `ranking_remove` emissions carrying `{year?}` only —
+  was closed by C7-iOS T4; both clients now write `{notes?, year?}`.
+- **TMDB key absent from the shipped bundles — verified 2026-07-10:**
+  - **Web:** no shipped source reads the key — a full grep of `components/ pages/
+    services/ lib/ utils/ hooks/ contexts/ i18n/` for `VITE_TMDB_API_KEY` /
+    `TMDB_API_KEY` returns ONLY a doc comment in `services/tmdbService.ts:7`
+    ("the proxy injects `TMDB_API_KEY` server-side"). All TMDB traffic routes
+    through the `tmdb-proxy` edge function. The key value lives only in the
+    gitignored `.env.local` (dev), never in the built bundle; `.env.example`
+    documents `VITE_TMDB_API_KEY` as no-longer-used. **Met.**
+  - **iOS:** no Swift source reads the key — a whole-tree grep (excl. `.build/`) for
+    `TMDB_API_KEY` returns only a doc comment in
+    `ios/Spool/Sources/Spool/Services/TMDBService.swift:9`; `TMDBService` calls the
+    authenticated `tmdb-proxy` edge function (Supabase URL/anon key + session JWT).
+    The `SpoolSimulator` target is fully clean (Info.plist + `.plist.example` both
+    strip the key, with an explicit "do NOT add back" note).
+  - **Residual found and fixed in this cycle:** the `SpoolApp` shipping target still
+    declared `TMDB_API_KEY = $(TMDB_API_KEY)` in its Info.plist, and
+    `ios/SpoolApp/Secrets.example.xcconfig` still prompted for a TMDB v3 key — the
+    C3-Part-B cleanup stripped the Simulator target but not the `SpoolApp` target.
+    No code read it, but a filled `Secrets.xcconfig` would have embedded the (unread)
+    value in the app-bundle Info.plist. Removed in C7-iOS close-out (both files now
+    carry an explicit "do NOT add back" note, mirroring the Simulator target). **Met.**
+
+### Remaining program items (post-parity)
+
+1. **iOS design-check cycle (NEXT):** a visual audit seeded by the owner's overlay
+   screenshot — preview banner over Recent Stubs, floating `+` over the banner/nav,
+   "4 friends" pill clipped, settings ghost circle. This is a design pass, not a data-
+   parity gap.
+2. **Owner infrastructure:**
+   - **Apple Universal Links portal step:** enable Associated Domains on App ID
+     `com.yangb.spool` + regenerate provisioning; AASA goes live on the next prod
+     deploy (Apple CDN cache can lag). Until then the `spool://` custom scheme works;
+     the `https://rankspool.com/u/…` path opens the browser.
+   - **Photon agent infra:** the iMessage agent build (spec merged in PR #40) is
+     BLOCKED on owner Photon infra.
+3. **iMessage agent build:** follows the design-check cycle; blocked on the Photon
+   infra above. STOP the parity program here — the agent is a new product surface,
+   not a parity item.
+4. **Deferred backlog pointer:** the deferred-sweep list lives in the C7 web audit
+   `docs/plans/audits/2026-07-11-c7-smalls-web-audit.md` (items #1/#2/#3/#6 closed by
+   C7; #4 retired in C3-B T0; #5/#7/#8 ledgered as later / design-cycle). Per-cycle
+   deferred D-items remain in each cycle's audit doc under
+   `docs/plans/audits/` (referenced from the Audit-findings section above).

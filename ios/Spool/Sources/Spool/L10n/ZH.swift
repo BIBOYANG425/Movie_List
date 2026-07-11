@@ -44,6 +44,9 @@ public enum ZH {
         // Generic failure toast — reuse web 'ranking.failedSave'.
         "toast.saveFailed": "保存失败，请重试",
 
+        // Deep-link profile resolution failed (iOS-only). New zh, dash-free.
+        "toast.profileNotFound": "找不到那个用户",
+
         // ── Feed (FeedScreen, FeedTicket, FeedTicketBack) ─────────────────────
         "nav.discover": "发现",                    // web nav.discover
         "feed.modeFriends": "好友",                // iOS-short (web feed.friendsFeed=好友动态)
@@ -212,6 +215,20 @@ public enum ZH {
         "friendProfile.theirTop4": "他们的 TOP 4 · S 级",
         "friendProfile.mutual": "◉ {n} 位共同好友",
         "friendProfile.stubsPill": "{n} 张票根",
+
+        // ── Achievements section ──────────────────────────────────────────────
+        // 只翻译界面框架；徽章名称与描述保留英文专有名词（web 的 BADGE_CATALOG
+        // 文案不在 i18n 表里，中文模式也显示同样的英文名）。分类标签对应
+        // web CATEGORY_STYLES.label。
+        "achievements.title": "成就",
+        "achievements.count": "已解锁 {earned}/{total}",
+        "achievements.noneYet": "还没有徽章。",
+        "achievements.loading": "加载徽章中…",
+        "achievements.locked": "未解锁",
+        "achievements.category.milestone": "里程碑",
+        "achievements.category.social": "社交",
+        "achievements.category.taste": "品味",
+        "achievements.category.special": "特别",
 
         // ── Taste twin (TwinScreen) ───────────────────────────────────────────
         // 叙述性句子（拼接的 Text，演示为主）保留英文。以下为界面框架 + 空态 + 韦恩图标签。
@@ -466,6 +483,7 @@ public enum ZH {
         "rankEntry.suggestionsLoadFailed": "推荐没加载出来",
         "rankEntry.retry": "重试",
         "rankEntry.searchShowHint": "搜索一部剧来给某一季排名",
+        "rankEntry.searchFilmHint": "搜索一部电影来排名",
         "rankEntry.seasonsLoadFailed": "分季没加载出来，返回重试",
         "rankEntry.pickSeason": "选一季",
         "rankEntry.whichSeason": "哪一季？",
@@ -481,6 +499,12 @@ public enum ZH {
         "rankEntry.episodeSingular": "{n} 集",
         "rankEntry.episodePlural": "{n} 集",
         "rankEntry.ranked": "已排名",
+        // Rank-flow suggestion-grid save affordance (C7-iOS Task 4) — bookmark on
+        // a movie/show suggestion card. {title}: the movie/show title.
+        "rankEntry.saveA11y": "稍后再看",
+        "rankEntry.savedA11y": "已保存稍后再看",
+        "rankEntry.savedToast": "已把{title}保存到稍后再看",
+        "rankEntry.saveFailedToast": "没能保存{title}，再试一次",
 
         // App chrome (SpoolAppRoot). Preview-mode banner (iOS-only). Recast
         // without an em dash per the owner-voice rule; lowercase register to

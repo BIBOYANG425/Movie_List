@@ -58,15 +58,17 @@
 		<string>DMMono-Light.ttf</string>
 	</array>
 
-	<!-- URL scheme for Supabase OAuth callbacks (Google sign-in).
-	     Paired with AuthService.oauthRedirectURL = spool://auth-callback.
-	     `spool` must also be allowlisted in the Supabase dashboard under
-	     Authentication → URL Configuration → Redirect URLs.
-	     TODO: the short scheme is theoretically hijackable — a rogue app
-	     could register the same scheme and intercept the OAuth redirect.
-	     Mitigate later via Universal Links + associated domains (https
-	     redirect), or at minimum switch to a reverse-DNS scheme such as
-	     `com.spool.app` (keeping the Supabase allowlist in sync). -->
+	<!-- URL scheme for Supabase OAuth callbacks (Google sign-in) AND the
+	     spool://u/{username} profile deep link (C7-iOS Task 5, routed by
+	     ProfileDeepLink). Paired with AuthService.oauthRedirectURL =
+	     spool://auth-callback. `spool` must also be allowlisted in the Supabase
+	     dashboard under Authentication → URL Configuration → Redirect URLs.
+	     Universal Links (associated-domains on rankspool.com, see
+	     SpoolApp.entitlements) now cover the profile deep link with a verified
+	     https origin; the OAuth callback still rides the custom scheme. The
+	     short scheme remains theoretically hijackable for the OAuth path — a
+	     reverse-DNS scheme switch is still open (keep the Supabase allowlist in
+	     sync if changed). -->
 
 	<key>CFBundleURLTypes</key>
 	<array>
@@ -87,7 +89,7 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_ANON_KEY</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
-	<key>TMDB_API_KEY</key>
-	<string>$(TMDB_API_KEY)</string>
+	<!-- No TMDB key: all TMDB traffic goes through the tmdb-proxy edge
+	     function, which injects the key server-side. Do NOT add it back. -->
 </dict>
 </plist>

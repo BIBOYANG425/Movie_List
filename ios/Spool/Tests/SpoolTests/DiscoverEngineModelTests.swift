@@ -245,6 +245,70 @@ final class DiscoverEngineModelTests: XCTestCase {
         XCTAssertEqual(ranked?.voteAverage, 7.0, "engine vote_average rides along")
     }
 
+    // MARK: - live owned-display filter (C7-iOS Task 4)
+
+    /// Ranking a grid item this session drops it LIVE from the engine grid: the
+    /// engine already excludes server-owned items, but a mid-session rank was in
+    /// the already-fetched page — `visibleEngineItems` re-filters it out
+    /// (web `isAlreadyOwned` render-time parity). The raw `engineItems` still
+    /// holds it (the fetched page is untouched).
+    func testRankingItemDropsItLiveFromEngineGrid() async {
+        let model = makeModel(loadEngine: { _, _ in self.items(4) })
+        model.bindRankIt { _ in }
+        await model.loadEngineIfNeeded()
+
+        XCTAssertEqual(model.visibleEngineItems.count, 4, "all four visible before")
+
+        model.rankIt(self.item(2))   // rank tmdb_2
+
+        XCTAssertFalse(model.visibleEngineItems.map(\.id).contains("tmdb_2"),
+                       "a ranked item vanishes from the visible grid immediately")
+        XCTAssertEqual(model.visibleEngineItems.count, 3)
+        XCTAssertEqual(model.engineItems.count, 4,
+                       "the raw fetched page is untouched — only the display filters")
+    }
+
+    /// Saving a grid item this session likewise drops it live from the grid
+    /// (web folds session bookmarks into `allExcludedIds`).
+    func testSavingItemDropsItLiveFromEngineGrid() async {
+        let model = makeModel(loadEngine: { _, _ in self.items(3) }, save: { _ in true })
+        await model.loadEngineIfNeeded()
+        XCTAssertEqual(model.visibleEngineItems.count, 3)
+
+        await model.saveForLater(self.item(1))   // save tmdb_1
+
+        XCTAssertFalse(model.visibleEngineItems.map(\.id).contains("tmdb_1"),
+                       "a saved item vanishes from the visible grid immediately")
+        XCTAssertEqual(model.visibleEngineItems.count, 2)
+    }
+
+    /// The New Releases row shares the same session-scoped display filter.
+    func testRankingItemDropsItLiveFromNewReleases() async {
+        let model = makeModel(loadNewReleases: { _, _ in self.items(3) })
+        model.bindRankIt { _ in }
+        await model.loadNewReleasesIfNeeded()
+        XCTAssertEqual(model.visibleNewReleasesItems.count, 3)
+
+        model.rankIt(self.item(2))
+
+        XCTAssertFalse(model.visibleNewReleasesItems.map(\.id).contains("tmdb_2"),
+                       "a ranked item vanishes from New Releases too")
+        XCTAssertEqual(model.visibleNewReleasesItems.count, 2)
+    }
+
+    /// A failed save reverts the optimistic saved-mark, so the item stays in the
+    /// visible grid (the filter follows `savedIds`, which the revert clears).
+    func testFailedSaveKeepsItemInVisibleGrid() async {
+        let model = makeModel(loadEngine: { _, _ in self.items(2) }, save: { _ in false })
+        await model.loadEngineIfNeeded()
+
+        await model.saveForLater(self.item(1))
+
+        XCTAssertTrue(model.visibleEngineItems.map(\.id).contains("tmdb_1"),
+                      "a failed save reverts the mark, so the card stays visible")
+        XCTAssertEqual(model.visibleEngineItems.count, 2)
+    }
+
     // MARK: - 5. card actions on the SOCIAL sections (Part A cards)
 
     private func rec(_ tmdb: String, title: String = "Rec") -> FriendRecommendation {

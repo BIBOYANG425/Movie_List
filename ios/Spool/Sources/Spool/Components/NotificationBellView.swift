@@ -267,18 +267,12 @@ private struct NotificationRowView: View {
         }
     }
 
-    /// SF Symbol per notification kind — unknown kinds already fell back to
-    /// `.newFollower` upstream (`NotificationKind.orFallback`), so this map is
-    /// total.
+    /// SF Symbol per notification kind. Delegates to `NotificationKind.sfSymbol`
+    /// (the data mapping lives on the kind so it's unit-testable without the
+    /// view); unknown kinds already fell back to `.newFollower` upstream
+    /// (`NotificationKind.orFallback`), so the map is total.
     static func icon(for kind: NotificationKind) -> String {
-        switch kind {
-        case .newFollower:    return "person.badge.plus"
-        case .reviewLike:     return "heart.fill"
-        case .listLike:       return "list.star"
-        case .badgeUnlock:    return "rosette"
-        case .rankingComment: return "bubble.left.fill"
-        case .journalTag:     return "tag.fill"
-        }
+        kind.sfSymbol
     }
 }
 

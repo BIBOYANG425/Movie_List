@@ -3,9 +3,11 @@ import SwiftUI
 /// Read-only friend profile. Reachable from FriendsScreen via a secondary
 /// "view profile" affordance — the primary tap target on a friend row still
 /// opens TwinScreen. Mirrors `ProfileScreen`'s paper-card structure (header,
-/// bio, top 4, recent stubs) minus anything self-referential (gear, edit,
-/// "currently obsessed" — obsessed uses "NOW PLAYING" copy that only makes
-/// sense as the viewer's own top S-tier).
+/// bio, top 4, recent stubs, achievements) minus anything self-referential
+/// (gear, edit, "currently obsessed" — obsessed uses "NOW PLAYING" copy that
+/// only makes sense as the viewer's own top S-tier). The achievements section
+/// (C7-iOS) is EARNED-only in `.viewer` mode, so a viewer never lights up
+/// locked cards on someone else's account.
 ///
 /// Two extra affordances that ProfileScreen doesn't have:
 ///   - Taste twin pill linking back to TwinScreen, so Profile ↔ Twin are
@@ -56,6 +58,7 @@ public struct FriendProfileScreen: View {
                         twinPill.padding(.top, 14)
                         topFourSection.padding(.top, 18)
                         recentSection.padding(.top, 18)
+                        achievementsSection.padding(.top, 18)
                         footerPills.padding(.top, 16)
                     }
                     .padding(.horizontal, 18)
@@ -341,6 +344,19 @@ public struct FriendProfileScreen: View {
             )
             .aspectRatio(2.0/3.0, contentMode: .fit)
             .frame(maxWidth: .infinity)
+    }
+
+    // MARK: achievements
+
+    /// Cross-user badge surface — EARNED badges only (mirrors what a web viewer
+    /// sees: the grant call is own-profile-gated, so a viewer never lights up
+    /// locked cards on someone else's account). Only rendered when we have a
+    /// real target user id (friend fixtures without a userID skip it).
+    @ViewBuilder
+    private var achievementsSection: some View {
+        if let targetID = friend.userID {
+            AchievementsSection(userId: targetID, mode: .viewer)
+        }
     }
 
     // MARK: footer

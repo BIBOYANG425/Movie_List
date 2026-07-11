@@ -47,11 +47,23 @@ public struct RankedItem: Identifiable, Hashable, Sendable {
     /// `director` slot carries the media-generic attribution
     /// (director → creator → author).
     public var seasonTitle: String?
+    /// The row's freeform `notes`, projected off the ranking row (C7-iOS Task 4).
+    /// The shelf itself never renders it, but the management emissions
+    /// (`RankMoveEmitter`/`RankRemoveEmitter`) thread it into their
+    /// `{notes?, year?}` metadata so a drag/menu move or a delete carries the
+    /// item's notes like web's move/remove sites (closing the C4-UI analytics
+    /// divergence — the projection previously dropped the column, forcing the
+    /// emissions to `notes: nil`). Nil when the column is empty. C5 Task 2's
+    /// per-media read (`RankingRepository.rankedItem(from:)`) fills it from
+    /// `row.notes`; construction sites that don't project a row (the algorithm /
+    /// engine walk) leave it nil via the default.
+    public var notes: String?
 
     public init(id: String, title: String, year: Int? = nil, director: String = "—",
                 genres: [String] = [], tier: Tier, rank: Int,
                 bracket: Bracket? = nil, globalScore: Double? = nil, seed: Int = 0,
-                posterUrl: String? = nil, seasonTitle: String? = nil) {
+                posterUrl: String? = nil, seasonTitle: String? = nil,
+                notes: String? = nil) {
         self.id = id
         self.title = title
         self.year = year
@@ -64,6 +76,7 @@ public struct RankedItem: Identifiable, Hashable, Sendable {
         self.seed = seed
         self.posterUrl = posterUrl
         self.seasonTitle = seasonTitle
+        self.notes = notes
     }
 }
 
