@@ -9,7 +9,12 @@ public enum StubsTab: String, CaseIterable, Sendable {
 }
 
 public struct StubsScreen: View {
-    public var onOpenDetail: (WatchedDay) -> Void
+    /// Open the detail sheet for a tapped stub. Carries the tapped `WatchedDay`
+    /// AND its originating `StubRow` (when this is real signed-in data, not a
+    /// fixture) so the downstream share card can render the row's REAL line /
+    /// moods / poster instead of demo constants. The row is `nil` for
+    /// preview-mode fixture days (which carry no line/moods anyway).
+    public var onOpenDetail: (WatchedDay, StubRow?) -> Void
     /// Open the journal composer for a tapped entry (Task 6 wires it to a
     /// `getOwnEntry` probe). Defaulted so existing call sites need no change.
     public var onOpenJournalEntry: (String) -> Void
@@ -18,6 +23,10 @@ public struct StubsScreen: View {
     @State private var selectedTab: StubsTab = .stubs
 
     @State private var monthDays: [WatchedDay] = []
+    /// The real rows behind `monthDays`, keyed by day-of-month, so a calendar
+    /// tap can recover the full `StubRow` (line/moods/poster) for sharing.
+    /// Empty in preview mode (fixtures have no rows).
+    @State private var rowsByDay: [Int: StubRow] = [:]
     @State private var lastStub: StubRow?
     @State private var monthTierCounts: [Tier: Int] = [:]
     @State private var hasSession: Bool = false
@@ -41,7 +50,7 @@ public struct StubsScreen: View {
     /// rapidly taps ‹/› and the older fetch would clobber newer state.
     @State private var loadTask: Task<Void, Never>? = nil
 
-    public init(onOpenDetail: @escaping (WatchedDay) -> Void = { _ in },
+    public init(onOpenDetail: @escaping (WatchedDay, StubRow?) -> Void = { _, _ in },
                 onOpenJournalEntry: @escaping (String) -> Void = { _ in }) {
         self.onOpenDetail = onOpenDetail
         self.onOpenJournalEntry = onOpenJournalEntry
@@ -105,7 +114,8 @@ public struct StubsScreen: View {
                     .foregroundStyle(SpoolTokens.paper.inkSoft)
                     .padding(.top, 2)
 
-                FilmStripCalendar(days: monthDays, totalDays: daysInDisplayedMonth, onTap: onOpenDetail)
+                FilmStripCalendar(days: monthDays, totalDays: daysInDisplayedMonth,
+                                  onTap: { day in onOpenDetail(day, rowsByDay[day.day]) })
                     .padding(.top, 10)
 
                 SpoolThemeReader { t, _ in
@@ -227,12 +237,12 @@ public struct StubsScreen: View {
                 tier: tier,
                 line: stub.stub_line ?? "",
                 moods: stub.mood_tags,
-                date: Self.admitDate(stub.watched_date),
+                date: StubFormat.admitDate(stub.watched_date),
                 // "Last watched" is the newest stub across ALL time, so the
                 // sequence number should reflect the global count (total
                 // stubs ever), not just this month. `totalStubsCount` is
                 // populated by `reload()` via `StubRepository.countStubs`.
-                stubNo: Self.stubNumber(totalStubsCount),
+                stubNo: StubFormat.stubNumber(totalStubsCount),
                 compact: true
             )
         } else if loading {
@@ -275,6 +285,9 @@ public struct StubsScreen: View {
                 } else {
                     monthDays = []
                 }
+                // Fixtures have no backing rows — a fixture tap shares from the
+                // WatchedDay directly (no line/moods), never a stale real row.
+                rowsByDay = [:]
                 monthTierCounts = Self.bucketTiers(monthDays)
                 lastStub = nil
                 totalStubsCount = 0
@@ -301,11 +314,13 @@ public struct StubsScreen: View {
             }
             NSLog("[StubsScreen] month stubs ok: \(stubs.count)")
             monthDays = stubs.compactMap(Self.rowToDay)
+            rowsByDay = Self.indexRowsByDay(stubs)
             monthTierCounts = Self.bucketTiers(monthDays)
         } catch {
             if Task.isCancelled { return }
             NSLog("[StubsScreen] getStubsForMonth FAIL: \(error)")
             monthDays = []
+            rowsByDay = [:]
             monthTierCounts = [:]
         }
 
@@ -349,6 +364,38 @@ public struct StubsScreen: View {
         return out
     }
 
+    /// Index the month's real rows by day-of-month so a calendar tap can recover
+    /// the tapped stub's `StubRow` (line/moods/poster) for sharing. Mirrors
+    /// `FilmStripCalendar.byDay`'s collision rule — when two stubs land on the
+    /// same day, keep the higher-tier one so the shared card matches the calendar
+    /// cell that was tapped.
+    static func indexRowsByDay(_ rows: [StubRow]) -> [Int: StubRow] {
+        var out: [Int: StubRow] = [:]
+        for row in rows {
+            let parts = row.watched_date.split(separator: "-")
+            guard parts.count == 3, let day = Int(parts[2]) else { continue }
+            if let existing = out[day],
+               tierRank(existing.tier) >= tierRank(row.tier) {
+                continue
+            }
+            out[day] = row
+        }
+        return out
+    }
+
+    /// Higher number = better tier. Mirrors `FilmStripCalendar.tierRank` so the
+    /// "best tier wins on same-day collision" rule is identical to the grid.
+    private static func tierRank(_ tier: String) -> Int {
+        switch tier {
+        case "S": return 5
+        case "A": return 4
+        case "B": return 3
+        case "C": return 2
+        case "D": return 1
+        default: return 0
+        }
+    }
+
     private static func parseYear(_ dateString: String) -> Int {
         let parts = dateString.split(separator: "-")
         return parts.first.flatMap { Int($0) } ?? Calendar.current.component(.year, from: Date())
@@ -367,26 +414,11 @@ public struct StubsScreen: View {
         return Int(h % 10)
     }
 
-    private static func admitDate(_ dateString: String) -> String {
-        let parts = dateString.split(separator: "-").map(String.init)
-        guard parts.count == 3,
-              let month = Int(parts[1]),
-              let day = Int(parts[2]) else { return dateString.uppercased() }
-        let months = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
-        let m = month >= 1 && month <= 12 ? months[month] : "—"
-        return "\(m) · \(String(format: "%02d", day)) · \(parts[0])"
-    }
-
     /// The year/month the `SpoolData.aprilWatched` fixture represents.
     /// Keep in sync with the fixture content in `SpoolData.swift`. The
     /// preview-mode guard compares against this before surfacing fixture
     /// days so browsing past/future months doesn't show April tiles.
     private static let aprilFixtureYM = YearMonth(year: 2026, month: 4)
-
-    private static func stubNumber(_ count: Int) -> String {
-        "#" + String(format: "%04d", max(count, 0))
-    }
 }
 
 struct FilmStripCalendar: View {
@@ -598,5 +630,5 @@ public struct YearMonth: Hashable, Sendable {
 }
 
 #Preview("stubs · segmented header") {
-    StubsScreen(onOpenDetail: { _ in }).spoolMode(.paper)
+    StubsScreen(onOpenDetail: { _, _ in }).spoolMode(.paper)
 }

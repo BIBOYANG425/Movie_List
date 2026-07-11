@@ -88,7 +88,13 @@ public struct SpoolAppRoot: View {
 
     // Stub modals
     @State private var stubDetail: WatchedDay? = nil
-    @State private var stubShare: WatchedDay? = nil
+    /// The real `StubRow` behind `stubDetail`, when the tapped stub is signed-in
+    /// data (nil for preview-mode fixtures). Held so the detail → share
+    /// transition can build a `StubShare` from the row's REAL line/moods/poster.
+    @State private var stubDetailRow: StubRow? = nil
+    /// The fully-resolved real payload the share sheet renders. Replaces the old
+    /// `WatchedDay` so no demo constants leak into the shared image.
+    @State private var stubShare: StubShare? = nil
 
     // Twin modal
     @State private var twinOpen: Friend? = nil
@@ -194,6 +200,34 @@ public struct SpoolAppRoot: View {
             NSLog("[SpoolAppRoot] deep-link profile resolve failed for '\(username)': \(error)")
             ToastCenter.shared.show(L10n.t("toast.profileNotFound"), level: .error)
         }
+    }
+
+    /// Build the REAL `StubShare` payload for the tapped stub and present the
+    /// share sheet. When we have the originating `StubRow` (signed-in data), the
+    /// card renders the row's own line / moods / poster; a preview-mode fixture
+    /// tap (nil row) shares from the `WatchedDay` with those fields empty rather
+    /// than demo constants. The global stub count is fetched so the "#nnnn"
+    /// sequence matches the "last watched" card; the sharer's handle is resolved
+    /// from their own profile (StubShareScreen refreshes it too on appear).
+    @MainActor
+    private func presentShare(day: WatchedDay, row: StubRow?) async {
+        var handle = SpoolData.me.handle
+        var stubCount = 0
+        if let userID = await SpoolClient.currentUserID() {
+            if let profile = try? await ProfileRepository.shared.getMyProfile() {
+                handle = profile.handle
+            }
+            stubCount = (try? await StubRepository.shared.countStubs(userID: userID)) ?? 0
+        }
+        let payload: StubShare
+        if let row {
+            payload = StubShare.from(row: row, stubCount: stubCount, handle: handle)
+        } else {
+            payload = StubShare.from(day: day, stubCount: stubCount, handle: handle)
+        }
+        stubShare = payload
+        stubDetail = nil
+        stubDetailRow = nil
     }
 
     private var mainApp: some View {
@@ -339,10 +373,15 @@ public struct SpoolAppRoot: View {
         } else if let d = stubDetail {
             StubDetailScreen(
                 stub: d,
-                onClose: { stubDetail = nil },
+                onClose: { stubDetail = nil; stubDetailRow = nil },
                 onShare: {
-                    stubShare = d
-                    stubDetail = nil
+                    // Build the REAL share payload from the detailed row (or the
+                    // WatchedDay for preview fixtures) and fetch the global stub
+                    // count so the "#nnnn" matches the last-watched card. The
+                    // handle is resolved inside StubShareScreen.
+                    let day = d
+                    let row = stubDetailRow
+                    Task { await presentShare(day: day, row: row) }
                 }
             )
         } else if let f = friendProfileOpen {
@@ -382,7 +421,10 @@ public struct SpoolAppRoot: View {
                 )
             case .stubs:
                 StubsScreen(
-                    onOpenDetail: { stubDetail = $0 },
+                    onOpenDetail: { day, row in
+                        stubDetail = day
+                        stubDetailRow = row
+                    },
                     onOpenJournalEntry: { tmdbId in presentComposerForEntry(tmdbId: tmdbId) }
                 )
             case .watchlist:
