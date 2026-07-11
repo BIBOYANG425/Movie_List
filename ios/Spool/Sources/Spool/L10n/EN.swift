@@ -77,7 +77,7 @@ public enum EN {
         "feed.openSettings": "open settings",
         // Ticket front: mute-title menu + spoiler shield (web localizes spoilers).
         "feed.muteTitle": "mute this title",
-        "feed.spoilersTapReveal": "spoilers. tap to reveal",
+        "feed.spoilersTapReveal": "tap to reveal spoilers",
         // Ticket back: thread empty/error, composer, a11y ({title}/{body}/{error}
         // carry dynamic content).
         "feed.ticketBackFor": "ticket back for {title}",
@@ -153,7 +153,7 @@ public enum EN {
         "onb.needSignInFriends": "you need to be signed in to find friends.\nyou can always come back. they'll still be here.",
         "onb.handlePlaceholder": "handle",
         "onb.searching": "searching…",
-        "onb.noHandleMatch": "no one by that handle yet.",
+        "onb.noHandleMatch": "no one by that handle. yet.",
         "onb.following": "following",
         "onb.follow": "follow",
         "onb.skip": "skip",
@@ -557,8 +557,9 @@ public enum EN {
         "rankEntry.saveFailedToast": "couldn't save {title}. try again",
 
         // App chrome (SpoolAppRoot). Preview-mode banner shown above the tab bar
-        // to a user who onboarded without signing in — iOS-only surface (web has
-        // no equivalent banner key). Em dash in en is fine (zh recast dash-free).
+        // to a user who onboarded without signing in (iOS-only surface; web has
+        // no equivalent banner key). Recast dash-free per the owner's EN prose
+        // no-em-dash rule (2026-07-11); zh already dash-free.
         "app.previewBanner": "preview mode. sign in to save your rankings",
 
         // Settings → language row (C6-iOS Task 2). Web has no settings.* keys yet,
