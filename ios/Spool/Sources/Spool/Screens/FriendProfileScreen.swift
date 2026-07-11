@@ -115,7 +115,7 @@ public struct FriendProfileScreen: View {
     private var header: some View {
         SpoolThemeReader { t, _ in
             HStack(alignment: .bottom, spacing: 14) {
-                StripedAvatar(size: 72)
+                StripedAvatar(size: 72, name: displayedHandle)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(displayedHandle)
                         .font(SpoolFonts.serif(30))

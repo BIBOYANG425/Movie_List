@@ -119,7 +119,7 @@ struct FriendTierChip: View {
     var body: some View {
         SpoolThemeReader { t, _ in
             HStack(spacing: 6) {
-                StripedAvatar(size: 22)
+                StripedAvatar(size: 22, name: handle)
                 Text(handle).font(SpoolFonts.hand(12))
                 TierStamp(tier: tier, size: 18)
             }

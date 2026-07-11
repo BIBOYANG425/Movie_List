@@ -101,11 +101,11 @@ public struct TwinScreen: View {
                         .frame(maxWidth: .infinity)
 
                     HStack(spacing: 14) {
-                        StripedAvatar(size: 56)
+                        StripedAvatar(size: 56, name: viewerHandle)
                         Text("\(displayedScore)%")
                             .font(SpoolFonts.serif(44))
                             .foregroundStyle(t.accent)
-                        StripedAvatar(size: 56)
+                        StripedAvatar(size: 56, name: friend.handle)
                     }
                     .padding(.top, 10)
                     .frame(maxWidth: .infinity, alignment: .center)
