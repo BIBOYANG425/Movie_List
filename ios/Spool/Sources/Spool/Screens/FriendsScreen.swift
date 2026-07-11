@@ -32,7 +32,9 @@ public struct FriendsScreen: View {
                 ScrollView {
                     content
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 110)
+                        // Bottom bar reserved by the root's `.safeAreaInset`;
+                        // small breathing pad below the last row (was 110).
+                        .padding(.bottom, 12)
                 }
                 .refreshable { await reload() }
             }
@@ -173,7 +175,7 @@ struct FriendRow: View {
             // a Button inside a Button (which hides the inner one from
             // VoiceOver and causes odd focus rings).
             HStack(spacing: 12) {
-                StripedAvatar(size: 42)
+                StripedAvatar(size: 42, name: friend.handle)
                 VStack(alignment: .leading, spacing: 4) {
                     // Handle → read-only friend profile. Separate tappable
                     // so VoiceOver exposes it independently of the card body.

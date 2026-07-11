@@ -78,7 +78,10 @@ public struct TwinScreen: View {
                         .padding(.top, 12)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 110)
+                    // Rendered with the bottom bar HIDDEN (`navHidden`), so 110
+                    // over-reserved for an absent nav; the ScrollView already
+                    // stops at the home-indicator safe area. Small pad (was 110).
+                    .padding(.bottom, 12)
                 }
             }
         }
@@ -98,11 +101,11 @@ public struct TwinScreen: View {
                         .frame(maxWidth: .infinity)
 
                     HStack(spacing: 14) {
-                        StripedAvatar(size: 56)
+                        StripedAvatar(size: 56, name: viewerHandle)
                         Text("\(displayedScore)%")
                             .font(SpoolFonts.serif(44))
                             .foregroundStyle(t.accent)
-                        StripedAvatar(size: 56)
+                        StripedAvatar(size: 56, name: friend.handle)
                     }
                     .padding(.top, 10)
                     .frame(maxWidth: .infinity, alignment: .center)

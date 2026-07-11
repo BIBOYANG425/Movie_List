@@ -36,7 +36,9 @@ public struct ProfileScreen: View {
                     footerPills.padding(.top, 16)
                 }
                 .padding(.horizontal, 18)
-                .padding(.bottom, 110)
+                // Bottom bar reserved by the root's `.safeAreaInset`; this is
+                // just a small breathing pad below the last row (was 110).
+                .padding(.bottom, 12)
             }
             .refreshable { await reload() }
         }
@@ -69,7 +71,7 @@ public struct ProfileScreen: View {
     private var header: some View {
         SpoolThemeReader { t, _ in
             HStack(alignment: .bottom, spacing: 14) {
-                StripedAvatar(size: 72)
+                StripedAvatar(size: 72, name: displayedHandle)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(displayedHandle)
                         .font(SpoolFonts.serif(30))
@@ -339,6 +341,7 @@ public struct ProfileScreen: View {
                 SpoolPill(L10n.t("profile.tasteTwin", ["handle": twin.handle, "score": "\(twin.score)"]), size: .sm)
             }
             // Recap pill hidden until the monthly-recap experience is real.
+            Spacer(minLength: 0)
         }
     }
 

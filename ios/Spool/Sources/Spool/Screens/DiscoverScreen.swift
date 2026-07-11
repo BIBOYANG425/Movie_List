@@ -166,7 +166,11 @@ public struct DiscoverScreen: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
-            .padding(.bottom, 110)
+            // Presented as a `.sheet` (from FeedScreen), so it never has the
+            // bottom bar under it — 110 over-reserved for an absent nav. The
+            // sheet's ScrollView already stops at its own safe area. Small pad
+            // (was 110).
+            .padding(.bottom, 12)
         }
         .refreshable {
             await model.reload()

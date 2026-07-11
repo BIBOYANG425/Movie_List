@@ -24,6 +24,7 @@ public struct SpoolPill: View {
                 Text(title)
                     .font(SpoolFonts.hand(size == .sm ? 12 : 14))
                     .foregroundStyle((filled || active) ? t.cream : t.ink)
+                    .fixedSize()
                     .padding(.horizontal, size == .sm ? 10 : 14)
                     .padding(.vertical, size == .sm ? 4 : 8)
                     .background(

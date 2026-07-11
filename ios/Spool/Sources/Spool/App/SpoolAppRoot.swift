@@ -88,7 +88,13 @@ public struct SpoolAppRoot: View {
 
     // Stub modals
     @State private var stubDetail: WatchedDay? = nil
-    @State private var stubShare: WatchedDay? = nil
+    /// The real `StubRow` behind `stubDetail`, when the tapped stub is signed-in
+    /// data (nil for preview-mode fixtures). Held so the detail → share
+    /// transition can build a `StubShare` from the row's REAL line/moods/poster.
+    @State private var stubDetailRow: StubRow? = nil
+    /// The fully-resolved real payload the share sheet renders. Replaces the old
+    /// `WatchedDay` so no demo constants leak into the shared image.
+    @State private var stubShare: StubShare? = nil
 
     // Twin modal
     @State private var twinOpen: Friend? = nil
@@ -196,6 +202,34 @@ public struct SpoolAppRoot: View {
         }
     }
 
+    /// Build the REAL `StubShare` payload for the tapped stub and present the
+    /// share sheet. When we have the originating `StubRow` (signed-in data), the
+    /// card renders the row's own line / moods / poster; a preview-mode fixture
+    /// tap (nil row) shares from the `WatchedDay` with those fields empty rather
+    /// than demo constants. The global stub count is fetched so the "#nnnn"
+    /// sequence matches the "last watched" card; the sharer's handle is resolved
+    /// from their own profile (StubShareScreen refreshes it too on appear).
+    @MainActor
+    private func presentShare(day: WatchedDay, row: StubRow?) async {
+        var handle = SpoolData.me.handle
+        var stubCount = 0
+        if let userID = await SpoolClient.currentUserID() {
+            if let profile = try? await ProfileRepository.shared.getMyProfile() {
+                handle = profile.handle
+            }
+            stubCount = (try? await StubRepository.shared.countStubs(userID: userID)) ?? 0
+        }
+        let payload: StubShare
+        if let row {
+            payload = StubShare.from(row: row, stubCount: stubCount, handle: handle)
+        } else {
+            payload = StubShare.from(day: day, stubCount: stubCount, handle: handle)
+        }
+        stubShare = payload
+        stubDetail = nil
+        stubDetailRow = nil
+    }
+
     private var mainApp: some View {
         ZStack {
             (mode == .paper
@@ -207,17 +241,56 @@ public struct SpoolAppRoot: View {
             .ignoresSafeArea()
 
             screen
-                .overlay(alignment: .bottom) {
-                    VStack(spacing: 0) {
-                        if previewMode && !navHidden {
-                            previewBanner
-                        }
-                        if !navHidden {
+                // Bottom bar via `safeAreaInset` (design-check 1, 2, A3): this
+                // both DRAWS the banner+nav AND shrinks the safe area every
+                // screen's `ScrollView` respects, so scroll content can never
+                // slide UNDER the bar. That kills the old failure mode where a
+                // fixed `.padding(.bottom, 110)` reserve only covered the nav
+                // and the taller preview-banner state overlapped the last card.
+                //
+                // When `navHidden` is true (rank flow, stub detail/share, twin,
+                // friend profile) the inset contributes an EMPTY view — zero
+                // height, zero reserve — so those full-screen flows get no bar
+                // and no phantom gap at the bottom.
+                //
+                // The VStack `spacing: 14` gives the banner clearance above the
+                // nav's floating "+" FAB, which pokes 22pt out of the capsule's
+                // own bounds (BottomNav reserves that overhang with `.top, 22`).
+                // Without the gap the banner's bottom edge and the FAB's top
+                // edge land in the same band and visually collide (design-check
+                // 2). 14pt + the banner's own 6pt bottom pad clears the overhang.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if !navHidden {
+                        VStack(spacing: 14) {
+                            if previewMode {
+                                previewBanner
+                            }
                             BottomNav(active: tab, onTab: onTab)
                         }
                     }
                 }
-                .overlay(alignment: .topTrailing) { paletteToggle }
+                // Palette toggle lives in the top-LEADING gutter (design-check
+                // A1). It used to sit top-TRAILING at `.top+6/.trailing+14`,
+                // which shares the corner every screen fills with a trailing
+                // control: it overlapped ProfileScreen's gear button (top-corner,
+                // ~y14) and crowded FeedScreen's compass+bell cluster. Every
+                // screen's leading title/wordmark sits ~50–62pt down (behind the
+                // header top padding), so the leading gutter at ~y6 is empty on
+                // ALL of them — feed, stubs, watchlist, friends, profile.
+                // Pushing the toggle DOWN instead can't clear every screen: no
+                // single top offset clears both FeedScreen's ~y60 header cluster
+                // and WatchlistScreen's ~y88 first card, so the leading move is
+                // the one inset that breaks nothing.
+                //
+                // Gate on `!navHidden` (design-check A1 follow-up): full-screen
+                // flows (rank ceremony, StubDetail, StubShareScreen, TwinScreen,
+                // FriendProfileScreen, rank tier/H2H) each show their own back
+                // button at ~y50 in the top-leading gutter. Without this gate the
+                // toggle floats only ~14pt above those back buttons — a margin
+                // Dynamic Type or a larger safe-area inset could erase into an
+                // overlap. Flows don't need a palette toggle, so suppress it
+                // entirely when `navHidden` is true (matching the bottom-bar gate).
+                .overlay(alignment: .topLeading) { if !navHidden { paletteToggle } }
         }
         .spoolMode(mode)
         .preferredColorScheme(forcedColorScheme)
@@ -321,10 +394,15 @@ public struct SpoolAppRoot: View {
         } else if let d = stubDetail {
             StubDetailScreen(
                 stub: d,
-                onClose: { stubDetail = nil },
+                onClose: { stubDetail = nil; stubDetailRow = nil },
                 onShare: {
-                    stubShare = d
-                    stubDetail = nil
+                    // Build the REAL share payload from the detailed row (or the
+                    // WatchedDay for preview fixtures) and fetch the global stub
+                    // count so the "#nnnn" matches the last-watched card. The
+                    // handle is resolved inside StubShareScreen.
+                    let day = d
+                    let row = stubDetailRow
+                    Task { await presentShare(day: day, row: row) }
                 }
             )
         } else if let f = friendProfileOpen {
@@ -364,7 +442,10 @@ public struct SpoolAppRoot: View {
                 )
             case .stubs:
                 StubsScreen(
-                    onOpenDetail: { stubDetail = $0 },
+                    onOpenDetail: { day, row in
+                        stubDetail = day
+                        stubDetailRow = row
+                    },
                     onOpenJournalEntry: { tmdbId in presentComposerForEntry(tmdbId: tmdbId) }
                 )
             case .watchlist:
@@ -892,7 +973,7 @@ public struct SpoolAppRoot: View {
         }
         .buttonStyle(.plain)
         .padding(.top, 6)
-        .padding(.trailing, 14)
+        .padding(.leading, 14)
         .opacity(0.6)
     }
 }

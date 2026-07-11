@@ -62,7 +62,10 @@ public struct FriendProfileScreen: View {
                         footerPills.padding(.top, 16)
                     }
                     .padding(.horizontal, 18)
-                    .padding(.bottom, 110)
+                    // Rendered with the bottom bar HIDDEN (`navHidden`), so 110
+                    // over-reserved for an absent nav; the ScrollView already
+                    // stops at the home-indicator safe area. Small pad (was 110).
+                    .padding(.bottom, 12)
                 }
                 .refreshable { await reload() }
             }
@@ -112,7 +115,7 @@ public struct FriendProfileScreen: View {
     private var header: some View {
         SpoolThemeReader { t, _ in
             HStack(alignment: .bottom, spacing: 14) {
-                StripedAvatar(size: 72)
+                StripedAvatar(size: 72, name: displayedHandle)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(displayedHandle)
                         .font(SpoolFonts.serif(30))
@@ -367,6 +370,7 @@ public struct FriendProfileScreen: View {
                 SpoolPill(L10n.t("friendProfile.mutual", ["n": "\(mutualCount)"]), size: .sm)
             }
             SpoolPill(L10n.t("friendProfile.stubsPill", ["n": "\(stubsCount)"]), size: .sm)
+            Spacer(minLength: 0)
         }
     }
 

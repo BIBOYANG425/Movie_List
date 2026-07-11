@@ -114,7 +114,9 @@ public struct WatchlistScreen: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
-            .padding(.bottom, 110)
+            // Bottom bar reserved by the root's `.safeAreaInset`; small
+            // breathing pad below the last card (was 110).
+            .padding(.bottom, 12)
         }
         .refreshable { await model.reload() }
     }

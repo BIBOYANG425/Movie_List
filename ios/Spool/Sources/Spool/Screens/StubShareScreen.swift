@@ -1,7 +1,19 @@
 import SwiftUI
 
+/// The "for your story" share sheet. Renders the tapped stub's REAL data
+/// (title / tier / review line / moods / date / sequence number / handle) into
+/// both the on-screen `AdmitStub` card AND the exported/shared PNG
+/// (`StubImageRenderer`). Everything it draws comes from the `StubShare` payload
+/// the caller built from the real `StubRow` (see `StubShare.from(row:)`); the
+/// sharer's handle is resolved from the real profile on `.task`. There are
+/// deliberately NO demo constants here — a real user's shared image must never
+/// carry "@yurui" / "cried on the 6 train.".
 public struct StubShareScreen: View {
-    public var stub: WatchedDay
+    /// The fully-resolved real stub to render. Its `handle` starts as a best-
+    /// effort fallback and is replaced with the signed-in profile handle once
+    /// `loadHandle()` resolves.
+    @State private var stub: StubShare
+
     public var onClose: () -> Void
 
     #if canImport(UIKit)
@@ -12,28 +24,20 @@ public struct StubShareScreen: View {
 
     #if canImport(UIKit)
     public init(
-        stub: WatchedDay,
+        stub: StubShare,
         shareService: ShareService = UIActivityViewControllerShareService(),
         onClose: @escaping () -> Void
     ) {
-        self.stub = stub
+        _stub = State(initialValue: stub)
         self.shareService = shareService
         self.onClose = onClose
     }
     #else
-    public init(stub: WatchedDay, onClose: @escaping () -> Void) {
-        self.stub = stub
+    public init(stub: StubShare, onClose: @escaping () -> Void) {
+        _stub = State(initialValue: stub)
         self.onClose = onClose
     }
     #endif
-
-    private var stubMovie: Movie {
-        Movie(id: stub.title, title: stub.title, year: 2023, director: "celine song", seed: 0)
-    }
-    private let stubLine = "cried on the 6 train."
-    private let stubMoods = ["tender", "devastating"]
-    private let stubDate = "APR · 18 · 2026"
-    private let stubNo = "#0127"
 
     public var body: some View {
         SpoolThemeReader { t, mode in
@@ -60,9 +64,9 @@ public struct StubShareScreen: View {
                         .padding(.top, 4)
 
                     AdmitStub(
-                        movie: stubMovie, tier: stub.tier,
-                        line: stubLine, moods: stubMoods,
-                        date: stubDate, stubNo: stubNo
+                        movie: stub.movie, tier: stub.tier,
+                        line: stub.line, moods: stub.moods,
+                        date: stub.date, handle: stub.handle, stubNo: stub.stubNo
                     )
                     .rotationEffect(.degrees(-2.5))
                     .padding(.top, 18)
@@ -95,6 +99,19 @@ public struct StubShareScreen: View {
                 }
             }
         }
+        .task { await loadHandle() }
+    }
+
+    // MARK: real handle
+
+    /// Resolve the sharer's own handle from the real profile so the exported
+    /// image is stamped with their `@handle`, never the literal "@yurui".
+    /// Mirrors `ProfileScreen.displayedHandle`: the profile handle when signed
+    /// in, else leave the payload's fallback untouched.
+    private func loadHandle() async {
+        if let profile = try? await ProfileRepository.shared.getMyProfile() {
+            await MainActor.run { stub.handle = profile.handle }
+        }
     }
 
     // MARK: actions
@@ -102,9 +119,9 @@ public struct StubShareScreen: View {
     private func share(subject: String, mode: SpoolMode) {
         #if canImport(UIKit)
         guard let image = StubImageRenderer.render(
-            movie: stubMovie, tier: stub.tier,
-            line: stubLine, moods: stubMoods,
-            date: stubDate, handle: "@yurui", stubNo: stubNo,
+            movie: stub.movie, tier: stub.tier,
+            line: stub.line, moods: stub.moods,
+            date: stub.date, handle: stub.handle, stubNo: stub.stubNo,
             mode: mode
         ) else {
             flash("couldn't render stub")
@@ -119,9 +136,9 @@ public struct StubShareScreen: View {
     private func saveToPhotos(mode: SpoolMode) {
         #if canImport(UIKit)
         guard let image = StubImageRenderer.render(
-            movie: stubMovie, tier: stub.tier,
-            line: stubLine, moods: stubMoods,
-            date: stubDate, handle: "@yurui", stubNo: stubNo,
+            movie: stub.movie, tier: stub.tier,
+            line: stub.line, moods: stub.moods,
+            date: stub.date, handle: stub.handle, stubNo: stub.stubNo,
             mode: mode
         ) else {
             flash("couldn't render stub")
@@ -151,7 +168,11 @@ public struct StubShareScreen: View {
 
 #Preview {
     StubShareScreen(
-        stub: SpoolData.aprilWatched.first { $0.day == 18 }!,
+        stub: StubShare.from(
+            day: SpoolData.aprilWatched.first { $0.day == 18 }!,
+            stubCount: 127,
+            handle: SpoolData.me.handle
+        ),
         onClose: {}
     )
     .spoolMode(.paper)

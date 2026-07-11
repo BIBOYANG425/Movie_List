@@ -72,7 +72,9 @@ public struct FeedScreen: View {
                 ScrollView {
                     content
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 110)
+                        // Bottom bar reserved by the root's `.safeAreaInset`;
+                        // small breathing pad below the last card (was 110).
+                        .padding(.bottom, 12)
                         .padding(.top, 2)
                 }
                 .refreshable { await model.refresh() }
