@@ -249,7 +249,8 @@ public struct ProfileScreen: View {
     private func topFourCard(index: Int, title: String, seed: Int, posterUrl: String?) -> some View {
         SpoolThemeReader { t, _ in
             ZStack(alignment: .topLeading) {
-                PosterBlock(title: Self.firstWord(title), director: "—", seed: seed)
+                PosterBlock(title: Self.firstWord(title), director: "—", seed: seed,
+                            posterUrl: TMDBService.posterURL(from: posterUrl))
                 Text("\(index + 1)")
                     .font(SpoolFonts.mono(10))
                     .foregroundStyle(t.ink)
@@ -274,7 +275,7 @@ public struct ProfileScreen: View {
                     if recent.isEmpty {
                         ForEach(SpoolData.recent.prefix(5), id: \.self) { m in
                             recentTile(title: m.title, year: m.year, director: m.director,
-                                       tier: m.tier, seed: m.seed, mode: mode, t: t)
+                                       tier: m.tier, seed: m.seed, posterUrl: nil, mode: mode, t: t)
                                 .opacity(hasSession ? 0.45 : 1.0)
                         }
                     } else {
@@ -289,6 +290,7 @@ public struct ProfileScreen: View {
                                 director: "—",
                                 tier: Tier(rawValue: stub.tier) ?? .B,
                                 seed: Self.stableSeed(stub.tmdb_id),
+                                posterUrl: stub.poster_path,
                                 mode: mode, t: t
                             )
                         }
@@ -300,11 +302,12 @@ public struct ProfileScreen: View {
     }
 
     private func recentTile(title: String, year: Int, director: String,
-                            tier: Tier, seed: Int,
+                            tier: Tier, seed: Int, posterUrl: String?,
                             mode: SpoolMode, t: SpoolPalette) -> some View {
         VStack(spacing: 0) {
             PosterBlock(title: Self.firstWord(title), year: year,
-                        director: director, seed: seed, cornerRadius: 0)
+                        director: director, seed: seed, cornerRadius: 0,
+                        posterUrl: TMDBService.posterURL(from: posterUrl))
                 .frame(maxWidth: .infinity)
             Text(tier.rawValue)
                 .font(SpoolFonts.serif(16))
