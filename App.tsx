@@ -8,6 +8,7 @@ import ProfilePage from './pages/ProfilePage';
 import ProfileOnboardingPage from './pages/ProfileOnboardingPage';
 import PublicProfilePage from './pages/PublicProfilePage';
 import MovieOnboardingPage from './pages/MovieOnboardingPage';
+import AgentRankPage from './pages/AgentRankPage';
 import { useAuth } from './contexts/AuthContext';
 import { Grain } from './components/shared/Grain';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
@@ -49,6 +50,13 @@ const App = () => {
           element={user ? (needsOnboarding ? <Navigate to="/onboarding/profile" replace /> : <ProfilePage />) : <Navigate to="/auth" replace />}
         />
         <Route path="/u/:username" element={<PublicProfilePage />} />
+        {/*
+          Agent rank ceremony (P3-B). Opens inside iMessage via a Photon
+          mini-app card; authenticated by a short-TTL JWT in the URL fragment,
+          NOT the app session — so it renders regardless of `user`. Self-contained
+          (own token-scoped client) and does not touch /u/* or any other route.
+        */}
+        <Route path="/agent-rank" element={<AgentRankPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>

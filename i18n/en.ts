@@ -457,6 +457,19 @@ const en = {
   'detail.watched_btn': 'Watched',
   'detail.shareTitle': 'Check this out on Spool',
   'detail.inTheirList': 'in their list',
+
+  // ── Agent rank ceremony (/agent-rank, P3-B) ───────────────────────────────
+  'agentRank.title': 'rank it',
+  'agentRank.loading': 'setting up your ceremony…',
+  'agentRank.noLink': 'this link needs to come from chris. text him for a fresh one.',
+  'agentRank.expired': 'this link expired. ask chris to send a new one.',
+  'agentRank.unsupported': 'this one only works for movies right now. text chris.',
+  'agentRank.notFound': "couldn't pull that film. text chris to try again.",
+  'agentRank.alreadyRanked': '{title} already sits in {tier}. want to move it?',
+  'agentRank.reRank': 're-rank it',
+  'agentRank.placedTitle': 'placed.',
+  'agentRank.placedBody': '{title} sits in {tier}. go tell chris how it felt.',
+  'agentRank.closeHint': 'you can close this sheet now.',
 } as const;
 
 export type TranslationKey = keyof typeof en;

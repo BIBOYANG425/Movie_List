@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { MovieStub, StubMediaType, Tier } from '../types';
 import ColorThief from 'color-thief-browser';
@@ -148,8 +149,9 @@ export async function insertStubOrUpdateOnConflict(
   userId: string,
   input: CreateStubInput,
   now: Date = new Date(),
+  client: SupabaseClient = supabase,
 ): Promise<StubWriteResult> {
-  const insertRes: StubWriteResult = await supabase
+  const insertRes: StubWriteResult = await client
     .from('movie_stubs')
     .insert(buildStubInsertPayload(userId, input, now))
     .select()
@@ -158,7 +160,7 @@ export async function insertStubOrUpdateOnConflict(
   if (!insertRes.error) return insertRes;
   if (insertRes.error.code !== '23505') return { data: null, error: insertRes.error };
 
-  return await supabase
+  return await client
     .from('movie_stubs')
     .update(buildStubConflictUpdatePayload(input, now))
     .eq('user_id', userId)
@@ -168,11 +170,18 @@ export async function insertStubOrUpdateOnConflict(
     .single();
 }
 
+/**
+ * Create (or refresh) a ticket stub. `client` defaults to the module-global
+ * supabase client — normal app behavior is unchanged. The /agent-rank route
+ * passes a token-scoped client so the insert + background palette update run
+ * under the fragment JWT's RLS identity (P3-B, task B1).
+ */
 export async function createStub(
   userId: string,
   input: CreateStubInput,
+  client: SupabaseClient = supabase,
 ): Promise<MovieStub | null> {
-  const { data, error } = await insertStubOrUpdateOnConflict(userId, input);
+  const { data, error } = await insertStubOrUpdateOnConflict(userId, input, new Date(), client);
 
   if (error || !data) {
     console.error('Failed to create stub:', error);
@@ -183,7 +192,7 @@ export async function createStub(
   if (input.posterPath) {
     extractPalette(input.posterPath).then((palette) => {
       if (palette.length > 0) {
-        supabase
+        client
           .from('movie_stubs')
           .update({ palette })
           .eq('id', data.id)
