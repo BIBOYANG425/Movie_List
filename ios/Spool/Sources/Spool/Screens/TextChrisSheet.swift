@@ -16,20 +16,29 @@ import UIKit
 ///   idle      → phone input + explanatory line + "text Chris" CTA
 ///   minting   → spinner
 ///   issued    → the 6-char code in mono, expiry note, "open messages" + "copy code"
-///   linked    → linked-phone row (+ since date) + "unlink" (confirmation dialog)
+///   linked    → linked-phone row (+ since date) + the "daily reel" controls +
+///               "unlink" (confirmation dialog)
 ///   unlinking → spinner over the linked row
 ///
-/// All business logic lives on `TextChrisModel`; this view only renders and wires
-/// buttons. Copy is Chris's register but the APP's voice rules (no em dashes).
-/// Errors surface through the model's `onError` → `ToastCenter` with distinct
-/// copy for too_many_codes / pool_unavailable / generic.
+/// The linked state also hosts the "daily reel" section — Chris's morning
+/// movie-industry newsletter. A cadence picker (daily / weekly / off) + a
+/// delivery-hour menu ("arrives around {hour}") drive `DigestPrefsModel`, which
+/// upserts `agent_preferences` (own-row under RLS). Those controls read on appear
+/// and persist optimistically per change.
 ///
-/// Header last reviewed: 2026-07-11
+/// All business logic lives on `TextChrisModel` / `DigestPrefsModel`; this view
+/// only renders and wires buttons. Copy is Chris's register but the APP's voice
+/// rules (no em dashes). Errors surface through each model's `onError` →
+/// `ToastCenter` with distinct copy for too_many_codes / pool_unavailable /
+/// generic (and a save-failed line for the reel).
+///
+/// Header last reviewed: 2026-07-12
 public struct TextChrisSheet: View {
     public var onClose: () -> Void
     public var effectiveMode: SpoolMode
 
     @StateObject private var model: TextChrisModel
+    @StateObject private var digest: DigestPrefsModel
     @Environment(\.openURL) private var openURL
     @State private var confirmingUnlink: Bool = false
     @State private var copied: Bool = false
@@ -43,14 +52,25 @@ public struct TextChrisSheet: View {
         _model = StateObject(wrappedValue: TextChrisModel.live(onError: { error in
             ToastCenter.shared.show(Self.errorCopy(error), level: .error)
         }))
+        _digest = StateObject(wrappedValue: DigestPrefsModel.live(onError: {
+            ToastCenter.shared.show(L10n.t("digest.saveFailed"), level: .error)
+        }))
     }
 
-    /// Test / preview init — inject a pre-built model (stub closures).
+    /// Test / preview init — inject pre-built models (stub closures).
     @MainActor
-    init(model: TextChrisModel, effectiveMode: SpoolMode, onClose: @escaping () -> Void) {
+    init(
+        model: TextChrisModel,
+        effectiveMode: SpoolMode,
+        onClose: @escaping () -> Void,
+        digest: DigestPrefsModel? = nil
+    ) {
         self.effectiveMode = effectiveMode
         self.onClose = onClose
         _model = StateObject(wrappedValue: model)
+        _digest = StateObject(wrappedValue: digest ?? DigestPrefsModel(
+            loadFn: { nil }, saveFn: { _, _ in }, onError: {}
+        ))
     }
 
     public var body: some View {
@@ -69,7 +89,12 @@ public struct TextChrisSheet: View {
             }
         }
         .spoolMode(effectiveMode)
-        .task { await model.load() }
+        .task {
+            await model.load()
+            // The daily-reel controls live in the linked state only; read the
+            // user's saved prefs once the status read confirms a link.
+            if case .linked = model.state { await digest.load() }
+        }
     }
 
     // MARK: header
@@ -268,6 +293,9 @@ public struct TextChrisSheet: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(t.rule, lineWidth: 1)
                     )
                 }
+
+                dailyReelSection
+
                 Button(action: { confirmingUnlink = true }) {
                     HStack(spacing: 8) {
                         if busy { ProgressView().tint(t.ink) }
@@ -299,6 +327,84 @@ public struct TextChrisSheet: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // MARK: (e) the daily reel — cadence + delivery hour (linked state only)
+
+    /// Chris's morning movie-industry newsletter controls. Cadence is a segmented
+    /// picker (daily / weekly / off); the delivery hour is a menu that reads
+    /// "arrives around {hour}". The hour control is hidden when the reel is off
+    /// (there's nothing to schedule). Every change persists immediately through
+    /// `DigestPrefsModel` (optimistic, reverts on failure).
+    private var dailyReelSection: some View {
+        SpoolThemeReader { t, _ in
+            VStack(alignment: .leading, spacing: 12) {
+                Rectangle().fill(t.rule).frame(height: 1).padding(.vertical, 4)
+
+                Text(L10n.t("digest.sectionCaption"))
+                    .font(SpoolFonts.mono(10))
+                    .tracking(2)
+                    .foregroundStyle(t.inkSoft)
+                Text(L10n.t("digest.sectionBlurb"))
+                    .font(SpoolFonts.hand(12))
+                    .foregroundStyle(t.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Picker(L10n.t("digest.sectionCaption"), selection: cadenceBinding) {
+                    ForEach(DigestCadence.allCases, id: \.self) { cadence in
+                        Text(L10n.t(cadence.labelKey)).tag(cadence)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(digest.phase == .loading)
+
+                if digest.prefs.cadence != .off {
+                    Menu {
+                        ForEach(DigestHour.all, id: \.self) { hour in
+                            Button(DigestHour.clockLabel(hour)) {
+                                Task { await digest.setHour(hour) }
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text(Self.hourArrivalLabel(digest.prefs.hour))
+                                .font(SpoolFonts.hand(14))
+                                .foregroundStyle(t.ink)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 11))
+                                .foregroundStyle(t.inkSoft)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous).fill(t.cream2)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(t.rule, lineWidth: 1)
+                        )
+                    }
+                    .disabled(digest.phase == .loading)
+                    .accessibilityLabel(Self.hourArrivalLabel(digest.prefs.hour))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Cadence binding that persists on change (SwiftUI `Picker` needs a two-way
+    /// binding; the setter routes into the model's save flow).
+    private var cadenceBinding: Binding<DigestCadence> {
+        Binding(
+            get: { digest.prefs.cadence },
+            set: { newValue in Task { await digest.setCadence(newValue) } }
+        )
+    }
+
+    /// Compose the localized "arrives around {hour}" frame with the pure clock
+    /// label. Static + pure so it's unit-tested without a view.
+    static func hourArrivalLabel(_ hour: Int) -> String {
+        L10n.t("digest.arrivesAround", ["hour": DigestHour.clockLabel(hour)])
     }
 
     // MARK: shared primary button

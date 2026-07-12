@@ -583,5 +583,14 @@ public enum ZH {
         "agent.errorSignIn": "先登录，Chris 才知道是你。",
         "agent.errorNetwork": "连不上 Chris。检查一下网络。",
         "agent.errorGeneric": "现在没能接通 Chris。再试一次。",
+
+        // The daily reel (agent_preferences digest cadence)
+        "digest.sectionCaption": "每日速报",
+        "digest.sectionBlurb": "每天早上一小段电影圈新闻，用 Chris 的口吻讲给你听。",
+        "digest.cadenceDaily": "每天",
+        "digest.cadenceWeekly": "每周",
+        "digest.cadenceOff": "关闭",
+        "digest.arrivesAround": "大约 {hour} 送到",
+        "digest.saveFailed": "没保存上。再试一次。",
     ]
 }

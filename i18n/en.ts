@@ -470,6 +470,17 @@ const en = {
   'agentRank.placedTitle': 'placed.',
   'agentRank.placedBody': '{title} sits in {tier}. go tell chris how it felt.',
   'agentRank.closeHint': 'you can close this sheet now.',
+
+  // ── The daily reel (agent_preferences digest cadence) ─────────────────────
+  'digest.sectionCaption': 'the daily reel',
+  'digest.sectionBlurb': "a short morning read on movie news, in Chris's voice.",
+  'digest.cadenceLabel': 'how often',
+  'digest.cadenceDaily': 'Daily',
+  'digest.cadenceWeekly': 'Weekly',
+  'digest.cadenceOff': 'Off',
+  'digest.hourLabel': 'when it arrives',
+  'digest.arrivesAround': 'arrives around {hour}',
+  'digest.saveFailed': "couldn't save that. try again.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

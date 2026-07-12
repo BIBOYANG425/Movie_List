@@ -38,6 +38,13 @@ import {
   uploadAvatarPhoto,
 } from '../services/friendsService';
 import type { ProfileVisibility } from '../services/profileService';
+import {
+  DIGEST_DEFAULTS,
+  clockLabel,
+  getDigestPreferences,
+  saveDigestPreferences,
+  type DigestCadence,
+} from '../services/digestPreferencesService';
 import { getJournalStats } from '../services/journalService';
 import { shareOrCopyLink } from '../utils/shareLink';
 import { relativeDate } from '../utils/relativeDate';
@@ -58,6 +65,9 @@ const ProfilePage = () => {
   const [bioInput, setBioInput] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [visibilityInput, setVisibilityInput] = useState<ProfileVisibility>('friends');
+  const [digestCadence, setDigestCadence] = useState<DigestCadence>(DIGEST_DEFAULTS.cadence);
+  const [digestHour, setDigestHour] = useState<number>(DIGEST_DEFAULTS.hour);
+  const [digestBusy, setDigestBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [expandedList, setExpandedList] = useState<'followers' | 'following' | null>(null);
@@ -124,19 +134,23 @@ const ProfilePage = () => {
     setBioInput(summary.bio ?? '');
     setAvatarFile(null);
 
-    // Load visibility setting + journal stats for own profile
+    // Load visibility setting + digest preferences + journal stats for own profile
     if (summary.isSelf) {
-      const [visResult, journalStats] = await Promise.all([
+      const [visResult, digestPrefs, journalStats] = await Promise.all([
         supabase
           .from('profiles')
           .select('profile_visibility')
           .eq('id', profileId)
           .single(),
+        getDigestPreferences(profileId).catch(() => null),
         getJournalStats(profileId).catch(() => null),
       ]);
       if (visResult.data?.profile_visibility) {
         setVisibilityInput(visResult.data.profile_visibility as ProfileVisibility);
       }
+      // A missing row falls back to the contract defaults (daily @ 9).
+      setDigestCadence(digestPrefs?.cadence ?? DIGEST_DEFAULTS.cadence);
+      setDigestHour(digestPrefs?.hour ?? DIGEST_DEFAULTS.hour);
       if (journalStats) {
         setStreakStats({ currentStreak: journalStats.currentStreak, longestStreak: journalStats.longestStreak });
       }
@@ -239,6 +253,34 @@ const ProfilePage = () => {
     await loadProfile();
     setStatusMessage(t('profile.updated'));
     setProfileBusy(false);
+  };
+
+  // The daily-reel controls persist immediately (optimistic), reverting on a
+  // failed save — mirrors the iOS DigestPrefsModel seam.
+  const handleDigestCadence = async (next: DigestCadence) => {
+    if (!user || next === digestCadence || digestBusy) return;
+    const prev = digestCadence;
+    setDigestCadence(next);
+    setDigestBusy(true);
+    const ok = await saveDigestPreferences(user.id, next, digestHour);
+    if (!ok) {
+      setDigestCadence(prev);
+      setStatusMessage(t('digest.saveFailed'));
+    }
+    setDigestBusy(false);
+  };
+
+  const handleDigestHour = async (next: number) => {
+    if (!user || next === digestHour || digestBusy) return;
+    const prev = digestHour;
+    setDigestHour(next);
+    setDigestBusy(true);
+    const ok = await saveDigestPreferences(user.id, digestCadence, next);
+    if (!ok) {
+      setDigestHour(prev);
+      setStatusMessage(t('digest.saveFailed'));
+    }
+    setDigestBusy(false);
   };
 
   if (!user) return null;
@@ -486,6 +528,46 @@ const ProfilePage = () => {
                   <option value="friends">{t('public.visibilityFriends')}</option>
                   <option value="private">{t('public.visibilityPrivate')}</option>
                 </select>
+              </div>
+            </div>
+
+            {/* ── The daily reel (Chris's morning newsletter) ─────────────── */}
+            <div className="rounded-lg border border-border/40 bg-background/40 p-3 space-y-3">
+              <div className="space-y-0.5">
+                <p className="text-xs font-semibold text-muted-foreground">{t('digest.sectionCaption')}</p>
+                <p className="text-xs text-muted-foreground">{t('digest.sectionBlurb')}</p>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">{t('digest.cadenceLabel')}</label>
+                  <select
+                    value={digestCadence}
+                    onChange={(e) => handleDigestCadence(e.target.value as DigestCadence)}
+                    disabled={digestBusy}
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-60"
+                  >
+                    <option value="daily">{t('digest.cadenceDaily')}</option>
+                    <option value="weekly">{t('digest.cadenceWeekly')}</option>
+                    <option value="off">{t('digest.cadenceOff')}</option>
+                  </select>
+                </div>
+                {digestCadence !== 'off' && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">{t('digest.hourLabel')}</label>
+                    <select
+                      value={digestHour}
+                      onChange={(e) => handleDigestHour(Number(e.target.value))}
+                      disabled={digestBusy}
+                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-60"
+                    >
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>
+                          {t('digest.arrivesAround').replace('{hour}', clockLabel(h))}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
