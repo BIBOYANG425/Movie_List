@@ -639,5 +639,14 @@ public enum EN {
         "agent.errorSignIn": "sign in first so Chris knows it's you.",
         "agent.errorNetwork": "couldn't reach Chris. check your connection.",
         "agent.errorGeneric": "couldn't set up Chris right now. try again.",
+
+        // The daily reel (agent_preferences digest cadence)
+        "digest.sectionCaption": "the daily reel",
+        "digest.sectionBlurb": "a short morning read on movie news, in Chris's voice.",
+        "digest.cadenceDaily": "daily",
+        "digest.cadenceWeekly": "weekly",
+        "digest.cadenceOff": "off",
+        "digest.arrivesAround": "arrives around {hour}",
+        "digest.saveFailed": "couldn't save that. try again.",
     ]
 }

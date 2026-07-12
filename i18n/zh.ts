@@ -472,6 +472,17 @@ const zh = {
   'agentRank.placedTitle': '排好了。',
   'agentRank.placedBody': '{title} 落在 {tier} 档。去告诉 chris 你的感受吧。',
   'agentRank.closeHint': '现在可以关掉这个页面了。',
+
+  // ── The daily reel (agent_preferences digest cadence) ─────────────────────
+  'digest.sectionCaption': '每日速报',
+  'digest.sectionBlurb': '每天早上一小段电影圈新闻，用 Chris 的口吻讲给你听。',
+  'digest.cadenceLabel': '频率',
+  'digest.cadenceDaily': '每天',
+  'digest.cadenceWeekly': '每周',
+  'digest.cadenceOff': '关闭',
+  'digest.hourLabel': '送达时间',
+  'digest.arrivesAround': '大约 {hour} 送到',
+  'digest.saveFailed': '没保存上。再试一次。',
 } satisfies Record<TranslationKey, string>;
 
 export default zh;
