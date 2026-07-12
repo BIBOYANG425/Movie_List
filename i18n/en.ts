@@ -471,6 +471,15 @@ const en = {
   'agentRank.placedBody': '{title} sits in {tier}. go tell chris how it felt.',
   'agentRank.closeHint': 'you can close this sheet now.',
 
+  // ── Agent showtimes card (/agent-showtimes, S2b) ──────────────────────────
+  'agentShowtimes.title': 'showtimes',
+  'agentShowtimes.loading': 'pulling up showtimes…',
+  'agentShowtimes.expired': 'this card expired. ask chris again.',
+  'agentShowtimes.notFound': "couldn't find that card. text chris for a fresh one.",
+  'agentShowtimes.nearbyHeading': "what's playing near you",
+  'agentShowtimes.empty': 'nothing showing near you right now.',
+  'agentShowtimes.asOf': 'times as of {time}',
+
   // ── The daily reel (agent_preferences digest cadence) ─────────────────────
   'digest.sectionCaption': 'the daily reel',
   'digest.sectionBlurb': "a short morning read on movie news, in Chris's voice.",
