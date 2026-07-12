@@ -459,6 +459,19 @@ const zh = {
   'detail.watched_btn': '看过',
   'detail.shareTitle': '在 Spool 上看看这个',
   'detail.inTheirList': '在列表中',
+
+  // ── Agent rank ceremony (/agent-rank, P3-B) ───────────────────────────────
+  'agentRank.title': '来排个名',
+  'agentRank.loading': '正在准备你的排名仪式…',
+  'agentRank.noLink': '这个链接得从 chris 那儿来。发消息找他要个新的。',
+  'agentRank.expired': '这个链接过期了。找 chris 再发一个。',
+  'agentRank.unsupported': '这个目前只支持电影。发消息找 chris。',
+  'agentRank.notFound': '没能拉到这部片子。找 chris 再试一次。',
+  'agentRank.alreadyRanked': '{title} 已经在 {tier} 档了。想挪一下吗？',
+  'agentRank.reRank': '重新排',
+  'agentRank.placedTitle': '排好了。',
+  'agentRank.placedBody': '{title} 落在 {tier} 档。去告诉 chris 你的感受吧。',
+  'agentRank.closeHint': '现在可以关掉这个页面了。',
 } satisfies Record<TranslationKey, string>;
 
 export default zh;

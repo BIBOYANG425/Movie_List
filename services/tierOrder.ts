@@ -21,6 +21,7 @@
 // they cannot leak a localized title into persistence (audit B4 lives in the
 // re-rank handler, not here).
 
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 /** Which media table the RPC branch targets. */
@@ -85,13 +86,18 @@ export function ordersAfterCrossTierMove(
  * Thin wrapper over the `set_tier_order` RPC. Sends the full intended tier
  * membership (`ids`) and lets the server recompute contiguous positions.
  * Error is passed straight through so callers can revert optimistic UI + toast.
+ *
+ * `client` defaults to the app's module-global supabase client — normal app
+ * behavior is unchanged. The /agent-rank route passes a token-scoped client so
+ * the RPC runs under the fragment JWT's RLS identity (P3-B, task B1).
  */
 export async function setTierOrder(
   media: TierOrderMedia,
   tier: string,
   ids: readonly string[],
+  client: SupabaseClient = supabase,
 ): Promise<{ error: unknown }> {
-  const { error } = await supabase.rpc('set_tier_order', {
+  const { error } = await client.rpc('set_tier_order', {
     p_media: media,
     p_tier: tier,
     p_tmdb_ids: ids as string[],

@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import {
   ActivityComment,
@@ -17,17 +18,24 @@ import {
   manualMediaKey,
 } from './profileService';
 
+/**
+ * Log a ranking activity event (add/move/remove). `client` defaults to the
+ * module-global supabase client — normal app behavior is unchanged. The
+ * /agent-rank route passes a token-scoped client so the insert runs under the
+ * fragment JWT's RLS identity (P3-B, task B1).
+ */
 export async function logRankingActivityEvent(
   userId: string,
   item: RankingActivityPayload,
   eventType: RankingActivityEventType,
+  client: SupabaseClient = supabase,
 ): Promise<boolean> {
   const metadata: Record<string, unknown> = {};
   if (item.notes) metadata.notes = item.notes;
   if (item.year) metadata.year = item.year;
   if (item.watchedWithUserIds?.length) metadata.watched_with_user_ids = item.watchedWithUserIds;
 
-  const { error } = await supabase.from('activity_events').insert({
+  const { error } = await client.from('activity_events').insert({
     actor_id: userId,
     event_type: eventType,
     media_tmdb_id: item.id,
