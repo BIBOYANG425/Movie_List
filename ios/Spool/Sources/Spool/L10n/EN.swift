@@ -602,5 +602,42 @@ public enum EN {
         "settings.version": "version",
         "settings.signingOut": "signing out…",
         "settings.signOut": "sign out",
+
+        // "text Chris" sheet (P1 M2b) — the iMessage-companion linking handshake.
+        // iOS-only surface; Chris is Spool's iMessage movie friend. Copy is in
+        // Chris's warm movie-companion register but follows the app's no-em-dash
+        // prose rule (recast with periods). The proper name "Chris" is kept
+        // verbatim in zh too (a real iMessage handle; localizing it would mismatch
+        // the actual conversation), same convention as the 'EN'/'中文' glyphs.
+        "settings.textChris": "text Chris",
+        "agent.close": "close",
+        "agent.title": "text Chris",
+        "agent.introTitle": "your movie friend on iMessage",
+        "agent.introBody": "Chris talks movies with you over text. link your number and he can find your next watch, remember what you loved, and text you when something good drops.",
+        "agent.phoneLabel": "the number you text from",
+        "agent.phonePlaceholder": "(310) 555 1234",
+        "agent.phoneHint": "US numbers work out of the box. use +country for anywhere else.",
+        "agent.cta": "text Chris",
+        "agent.minting": "setting up your line to Chris…",
+        "agent.codeCaption": "your link code",
+        "agent.expiryNote": "this code expires in 15 minutes.",
+        "agent.openMessages": "open messages",
+        "agent.copyCode": "copy code",
+        "agent.copied": "copied",
+        "agent.copiedToast": "code copied",
+        "agent.codeA11y": "your link code is {code}",
+        "agent.linkedCaption": "linked to Chris",
+        "agent.linkedSince": "since {date}",
+        "agent.unlink": "unlink",
+        "agent.unlinking": "unlinking…",
+        "agent.cancel": "cancel",
+        "agent.unlinkConfirmTitle": "unlink from Chris?",
+        "agent.unlinkConfirmMessage": "Chris will stop texting this number. you can link again any time.",
+        "agent.errorTooManyCodes": "too many codes already. wait a bit before asking Chris again.",
+        "agent.errorPoolUnavailable": "Chris can't take a new line right now. try again soon.",
+        "agent.errorInvalidPhone": "that number didn't look right. check it and try again.",
+        "agent.errorSignIn": "sign in first so Chris knows it's you.",
+        "agent.errorNetwork": "couldn't reach Chris. check your connection.",
+        "agent.errorGeneric": "couldn't set up Chris right now. try again.",
     ]
 }

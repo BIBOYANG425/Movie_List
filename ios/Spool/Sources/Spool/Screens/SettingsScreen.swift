@@ -33,6 +33,10 @@ public struct SettingsScreen: View {
     @State private var profile: ProfileRow?
     @State private var email: String?
     @State private var editing: Bool = false
+    /// Presents the "text Chris" sheet (P1 M2b) — the iMessage-companion linking
+    /// handshake. Gated on `hasSession` (linking mints a code under the user's
+    /// JWT), presented from a row in the ACCOUNT section.
+    @State private var textingChris: Bool = false
     /// True once we've confirmed a Supabase session exists. This is the
     /// single source of truth for session-dependent UI (sign out, edit
     /// profile) — previously the view gated those on `profile != nil`,
@@ -105,6 +109,13 @@ public struct SettingsScreen: View {
                 .spoolMode(effectiveMode)
             }
         }
+        .sheet(isPresented: $textingChris) {
+            TextChrisSheet(
+                effectiveMode: effectiveMode,
+                onClose: { textingChris = false }
+            )
+            .spoolMode(effectiveMode)
+        }
     }
 
     // MARK: header
@@ -149,6 +160,8 @@ public struct SettingsScreen: View {
                     row(title: profile.handle, subtitle: email ?? profile.displayedName, t: t)
                     divider(t: t)
                     linkRow(title: L10n.t("settings.editProfile"), t: t) { editing = true }
+                    divider(t: t)
+                    linkRow(title: L10n.t("settings.textChris"), t: t) { textingChris = true }
                 }
             } else if hasSession {
                 // Signed in, but neither profile fetch nor auth-session
