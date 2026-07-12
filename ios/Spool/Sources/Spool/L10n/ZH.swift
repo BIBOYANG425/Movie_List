@@ -548,5 +548,40 @@ public enum ZH {
         "settings.version": "版本",
         "settings.signingOut": "退出中…",
         "settings.signOut": "退出登录",
+
+        // "text Chris" 面板（P1 M2b）——iMessage 电影搭子 Chris 的绑定流程。
+        // 仅 iOS。文案保持 Chris 温和的电影搭子口吻，遵守 app 的无破折号规则。
+        // 专名 "Chris" 在中文里也保留原文（对应真实的 iMessage 号码，翻译成
+        // 克里斯会和实际对话对不上），跟 'EN'/'中文' 字形保留原文同理。
+        "settings.textChris": "给 Chris 发消息",
+        "agent.close": "关闭",
+        "agent.title": "给 Chris 发消息",
+        "agent.introTitle": "iMessage 上的电影搭子",
+        "agent.introBody": "Chris 会在短信里陪你聊电影。绑定你的号码，他就能帮你找下一部想看的、记住你喜欢的，有好片上线时给你发消息。",
+        "agent.phoneLabel": "你用来发消息的号码",
+        "agent.phonePlaceholder": "138 0013 8000",
+        "agent.phoneHint": "美国号码可直接用。其他地区请加 +国家区号。",
+        "agent.cta": "给 Chris 发消息",
+        "agent.minting": "正在为你接通 Chris…",
+        "agent.codeCaption": "你的绑定码",
+        "agent.expiryNote": "这个码 15 分钟后失效。",
+        "agent.openMessages": "打开信息",
+        "agent.copyCode": "复制绑定码",
+        "agent.copied": "已复制",
+        "agent.copiedToast": "绑定码已复制",
+        "agent.codeA11y": "你的绑定码是 {code}",
+        "agent.linkedCaption": "已和 Chris 绑定",
+        "agent.linkedSince": "自 {date} 起",
+        "agent.unlink": "解除绑定",
+        "agent.unlinking": "解除中…",
+        "agent.cancel": "取消",
+        "agent.unlinkConfirmTitle": "要和 Chris 解除绑定吗？",
+        "agent.unlinkConfirmMessage": "Chris 会停止给这个号码发消息。你随时可以重新绑定。",
+        "agent.errorTooManyCodes": "绑定码太多了。歇一会儿再找 Chris 吧。",
+        "agent.errorPoolUnavailable": "Chris 现在接不了新号码。过会儿再试。",
+        "agent.errorInvalidPhone": "这个号码看着不太对。检查一下再试。",
+        "agent.errorSignIn": "先登录，Chris 才知道是你。",
+        "agent.errorNetwork": "连不上 Chris。检查一下网络。",
+        "agent.errorGeneric": "现在没能接通 Chris。再试一次。",
     ]
 }
