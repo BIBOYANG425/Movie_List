@@ -473,6 +473,15 @@ const zh = {
   'agentRank.placedBody': '{title} 落在 {tier} 档。去告诉 chris 你的感受吧。',
   'agentRank.closeHint': '现在可以关掉这个页面了。',
 
+  // ── Agent showtimes card (/agent-showtimes, S2b) ──────────────────────────
+  'agentShowtimes.title': '场次',
+  'agentShowtimes.loading': '正在查场次…',
+  'agentShowtimes.expired': '这张卡过期了。再找 chris 要一张。',
+  'agentShowtimes.notFound': '没找到这张卡。发消息找 chris 要个新的。',
+  'agentShowtimes.nearbyHeading': '你附近正在放的',
+  'agentShowtimes.empty': '你附近现在没有场次。',
+  'agentShowtimes.asOf': '场次更新于 {time}',
+
   // ── The daily reel (agent_preferences digest cadence) ─────────────────────
   'digest.sectionCaption': '每日速报',
   'digest.sectionBlurb': '每天早上一小段电影圈新闻，用 Chris 的口吻讲给你听。',

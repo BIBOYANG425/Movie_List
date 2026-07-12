@@ -1063,3 +1063,68 @@ Badge catalog pointer: `components/social/AchievementsView.tsx` `BADGE_CATALOG`
 (16 badges, 15 grantable). Milestone copy map: `services/achievementService.ts`
 `BADGE_MILESTONE_COPY`.
 iOS port: achievements surface + `grant_achievements()` calls ship in C7-iOS.
+
+## agent_showtimes_cards (since S2b)
+
+Backing table for the `/agent-showtimes` web card (an iMessage mini-app
+"showtimes" card). The agent (spool-agent repo) fetches listings, INSERTs ONE
+row of the card payload as the authenticated user, and texts the user a link
+`https://rankspool.com/agent-showtimes#c=<id>` (row id in the URL fragment).
+The web route reads the row back with the **anon** client. Showtimes are public
+data, so anon SELECT of unexpired rows is an accepted design decision.
+
+Table + RLS: `supabase/migrations/20260712_agent_showtimes_cards.sql`. Columns:
+`id uuid pk default gen_random_uuid()`, `user_id uuid not null → auth.users`,
+`payload jsonb not null`, `created_at`, `expires_at timestamptz not null
+default now() + interval '24 hours'`.
+
+- **INSERT** (agent only): `to authenticated with check (auth.uid() = user_id)`.
+  The agent sets `user_id` = its acting user and `payload`; `id`/`created_at`/
+  `expires_at` take DB defaults.
+- **SELECT**: `to anon, authenticated using (expires_at > now())`. RLS hides
+  expired rows entirely, so a missing row and an expired row are
+  indistinguishable to the reader (both → the friendly "expired" state). No
+  UPDATE/DELETE policies — cards are write-once and self-expire after 24h.
+
+**`payload` jsonb shape — `ShowtimesCardPayloadV1`** (frozen; the agent side is
+built against this verbatim). TS source of truth:
+`services/agentShowtimesCard.ts`.
+
+```ts
+{
+  v: 1,
+  asOf: string,               // ISO timestamp of the listings fetch
+  territory: string,          // 'XX' sandbox | 'US' live
+  location: { lat: number, lng: number, label?: string },
+  film: { title: string, movieGluId: number, poster?: string } | null,  // null = "what's nearby" card
+  cinemas: Array<{
+    cinemaId: number,
+    name: string,
+    distance: number | null,  // miles
+    films: Array<{
+      movieGluId: number,
+      title: string,
+      times: Array<{ start: string, label: string }>  // label is the display string e.g. "7:30 PM"
+    }>
+  }>
+}
+```
+
+- `film` NULL → a "what's playing near you" card (the page renders the nearby
+  heading and shows a per-cinema film header per film). A non-null `film` → a
+  single-film card (the page elides the per-cinema film header).
+- `distance` is miles or null; the page sorts cinemas ascending with nulls last
+  and formats as `"2.3 mi"` (one decimal). null distance → no distance shown.
+- `times[].label` is the pre-formatted display string; the page shows it on a
+  tappable chip that links out to Fandango via `lib/ticketLinkout.ts`
+  (`https://www.fandango.com/search?q=<encodeURIComponent(film.title)>`,
+  `target="_blank" rel="noopener"`). ONE module on purpose: a future affiliate
+  wrap changes only that file.
+- An empty `cinemas` array → the page's "nothing showing near you" empty state.
+
+Implementations: web page `pages/AgentShowtimesPage.tsx`; pure contract + view
+model `services/agentShowtimesCard.ts`; fragment parse
+`services/agentShowtimesFragment.ts`; linkout `lib/ticketLinkout.ts`. Tests:
+`services/__tests__/agentShowtimesCard.test.ts`,
+`services/__tests__/agentShowtimesFragment.test.ts`,
+`services/__tests__/ticketLinkout.test.ts`. No iOS port (web-only surface).

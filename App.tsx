@@ -9,6 +9,7 @@ import ProfileOnboardingPage from './pages/ProfileOnboardingPage';
 import PublicProfilePage from './pages/PublicProfilePage';
 import MovieOnboardingPage from './pages/MovieOnboardingPage';
 import AgentRankPage from './pages/AgentRankPage';
+import AgentShowtimesPage from './pages/AgentShowtimesPage';
 import { useAuth } from './contexts/AuthContext';
 import { Grain } from './components/shared/Grain';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
@@ -57,6 +58,13 @@ const App = () => {
           (own token-scoped client) and does not touch /u/* or any other route.
         */}
         <Route path="/agent-rank" element={<AgentRankPage />} />
+        {/*
+          Agent showtimes card (S2b). Opens inside iMessage via a Photon
+          mini-app card; reads ONE unexpired row of PUBLIC showtimes data with
+          the anon client (no JWT, unlike /agent-rank). Row id rides in the URL
+          fragment (#c=<uuid>). Plain web route — does not touch /u/* or AASA.
+        */}
+        <Route path="/agent-showtimes" element={<AgentShowtimesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
