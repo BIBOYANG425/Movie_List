@@ -27,6 +27,25 @@ public enum TMDBService {
     public static let imageBase = "https://image.tmdb.org/t/p/w500"
     public static let defaultTimeout: TimeInterval = 4.5
 
+    /// Resolve a stored poster value into a loadable absolute URL string.
+    ///
+    /// The DB persists FULL `https://image.tmdb.org/...` URLs today — every web
+    /// write path builds `${TMDB_IMAGE_BASE}${poster_path}` at TMDB-fetch time
+    /// before storing (see `services/tmdbService.ts`), so `rankings.poster_url`
+    /// and `stubs.poster_path` normally already carry a full URL. This mirrors
+    /// web's defensive `extractPalette` guard (`services/stubService.ts`):
+    /// pass an absolute `http(s)` value through untouched, and only prefix the
+    /// TMDB base for a bare path (a legacy or partially-migrated row). `nil` /
+    /// empty in → `nil` out, so a poster-less row falls back to the synthetic
+    /// `PosterBlock` art rather than loading a broken image.
+    public static func posterURL(from stored: String?) -> String? {
+        guard let stored, !stored.isEmpty else { return nil }
+        if stored.hasPrefix("http://") || stored.hasPrefix("https://") { return stored }
+        // Bare TMDB path like "/abc123.jpg" — ensure exactly one slash join.
+        let path = stored.hasPrefix("/") ? stored : "/" + stored
+        return imageBase + path
+    }
+
     /// Whether the proxy path is reachable at all — i.e. the Supabase client is
     /// configured. When false the app is in credential-free preview mode: TMDB is
     /// unreachable and callers fall back to their local fixtures (mirrors the old

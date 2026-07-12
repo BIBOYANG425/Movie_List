@@ -32,11 +32,17 @@ public struct SettingsScreen: View {
     @State private var signingOut: Bool = false
     @State private var profile: ProfileRow?
     @State private var email: String?
-    @State private var editing: Bool = false
-    /// Presents the "text Chris" sheet (P1 M2b) — the iMessage-companion linking
-    /// handshake. Gated on `hasSession` (linking mints a code under the user's
-    /// JWT), presented from a row in the ACCOUNT section.
-    @State private var textingChris: Bool = false
+    /// The single sheet this screen can present. SwiftUI silently ignores all
+    /// but one of several `.sheet(isPresented:)` modifiers attached to the SAME
+    /// view — previously `editing` and `textingChris` each had their own sheet
+    /// on the same node, so the "text Chris" row set its flag but nothing came
+    /// up. One `.sheet(item:)` driven by this enum presents both without that
+    /// collision (matches SpoolAppRoot's `sheet(item:)` idiom).
+    private enum ActiveSheet: String, Identifiable {
+        case editProfile, textChris
+        var id: String { rawValue }
+    }
+    @State private var activeSheet: ActiveSheet?
     /// True once we've confirmed a Supabase session exists. This is the
     /// single source of truth for session-dependent UI (sign out, edit
     /// profile) — previously the view gated those on `profile != nil`,
@@ -97,24 +103,26 @@ public struct SettingsScreen: View {
         }
         .spoolMode(effectiveMode)
         .task { await loadProfile() }
-        .sheet(isPresented: $editing) {
-            if let profile {
-                EditProfileScreen(
-                    initial: profile,
-                    onClose: { editing = false },
-                    onSaved: { updated in
-                        self.profile = updated
-                    }
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .editProfile:
+                if let profile {
+                    EditProfileScreen(
+                        initial: profile,
+                        onClose: { activeSheet = nil },
+                        onSaved: { updated in
+                            self.profile = updated
+                        }
+                    )
+                    .spoolMode(effectiveMode)
+                }
+            case .textChris:
+                TextChrisSheet(
+                    effectiveMode: effectiveMode,
+                    onClose: { activeSheet = nil }
                 )
                 .spoolMode(effectiveMode)
             }
-        }
-        .sheet(isPresented: $textingChris) {
-            TextChrisSheet(
-                effectiveMode: effectiveMode,
-                onClose: { textingChris = false }
-            )
-            .spoolMode(effectiveMode)
         }
     }
 
@@ -159,9 +167,9 @@ public struct SettingsScreen: View {
                 VStack(spacing: 0) {
                     row(title: profile.handle, subtitle: email ?? profile.displayedName, t: t)
                     divider(t: t)
-                    linkRow(title: L10n.t("settings.editProfile"), t: t) { editing = true }
+                    linkRow(title: L10n.t("settings.editProfile"), t: t) { activeSheet = .editProfile }
                     divider(t: t)
-                    linkRow(title: L10n.t("settings.textChris"), t: t) { textingChris = true }
+                    linkRow(title: L10n.t("settings.textChris"), t: t) { activeSheet = .textChris }
                 }
             } else if hasSession {
                 // Signed in, but neither profile fetch nor auth-session

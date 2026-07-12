@@ -239,7 +239,8 @@ public struct FriendProfileScreen: View {
                         ForEach(Array(topFour.prefix(4).enumerated()), id: \.offset) { i, row in
                             topFourCard(index: i,
                                         title: row.title,
-                                        seed: Self.stableSeed(row.tmdb_id))
+                                        seed: Self.stableSeed(row.tmdb_id),
+                                        posterUrl: row.poster_url)
                                 .rotationEffect(.degrees(Self.rotationFor(i)))
                         }
                     }
@@ -249,10 +250,11 @@ public struct FriendProfileScreen: View {
         }
     }
 
-    private func topFourCard(index: Int, title: String, seed: Int) -> some View {
+    private func topFourCard(index: Int, title: String, seed: Int, posterUrl: String?) -> some View {
         SpoolThemeReader { t, _ in
             ZStack(alignment: .topLeading) {
-                PosterBlock(title: Self.firstWord(title), director: "—", seed: seed)
+                PosterBlock(title: Self.firstWord(title), director: "—", seed: seed,
+                            posterUrl: TMDBService.posterURL(from: posterUrl))
                 Text("\(index + 1)")
                     .font(SpoolFonts.mono(10))
                     .foregroundStyle(t.ink)
@@ -307,6 +309,7 @@ public struct FriendProfileScreen: View {
                                 director: "—",
                                 tier: Tier(rawValue: stub.tier) ?? .B,
                                 seed: Self.stableSeed(stub.tmdb_id),
+                                posterUrl: stub.poster_path,
                                 mode: mode, t: t
                             )
                         }
@@ -318,11 +321,12 @@ public struct FriendProfileScreen: View {
     }
 
     private func recentTile(title: String, year: Int, director: String,
-                            tier: Tier, seed: Int,
+                            tier: Tier, seed: Int, posterUrl: String?,
                             mode: SpoolMode, t: SpoolPalette) -> some View {
         VStack(spacing: 0) {
             PosterBlock(title: Self.firstWord(title), year: year,
-                        director: director, seed: seed, cornerRadius: 0)
+                        director: director, seed: seed, cornerRadius: 0,
+                        posterUrl: TMDBService.posterURL(from: posterUrl))
                 .frame(maxWidth: .infinity)
             Text(tier.rawValue)
                 .font(SpoolFonts.serif(16))
