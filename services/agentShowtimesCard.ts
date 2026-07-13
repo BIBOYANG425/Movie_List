@@ -27,6 +27,10 @@ export interface ShowtimeV1 {
   start: string;
   /** the display string for the chip, e.g. "7:30 PM". */
   label: string;
+  /** per-showtime purchase deep link (AMC purchaseUrl), when the agent ships
+   *  one. The chip opens THIS exact showing's checkout. Optional — old
+   *  payloads and link-less sources omit it. */
+  ticketUrl?: string;
 }
 
 /** A film's screenings at one cinema in a single presentation format. */
@@ -58,6 +62,9 @@ export interface CinemaV1 {
   distance: number | null;
   /** the cinema's street address, when the fetch carries one. */
   address?: string;
+  /** cinema-level ticketing link — the chips' fallback when a showtime has no
+   *  per-time deep link. Optional — old payloads omit it. */
+  ticketUrl?: string;
   films: CinemaFilmV1[];
 }
 
@@ -240,8 +247,9 @@ export function sortCinemasByDistance(cinemas: CinemaV1[]): CinemaV1[] {
  *
  * `filmTitle` is the anchor film's title for a single-film card (the page reads
  * "showtimes <title>") or null for a "what's nearby" card (the page reads its
- * translated nearby heading). Chip linkouts always use the FILM row's title, so
- * a "what's nearby" card still links each film to its own Fandango search.
+ * translated nearby heading). Chips deep-link the exact showing when the
+ * payload carries per-showtime ticket URLs; the film-title search is only the
+ * legacy fallback for old payloads.
  *
  * An empty `cinemas` array collapses to `{ kind: 'empty' }` so the page can
  * render the not-found-style "nothing showing near you right now" state.
@@ -261,7 +269,7 @@ export function buildShowtimesView(payload: ShowtimesCardPayloadV1): ShowtimesVi
     films: (cinema.films ?? []).map((film) => ({
       movieGluId: film.movieGluId,
       title: film.title,
-      sections: buildFilmSections(film),
+      sections: buildFilmSections(film, cinema.ticketUrl),
     })),
   }));
 
@@ -281,13 +289,19 @@ export function buildShowtimesView(payload: ShowtimesCardPayloadV1): ShowtimesVi
  * Build a film row's format sections. When the film carries `showings`, emit one
  * section per format (in payload order) with an uppercase display header. When
  * it does not (old flat payloads), emit a single header-less section holding the
- * flat `times` chips. Chip linkouts always use the film's own title.
+ * flat `times` chips.
+ *
+ * Chip href priority (prod 2026-07-13 — the pills opened a Fandango title
+ * search and could not purchase anything):
+ *   1. the showtime's own ticketUrl (AMC per-showing checkout deep link)
+ *   2. the cinema's ticketUrl (source-level fallback)
+ *   3. ticketLinkout(film title) — legacy title search, old payloads only
  */
-function buildFilmSections(film: CinemaFilmV1): FormatSectionVM[] {
+function buildFilmSections(film: CinemaFilmV1, cinemaTicketUrl?: string): FormatSectionVM[] {
   const chip = (time: ShowtimeV1): ShowtimeChipVM => ({
     label: time.label,
     start: time.start,
-    href: ticketLinkout(film.title),
+    href: time.ticketUrl?.trim() || cinemaTicketUrl?.trim() || ticketLinkout(film.title),
   });
 
   if (film.showings && film.showings.length > 0) {
