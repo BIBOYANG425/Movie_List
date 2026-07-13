@@ -78,7 +78,9 @@ function FloatingElements() {
               <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>Canon</span>
             </div>
           </div>
-          <div style={{ flex: "0 0 64px", background: "linear-gradient(180deg,#5a1a28,#3a1520)", minWidth: 0 }} />
+          <div style={{ flex: "0 0 64px", minWidth: 0, overflow: "hidden" }}>
+            <img src="/landing/poster-hamnet.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </div>
         </div>
       </div>
 
@@ -87,8 +89,9 @@ function FloatingElements() {
         <div style={{
           width: 195, height: 292, transform: "rotate(-8deg)", borderRadius: 10, overflow: "hidden",
           border: "1px solid rgba(255,255,255,.1)", boxShadow: "0 18px 44px rgba(0,0,0,.5)",
-          background: "linear-gradient(160deg,#1a3550,#0a1a2e)",
-        }} />
+        }}>
+          <img src="/landing/poster-dune.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </div>
       </div>
 
       {/* movie poster — Brutalist (top-right) */}
@@ -96,8 +99,9 @@ function FloatingElements() {
         <div style={{
           width: 185, height: 278, transform: "rotate(6deg)", borderRadius: 10, overflow: "hidden",
           border: "1px solid rgba(255,255,255,.1)", boxShadow: "0 18px 44px rgba(0,0,0,.5)",
-          background: "linear-gradient(160deg,#2a2a35,#141418)",
-        }} />
+        }}>
+          <img src="/landing/poster-brutalist.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </div>
       </div>
 
       {/* ticket stub with flip — Minions (mid-right) */}
@@ -121,7 +125,9 @@ function FloatingElements() {
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)" }}>Great</span>
               </div>
             </div>
-            <div style={{ flex: "0 0 66px", borderLeft: "2px dotted rgba(0,0,0,.45)", background: "linear-gradient(180deg,#1a3a30,#0d241f)" }} />
+            <div style={{ flex: "0 0 66px", borderLeft: "2px dotted rgba(0,0,0,.45)", overflow: "hidden" }}>
+              <img src="/landing/poster-minions.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
           </div>
           {/* back */}
           <div style={{
@@ -181,8 +187,9 @@ function FloatingElements() {
           <div style={{
             position: "absolute", inset: 0, borderRadius: "4px 10px 10px 4px", overflow: "hidden",
             border: "1px solid rgba(255,255,255,.12)", boxShadow: "0 20px 48px rgba(0,0,0,.55)",
-            background: "linear-gradient(160deg,#2a3540,#1a2028)",
-          }} />
+          }}>
+            <img src="/landing/book-cover.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </div>
           <div style={{
             position: "absolute", top: 0, bottom: 0, left: 0, width: 7,
             background: "linear-gradient(90deg,rgba(0,0,0,.45),transparent)", pointerEvents: "none", zIndex: 2,
