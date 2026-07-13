@@ -24,11 +24,17 @@
 // / createStub are the app's own writers (each gained an optional client arg
 // defaulting to the module supabase, so normal app behavior is unchanged).
 //
-// Header last reviewed: 2026-07-12
+// H2H 1:1 parity (owner, 2026-07-13): every comparison choice writes the same
+// comparison_logs row the main webapp writes (tokened client), the row mapper
+// is the shared services/agentRankRows one (a local copy dropped
+// watched_with_user_ids and the upsert wiped companions on re-rank), and a
+// re-rank seed carries watchedWithUserIds through the ceremony.
+//
+// Header last reviewed: 2026-07-13
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { RankedItem, Tier, Bracket, MediaType } from '../types';
+import { RankedItem, Tier, ComparisonLogEntry } from '../types';
 import { classifyBracket } from '../services/rankingAlgorithm';
 import { setTierOrder } from '../services/tierOrder';
 import { logRankingActivityEvent } from '../services/activityService';
@@ -37,24 +43,8 @@ import { RankingFlowModal } from '../components/media/RankingFlowModal';
 import { createTokenClientFromEnv } from '../lib/agentSupabase';
 import { parseRankFragment } from '../services/agentRankFragment';
 import { fetchAgentRankMovie } from '../services/agentRankMovie';
+import { rowToRankedItem } from '../services/agentRankRows';
 import { useTranslation } from '../contexts/LanguageContext';
-
-// ── Local row → RankedItem mapper (mirrors RankingAppPage.rowToRankedItem) ────
-function rowToRankedItem(row: any): RankedItem {
-  return {
-    id: row.tmdb_id,
-    title: row.title,
-    year: row.year ?? '',
-    posterUrl: row.poster_url ?? '',
-    type: (row.type as MediaType) ?? 'movie',
-    genres: row.genres ?? [],
-    director: row.director ?? undefined,
-    tier: row.tier as Tier,
-    rank: row.rank_position,
-    bracket: (row.bracket as Bracket) ?? classifyBracket(row.genres ?? []),
-    notes: row.notes ?? undefined,
-  };
-}
 
 type Phase =
   | { kind: 'loading' }
@@ -259,6 +249,32 @@ const AgentRankPage: React.FC = () => {
     [seed],
   );
 
+  // ── Comparison log — the SAME per-choice row the main webapp writes ─────────
+  // RankingAppPage.handleCompareLog inserts one comparison_logs row per H2H
+  // choice; the agent ceremony must too (RLS: insert own rows — the fragment
+  // JWT is a real user token, so auth.uid() = user_id passes). Fire-and-forget:
+  // a log failure never blocks the ceremony.
+  const handleCompareLog = useCallback(
+    async (log: ComparisonLogEntry) => {
+      if (!seed) return;
+      try {
+        await seed.client.from('comparison_logs').insert({
+          user_id: seed.userId,
+          session_id: log.sessionId,
+          movie_a_tmdb_id: log.movieAId,
+          movie_b_tmdb_id: log.movieBId,
+          winner: log.winner,
+          round: log.round,
+          phase: log.phase,
+          question_text: log.questionText,
+        });
+      } catch (err) {
+        console.error('agent-rank: failed to log comparison:', err);
+      }
+    },
+    [seed],
+  );
+
   const handleAdd = useCallback(
     (placed: RankedItem) => {
       const title = placed.title;
@@ -368,9 +384,18 @@ const AgentRankPage: React.FC = () => {
   }
 
   // Fresh rank OR re-rank in progress → run the ceremony. Seed the modal with
-  // the movie and the user's existing movie tier list.
+  // the movie and the user's existing movie tier list. A re-rank seed carries
+  // the row's watchedWithUserIds — the placement upsert writes
+  // `watched_with_user_ids: placed.watchedWithUserIds ?? []`, so dropping them
+  // here would wipe the user's companions on every card re-rank.
   const seedItem: RankedItem = existing
-    ? { ...movie, tier: existing.tier, rank: existing.rank, notes: existing.notes }
+    ? {
+        ...movie,
+        tier: existing.tier,
+        rank: existing.rank,
+        notes: existing.notes,
+        watchedWithUserIds: existing.watchedWithUserIds,
+      }
     : movie;
 
   return (
@@ -389,6 +414,7 @@ const AgentRankPage: React.FC = () => {
         onAdd={handleAdd}
         selectedItem={seedItem}
         currentItems={items}
+        onCompare={handleCompareLog}
       />
     </div>
   );
