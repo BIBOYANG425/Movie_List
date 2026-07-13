@@ -89,10 +89,8 @@ function FloatingElements() {
         <div style={{
           width: 195, height: 292, transform: "rotate(-8deg)", borderRadius: 10, overflow: "hidden",
           border: "1px solid rgba(255,255,255,.1)", boxShadow: "0 18px 44px rgba(0,0,0,.5)",
-          position: "relative",
         }}>
-          <img src="/landing/poster-dune.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center top", opacity: 0.7, filter: "brightness(0.6) contrast(1.2)" }} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent 10%, rgba(15,20,25,.7) 50%, rgba(15,20,25,.95) 100%)", pointerEvents: "none" }} />
+          <img src="/landing/poster-dune.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         </div>
       </div>
 
@@ -190,8 +188,7 @@ function FloatingElements() {
             position: "absolute", inset: 0, borderRadius: "4px 10px 10px 4px", overflow: "hidden",
             border: "1px solid rgba(255,255,255,.12)", boxShadow: "0 20px 48px rgba(0,0,0,.55)",
           }}>
-            <img src="/landing/book-cover.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "right top" }} />
-            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent 20%, rgba(42,53,64,.9) 100%)", pointerEvents: "none" }} />
+            <img src="/landing/book-cover.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
           <div style={{
             position: "absolute", top: 0, bottom: 0, left: 0, width: 7,
