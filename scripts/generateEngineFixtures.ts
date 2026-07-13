@@ -47,15 +47,22 @@ interface CaseSpec {
 const always = (c: SessionChoice) => Array.from({ length: 30 }, () => c);
 const alternating = (): SessionChoice[] =>
   Array.from({ length: 30 }, (_, i) => (i % 2 === 0 ? 'new' : 'existing') as SessionChoice);
+// Starts with 'existing' so anchor flows pass BOTH poles (lose to best, beat
+// worst) and exercise the quartile tail — the pure-alternating script beats
+// the best at round 1 and never leaves the first anchor.
+const middleWalk = (): SessionChoice[] =>
+  Array.from({ length: 30 }, (_, i) => (i % 2 === 0 ? 'existing' : 'new') as SessionChoice);
 
 const specs: CaseSpec[] = [
   { name: 'small-3-compare-all-always-new', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 3), choices: always('new') },
   { name: 'small-3-compare-all-always-existing', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 3), choices: always('existing') },
   { name: 'small-3-skip-after-one', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 3), choices: ['existing', 'skip'] },
-  { name: 'small-8-seed-always-new', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 8), choices: always('new') },
-  { name: 'small-8-seed-always-existing', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 8), choices: always('existing') },
-  { name: 'small-8-seed-alternating', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 8), choices: alternating() },
-  { name: 'small-20-seed-alternating', tier: Tier.B, item: newItem('Action', 6.0), allItems: mkTier(Tier.B, 20), choices: alternating() },
+  { name: 'small-8-anchor-always-new', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 8), choices: always('new') },
+  { name: 'small-8-anchor-always-existing', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 8), choices: always('existing') },
+  { name: 'small-8-anchor-alternating', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 8), choices: alternating() },
+  { name: 'small-20-anchor-alternating', tier: Tier.B, item: newItem('Action', 6.0), allItems: mkTier(Tier.B, 20), choices: alternating() },
+  { name: 'small-8-anchor-middle-walk', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 8), choices: middleWalk() },
+  { name: 'small-20-anchor-middle-walk', tier: Tier.B, item: newItem('Action', 6.0), allItems: mkTier(Tier.B, 20), choices: middleWalk() },
   { name: 'engine-25-always-new', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: always('new') },
   { name: 'engine-25-always-existing', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: always('existing') },
   { name: 'engine-25-alternating', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: alternating() },

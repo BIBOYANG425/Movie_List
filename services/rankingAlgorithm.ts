@@ -5,7 +5,7 @@
  * Implements the four-stage ranking flow:
  *  1. Auto-bracketing (genre classification) — see classifyBracket
  *  2. Tier placement — user-driven, not algorithmic
- *  3. Adaptive in-tier comparison — computeSeedIndex + adaptiveNarrow
+ *  3. Adaptive in-tier comparison — anchor poles (best/worst) + adaptiveNarrow
  *  4. Score assignment — computeTierScore
  */
 
@@ -44,56 +44,23 @@ export function classifyBracket(genres: string[]): Bracket {
     return Bracket.Commercial;
 }
 
-// ── Adaptive Comparison Seeding ─────────────────────────────────────────────
-
-/**
- * Determine the initial comparison pivot index within a tier.
- *
- * If the movie's global average falls within the tier's score range,
- * find the existing movie closest to that global avg and use it
- * as the first comparison. This is the "aligned" case.
- *
- * If the global average falls outside the tier (the user's judgment
- * diverges from the crowd), ignore it and start at the median.
- * This respects the user's tier choice as sacred.
- *
- * @param tierItemScores  Ordered array of scores for items in the tier (high→low)
- * @param tierMin         Minimum score of the tier range
- * @param tierMax         Maximum score of the tier range
- * @param globalAvg       The movie's global average score (TMDb vote_average)
- * @returns               0-based index to use as the first comparison pivot
- */
-export function computeSeedIndex(
-    tierItemScores: number[],
-    tierMin: number,
-    tierMax: number,
-    globalAvg: number | undefined,
-): number {
-    const n = tierItemScores.length;
-    if (n === 0) return 0;
-
-    // Median fallback
-    const median = Math.floor(n / 2);
-
-    if (globalAvg === undefined || globalAvg < tierMin || globalAvg > tierMax) {
-        // Divergent: global avg is outside the user's chosen tier → use median
-        return median;
-    }
-
-    // Aligned: find the item closest to the global average score
-    let closestIdx = 0;
-    let closestDist = Math.abs(tierItemScores[0] - globalAvg);
-
-    for (let i = 1; i < n; i++) {
-        const dist = Math.abs(tierItemScores[i] - globalAvg);
-        if (dist < closestDist) {
-            closestDist = dist;
-            closestIdx = i;
-        }
-    }
-
-    return closestIdx;
-}
+// ── Anchor-First Comparison (owner redesign, 2026-07-13) ────────────────────
+//
+// The 6–20 tier ceremony opens by bracketing the tier's POLES, then narrows
+// by quartiles:
+//
+//   round 1 — the tier's VERY BEST.  Beat it → rank 0, done.
+//   round 2 — the tier's VERY WORST. Lose to it → bottom, done.
+//   round 3+ — quartile narrowing over the remaining range, first pivot at
+//              the 25% boundary: win → narrow into the top quarter; lose →
+//              drop to the 75% point of the remainder (adaptiveNarrow's
+//              25%/75% rule).
+//
+// This replaced the globalScore-seeded pivot (computeSeedIndex): opening with
+// a crowd-score-chosen film read as "two random movies then done" in the
+// iMessage card, and the crowd's opinion has no place in a personal ranking.
+// The poles make the ceremony legible ("better than your best? worse than
+// your worst?") and every placement is anchored against the full tier span.
 
 // ── Quartile-Based Narrowing ────────────────────────────────────────────────
 
@@ -212,7 +179,7 @@ export function getNaturalTier(score: number): Tier {
 // MovieOnboardingPage. tierCount is the size of the target tier (the new
 // item is NOT counted).
 
-export type SmallTierMode = 'compare_all' | 'seed' | 'quartile';
+export type SmallTierMode = 'compare_all' | 'anchor_best' | 'anchor_worst' | 'quartile';
 
 export interface SmallTierState {
   mode: SmallTierMode;
@@ -243,21 +210,35 @@ export function advanceSmallTier(
       return { type: 'next', state: { ...state, mid: state.mid + 1, round: nextRound } };
     }
 
-    case 'seed': {
-      if (pick === 'new') {
-        if (state.mid === 0) return { type: 'done', rank: 0 };
-        return {
-          type: 'next',
-          state: { ...state, mode: 'quartile', low: 0, high: state.mid, mid: 0, round: nextRound },
-        };
-      }
-      const newLow = state.mid + 1;
-      if (newLow >= state.tierCount) return { type: 'done', rank: state.tierCount };
-      const newHigh = state.tierCount;
-      const nextMid = Math.min(newLow + Math.floor((newHigh - newLow) * 0.75), newHigh - 1);
+    case 'anchor_best': {
+      // Round 1 — the tier's very best (index 0).
+      if (pick === 'new') return { type: 'done', rank: 0 };
+      // Below the best → probe the floor next.
       return {
         type: 'next',
-        state: { ...state, mode: 'quartile', low: newLow, high: newHigh, mid: nextMid, round: nextRound },
+        state: {
+          ...state,
+          mode: 'anchor_worst',
+          low: 1,
+          high: state.tierCount,
+          mid: state.tierCount - 1,
+          round: nextRound,
+        },
+      };
+    }
+
+    case 'anchor_worst': {
+      // Round 2 — the tier's very worst (index tierCount-1).
+      if (pick === 'existing') return { type: 'done', rank: state.tierCount };
+      // Above the worst → insertion is somewhere in [1, tierCount-1].
+      const low = 1;
+      const high = state.tierCount - 1;
+      if (low >= high) return { type: 'done', rank: low };
+      // First quartile pivot: the 25% boundary of the remaining range.
+      const mid = Math.max(low, Math.min(low + Math.floor((high - low) * 0.25), high - 1));
+      return {
+        type: 'next',
+        state: { ...state, mode: 'quartile', low, high, mid, round: nextRound },
       };
     }
 

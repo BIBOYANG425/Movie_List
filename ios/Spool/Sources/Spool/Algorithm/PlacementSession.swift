@@ -62,22 +62,12 @@ public final class PlacementSession {
             return emitSmallComparison()
         }
 
-        // 6–20: seed mode
-        let range = tier.scoreRange
-        let tierScores = (0..<tierItems.count).map { idx in
-            RankingAlgorithm.computeTierScore(
-                position: idx, totalInTier: tierItems.count,
-                tierMin: range.min, tierMax: range.max
-            )
-        }
-        let seedIdx = RankingAlgorithm.computeSeedIndex(
-            tierItemScores: tierScores,
-            tierMin: range.min, tierMax: range.max,
-            globalAvg: newItem.globalScore
-        )
+        // 6–20: anchor-first ceremony (owner, 2026-07-13) — round 1 vs the
+        // tier's very best, round 2 vs the very worst, then 25%-rule
+        // quartile narrowing. Mirrors web RankingSession.start.
         small = RankingAlgorithm.SmallTierState(
-            mode: .seed, tierCount: tierItems.count,
-            low: 0, high: tierItems.count, mid: seedIdx, round: 1, seedIdx: seedIdx
+            mode: .anchorBest, tierCount: tierItems.count,
+            low: 0, high: tierItems.count, mid: 0, round: 1, seedIdx: 0
         )
         return emitSmallComparison()
     }

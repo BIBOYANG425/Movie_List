@@ -83,8 +83,8 @@ describe('agent-rank ↔ main-flow ceremony parity', () => {
   const scenarios: { name: string; count: number; choices: SessionChoice[] }[] = [
     { name: 'small tier (3), new keeps winning', count: 3, choices: ['new', 'new', 'new'] },
     { name: 'small tier (3), existing then new', count: 3, choices: ['existing', 'new'] },
-    { name: 'seed tier (8), mixed choices', count: 8, choices: ['existing', 'new', 'existing', 'new', 'existing'] },
-    { name: 'seed tier (12), too_tough finalizes', count: 12, choices: ['existing', 'too_tough'] },
+    { name: 'anchor tier (8), mixed choices', count: 8, choices: ['existing', 'new', 'existing', 'new', 'existing', 'new', 'existing', 'new'] },
+    { name: 'anchor tier (12), too_tough finalizes', count: 12, choices: ['existing', 'too_tough'] },
     { name: 'engine tier (25), new-heavy', count: 25, choices: Array(40).fill('new') },
   ];
 

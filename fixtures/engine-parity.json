@@ -217,7 +217,7 @@
       "expectedFinalScore": null
     },
     {
-      "name": "small-8-seed-always-new",
+      "name": "small-8-anchor-always-new",
       "tier": "A",
       "newItem": {
         "id": "new1",
@@ -310,17 +310,11 @@
         }
       ],
       "choices": [
-        "new",
         "new"
       ],
       "expectedSteps": [
         {
           "round": 1,
-          "phase": "binary_search",
-          "movieBId": "m5"
-        },
-        {
-          "round": 2,
           "phase": "binary_search",
           "movieBId": "m0"
         }
@@ -329,7 +323,7 @@
       "expectedFinalScore": null
     },
     {
-      "name": "small-8-seed-always-existing",
+      "name": "small-8-anchor-always-existing",
       "tier": "A",
       "newItem": {
         "id": "new1",
@@ -429,7 +423,7 @@
         {
           "round": 1,
           "phase": "binary_search",
-          "movieBId": "m5"
+          "movieBId": "m0"
         },
         {
           "round": 2,
@@ -441,7 +435,7 @@
       "expectedFinalScore": null
     },
     {
-      "name": "small-8-seed-alternating",
+      "name": "small-8-anchor-alternating",
       "tier": "A",
       "newItem": {
         "id": "new1",
@@ -534,50 +528,20 @@
         }
       ],
       "choices": [
-        "new",
-        "existing",
-        "new",
-        "existing",
-        "new",
-        "existing"
+        "new"
       ],
       "expectedSteps": [
         {
           "round": 1,
           "phase": "binary_search",
-          "movieBId": "m5"
-        },
-        {
-          "round": 2,
-          "phase": "binary_search",
           "movieBId": "m0"
-        },
-        {
-          "round": 3,
-          "phase": "binary_search",
-          "movieBId": "m4"
-        },
-        {
-          "round": 4,
-          "phase": "binary_search",
-          "movieBId": "m1"
-        },
-        {
-          "round": 5,
-          "phase": "binary_search",
-          "movieBId": "m3"
-        },
-        {
-          "round": 6,
-          "phase": "binary_search",
-          "movieBId": "m2"
         }
       ],
-      "expectedFinalRank": 3,
+      "expectedFinalRank": 0,
       "expectedFinalScore": null
     },
     {
-      "name": "small-20-seed-alternating",
+      "name": "small-20-anchor-alternating",
       "tier": "B",
       "newItem": {
         "id": "new1",
@@ -790,6 +754,375 @@
         }
       ],
       "choices": [
+        "new"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "binary_search",
+          "movieBId": "m0"
+        }
+      ],
+      "expectedFinalRank": 0,
+      "expectedFinalScore": null
+    },
+    {
+      "name": "small-8-anchor-middle-walk",
+      "tier": "A",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Drama"
+        ],
+        "globalScore": 7.5
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "A",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "A",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "A",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "A",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "A",
+          "rank": 7,
+          "globalScore": 7
+        }
+      ],
+      "choices": [
+        "existing",
+        "new",
+        "existing",
+        "new",
+        "existing",
+        "new",
+        "existing"
+      ],
+      "expectedSteps": [
+        {
+          "round": 1,
+          "phase": "binary_search",
+          "movieBId": "m0"
+        },
+        {
+          "round": 2,
+          "phase": "binary_search",
+          "movieBId": "m7"
+        },
+        {
+          "round": 3,
+          "phase": "binary_search",
+          "movieBId": "m2"
+        },
+        {
+          "round": 4,
+          "phase": "binary_search",
+          "movieBId": "m6"
+        },
+        {
+          "round": 5,
+          "phase": "binary_search",
+          "movieBId": "m3"
+        },
+        {
+          "round": 6,
+          "phase": "binary_search",
+          "movieBId": "m5"
+        },
+        {
+          "round": 7,
+          "phase": "binary_search",
+          "movieBId": "m4"
+        }
+      ],
+      "expectedFinalRank": 5,
+      "expectedFinalScore": null
+    },
+    {
+      "name": "small-20-anchor-middle-walk",
+      "tier": "B",
+      "newItem": {
+        "id": "new1",
+        "title": "New Movie",
+        "genres": [
+          "Action"
+        ],
+        "globalScore": 6
+      },
+      "allItems": [
+        {
+          "id": "m0",
+          "title": "Movie 0",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 0,
+          "globalScore": 5
+        },
+        {
+          "id": "m1",
+          "title": "Movie 1",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 1,
+          "globalScore": 6
+        },
+        {
+          "id": "m2",
+          "title": "Movie 2",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 2,
+          "globalScore": 7
+        },
+        {
+          "id": "m3",
+          "title": "Movie 3",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 3,
+          "globalScore": 8
+        },
+        {
+          "id": "m4",
+          "title": "Movie 4",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 4,
+          "globalScore": 9
+        },
+        {
+          "id": "m5",
+          "title": "Movie 5",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 5,
+          "globalScore": 5
+        },
+        {
+          "id": "m6",
+          "title": "Movie 6",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 6,
+          "globalScore": 6
+        },
+        {
+          "id": "m7",
+          "title": "Movie 7",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 7,
+          "globalScore": 7
+        },
+        {
+          "id": "m8",
+          "title": "Movie 8",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 8,
+          "globalScore": 8
+        },
+        {
+          "id": "m9",
+          "title": "Movie 9",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 9,
+          "globalScore": 9
+        },
+        {
+          "id": "m10",
+          "title": "Movie 10",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 10,
+          "globalScore": 5
+        },
+        {
+          "id": "m11",
+          "title": "Movie 11",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 11,
+          "globalScore": 6
+        },
+        {
+          "id": "m12",
+          "title": "Movie 12",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 12,
+          "globalScore": 7
+        },
+        {
+          "id": "m13",
+          "title": "Movie 13",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 13,
+          "globalScore": 8
+        },
+        {
+          "id": "m14",
+          "title": "Movie 14",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 14,
+          "globalScore": 9
+        },
+        {
+          "id": "m15",
+          "title": "Movie 15",
+          "genres": [
+            "Drama"
+          ],
+          "tier": "B",
+          "rank": 15,
+          "globalScore": 5
+        },
+        {
+          "id": "m16",
+          "title": "Movie 16",
+          "genres": [
+            "Action"
+          ],
+          "tier": "B",
+          "rank": 16,
+          "globalScore": 6
+        },
+        {
+          "id": "m17",
+          "title": "Movie 17",
+          "genres": [
+            "Comedy"
+          ],
+          "tier": "B",
+          "rank": 17,
+          "globalScore": 7
+        },
+        {
+          "id": "m18",
+          "title": "Movie 18",
+          "genres": [
+            "Horror"
+          ],
+          "tier": "B",
+          "rank": 18,
+          "globalScore": 8
+        },
+        {
+          "id": "m19",
+          "title": "Movie 19",
+          "genres": [
+            "Sci-Fi"
+          ],
+          "tier": "B",
+          "rank": 19,
+          "globalScore": 9
+        }
+      ],
+      "choices": [
+        "existing",
         "new",
         "existing",
         "new",
@@ -803,45 +1136,50 @@
         {
           "round": 1,
           "phase": "binary_search",
-          "movieBId": "m9"
+          "movieBId": "m0"
         },
         {
           "round": 2,
           "phase": "binary_search",
-          "movieBId": "m0"
+          "movieBId": "m19"
         },
         {
           "round": 3,
           "phase": "binary_search",
-          "movieBId": "m7"
+          "movieBId": "m5"
         },
         {
           "round": 4,
           "phase": "binary_search",
-          "movieBId": "m2"
+          "movieBId": "m15"
         },
         {
           "round": 5,
           "phase": "binary_search",
-          "movieBId": "m6"
+          "movieBId": "m8"
         },
         {
           "round": 6,
           "phase": "binary_search",
-          "movieBId": "m3"
+          "movieBId": "m13"
         },
         {
           "round": 7,
           "phase": "binary_search",
-          "movieBId": "m5"
+          "movieBId": "m10"
         },
         {
           "round": 8,
           "phase": "binary_search",
-          "movieBId": "m4"
+          "movieBId": "m12"
+        },
+        {
+          "round": 9,
+          "phase": "binary_search",
+          "movieBId": "m11"
         }
       ],
-      "expectedFinalRank": 5,
+      "expectedFinalRank": 12,
       "expectedFinalScore": null
     },
     {

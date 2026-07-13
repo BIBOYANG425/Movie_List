@@ -16,38 +16,6 @@ public enum RankingAlgorithm {
         return .commercial
     }
 
-    // MARK: Seed index
-
-    /// Initial comparison pivot within a tier. If the movie's global average
-    /// falls within the tier range, pick the existing item closest to it;
-    /// otherwise fall back to the median.
-    public static func computeSeedIndex(
-        tierItemScores: [Double],
-        tierMin: Double,
-        tierMax: Double,
-        globalAvg: Double?
-    ) -> Int {
-        let n = tierItemScores.count
-        if n == 0 { return 0 }
-
-        let median = n / 2
-
-        guard let g = globalAvg, g >= tierMin, g <= tierMax else {
-            return median
-        }
-
-        var closestIdx = 0
-        var closestDist = abs(tierItemScores[0] - g)
-        for i in 1..<n {
-            let dist = abs(tierItemScores[i] - g)
-            if dist < closestDist {
-                closestDist = dist
-                closestIdx = i
-            }
-        }
-        return closestIdx
-    }
-
     // MARK: Quartile narrowing
 
     public enum NarrowChoice: String, Sendable { case new, existing }
@@ -67,10 +35,14 @@ public enum RankingAlgorithm {
     // MARK: Small-tier state machine (web parity with smallTierRef)
 
     /// Sub-modes for the small-tier (≤20 item) ranking path. Mirrors the
-    /// web's `smallTierRef.mode` literal union in `RankingFlowModal.tsx`.
+    /// web's `SmallTierMode` literal union in `services/rankingAlgorithm.ts`.
+    /// Anchor-first ceremony (owner redesign, 2026-07-13): 6–20 tiers open
+    /// against the tier's very BEST, then its very WORST, then narrow by
+    /// quartiles — replacing the globalScore-seeded pivot.
     public enum SmallTierMode: Sendable, Equatable {
         case compareAll
-        case seed
+        case anchorBest
+        case anchorWorst
         case quartile
     }
 
@@ -114,10 +86,11 @@ public enum RankingAlgorithm {
     ///
     ///  - `.compareAll`: new wins → insert at `mid`; else advance mid or
     ///    fall off the end at rank `tierCount`.
-    ///  - `.seed`: new wins at seed 0 → insert at 0; new wins elsewhere
-    ///    → transition to `.quartile` with `[0, mid)`; existing wins at
-    ///    the last slot → insert at `tierCount`; existing wins otherwise
-    ///    → transition to `.quartile` with `[mid+1, N)` and jump 75% in.
+    ///  - `.anchorBest`: round 1 vs the tier's best (mid 0). New wins →
+    ///    rank 0 done; else move to `.anchorWorst` (mid tierCount-1).
+    ///  - `.anchorWorst`: round 2 vs the tier's worst. Existing wins →
+    ///    rank tierCount done; else `.quartile` over `[1, tierCount-1)`
+    ///    with the first pivot at the 25% boundary.
     ///  - `.quartile`: narrow `[low, high)` by quartile (25% if new won,
     ///    75% if existing won). Converged when `newLow >= newHigh` —
     ///    insert at `newLow`.
@@ -140,31 +113,38 @@ public enum RankingAlgorithm {
                 return .next(state: nst)
             }
 
-        case .seed:
+        case .anchorBest:
+            // Round 1 — the tier's very best (index 0).
             if pick == .new {
-                if st.mid == 0 {
-                    return .done(rank: 0)
-                }
-                var nst = st
-                nst.mode = .quartile
-                nst.low = 0; nst.high = st.mid
-                nst.mid = 0
-                nst.round = nextRound
-                return .next(state: nst)
-            } else {
-                let newLow = st.mid + 1
-                if newLow >= st.tierCount {
-                    return .done(rank: st.tierCount)
-                }
-                let newHigh = st.tierCount
-                let nextMid = min(newLow + Int(Double(newHigh - newLow) * 0.75), newHigh - 1)
-                var nst = st
-                nst.mode = .quartile
-                nst.low = newLow; nst.high = newHigh
-                nst.mid = nextMid
-                nst.round = nextRound
-                return .next(state: nst)
+                return .done(rank: 0)
             }
+            // Below the best → probe the floor next.
+            var bst = st
+            bst.mode = .anchorWorst
+            bst.low = 1; bst.high = st.tierCount
+            bst.mid = st.tierCount - 1
+            bst.round = nextRound
+            return .next(state: bst)
+
+        case .anchorWorst:
+            // Round 2 — the tier's very worst (index tierCount-1).
+            if pick == .existing {
+                return .done(rank: st.tierCount)
+            }
+            // Above the worst → insertion is somewhere in [1, tierCount-1].
+            let low = 1
+            let high = st.tierCount - 1
+            if low >= high {
+                return .done(rank: low)
+            }
+            // First quartile pivot: the 25% boundary of the remaining range.
+            let mid = max(low, min(low + Int(Double(high - low) * 0.25), high - 1))
+            var wst = st
+            wst.mode = .quartile
+            wst.low = low; wst.high = high
+            wst.mid = mid
+            wst.round = nextRound
+            return .next(state: wst)
 
         case .quartile:
             let newLow = pick == .new ? st.low : st.mid + 1
