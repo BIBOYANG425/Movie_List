@@ -1,11 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { inject } from '@vercel/analytics';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import './styles/tailwind.css';
 import './styles/landing.css';
+
+// Initialize Vercel Analytics
+inject();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
