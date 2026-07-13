@@ -12,17 +12,22 @@
 //      missing OR expired row both come back null → friendly "expired" state.
 //   3. buildShowtimesView(payload) → a pure view model; an empty cinemas array
 //      collapses to the "nothing showing near you" empty state.
-//   4. Render mobile-first: header (film title or "what's playing near you") +
-//      subline (location label + "times as of <local>"), then cinemas sorted by
-//      distance, each a card of films → rows of tappable time chips that link
-//      out to Fandango via lib/ticketLinkout.ts. Single-film cards skip the
-//      per-cinema film header (it would just repeat the page header).
+//   4. Render mobile-first (AMC-app-style): a film hero (poster + title +
+//      "1 HR 55 MIN | PG" meta line) when the card is anchored to a film, a
+//      context bar (weekday/date • location • "times as of <local>"), then
+//      cinemas sorted by distance. Each cinema is a card: name + distance, the
+//      gold address, then one SECTION per presentation format (IMAX / DOLBY
+//      CINEMA / STANDARD …) of outlined time-chip pills that link out to
+//      Fandango via lib/ticketLinkout.ts. Single-film cards skip the per-cinema
+//      film subheading (it would just repeat the hero title); old flat payloads
+//      render a single header-less section of chips.
 //
-// Pure logic (fragment parse, view derivation, distance/time formatting) lives
-// in services/agentShowtimesCard.ts + services/agentShowtimesFragment.ts so it
-// is unit-testable in the node test env; this file is a thin JSX map over it.
+// Pure logic (fragment parse, view derivation, distance/time/runtime/format
+// formatting) lives in services/agentShowtimesCard.ts +
+// services/agentShowtimesFragment.ts so it is unit-testable in the node test
+// env; this file is a thin JSX map over it.
 //
-// Header last reviewed: 2026-07-12
+// Header last reviewed: 2026-07-13
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
@@ -31,6 +36,7 @@ import { parseShowtimesFragment } from '../services/agentShowtimesFragment';
 import {
   buildShowtimesView,
   formatAsOfTime,
+  formatAsOfDate,
   type ShowtimesCardPayloadV1,
   type ShowtimesView,
 } from '../services/agentShowtimesCard';
@@ -120,70 +126,108 @@ const AgentShowtimesPage: React.FC = () => {
     );
   }
 
-  const heading = view.filmTitle
-    ? `${t('agentShowtimes.title')} ${view.filmTitle}`
-    : t('agentShowtimes.nearbyHeading');
-
+  // Context bar: weekday/date • location • "times as of <local>".
+  const dateLabel = formatAsOfDate(view.asOf, timeLocale);
   const asOfLabel = formatAsOfTime(view.asOf, timeLocale);
-  const subParts = [
+  const contextParts = [
+    dateLabel,
     view.locationLabel,
     asOfLabel ? t('agentShowtimes.asOf').replace('{time}', asOfLabel) : null,
   ].filter((p): p is string => Boolean(p));
 
+  const heroTitle = view.filmTitle ?? t('agentShowtimes.nearbyHeading');
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="w-full max-w-md mx-auto px-4 py-6 flex flex-col gap-5">
-        {/* Header */}
-        <header className="flex flex-col gap-2">
-          {view.poster && (
-            <img
-              src={view.poster}
-              alt={view.filmTitle ?? ''}
-              className="w-24 aspect-[2/3] object-cover rounded-xl shadow-lg"
-            />
-          )}
-          <h1 className="text-2xl font-bold leading-tight">{heading}</h1>
-          {subParts.length > 0 && (
-            <p className="text-muted-foreground text-sm">{subParts.join(' · ')}</p>
-          )}
-        </header>
+        {/* Film hero (anchored cards only) */}
+        {view.filmTitle && (
+          <header className="flex items-start gap-4">
+            {view.poster && (
+              <img
+                src={view.poster}
+                alt={view.filmTitle}
+                className="w-24 shrink-0 aspect-[2/3] object-cover rounded-lg shadow-lg"
+              />
+            )}
+            <div className="flex flex-col gap-1 pt-0.5 min-w-0">
+              <h1 className="text-2xl font-bold leading-tight">{view.filmTitle}</h1>
+              {view.filmMeta && (
+                <p className="text-muted-foreground text-sm">{view.filmMeta}</p>
+              )}
+            </div>
+          </header>
+        )}
+
+        {/* "what's playing near you" heading for film:null cards */}
+        {!view.filmTitle && (
+          <h1 className="text-2xl font-bold leading-tight">{heroTitle}</h1>
+        )}
+
+        {/* Context bar */}
+        {contextParts.length > 0 && (
+          <p className="text-muted-foreground text-sm -mt-2">
+            {contextParts.join(' • ')}
+          </p>
+        )}
 
         {/* Cinemas */}
         <div className="flex flex-col gap-4">
           {view.cinemas.map((cinema) => (
             <section
               key={cinema.cinemaId}
-              className="bg-card rounded-2xl p-4 flex flex-col gap-3"
+              className="bg-card rounded-2xl p-4 flex flex-col gap-4"
             >
-              <div className="flex items-baseline justify-between gap-3">
-                <h2 className="text-lg font-semibold leading-tight">{cinema.name}</h2>
-                {cinema.distanceLabel && (
-                  <span className="text-muted-foreground text-sm whitespace-nowrap">
-                    {cinema.distanceLabel}
-                  </span>
+              {/* Row 1: name + distance */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="text-lg font-semibold leading-tight">{cinema.name}</h2>
+                  {cinema.distanceLabel && (
+                    <span className="text-muted-foreground text-sm whitespace-nowrap">
+                      {cinema.distanceLabel}
+                    </span>
+                  )}
+                </div>
+                {/* Row 2: address in the gold accent */}
+                {cinema.address && (
+                  <p className="text-gold text-sm leading-snug">{cinema.address}</p>
                 )}
               </div>
 
               {cinema.films.map((film) => (
-                <div key={film.movieGluId} className="flex flex-col gap-2">
+                <div key={film.movieGluId} className="flex flex-col gap-3">
+                  {/* Film subheading — multi-film (nearby) cards only */}
                   {!view.singleFilm && (
-                    <h3 className="text-base font-medium text-foreground/90">
+                    <h3 className="text-base font-semibold text-foreground/90">
                       {film.title}
                     </h3>
                   )}
-                  <div className="flex flex-wrap gap-2">
-                    {film.chips.map((chip) => (
-                      <a
-                        key={`${film.movieGluId}-${chip.start}`}
-                        href={chip.href}
-                        target="_blank"
-                        rel="noopener"
-                        className="px-3 py-2 rounded-full bg-secondary text-secondary-foreground text-sm font-medium active:scale-[0.97] transition-transform"
-                      >
-                        {chip.label}
-                      </a>
-                    ))}
-                  </div>
+
+                  {film.sections.map((section, si) => (
+                    <div
+                      key={section.label ?? `flat-${si}`}
+                      className="flex flex-col gap-2"
+                    >
+                      {section.label && (
+                        <span className="text-xs font-bold uppercase tracking-wider text-foreground/80">
+                          {section.label}
+                        </span>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {section.chips.map((chip) => (
+                          <a
+                            key={`${film.movieGluId}-${section.label ?? 'flat'}-${chip.start}`}
+                            href={chip.href}
+                            target="_blank"
+                            rel="noopener"
+                            className="border border-border rounded-full py-2 px-4 text-sm font-medium text-foreground active:scale-[0.97] transition-transform"
+                          >
+                            {chip.label}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </section>
