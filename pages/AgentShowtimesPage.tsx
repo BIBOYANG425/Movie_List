@@ -17,10 +17,13 @@
 //      context bar (weekday/date • location • "times as of <local>"), then
 //      cinemas sorted by distance. Each cinema is a card: name + distance, the
 //      gold address, then one SECTION per presentation format (IMAX / DOLBY
-//      CINEMA / STANDARD …) of outlined time-chip pills that link out to
-//      Fandango via lib/ticketLinkout.ts. Single-film cards skip the per-cinema
-//      film subheading (it would just repeat the hero title); old flat payloads
-//      render a single header-less section of chips.
+//      CINEMA / STANDARD …) of outlined time-chip pills. Each pill navigates to
+//      its showing's checkout deep link (per-showtime ticketUrl from the
+//      payload; cinema link, then legacy Fandango search as fallbacks) via
+//      openTicketUrl — popup first, same-frame when the card webview blocks
+//      popups. Single-film cards skip the per-cinema film subheading (it would
+//      just repeat the hero title); old flat payloads render a single
+//      header-less section of chips.
 //
 // Pure logic (fragment parse, view derivation, distance/time/runtime/format
 // formatting) lives in services/agentShowtimesCard.ts +
@@ -45,6 +48,22 @@ type Phase =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'loaded'; view: ShowtimesView };
+
+/**
+ * Navigate to a ticket checkout URL from a time chip.
+ *
+ * PROD 2026-07-13: the chips were plain target="_blank" anchors, and the
+ * iMessage mini-app card webview SILENTLY SWALLOWS popup-style navigation —
+ * tapping a pill inside the card did nothing, so nobody could buy. Strategy:
+ * try the popup first (desktop/Safari keeps the card page in its own tab);
+ * when the webview blocks it (window.open returns null), navigate the frame
+ * itself — the card either renders the checkout in place or the host punches
+ * the external URL out to Safari. Reopening the card restores the listings.
+ */
+function openTicketUrl(href: string): void {
+  const win = window.open(href, '_blank', 'noopener');
+  if (!win) window.location.assign(href);
+}
 
 const Spinner = () => (
   <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
@@ -218,8 +237,11 @@ const AgentShowtimesPage: React.FC = () => {
                           <a
                             key={`${film.movieGluId}-${section.label ?? 'flat'}-${chip.start}`}
                             href={chip.href}
-                            target="_blank"
                             rel="noopener"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              openTicketUrl(chip.href);
+                            }}
                             className="border border-border rounded-full py-2 px-4 text-sm font-medium text-foreground active:scale-[0.97] transition-transform"
                           >
                             {chip.label}
