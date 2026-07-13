@@ -3,6 +3,10 @@ import {
   buildShowtimesView,
   formatDistance,
   formatAsOfTime,
+  formatAsOfDate,
+  formatRuntime,
+  formatFilmMeta,
+  formatDisplayFormat,
   sortCinemasByDistance,
   type ShowtimesCardPayloadV1,
   type CinemaV1,
@@ -102,7 +106,11 @@ describe('buildShowtimesView — single-film card', () => {
   it('builds time chips with labels and Fandango linkout hrefs', () => {
     const view = buildShowtimesView(singleFilmPayload());
     if (view.kind !== 'loaded') throw new Error('expected loaded');
-    const chips = view.cinemas[0].films[0].chips;
+    // No showings on the fixture → a single header-less flat section.
+    const sections = view.cinemas[0].films[0].sections;
+    expect(sections).toHaveLength(1);
+    expect(sections[0].label).toBeNull();
+    const chips = sections[0].chips;
     expect(chips.map((c) => c.label)).toEqual(['7:30 PM', '10:00 PM']);
     expect(chips[0].href).toBe(`${FANDANGO}Dune%3A%20Part%20Two`);
     expect(chips[1].href).toBe(`${FANDANGO}Dune%3A%20Part%20Two`);
@@ -141,8 +149,8 @@ describe('buildShowtimesView — "what\'s nearby" card (film null)', () => {
     const view = buildShowtimesView(payload);
     if (view.kind !== 'loaded') throw new Error('expected loaded');
     const films = view.cinemas[0].films;
-    expect(films[0].chips[0].href).toBe(`${FANDANGO}Alpha`);
-    expect(films[1].chips[0].href).toBe(`${FANDANGO}Beta`);
+    expect(films[0].sections[0].chips[0].href).toBe(`${FANDANGO}Alpha`);
+    expect(films[1].sections[0].chips[0].href).toBe(`${FANDANGO}Beta`);
   });
 
   it('sorts cinemas by distance (nulls last) in the built view', () => {
@@ -163,6 +171,181 @@ describe('buildShowtimesView — "what\'s nearby" card (film null)', () => {
 describe('buildShowtimesView — empty state', () => {
   it('collapses an empty cinemas array to the empty state', () => {
     expect(buildShowtimesView(singleFilmPayload({ cinemas: [] }))).toEqual({ kind: 'empty' });
+  });
+});
+
+describe('formatRuntime', () => {
+  it('formats whole minutes as "H HR MM MIN"', () => {
+    expect(formatRuntime(115)).toBe('1 HR 55 MIN');
+    expect(formatRuntime(60)).toBe('1 HR');
+    expect(formatRuntime(45)).toBe('45 MIN');
+    expect(formatRuntime(120)).toBe('2 HR');
+    expect(formatRuntime(125)).toBe('2 HR 5 MIN');
+  });
+
+  it('returns null for missing, zero, or non-finite runtimes', () => {
+    expect(formatRuntime(undefined)).toBeNull();
+    expect(formatRuntime(null)).toBeNull();
+    expect(formatRuntime(0)).toBeNull();
+    expect(formatRuntime(-30)).toBeNull();
+    expect(formatRuntime(Number.NaN)).toBeNull();
+  });
+});
+
+describe('formatFilmMeta', () => {
+  it('joins runtime and rating with a spaced bar', () => {
+    expect(formatFilmMeta({ runtimeMinutes: 115, rating: 'PG' })).toBe('1 HR 55 MIN | PG');
+  });
+
+  it('omits the missing piece', () => {
+    expect(formatFilmMeta({ runtimeMinutes: 115 })).toBe('1 HR 55 MIN');
+    expect(formatFilmMeta({ rating: 'R' })).toBe('R');
+  });
+
+  it('returns null when both runtime and rating are absent', () => {
+    expect(formatFilmMeta({})).toBeNull();
+    expect(formatFilmMeta(null)).toBeNull();
+    expect(formatFilmMeta({ rating: '   ' })).toBeNull();
+  });
+});
+
+describe('formatDisplayFormat', () => {
+  it('maps known and unknown format strings to uppercase display labels', () => {
+    expect(formatDisplayFormat('Standard')).toBe('STANDARD');
+    expect(formatDisplayFormat('IMAX')).toBe('IMAX');
+    expect(formatDisplayFormat('Dolby Atmos')).toBe('DOLBY CINEMA');
+    expect(formatDisplayFormat('Dolby Cinema')).toBe('DOLBY CINEMA');
+    expect(formatDisplayFormat('ScreenX')).toBe('SCREENX');
+    expect(formatDisplayFormat('3D')).toBe('3D');
+  });
+});
+
+describe('buildShowtimesView — hero metadata', () => {
+  it('exposes a runtime + rating hero line for an anchored film', () => {
+    const view = buildShowtimesView(
+      singleFilmPayload({
+        film: { title: 'Dune: Part Two', movieGluId: 100, runtimeMinutes: 115, rating: 'PG-13' },
+      }),
+    );
+    if (view.kind !== 'loaded') throw new Error('expected loaded');
+    expect(view.filmMeta).toBe('1 HR 55 MIN | PG-13');
+  });
+
+  it('omits the hero line when the film has neither runtime nor rating', () => {
+    const view = buildShowtimesView(
+      singleFilmPayload({ film: { title: 'Dune: Part Two', movieGluId: 100 } }),
+    );
+    if (view.kind !== 'loaded') throw new Error('expected loaded');
+    expect(view.filmMeta).toBeNull();
+  });
+
+  it('has a null hero line for a "what\'s nearby" (film null) card', () => {
+    const view = buildShowtimesView(singleFilmPayload({ film: null }));
+    if (view.kind !== 'loaded') throw new Error('expected loaded');
+    expect(view.filmMeta).toBeNull();
+  });
+});
+
+describe('buildShowtimesView — cinema address', () => {
+  it('carries a trimmed address when present, else null', () => {
+    const withAddr = buildShowtimesView(
+      singleFilmPayload({ cinemas: [cinema({ address: '  10250 Santa Monica Blvd  ' })] }),
+    );
+    if (withAddr.kind !== 'loaded') throw new Error('expected loaded');
+    expect(withAddr.cinemas[0].address).toBe('10250 Santa Monica Blvd');
+
+    const noAddr = buildShowtimesView(singleFilmPayload());
+    if (noAddr.kind !== 'loaded') throw new Error('expected loaded');
+    expect(noAddr.cinemas[0].address).toBeNull();
+  });
+});
+
+describe('buildShowtimesView — format sections', () => {
+  it('groups showings into one section per format in payload order', () => {
+    const payload = singleFilmPayload({
+      cinemas: [
+        cinema({
+          films: [
+            {
+              movieGluId: 100,
+              title: 'Dune: Part Two',
+              // flat times still present (superset) but showings drive the sections.
+              times: [{ start: 's0', label: '6:00 PM' }],
+              showings: [
+                {
+                  format: 'IMAX',
+                  times: [{ start: 's1', label: '7:30 PM' }],
+                },
+                {
+                  format: 'Dolby Atmos',
+                  times: [
+                    { start: 's2', label: '8:00 PM' },
+                    { start: 's3', label: '10:15 PM' },
+                  ],
+                },
+                {
+                  format: 'Standard',
+                  times: [{ start: 's4', label: '9:00 PM' }],
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    const view = buildShowtimesView(payload);
+    if (view.kind !== 'loaded') throw new Error('expected loaded');
+    const sections = view.cinemas[0].films[0].sections;
+    expect(sections.map((s) => s.label)).toEqual(['IMAX', 'DOLBY CINEMA', 'STANDARD']);
+    expect(sections[1].chips.map((c) => c.label)).toEqual(['8:00 PM', '10:15 PM']);
+    // chips still link to the film's own Fandango search.
+    expect(sections[0].chips[0].href).toBe(`${FANDANGO}Dune%3A%20Part%20Two`);
+  });
+
+  it('falls back to a single header-less flat section for old payloads (no showings)', () => {
+    const view = buildShowtimesView(singleFilmPayload());
+    if (view.kind !== 'loaded') throw new Error('expected loaded');
+    const sections = view.cinemas[0].films[0].sections;
+    expect(sections).toHaveLength(1);
+    expect(sections[0].label).toBeNull();
+    expect(sections[0].chips.map((c) => c.label)).toEqual(['7:30 PM', '10:00 PM']);
+  });
+
+  it('falls back to flat times when showings is an empty array', () => {
+    const view = buildShowtimesView(
+      singleFilmPayload({
+        cinemas: [
+          cinema({
+            films: [
+              {
+                movieGluId: 100,
+                title: 'Dune: Part Two',
+                times: [{ start: 's1', label: '7:30 PM' }],
+                showings: [],
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    if (view.kind !== 'loaded') throw new Error('expected loaded');
+    const sections = view.cinemas[0].films[0].sections;
+    expect(sections).toHaveLength(1);
+    expect(sections[0].label).toBeNull();
+    expect(sections[0].chips.map((c) => c.label)).toEqual(['7:30 PM']);
+  });
+});
+
+describe('formatAsOfDate', () => {
+  it('formats a valid ISO timestamp to a weekday + short date', () => {
+    // Shape only — the runner's timezone can shift the weekday/day.
+    const out = formatAsOfDate('2026-07-13T19:30:00Z', 'en-US');
+    expect(out).toMatch(/^[A-Za-z]{3},\s[A-Za-z]{3}\s\d{1,2}$/);
+  });
+
+  it('returns null for a falsy or invalid timestamp', () => {
+    expect(formatAsOfDate('', 'en-US')).toBeNull();
+    expect(formatAsOfDate('not-a-date', 'en-US')).toBeNull();
   });
 });
 

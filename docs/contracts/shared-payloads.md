@@ -1096,25 +1096,49 @@ built against this verbatim). TS source of truth:
   asOf: string,               // ISO timestamp of the listings fetch
   territory: string,          // 'XX' sandbox | 'US' live
   location: { lat: number, lng: number, label?: string },
-  film: { title: string, movieGluId: number, poster?: string } | null,  // null = "what's nearby" card
+  film: {                     // null = "what's nearby" card
+    title: string,
+    movieGluId: number,
+    poster?: string,
+    runtimeMinutes?: number,  // whole minutes → hero line "1 HR 55 MIN"
+    rating?: string           // e.g. "PG-13" → hero line "… | PG-13"
+  } | null,
   cinemas: Array<{
     cinemaId: number,
     name: string,
     distance: number | null,  // miles
+    address?: string,         // street address; rendered in the gold accent
     films: Array<{
       movieGluId: number,
       title: string,
-      times: Array<{ start: string, label: string }>  // label is the display string e.g. "7:30 PM"
+      times: Array<{ start: string, label: string }>,  // label is the display string e.g. "7:30 PM"
+      showings?: Array<{      // per-format grouping; when present drives the sections
+        format: string,       // raw, e.g. "Standard" | "IMAX" | "Dolby Atmos"
+        times: Array<{ start: string, label: string }>
+      }>
     }>
   }>
 }
 ```
 
+The `poster`, `runtimeMinutes`, `rating`, `address`, and `showings` fields are
+ADDITIVE on the same `v: 1` (all optional). Old payloads without them still
+render: no hero meta line, no address row, and a single header-less chip row
+built from the flat `times`.
+
 - `film` NULL → a "what's playing near you" card (the page renders the nearby
-  heading and shows a per-cinema film header per film). A non-null `film` → a
-  single-film card (the page elides the per-cinema film header).
+  heading and shows a per-cinema film subheading per film). A non-null `film` →
+  a single-film card with a poster + title + `runtimeMinutes`/`rating` hero line,
+  and the page elides the per-cinema film subheading.
 - `distance` is miles or null; the page sorts cinemas ascending with nulls last
   and formats as `"2.3 mi"` (one decimal). null distance → no distance shown.
+- `address`, when present, renders under the cinema name in the Spool gold token.
+- `showings`, when present and non-empty, renders one SECTION per format in the
+  payload's array order, each with an uppercase tracking-wide header
+  (`Standard`→`STANDARD`, `IMAX`→`IMAX`, anything containing `dolby`
+  (case-insensitive)→`DOLBY CINEMA`, else the raw string uppercased) over a
+  flex-wrap row of outlined pill chips. When absent (or empty), the page falls
+  back to a single header-less row built from the flat `times`.
 - `times[].label` is the pre-formatted display string; the page shows it on a
   tappable chip that links out to Fandango via `lib/ticketLinkout.ts`
   (`https://www.fandango.com/search?q=<encodeURIComponent(film.title)>`,

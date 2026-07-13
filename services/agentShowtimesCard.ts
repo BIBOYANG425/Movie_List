@@ -8,12 +8,14 @@
 //
 // Keeping the derivation pure (no window, no fetch, no React) mirrors
 // agentRankFragment.ts: the page is a thin JSX map over this view model, and the
-// interesting logic (cinema sort, distance format, single-film header elision,
-// chip linkouts, empty/loaded branching) is unit-testable in the node test env.
+// interesting logic (cinema sort, distance format, hero runtime/rating line,
+// per-format section grouping with a flat-times fallback, single-film header
+// elision, chip linkouts, empty/loaded branching) is unit-testable in the node
+// test env.
 //
 // Contract doc: docs/contracts/shared-payloads.md (§ agent_showtimes_cards).
 //
-// Header last reviewed: 2026-07-12
+// Header last reviewed: 2026-07-13
 
 import { ticketLinkout } from '../lib/ticketLinkout';
 
@@ -27,11 +29,25 @@ export interface ShowtimeV1 {
   label: string;
 }
 
+/** A film's screenings at one cinema in a single presentation format. */
+export interface ShowingV1 {
+  /** the raw format string from the agent, e.g. "Standard", "IMAX", "Dolby Atmos". */
+  format: string;
+  times: ShowtimeV1[];
+}
+
 /** A film's screenings at one cinema. */
 export interface CinemaFilmV1 {
   movieGluId: number;
   title: string;
+  /** flat times (all formats mixed) — always present; the fallback for old payloads. */
   times: ShowtimeV1[];
+  /**
+   * format-grouped screenings, when the agent ships them. When present the page
+   * renders one section per format (in payload order); when absent it falls back
+   * to the flat `times` chips.
+   */
+  showings?: ShowingV1[];
 }
 
 /** A cinema and every film it is showing (for this card). */
@@ -40,6 +56,8 @@ export interface CinemaV1 {
   name: string;
   /** distance in miles, or null when the fetch could not place it. */
   distance: number | null;
+  /** the cinema's street address, when the fetch carries one. */
+  address?: string;
   films: CinemaFilmV1[];
 }
 
@@ -48,6 +66,10 @@ export interface ShowtimesFilmV1 {
   title: string;
   movieGluId: number;
   poster?: string;
+  /** runtime in whole minutes, e.g. 115 → "1 HR 55 MIN". */
+  runtimeMinutes?: number;
+  /** MPAA-style rating, e.g. "PG-13". */
+  rating?: string;
 }
 
 /** The full jsonb payload written to `agent_showtimes_cards.payload`. */
@@ -73,11 +95,27 @@ export interface ShowtimeChipVM {
   href: string;
 }
 
+/**
+ * A format section within a film row: a display header (e.g. "IMAX",
+ * "DOLBY CINEMA") over a wrapped row of time chips. `label` is null for the
+ * flat-times fallback (old payloads), in which case the page renders the chips
+ * with NO header.
+ */
+export interface FormatSectionVM {
+  /** the uppercase display label ("IMAX", "DOLBY CINEMA"), or null (no header). */
+  label: string | null;
+  chips: ShowtimeChipVM[];
+}
+
 /** A film's row within a cinema card. */
 export interface CinemaFilmVM {
   movieGluId: number;
   title: string;
-  chips: ShowtimeChipVM[];
+  /**
+   * one section per presentation format (payload order), or a single
+   * header-less section holding the flat `times` chips for old payloads.
+   */
+  sections: FormatSectionVM[];
 }
 
 /** A cinema card. */
@@ -86,6 +124,8 @@ export interface CinemaVM {
   name: string;
   /** pre-formatted distance ("2.3 mi") or null when unknown. */
   distanceLabel: string | null;
+  /** the cinema's street address, or null when absent. */
+  address: string | null;
   films: CinemaFilmVM[];
 }
 
@@ -106,6 +146,11 @@ export type ShowtimesView =
       filmTitle: string | null;
       /** the anchor film's poster, when present. */
       poster: string | null;
+      /**
+       * the anchor film's metadata line ("1 HR 55 MIN | PG"), or null when the
+       * film carries neither a runtime nor a rating (page omits the whole line).
+       */
+      filmMeta: string | null;
       /** true when the card is a single-film card (elide per-cinema headers). */
       singleFilm: boolean;
       /** location.label when the payload carries one, else null. */
@@ -125,6 +170,49 @@ export type ShowtimesView =
 export function formatDistance(distance: number | null): string | null {
   if (distance == null || !Number.isFinite(distance)) return null;
   return `${distance.toFixed(1)} mi`;
+}
+
+/**
+ * Format a whole-minutes runtime as "H HR MM MIN" (the AMC-style hero line):
+ *   115 → "1 HR 55 MIN", 60 → "1 HR", 45 → "45 MIN", 120 → "2 HR".
+ * Drops the empty half (no "0 MIN", no "0 HR"). Non-positive/non-finite → null.
+ */
+export function formatRuntime(minutes: number | null | undefined): string | null {
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;
+  const total = Math.round(minutes);
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} HR`);
+  if (mins > 0) parts.push(`${mins} MIN`);
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
+/**
+ * Build the hero metadata line from a film's runtime + rating, joined by a thin
+ * bar with spaces: "1 HR 55 MIN | PG". Either piece may be absent; when both are
+ * absent the line is null and the page omits it entirely.
+ */
+export function formatFilmMeta(
+  film: { runtimeMinutes?: number; rating?: string } | null | undefined,
+): string | null {
+  if (!film) return null;
+  const runtime = formatRuntime(film.runtimeMinutes);
+  const rating = film.rating?.trim() || null;
+  const parts = [runtime, rating].filter((p): p is string => Boolean(p));
+  return parts.length > 0 ? parts.join(' | ') : null;
+}
+
+/**
+ * Map a raw payload format string to its uppercase display label:
+ *   'Standard' → 'STANDARD', 'IMAX' → 'IMAX', anything containing 'dolby'
+ *   (case-insensitive, e.g. "Dolby Atmos", "Dolby Cinema") → 'DOLBY CINEMA',
+ *   else the raw string uppercased ('3D' → '3D', 'ScreenX' → 'SCREENX').
+ */
+export function formatDisplayFormat(format: string): string {
+  const raw = format.trim();
+  if (/dolby/i.test(raw)) return 'DOLBY CINEMA';
+  return raw.toUpperCase();
 }
 
 /**
@@ -169,14 +257,11 @@ export function buildShowtimesView(payload: ShowtimesCardPayloadV1): ShowtimesVi
     cinemaId: cinema.cinemaId,
     name: cinema.name,
     distanceLabel: formatDistance(cinema.distance),
+    address: cinema.address?.trim() || null,
     films: (cinema.films ?? []).map((film) => ({
       movieGluId: film.movieGluId,
       title: film.title,
-      chips: (film.times ?? []).map((time) => ({
-        label: time.label,
-        start: time.start,
-        href: ticketLinkout(film.title),
-      })),
+      sections: buildFilmSections(film),
     })),
   }));
 
@@ -184,11 +269,35 @@ export function buildShowtimesView(payload: ShowtimesCardPayloadV1): ShowtimesVi
     kind: 'loaded',
     filmTitle: payload.film?.title ?? null,
     poster: payload.film?.poster ?? null,
+    filmMeta: formatFilmMeta(payload.film),
     singleFilm,
     locationLabel: payload.location?.label ?? null,
     asOf: payload.asOf,
     cinemas,
   };
+}
+
+/**
+ * Build a film row's format sections. When the film carries `showings`, emit one
+ * section per format (in payload order) with an uppercase display header. When
+ * it does not (old flat payloads), emit a single header-less section holding the
+ * flat `times` chips. Chip linkouts always use the film's own title.
+ */
+function buildFilmSections(film: CinemaFilmV1): FormatSectionVM[] {
+  const chip = (time: ShowtimeV1): ShowtimeChipVM => ({
+    label: time.label,
+    start: time.start,
+    href: ticketLinkout(film.title),
+  });
+
+  if (film.showings && film.showings.length > 0) {
+    return film.showings.map((showing) => ({
+      label: formatDisplayFormat(showing.format),
+      chips: (showing.times ?? []).map(chip),
+    }));
+  }
+
+  return [{ label: null, chips: (film.times ?? []).map(chip) }];
 }
 
 /**
@@ -201,4 +310,20 @@ export function formatAsOfTime(asOf: string, locale?: string): string | null {
   const date = new Date(asOf);
   if (Number.isNaN(date.getTime())) return null;
   return date.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Format the `asOf` ISO timestamp as a weekday + short date (e.g.
+ * "Sun, Jul 13"), used as the first item in the context bar. Falsy/invalid
+ * input → null so the page drops the piece rather than showing "Invalid Date".
+ */
+export function formatAsOfDate(asOf: string, locale?: string): string | null {
+  if (!asOf) return null;
+  const date = new Date(asOf);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(locale, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
 }
