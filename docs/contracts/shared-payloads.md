@@ -1108,23 +1108,24 @@ built against this verbatim). TS source of truth:
     name: string,
     distance: number | null,  // miles
     address?: string,         // street address; rendered in the gold accent
+    ticketUrl?: string,       // cinema-level ticketing link (chip fallback)
     films: Array<{
       movieGluId: number,
       title: string,
-      times: Array<{ start: string, label: string }>,  // label is the display string e.g. "7:30 PM"
+      times: Array<{ start: string, label: string, ticketUrl?: string }>,  // label is the display string e.g. "7:30 PM"
       showings?: Array<{      // per-format grouping; when present drives the sections
         format: string,       // raw, e.g. "Standard" | "IMAX" | "Dolby Atmos"
-        times: Array<{ start: string, label: string }>
+        times: Array<{ start: string, label: string, ticketUrl?: string }>
       }>
     }>
   }>
 }
 ```
 
-The `poster`, `runtimeMinutes`, `rating`, `address`, and `showings` fields are
-ADDITIVE on the same `v: 1` (all optional). Old payloads without them still
-render: no hero meta line, no address row, and a single header-less chip row
-built from the flat `times`.
+The `poster`, `runtimeMinutes`, `rating`, `address`, `showings`, and
+`ticketUrl` fields are ADDITIVE on the same `v: 1` (all optional). Old
+payloads without them still render: no hero meta line, no address row, and a
+single header-less chip row built from the flat `times`.
 
 - `film` NULL → a "what's playing near you" card (the page renders the nearby
   heading and shows a per-cinema film subheading per film). A non-null `film` →
@@ -1140,10 +1141,11 @@ built from the flat `times`.
   flex-wrap row of outlined pill chips. When absent (or empty), the page falls
   back to a single header-less row built from the flat `times`.
 - `times[].label` is the pre-formatted display string; the page shows it on a
-  tappable chip that links out to Fandango via `lib/ticketLinkout.ts`
-  (`https://www.fandango.com/search?q=<encodeURIComponent(film.title)>`,
-  `target="_blank" rel="noopener"`). ONE module on purpose: a future affiliate
-  wrap changes only that file.
+  tappable chip (`target="_blank" rel="noopener"`). The chip's href priority
+  (2026-07-13): the showtime's own `ticketUrl` (AMC per-showing checkout deep
+  link) → the cinema's `ticketUrl` → the legacy Fandango title search via
+  `lib/ticketLinkout.ts` (old payloads only; the Fandango affiliate program is
+  defunct, so this is a last-ditch search, not a purchase path).
 - An empty `cinemas` array → the page's "nothing showing near you" empty state.
 
 Implementations: web page `pages/AgentShowtimesPage.tsx`; pure contract + view

@@ -103,7 +103,7 @@ describe('buildShowtimesView — single-film card', () => {
     expect(view.cinemas[0].distanceLabel).toBe('2.3 mi');
   });
 
-  it('builds time chips with labels and Fandango linkout hrefs', () => {
+  it('builds time chips with labels; legacy payloads fall back to the Fandango title search', () => {
     const view = buildShowtimesView(singleFilmPayload());
     if (view.kind !== 'loaded') throw new Error('expected loaded');
     // No showings on the fixture → a single header-less flat section.
@@ -114,6 +114,78 @@ describe('buildShowtimesView — single-film card', () => {
     expect(chips.map((c) => c.label)).toEqual(['7:30 PM', '10:00 PM']);
     expect(chips[0].href).toBe(`${FANDANGO}Dune%3A%20Part%20Two`);
     expect(chips[1].href).toBe(`${FANDANGO}Dune%3A%20Part%20Two`);
+  });
+
+  // PROD 2026-07-13: pressing a time pill could not purchase — every chip
+  // opened a Fandango title search. The payload now carries real purchase
+  // links; the chip href priority is per-showtime → cinema → legacy search.
+  it('chip href prefers the showtime ticketUrl (exact-showing checkout deep link)', () => {
+    const buy = 'https://www.amctheatres.com/showtimes/all/2026-07-13/bay-street/all/111';
+    const view = buildShowtimesView(
+      singleFilmPayload({
+        cinemas: [
+          cinema({
+            films: [
+              {
+                movieGluId: 100,
+                title: 'Dune: Part Two',
+                times: [
+                  { start: '2026-07-12T19:30:00-07:00', label: '7:30 PM', ticketUrl: buy },
+                  { start: '2026-07-12T22:00:00-07:00', label: '10:00 PM' },
+                ],
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    if (view.kind !== 'loaded') throw new Error('expected loaded');
+    const chips = view.cinemas[0].films[0].sections[0].chips;
+    expect(chips[0].href).toBe(buy);
+    // Linkless sibling in the same row falls through to the legacy search.
+    expect(chips[1].href).toBe(`${FANDANGO}Dune%3A%20Part%20Two`);
+  });
+
+  it('chip href falls back to the cinema-level ticketUrl before the title search', () => {
+    const cinemaBuy = 'https://www.amctheatres.com/movie-theatres/bay-street-16';
+    const view = buildShowtimesView(
+      singleFilmPayload({ cinemas: [cinema({ ticketUrl: cinemaBuy })] }),
+    );
+    if (view.kind !== 'loaded') throw new Error('expected loaded');
+    const chips = view.cinemas[0].films[0].sections[0].chips;
+    expect(chips[0].href).toBe(cinemaBuy);
+    expect(chips[1].href).toBe(cinemaBuy);
+  });
+
+  it('per-showtime ticketUrl works inside format-grouped showings too', () => {
+    const buyImax = 'https://www.amctheatres.com/showtimes/all/2026-07-13/bay-street/all/222';
+    const view = buildShowtimesView(
+      singleFilmPayload({
+        cinemas: [
+          cinema({
+            films: [
+              {
+                movieGluId: 100,
+                title: 'Dune: Part Two',
+                times: [{ start: '2026-07-12T20:00:00-07:00', label: '8:00 PM · IMAX' }],
+                showings: [
+                  {
+                    format: 'IMAX',
+                    times: [
+                      { start: '2026-07-12T20:00:00-07:00', label: '8:00 PM', ticketUrl: buyImax },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    if (view.kind !== 'loaded') throw new Error('expected loaded');
+    const sections = view.cinemas[0].films[0].sections;
+    expect(sections[0].label).toBe('IMAX');
+    expect(sections[0].chips[0].href).toBe(buyImax);
   });
 
   it('carries a null distanceLabel when the cinema distance is null', () => {
