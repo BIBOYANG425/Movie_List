@@ -10,9 +10,17 @@
  *          CALLER's forwarded Authorization (preserves auth.uid, no service
  *          role) → 200 { assignedPhoneNumber, code, expiresAt, alreadyRegistered }
  *          so the app opens `sms:{assignedPhoneNumber}&body={code}`.
+ *   POST   { action: 'consume-login-token', token } → the AGENT-initiated web
+ *          login (P4 / Slice B2). The caller is the freshly signed-in user; the
+ *          phone to bind rides in the token row (hana.login_links), never the
+ *          request. rpc/consume_agent_login_token (forwarded auth, SECURITY
+ *          DEFINER into hana) reads the token, binds hana.agent_links, marks it
+ *          consumed → 200 { ok: true } | { ok: true, alreadyLinked: true }, or
+ *          400 { error: 'expired' } for unknown/expired/consumed AND for
+ *          hana.login_links not existing yet (agent deploy creates it).
  *   GET    → rpc/get_agent_link_status (forwarded auth) → { links: [{phone, linkedAt}] }.
  *   DELETE → rpc/unlink_agent (forwarded auth) → 204.
- * One endpoint for the whole sheet (mint / status / unlink).
+ * One endpoint for the whole handshake (mint / consume-login / status / unlink).
  *
  * Auth: verify_jwt ON — the platform validates the JWT before this function
  * runs (set at deploy time, see below). We ALSO verify in-function via
@@ -42,9 +50,12 @@ import { registerSharedUser } from './_shared.ts'
 import {
   buildLinkResponse,
   buildStatusResponse,
+  classifyConsumeError,
   classifyMintError,
+  consumeStatusToHttp,
   normalizePhone,
   outcomeToHttp,
+  parseConsumeLoginBody,
 } from './_shared.ts'
 
 const corsHeaders = {
@@ -63,13 +74,15 @@ function json(body: unknown, status: number): Response {
 
 /**
  * Call a PostgREST RPC as the CALLER: forward the incoming Authorization header
- * (preserves auth.uid under RLS) + the anon apikey. No service role.
+ * (preserves auth.uid under RLS) + the anon apikey. No service role. `params`
+ * become the RPC's named arguments (defaults to none).
  */
 async function callRpc(
   supabaseUrl: string,
   anonKey: string,
   authHeader: string,
   fn: string,
+  params: Record<string, unknown> = {},
 ): Promise<Response> {
   return await fetch(`${supabaseUrl}/rest/v1/rpc/${fn}`, {
     method: 'POST',
@@ -78,7 +91,7 @@ async function callRpc(
       apikey: anonKey,
       Authorization: authHeader,
     },
-    body: '{}',
+    body: JSON.stringify(params),
     signal: AbortSignal.timeout(10_000),
   })
 }
@@ -132,7 +145,53 @@ Deno.serve(async (req: Request) => {
       return new Response(null, { status: 204, headers: corsHeaders })
     }
 
-    // ── POST: register + mint ─────────────────────────────────────────────────
+    // ── POST: parse the body once, then route on `action` ─────────────────────
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      // A malformed body is only reachable on the phone flow (the JSON-less
+      // caller can't be the login consumer); keep the code-flow error shape.
+      return json({ error: 'invalid_phone' }, 400)
+    }
+
+    // ── action: consume-login-token (agent-initiated web login, P4) ───────────
+    // The caller is the freshly signed-in user; the phone to bind rides in the
+    // token row (hana.login_links), never the request. A SECURITY DEFINER RPC
+    // (consume_agent_login_token) reads the token, binds hana.agent_links, and
+    // marks it consumed atomically — the SAME forwarded-JWT + definer path the
+    // code flow uses for hana. It also catches relation-not-found → 'expired'
+    // so a not-yet-deployed hana.login_links looks like a stale link.
+    const loginToken = parseConsumeLoginBody(body)
+    if (loginToken) {
+      const res = await callRpc(
+        supabaseUrl,
+        anonKey,
+        authHeader,
+        'consume_agent_login_token',
+        { p_token: loginToken },
+      )
+      if (res.status === 401) return json({ error: 'Invalid or expired token' }, 401)
+      if (!res.ok) {
+        let message: string | undefined
+        try {
+          const err = await res.json()
+          message = err?.message ?? err?.error ?? err?.hint
+        } catch {
+          // non-JSON body; classifyConsumeError falls back appropriately.
+        }
+        const mapped = classifyConsumeError(message)
+        console.error('agent-link consume_agent_login_token failed:', res.status, message)
+        return json(mapped.body, mapped.status)
+      }
+      // "returns table (status text)" → PostgREST yields an array of rows.
+      const rows = (await res.json().catch(() => [])) as Array<{ status: string }>
+      const status = Array.isArray(rows) ? rows[0]?.status : undefined
+      const mapped = consumeStatusToHttp(status)
+      return json(mapped.body, mapped.status)
+    }
+
+    // ── register + mint (app-initiated code flow) ─────────────────────────────
     const spectrumProjectId = Deno.env.get('SPECTRUM_PROJECT_ID')
     const spectrumProjectSecret = Deno.env.get('SPECTRUM_PROJECT_SECRET')
     if (!spectrumProjectId || !spectrumProjectSecret) {
@@ -140,12 +199,6 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'not_configured' }, 500)
     }
 
-    let body: unknown
-    try {
-      body = await req.json()
-    } catch {
-      return json({ error: 'invalid_phone' }, 400)
-    }
     const rawPhone = (body as Record<string, unknown>)?.phone
     if (typeof rawPhone !== 'string') {
       return json({ error: 'invalid_phone' }, 400)
