@@ -482,6 +482,14 @@ const zh = {
   'agentShowtimes.empty': '你附近现在没有场次。',
   'agentShowtimes.asOf': '场次更新于 {time}',
 
+  // ── Agent login (/agent-login, P4 / Slice B2) ─────────────────────────────
+  'agentLogin.title': '关联你的账号',
+  'agentLogin.loading': '正在关联你的账号…',
+  'agentLogin.successTitle': '关联好了。',
+  'agentLogin.successBody': '回到消息里吧，chris 在等你。',
+  'agentLogin.expired': '这个链接过期了。再发消息找 chris，他会给你发个新的。',
+  'agentLogin.error': '出了点问题。发消息找 chris 再试一次。',
+
   // ── The daily reel (agent_preferences digest cadence) ─────────────────────
   'digest.sectionCaption': '每日速报',
   'digest.sectionBlurb': '每天早上一小段电影圈新闻，用 Chris 的口吻讲给你听。',

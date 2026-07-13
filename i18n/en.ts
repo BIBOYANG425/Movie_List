@@ -480,6 +480,14 @@ const en = {
   'agentShowtimes.empty': 'nothing showing near you right now.',
   'agentShowtimes.asOf': 'times as of {time}',
 
+  // ── Agent login (/agent-login, P4 / Slice B2) ─────────────────────────────
+  'agentLogin.title': 'link your account',
+  'agentLogin.loading': 'linking your account…',
+  'agentLogin.successTitle': 'linked.',
+  'agentLogin.successBody': 'go back to messages, chris is waiting.',
+  'agentLogin.expired': 'this link expired. text chris again and he will send a fresh one.',
+  'agentLogin.error': 'something went wrong. text chris and try again.',
+
   // ── The daily reel (agent_preferences digest cadence) ─────────────────────
   'digest.sectionCaption': 'the daily reel',
   'digest.sectionBlurb': "a short morning read on movie news, in Chris's voice.",

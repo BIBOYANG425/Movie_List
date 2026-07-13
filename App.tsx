@@ -10,6 +10,7 @@ import PublicProfilePage from './pages/PublicProfilePage';
 import MovieOnboardingPage from './pages/MovieOnboardingPage';
 import AgentRankPage from './pages/AgentRankPage';
 import AgentShowtimesPage from './pages/AgentShowtimesPage';
+import AgentLoginPage from './pages/AgentLoginPage';
 import { useAuth } from './contexts/AuthContext';
 import { Grain } from './components/shared/Grain';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
@@ -65,6 +66,15 @@ const App = () => {
           fragment (#c=<uuid>). Plain web route — does not touch /u/* or AASA.
         */}
         <Route path="/agent-showtimes" element={<AgentShowtimesPage />} />
+        {/*
+          Agent-initiated web login (P4, Slice B2). Chris texts an UNLINKED user
+          a rich link with a single-use login token in the fragment (#lt=<token>).
+          Opens REAL Safari: reuses the app's AuthPage for sign-in / sign-up, then
+          calls the agent-link edge function under the fresh JWT to bind the
+          texter's phone to their account. Renders regardless of `user` (it drives
+          its own consume once a session exists). Does not touch AASA.
+        */}
+        <Route path="/agent-login" element={<AgentLoginPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>

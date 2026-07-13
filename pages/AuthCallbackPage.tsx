@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { readAgentLoginToken } from '../services/agentLoginToken';
 
 const MAX_RETRIES = 12;
 const RETRY_DELAY_MS = 300;
@@ -41,7 +42,10 @@ const AuthCallbackPage = () => {
         }
 
         if (data.session?.user) {
-          navigate('/app', { replace: true });
+          // If this Google sign-in was started from /agent-login, return there
+          // to complete the token-consume step rather than dropping into /app.
+          const dest = readAgentLoginToken() ? '/agent-login' : '/app';
+          navigate(dest, { replace: true });
           return;
         }
 

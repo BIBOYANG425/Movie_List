@@ -4,7 +4,16 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import SpoolLogo from '../components/layout/SpoolLogo';
 
-const AuthPage = () => {
+interface AuthPageProps {
+  /**
+   * Where to send the user after an email/password sign-in or sign-up succeeds.
+   * Defaults to the app home. /agent-login reuses this surface and passes its
+   * own path so the flow returns to the token-consume step instead of /app.
+   */
+  redirectTo?: string;
+}
+
+const AuthPage = ({ redirectTo = '/app' }: AuthPageProps) => {
   const { t } = useTranslation();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -27,7 +36,7 @@ const AuthPage = () => {
       if (error) {
         setError(error.message);
       } else {
-        navigate('/app');
+        navigate(redirectTo);
       }
     } else {
       if (username.length < 3) {
@@ -39,7 +48,7 @@ const AuthPage = () => {
       if (error) {
         setError(error.message);
       } else {
-        navigate('/app');
+        navigate(redirectTo);
       }
     }
 
