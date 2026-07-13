@@ -3,9 +3,12 @@ import {
   authHeader,
   buildLinkResponse,
   buildStatusResponse,
+  classifyConsumeError,
   classifyMintError,
+  consumeStatusToHttp,
   normalizePhone,
   outcomeToHttp,
+  parseConsumeLoginBody,
   registerSharedUser,
   SPECTRUM_BASE,
   type SignupOutcome,
@@ -283,5 +286,70 @@ describe('buildStatusResponse — GET body (M2b contract)', () => {
   it('empty / missing rows → { links: [] }', () => {
     expect(buildStatusResponse([])).toEqual({ links: [] })
     expect(buildStatusResponse(undefined as unknown as [])).toEqual({ links: [] })
+  })
+})
+
+// ── consume-login-token helpers (P4 / Slice B2) ───────────────────────────────
+
+describe('parseConsumeLoginBody', () => {
+  it('returns the trimmed token for the consume action', () => {
+    expect(parseConsumeLoginBody({ action: 'consume-login-token', token: '  tok-1  ' })).toBe(
+      'tok-1',
+    )
+  })
+  it('returns null when the action is not consume-login-token', () => {
+    expect(parseConsumeLoginBody({ action: 'something-else', token: 'x' })).toBeNull()
+    expect(parseConsumeLoginBody({ token: 'x' })).toBeNull()
+  })
+  it('returns null when the token is missing, blank, or not a string', () => {
+    expect(parseConsumeLoginBody({ action: 'consume-login-token' })).toBeNull()
+    expect(parseConsumeLoginBody({ action: 'consume-login-token', token: '   ' })).toBeNull()
+    expect(parseConsumeLoginBody({ action: 'consume-login-token', token: 42 })).toBeNull()
+  })
+  it('returns null for a null / non-object body', () => {
+    expect(parseConsumeLoginBody(null)).toBeNull()
+    expect(parseConsumeLoginBody(undefined)).toBeNull()
+    expect(parseConsumeLoginBody('nope')).toBeNull()
+  })
+})
+
+describe('consumeStatusToHttp', () => {
+  it('linked → 200 { ok: true }', () => {
+    expect(consumeStatusToHttp('linked')).toEqual({ status: 200, body: { ok: true } })
+  })
+  it('already_linked → 200 { ok: true, alreadyLinked: true }', () => {
+    expect(consumeStatusToHttp('already_linked')).toEqual({
+      status: 200,
+      body: { ok: true, alreadyLinked: true },
+    })
+  })
+  it('expired → 400 { error: expired } (one shape for unknown/expired/consumed)', () => {
+    expect(consumeStatusToHttp('expired')).toEqual({ status: 400, body: { error: 'expired' } })
+  })
+  it('unknown / missing status → 500 consume_failed', () => {
+    expect(consumeStatusToHttp('weird')).toEqual({ status: 500, body: { error: 'consume_failed' } })
+    expect(consumeStatusToHttp(undefined)).toEqual({
+      status: 500,
+      body: { error: 'consume_failed' },
+    })
+  })
+})
+
+describe('classifyConsumeError — relation-not-found tolerance', () => {
+  it('maps a missing hana.login_links relation to the opaque expired', () => {
+    expect(classifyConsumeError('relation "hana.login_links" does not exist').status).toBe(400)
+    expect(classifyConsumeError('relation "hana.login_links" does not exist').body).toEqual({
+      error: 'expired',
+    })
+  })
+  it('maps a missing hana schema to expired', () => {
+    expect(classifyConsumeError('schema "hana" does not exist').body).toEqual({ error: 'expired' })
+  })
+  it('maps any other RPC failure to an opaque 500', () => {
+    expect(classifyConsumeError('deadlock detected')).toEqual({
+      status: 500,
+      body: { error: 'consume_failed' },
+    })
+    expect(classifyConsumeError(null)).toEqual({ status: 500, body: { error: 'consume_failed' } })
   })
 })

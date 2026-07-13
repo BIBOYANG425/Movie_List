@@ -224,3 +224,60 @@ export function buildStatusResponse(
     links: (rows ?? []).map((r) => ({ phone: r.phone, linkedAt: r.linked_at })),
   }
 }
+
+// ── Agent-initiated web login (consume-login-token, P4 / Slice B2) ────────────
+
+/**
+ * Pull the login token out of a POST body of shape
+ * `{ action: 'consume-login-token', token }`. Returns the trimmed token, or null
+ * when the body is not that action or the token is missing/blank. Kept pure so
+ * the index.ts router can branch on it and tests can exercise the validation.
+ */
+export function parseConsumeLoginBody(body: unknown): string | null {
+  const b = body as Record<string, unknown> | null | undefined
+  if (!b || b.action !== 'consume-login-token') return null
+  const token = b.token
+  if (typeof token !== 'string') return null
+  const trimmed = token.trim()
+  return trimmed === '' ? null : trimmed
+}
+
+/**
+ * Map the consume_agent_login_token RPC's single status row to the HTTP result
+ * the web surface consumes. The RPC already collapses unknown / expired /
+ * consumed / relation-not-found into 'expired' (one opaque shape — no leak of
+ * which). 'already_linked' is a success (idempotent re-tap). Any unrecognized
+ * status is a 500 the page renders as its generic error.
+ */
+export function consumeStatusToHttp(status: string | null | undefined): HttpResult {
+  switch (status) {
+    case 'linked':
+      return { status: 200, body: { ok: true } }
+    case 'already_linked':
+      return { status: 200, body: { ok: true, alreadyLinked: true } }
+    case 'expired':
+      return { status: 400, body: { error: 'expired' } }
+    default:
+      return { status: 500, body: { error: 'consume_failed' } }
+  }
+}
+
+/**
+ * Classify a consume_agent_login_token RPC *transport* failure (non-2xx from
+ * PostgREST). If the definer function still surfaced a relation-not-found (e.g.
+ * the exception guard was bypassed by a schema-cache miss), the message names
+ * the missing relation — map that to the same opaque 'expired'. Everything else
+ * is an opaque 500.
+ */
+export function classifyConsumeError(rpcMessage: string | null | undefined): HttpResult {
+  const msg = (rpcMessage ?? '').toLowerCase()
+  if (
+    msg.includes('login_links') ||
+    msg.includes('does not exist') ||
+    msg.includes('undefined_table') ||
+    msg.includes('schema "hana"')
+  ) {
+    return { status: 400, body: { error: 'expired' } }
+  }
+  return { status: 500, body: { error: 'consume_failed' } }
+}
