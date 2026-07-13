@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import FocusTrap from 'focus-trap-react';
 import { X, Search, Plus, ArrowLeft, Loader2, Film, ChevronRight, Bookmark, RefreshCw } from 'lucide-react';
-import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry, ComparisonRequest } from '../../types';
+import { RankedItem, Tier, Bracket, WatchlistItem, ComparisonLogEntry } from '../../types';
 import { searchMovies, searchPeople, getPersonFilmography, fetchMovieSuggestions, hasTmdbKey, getMovieGlobalScore, TMDBMovie, PersonProfile, PersonDetail } from '../../services/tmdbService';
 import { fuzzyFilterLocal, getBestCorrectedQuery, mergeAndDedupSearchResults } from '../../services/fuzzySearch';
 import { classifyBracket } from '../../services/rankingAlgorithm';
-import { RankingSession } from '../../services/rankingSession';
+import { useRankingCeremony } from '../../hooks/useRankingCeremony';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { SkeletonList } from '../shared/SkeletonCard';
@@ -69,11 +69,17 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   const [notes, setNotes] = useState('');
   const [watchedWithUserIds, setWatchedWithUserIds] = useState<string[]>([]);
 
-  // Spool ranking engine state
-  const sessionRef = useRef<RankingSession | null>(null);
-  const isProcessingRef = useRef(false);
-  const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  // Shared head-to-head ceremony DRIVER — the SAME RankingSession lifecycle the
+  // book flow and the /agent-rank ceremony run (RankingFlowModal). No forked
+  // comparison loop lives here. onCompare logs fire against the current
+  // (selectedItem, selectedTier) pair.
+  const selectionRef = useRef<{ item: RankedItem | null; tier: Tier | null }>({ item: null, tier: null });
+  const ceremony = useRankingCeremony({
+    onCompare,
+    getLogContext: () => selectionRef.current,
+  });
+  selectionRef.current = { item: selectedItem, tier: selectedTier };
+  const currentComparison = ceremony.currentComparison;
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestIdRef = useRef(0);
@@ -146,9 +152,7 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       setNotes('');
       setWatchedWithUserIds([]);
       setCorrectedQuery(null);
-      sessionRef.current = null;
-      setCurrentComparison(null);
-      setSessionId(crypto.randomUUID());
+      ceremony.reset();
 
       // If a watchlist item was pre-selected, skip to tier step
       if (preselectedItem && !preselectedTier) {
@@ -180,15 +184,13 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
         if (asRankedItem.watchedWithUserIds?.length) setWatchedWithUserIds(asRankedItem.watchedWithUserIds);
         setSelectedTier(preselectedTier);
 
-        const session = new RankingSession(asRankedItem, preselectedTier, currentItems);
-        sessionRef.current = session;
-        const result = session.start();
-
-        if (result.type === 'done') {
-          onAdd({ ...asRankedItem, tier: preselectedTier, rank: result.finalRank });
+        // Log context needs the pair now; state setters above are async.
+        selectionRef.current = { item: asRankedItem, tier: preselectedTier };
+        const stepResult = ceremony.begin(asRankedItem, preselectedTier, currentItems);
+        if (stepResult.kind === 'placed') {
+          onAdd({ ...asRankedItem, tier: preselectedTier, rank: stepResult.rank });
           onClose();
-        } else {
-          setCurrentComparison(result.comparison);
+        } else if (stepResult.kind === 'compare') {
           setStep('compare');
         }
       } else {
@@ -352,14 +354,10 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
       return;
     }
 
-    const session = new RankingSession(item, selectedTier!, currentItems);
-    sessionRef.current = session;
-    const result = session.start();
-
-    if (result.type === 'done') {
-      handleInsertAt(result.finalRank);
-    } else {
-      setCurrentComparison(result.comparison);
+    const stepResult = ceremony.begin(item, selectedTier!, currentItems);
+    if (stepResult.kind === 'placed') {
+      handleInsertAt(stepResult.rank);
+    } else if (stepResult.kind === 'compare') {
       setStep('compare');
     }
   };
@@ -382,43 +380,14 @@ export const AddMediaModal: React.FC<AddMediaModalProps> = ({ isOpen, onClose, o
   };
 
   const handleCompareChoice = (choice: 'new' | 'existing' | 'too_tough' | 'skip') => {
-    if (!currentComparison) return;
-    const session = sessionRef.current;
-    if (!session) return;
-    if (isProcessingRef.current) return;
-    isProcessingRef.current = true;
-
-    try {
-      // Log comparison
-      if (onCompare && selectedItem && selectedTier) {
-        onCompare({
-          sessionId,
-          movieAId: currentComparison.movieA.id,
-          movieBId: currentComparison.movieB.id,
-          winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
-          round: currentComparison.round,
-          phase: currentComparison.phase,
-          questionText: currentComparison.question,
-        });
-      }
-
-      const result = session.submit(choice);
-      if (result.type === 'done') {
-        sessionRef.current = null;
-        handleInsertAt(result.finalRank);
-      } else {
-        setCurrentComparison(result.comparison);
-      }
-    } finally {
-      isProcessingRef.current = false;
+    const stepResult = ceremony.choose(choice);
+    if (stepResult.kind === 'placed') {
+      handleInsertAt(stepResult.rank);
     }
   };
 
   const handleUndo = () => {
-    const result = sessionRef.current?.undo();
-    if (result && result.type === 'comparison') {
-      setCurrentComparison(result.comparison);
-    }
+    ceremony.undo();
   };
 
   // ─── Render: Search ───────────────────────────────────────────────────────

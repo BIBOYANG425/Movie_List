@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import FocusTrap from 'focus-trap-react';
 import { X, ArrowLeft } from 'lucide-react';
-import { RankedItem, Tier, Bracket, ComparisonLogEntry, ComparisonRequest } from '../../types';
-import { RankingSession } from '../../services/rankingSession';
+import { RankedItem, Tier, Bracket, ComparisonLogEntry } from '../../types';
+import { useRankingCeremony } from '../../hooks/useRankingCeremony';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from '../../contexts/LanguageContext';
 import { TierPicker } from '../shared/TierPicker';
@@ -32,11 +32,16 @@ export const RankingFlowModal: React.FC<RankingFlowModalProps> = ({
   const [notes, setNotes] = useState('');
   const [watchedWithUserIds, setWatchedWithUserIds] = useState<string[]>([]);
 
-  // Spool ranking engine state
-  const sessionRef = useRef<RankingSession | null>(null);
-  const isProcessingRef = useRef(false);
-  const [currentComparison, setCurrentComparison] = useState<ComparisonRequest | null>(null);
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  // Shared head-to-head ceremony DRIVER — the same RankingSession lifecycle the
+  // main app's AddMediaModal uses (no forked comparison loop). onCompare logs
+  // are emitted against the current (selectedItem, selectedTier) pair.
+  const selectionRef = useRef<{ item: RankedItem | null; tier: Tier | null }>({ item: initialItem, tier: preselectedTier ?? null });
+  selectionRef.current = { item: selectedItem, tier: selectedTier };
+  const ceremony = useRankingCeremony({
+    onCompare,
+    getLogContext: () => selectionRef.current,
+  });
+  const currentComparison = ceremony.currentComparison;
 
   // Reset on open
   useEffect(() => {
@@ -45,27 +50,24 @@ export const RankingFlowModal: React.FC<RankingFlowModalProps> = ({
       setSelectedTier(preselectedTier ?? null);
       setNotes(initialItem.notes ?? '');
       setWatchedWithUserIds(initialItem.watchedWithUserIds ?? []);
-      sessionRef.current = null;
-      setCurrentComparison(null);
-      setSessionId(crypto.randomUUID());
+      ceremony.reset();
 
       if (preselectedTier) {
         // Direct tier migration — start comparison immediately
-        const session = new RankingSession(initialItem, preselectedTier, currentItems);
-        sessionRef.current = session;
-        const result = session.start();
-
-        if (result.type === 'done') {
-          onAdd({ ...initialItem, tier: preselectedTier, rank: result.finalRank });
+        const stepResult = ceremony.begin(initialItem, preselectedTier, currentItems);
+        if (stepResult.kind === 'placed') {
+          onAdd({ ...initialItem, tier: preselectedTier, rank: stepResult.rank });
           onClose();
         } else {
-          setCurrentComparison(result.comparison);
           setStep('compare');
         }
       } else {
         setStep('tier');
       }
     }
+    // ceremony methods are stable; excluding keeps this effect's deps identical
+    // to the pre-extraction version so open/reset behavior is unchanged.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialItem, preselectedTier, currentItems, onAdd, onClose]);
 
   if (!isOpen) return null;
@@ -103,55 +105,23 @@ export const RankingFlowModal: React.FC<RankingFlowModalProps> = ({
       return;
     }
 
-    const session = new RankingSession(item, selectedTier!, currentItems);
-    sessionRef.current = session;
-    const result = session.start();
-
-    if (result.type === 'done') {
-      handleInsertAt(result.finalRank);
-    } else {
-      setCurrentComparison(result.comparison);
+    const stepResult = ceremony.begin(item, selectedTier!, currentItems);
+    if (stepResult.kind === 'placed') {
+      handleInsertAt(stepResult.rank);
+    } else if (stepResult.kind === 'compare') {
       setStep('compare');
     }
   };
 
   const handleCompareChoice = (choice: 'new' | 'existing' | 'too_tough' | 'skip') => {
-    if (!currentComparison) return;
-    const session = sessionRef.current;
-    if (!session) return;
-    if (isProcessingRef.current) return;
-    isProcessingRef.current = true;
-
-    try {
-      if (onCompare && selectedItem && selectedTier) {
-        onCompare({
-          sessionId,
-          movieAId: currentComparison.movieA.id,
-          movieBId: currentComparison.movieB.id,
-          winner: choice === 'new' ? 'a' : choice === 'existing' ? 'b' : 'skip',
-          round: currentComparison.round,
-          phase: currentComparison.phase,
-          questionText: currentComparison.question,
-        });
-      }
-
-      const result = session.submit(choice);
-      if (result.type === 'done') {
-        sessionRef.current = null;
-        handleInsertAt(result.finalRank);
-      } else {
-        setCurrentComparison(result.comparison);
-      }
-    } finally {
-      isProcessingRef.current = false;
+    const stepResult = ceremony.choose(choice);
+    if (stepResult.kind === 'placed') {
+      handleInsertAt(stepResult.rank);
     }
   };
 
   const handleUndo = () => {
-    const result = sessionRef.current?.undo();
-    if (result && result.type === 'comparison') {
-      setCurrentComparison(result.comparison);
-    }
+    ceremony.undo();
   };
 
   const getStepTitle = () => {
