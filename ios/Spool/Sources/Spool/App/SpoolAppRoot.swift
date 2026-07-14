@@ -294,49 +294,93 @@ public struct SpoolAppRoot: View {
         }
         .spoolMode(mode)
         .preferredColorScheme(forcedColorScheme)
-        .sheet(isPresented: $showSignInSheet) {
-            SignInSheet(onDone: { result in
-                if result == .signedIn {
-                    // AuthService already flushed the queue on success; drop
-                    // the banner so the user's shelf starts persisting normally.
-                    previewMode = false
-                }
-                showSignInSheet = false
-            })
-        }
-        .sheet(isPresented: $showFullList) {
-            FullListScreen(
-                onClose: { showFullList = false },
-                onRerank: { item in rerankFromShelf(item) }
-            )
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsScreen(
-                preference: Binding(
-                    get: { themePreference },
-                    set: { themePreferenceRaw = $0.rawValue }
-                ),
-                effectiveMode: mode,
-                onClose: { showSettings = false },
-                onSignedOut: {
-                    // Flip preview mode on so the signed-out user sees the
-                    // "sign in to save" banner above the tab bar again.
-                    previewMode = true
-                    showSettings = false
-                }
-            )
-        }
-        .sheet(item: composerBinding) { token in
-            JournalComposer(model: token.model, onClose: { journalComposer = nil })
+        .sheet(item: rootSheetBinding) { sheet in
+            // ONE sheet(item:) for every root-level sheet. Four chained
+            // `.sheet` modifiers previously hung off this branch; SwiftUI
+            // silently drops all but one presenter in that arrangement (the
+            // SAME collision #61 fixed in SettingsScreen), and the loser here
+            // was SIGN-IN: tapping the preview banner's "sign in" set the
+            // flag and nothing presented — the login button read as dead
+            // (prod, 2026-07-14). Every root sheet now routes through this
+            // single presenter.
+            switch sheet {
+            case .signIn:
+                SignInSheet(onDone: { result in
+                    if result == .signedIn {
+                        // AuthService already flushed the queue on success; drop
+                        // the banner so the user's shelf starts persisting normally.
+                        previewMode = false
+                    }
+                    showSignInSheet = false
+                })
+            case .fullList:
+                FullListScreen(
+                    onClose: { showFullList = false },
+                    onRerank: { item in rerankFromShelf(item) }
+                )
+            case .settings:
+                SettingsScreen(
+                    preference: Binding(
+                        get: { themePreference },
+                        set: { themePreferenceRaw = $0.rawValue }
+                    ),
+                    effectiveMode: mode,
+                    onClose: { showSettings = false },
+                    onSignedOut: {
+                        // Flip preview mode on so the signed-out user sees the
+                        // "sign in to save" banner above the tab bar again.
+                        previewMode = true
+                        showSettings = false
+                    }
+                )
+            case .composer(let token):
+                JournalComposer(model: token.model, onClose: { journalComposer = nil })
+            }
         }
     }
 
-    /// Bridge the optional composer model to a `sheet(item:)` binding. The model
-    /// isn't `Identifiable`, so wrap it in a lightweight token that is.
-    private var composerBinding: Binding<ComposerToken?> {
+    /// The single root-level sheet. Priority when more than one flag is set
+    /// (should not happen in practice): sign-in wins — it is the recovery
+    /// path out of preview mode and must never lose a presentation race.
+    private enum RootSheet: Identifiable {
+        case signIn
+        case fullList
+        case settings
+        case composer(ComposerToken)
+
+        var id: String {
+            switch self {
+            case .signIn: return "signIn"
+            case .fullList: return "fullList"
+            case .settings: return "settings"
+            case .composer(let token): return "composer-\(token.id)"
+            }
+        }
+    }
+
+    /// Bridge the four existing state flags to the single `sheet(item:)`.
+    /// Kept as flags (not a stored enum) so every existing call site
+    /// (`showSignInSheet = true`, deep links, onSignedOut, rank persistence)
+    /// keeps working unchanged.
+    private var rootSheetBinding: Binding<RootSheet?> {
         Binding(
-            get: { journalComposer.map(ComposerToken.init) },
-            set: { if $0 == nil { journalComposer = nil } }
+            get: {
+                if showSignInSheet { return .signIn }
+                if showFullList { return .fullList }
+                if showSettings { return .settings }
+                if let model = journalComposer { return .composer(ComposerToken(model)) }
+                return nil
+            },
+            set: { newValue in
+                if newValue == nil {
+                    // Sheet dismissed (swipe-down or programmatic): clear
+                    // whichever flag was driving it.
+                    showSignInSheet = false
+                    showFullList = false
+                    showSettings = false
+                    journalComposer = nil
+                }
+            }
         )
     }
 
