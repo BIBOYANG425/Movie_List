@@ -1,11 +1,12 @@
 import XCTest
 @testable import Spool
 
-/// Covers the seed + quartile binary-search path (`RankingAlgorithm
-/// .advanceSmallTier`) used by `RankH2HScreen` for 6-20 item tiers.
-/// Mirrors web's `RankingFlowModal.handleCompareChoice` `smallTierRef`
-/// branch. The ≤5 `.compareAll` path has view-level coverage in QA
-/// fixtures; this file focuses on the seed/quartile transitions.
+/// Covers the anchor + quartile path (`RankingAlgorithm.advanceSmallTier`)
+/// used by `RankH2HScreen` for 6-20 item tiers. Mirrors web's
+/// `services/__tests__/rankingAlgorithm.test.ts` anchor suite so both
+/// platforms pin identical small-tier semantics. The ≤5 `.compareAll` path
+/// has view-level coverage in QA fixtures; this file focuses on the
+/// anchor/quartile transitions (owner redesign, 2026-07-13).
 final class SmallTierAlgorithmTests: XCTestCase {
 
     // MARK: helpers
@@ -21,88 +22,109 @@ final class SmallTierAlgorithmTests: XCTestCase {
               round: round, seedIdx: seedIdx)
     }
 
-    // MARK: seed-mode happy path (task spec)
+    // MARK: anchor round 1 — the tier's very best
 
-    /// 8-item tier, user always picks "new". Seed pivots at median (4)
-    /// when globalAvg is nil, then on first "new" win we jump to
-    /// mid=0 in `.quartile` mode with `[0, 4)`. Another "new" on mid=0
-    /// converges at `newLow = low = 0` → insert at rank 0.
-    func testSeedModeUserAlwaysPicksNewInsertsAtRankZero() {
-        // Start: tier has 8 items, globalAvg unknown → seedIdx = median = 4
-        let tierCount = 8
-        let tierScores: [Double] = (0..<tierCount).map { idx in
-            RankingAlgorithm.computeTierScore(
-                position: idx, totalInTier: tierCount,
-                tierMin: 7.0, tierMax: 8.9
-            )
-        }
-        let seedIdx = RankingAlgorithm.computeSeedIndex(
-            tierItemScores: tierScores,
-            tierMin: 7.0, tierMax: 8.9, globalAvg: nil
-        )
-        XCTAssertEqual(seedIdx, 4, "median of 8 items is 8/2 = 4")
-
-        var s = state(
-            mode: .seed, tierCount: tierCount,
-            low: 0, high: tierCount, mid: seedIdx,
-            round: 1, seedIdx: seedIdx
-        )
-
-        // Round 1: user picks "new" at mid=4 → transition to .quartile
-        // with [0, 4) and mid=0.
-        guard case .next(let s1) = RankingAlgorithm.advanceSmallTier(state: s, pick: .new) else {
-            XCTFail("round 1: expected .next from seed mode"); return
-        }
-        XCTAssertEqual(s1.mode, .quartile)
-        XCTAssertEqual(s1.low, 0)
-        XCTAssertEqual(s1.high, 4)
-        XCTAssertEqual(s1.mid, 0)
-        XCTAssertEqual(s1.round, 2)
-        s = s1
-
-        // Round 2: user picks "new" again at mid=0 → newLow = low = 0,
-        // newHigh = mid = 0 → newLow >= newHigh → done at 0.
+    /// Beating the tier's best places at rank 0 in ONE comparison.
+    func testAnchorBestNewWinsInsertsAtRankZero() {
+        let s = state(mode: .anchorBest, tierCount: 8,
+                      low: 0, high: 8, mid: 0)
         guard case .done(let rank) = RankingAlgorithm.advanceSmallTier(state: s, pick: .new) else {
-            XCTFail("round 2: expected .done at quartile convergence"); return
-        }
-        XCTAssertEqual(rank, 0, "always-new user should land at rank 0")
-    }
-
-    // MARK: seed-mode edge — new wins immediately at seed 0
-
-    func testSeedModeNewWinsAtSeedZeroInsertsAtZero() {
-        let s = state(mode: .seed, tierCount: 8,
-                      low: 0, high: 8, mid: 0,
-                      round: 1, seedIdx: 0)
-        guard case .done(let rank) = RankingAlgorithm.advanceSmallTier(state: s, pick: .new) else {
-            XCTFail("expected .done when new beats seed 0"); return
+            XCTFail("expected .done when new beats the tier best"); return
         }
         XCTAssertEqual(rank, 0)
     }
 
-    // MARK: seed-mode edge — existing always wins
+    /// Losing to the best moves to the WORST anchor (mid = tierCount-1).
+    func testAnchorBestExistingMovesToWorstAnchor() {
+        let s = state(mode: .anchorBest, tierCount: 8,
+                      low: 0, high: 8, mid: 0)
+        guard case .next(let s1) = RankingAlgorithm.advanceSmallTier(state: s, pick: .existing) else {
+            XCTFail("expected .next"); return
+        }
+        XCTAssertEqual(s1.mode, .anchorWorst)
+        XCTAssertEqual(s1.mid, 7)
+        XCTAssertEqual(s1.round, 2)
+    }
 
-    /// 8-item tier, user always picks "existing". Seed at 4 → existing
-    /// wins → transition to `.quartile` with `[5, 8)` and mid = 5 +
-    /// floor(3*0.75) = 5 + 2 = 7. Existing wins again → newLow = 8,
-    /// newHigh = 8 → done at 8 (inserts below everyone).
-    func testSeedModeUserAlwaysPicksExistingInsertsAtEnd() {
-        var s = state(mode: .seed, tierCount: 8,
-                      low: 0, high: 8, mid: 4,
-                      round: 1, seedIdx: 4)
+    // MARK: anchor round 2 — the tier's very worst
+
+    /// Losing to the worst places at the bottom (rank tierCount).
+    func testAnchorWorstExistingInsertsAtEnd() {
+        let s = state(mode: .anchorWorst, tierCount: 8,
+                      low: 1, high: 8, mid: 7, round: 2)
+        guard case .done(let rank) = RankingAlgorithm.advanceSmallTier(state: s, pick: .existing) else {
+            XCTFail("expected .done when the worst wins"); return
+        }
+        XCTAssertEqual(rank, 8)
+    }
+
+    /// Beating the worst enters quartile narrowing over [1, tierCount-1]
+    /// with the first pivot at the 25% boundary.
+    func testAnchorWorstNewEntersQuartileAtTwentyFivePercent() {
+        let s = state(mode: .anchorWorst, tierCount: 8,
+                      low: 1, high: 8, mid: 7, round: 2)
+        guard case .next(let s1) = RankingAlgorithm.advanceSmallTier(state: s, pick: .new) else {
+            XCTFail("expected .next"); return
+        }
+        XCTAssertEqual(s1.mode, .quartile)
+        XCTAssertEqual(s1.low, 1)
+        XCTAssertEqual(s1.high, 7)
+        XCTAssertEqual(s1.mid, 2, "1 + floor((7-1) * 0.25) = 2")
+        XCTAssertEqual(s1.round, 3)
+    }
+
+    /// Full walk: 8-item tier, always existing → rank 8 in exactly two
+    /// anchor rounds (lose to best, lose to worst).
+    func testAnchorAlwaysExistingLandsAtBottomInTwoRounds() {
+        let s = state(mode: .anchorBest, tierCount: 8,
+                      low: 0, high: 8, mid: 0)
         guard case .next(let s1) = RankingAlgorithm.advanceSmallTier(state: s, pick: .existing) else {
             XCTFail("round 1: expected .next"); return
         }
-        XCTAssertEqual(s1.mode, .quartile)
-        XCTAssertEqual(s1.low, 5)
-        XCTAssertEqual(s1.high, 8)
-        XCTAssertEqual(s1.mid, 7)
-        s = s1
-
-        guard case .done(let rank) = RankingAlgorithm.advanceSmallTier(state: s, pick: .existing) else {
+        guard case .done(let rank) = RankingAlgorithm.advanceSmallTier(state: s1, pick: .existing) else {
             XCTFail("round 2: expected .done"); return
         }
-        XCTAssertEqual(rank, 8, "always-existing should land below the tier")
+        XCTAssertEqual(rank, 8)
+    }
+
+    /// Full walk: lose to best, beat worst, then always new → rank 1
+    /// (directly below the best).
+    func testAnchorMiddleWalkAlwaysNewLandsBelowBest() {
+        var s = state(mode: .anchorBest, tierCount: 8,
+                      low: 0, high: 8, mid: 0)
+        guard case .next(let s1) = RankingAlgorithm.advanceSmallTier(state: s, pick: .existing) else {
+            XCTFail("expected .next"); return
+        }
+        s = s1
+        guard case .next(let s2) = RankingAlgorithm.advanceSmallTier(state: s, pick: .new) else {
+            XCTFail("expected .next"); return
+        }
+        s = s2
+        guard case .next(let s3) = RankingAlgorithm.advanceSmallTier(state: s, pick: .new) else {
+            XCTFail("expected .next"); return
+        }
+        XCTAssertEqual(s3.mid, 1)
+        guard case .done(let rank) = RankingAlgorithm.advanceSmallTier(state: s3, pick: .new) else {
+            XCTFail("expected .done"); return
+        }
+        XCTAssertEqual(rank, 1)
+    }
+
+    /// 6-item tier: anchors then quartile pivot at 2 (1 + floor(4*0.25)).
+    func testAnchorSixItemTierQuartilePivot() {
+        let s = state(mode: .anchorBest, tierCount: 6,
+                      low: 0, high: 6, mid: 0)
+        guard case .next(let s1) = RankingAlgorithm.advanceSmallTier(state: s, pick: .existing) else {
+            XCTFail("expected .next"); return
+        }
+        XCTAssertEqual(s1.mid, 5)
+        guard case .next(let s2) = RankingAlgorithm.advanceSmallTier(state: s1, pick: .new) else {
+            XCTFail("expected .next"); return
+        }
+        XCTAssertEqual(s2.mode, .quartile)
+        XCTAssertEqual(s2.low, 1)
+        XCTAssertEqual(s2.high, 5)
+        XCTAssertEqual(s2.mid, 2)
     }
 
     // MARK: quartile-mode narrowing

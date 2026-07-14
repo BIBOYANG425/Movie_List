@@ -3,9 +3,9 @@
  *
  * Strategy by target-tier size:
  *   0      → immediate insert at rank 0
- *   1–5    → compare_all sequential walk       (advanceSmallTier)
- *   6–20   → seed pivot + quartile narrowing   (advanceSmallTier)
- *   21+    → 5-phase genre-anchored engine     (SpoolRankingEngine)
+ *   1–5    → compare_all sequential walk         (advanceSmallTier)
+ *   6–20   → anchor poles + quartile narrowing   (advanceSmallTier)
+ *   21+    → 5-phase genre-anchored engine       (SpoolRankingEngine)
  *
  * Replaces the inline smallTierRef/engineRef copies previously duplicated
  * across RankingFlowModal, AddMediaModal, AddTVSeasonModal, and
@@ -15,14 +15,11 @@
  */
 
 import { Tier, RankedItem, ComparisonRequest, EngineResult } from '../types';
-import { TIER_SCORE_RANGES } from '../constants';
 import { SpoolRankingEngine } from './spoolRankingEngine';
 import { computePredictionSignals } from './spoolPrediction';
 import {
   advanceSmallTier,
   classifyBracket,
-  computeSeedIndex,
-  computeTierScore,
   SmallTierState,
 } from './rankingAlgorithm';
 
@@ -86,19 +83,16 @@ export class RankingSession {
     }
 
     if (this.tierItems.length <= 20) {
-      const range = TIER_SCORE_RANGES[this.tier];
-      const tierScores = this.tierItems.map((_, idx) =>
-        computeTierScore(idx, this.tierItems.length, range.min, range.max),
-      );
-      const seedIdx = computeSeedIndex(tierScores, range.min, range.max, this.newItem.globalScore);
+      // Anchor-first ceremony (owner, 2026-07-13): round 1 vs the tier's very
+      // best, round 2 vs the very worst, then 25%-rule quartile narrowing.
       this.small = {
-        mode: 'seed',
+        mode: 'anchor_best',
         tierCount: this.tierItems.length,
         low: 0,
         high: this.tierItems.length,
-        mid: seedIdx,
+        mid: 0,
         round: 1,
-        seedIdx,
+        seedIdx: 0,
       };
       return this.emitSmallComparison();
     }
