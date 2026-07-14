@@ -1,18 +1,20 @@
 import Foundation
 
-/// Uniform facade over the two placement strategies — mirrors the web's
+/// Uniform facade over the placement strategies — mirrors the web's
 /// `services/rankingSession.ts`. Strategy by target-tier size:
-///   0     → engine (returns immediate .done at tier midpoint)
+///   0     → immediate .done at the tier midpoint
 ///   1–5   → compare-all walk       (RankingAlgorithm.advanceSmallTier)
-///   6–20  → seed + quartile        (RankingAlgorithm.advanceSmallTier)
-///   21+   → 5-phase engine         (SpoolRankingEngine)
+///   6+    → anchor poles + 25% rule (RankingAlgorithm.advanceSmallTier)
+/// The 21+ five-phase SpoolRankingEngine was RETIRED from placement (owner,
+/// 2026-07-14): the anchor spec (best → worst → 25% rule) has no size
+/// ceiling. The engine module remains for its standalone tests; placement
+/// no longer calls it.
 /// Replaces RankH2HScreen's private SmallTierState mirror struct and the
 /// enum-bridging in submitSmallTier.
 public final class PlacementSession {
 
     private let smallTierQuestion = "which do you love more?"
 
-    private var engine: SpoolRankingEngine?
     private var small: RankingAlgorithm.SmallTierState?
     private var tierItems: [RankedItem] = []
     private var newItem: RankedItem!
@@ -25,7 +27,6 @@ public final class PlacementSession {
         // Reset all session state so re-entrant start() calls never leak an
         // active strategy from a previous run (mirrors the web facade's
         // dd00e7b hardening).
-        engine = nil
         small = nil
         current = nil
         tierItems = []
@@ -36,22 +37,13 @@ public final class PlacementSession {
             .filter { $0.tier == tier }
             .sorted { $0.rank < $1.rank }
 
-        if tierItems.isEmpty || tierItems.count > 20 {
-            // Empty tier delegates to the engine, which returns an
-            // immediate .done at the tier midpoint — current iOS behavior.
-            let engine = SpoolRankingEngine()
-            self.engine = engine
-            let bracket = newItem.bracket ?? RankingAlgorithm.classifyBracket(genres: newItem.genres)
-            let signals = SpoolPrediction.computePredictionSignals(
-                allItems: allItems,
-                primaryGenre: newItem.genres.first ?? "",
-                bracket: bracket,
-                globalScore: newItem.globalScore,
-                tier: tier
-            )
-            let result = engine.start(newMovie: newItem, tier: tier, allItems: allItems, signals: signals)
-            if case .comparison(let c) = result { current = c }
-            return result
+        if tierItems.isEmpty {
+            // Empty tier: immediate placement at rank 0 with the tier's
+            // midpoint score for celebration copy (the retired engine's
+            // empty-tier behavior, now computed inline).
+            let range = tier.scoreRange
+            let score = ((range.min + range.max) / 2 * 100).rounded() / 100
+            return .done(finalRank: 0, finalScore: score)
         }
 
         if tierItems.count <= 5 {
@@ -62,9 +54,9 @@ public final class PlacementSession {
             return emitSmallComparison()
         }
 
-        // 6–20: anchor-first ceremony (owner, 2026-07-13) — round 1 vs the
+        // 6+: anchor-first ceremony (owner, 2026-07-13/14) — round 1 vs the
         // tier's very best, round 2 vs the very worst, then 25%-rule
-        // quartile narrowing. Mirrors web RankingSession.start.
+        // quartile narrowing. No size ceiling. Mirrors web RankingSession.
         small = RankingAlgorithm.SmallTierState(
             mode: .anchorBest, tierCount: tierItems.count,
             low: 0, high: tierItems.count, mid: 0, round: 1, seedIdx: 0
@@ -74,16 +66,9 @@ public final class PlacementSession {
 
     public func submit(winnerId: String) -> EngineResult? {
         if small != nil { return submitSmall(winnerId: winnerId) }
-        guard let engine else { return nil }
-        do {
-            let result = try engine.submitChoice(winnerId: winnerId)
-            if case .comparison(let c) = result { current = c }
-            return result
-        } catch {
-            // Out-of-sync tap (stale double-tap) — caller ignores,
-            // session stays alive. Matches previous screen behavior.
-            return nil
-        }
+        // No active strategy (before start() or after done) — out-of-sync
+        // tap; caller ignores. Matches previous screen behavior.
+        return nil
     }
 
     public func skip() -> EngineResult? {
@@ -96,14 +81,7 @@ public final class PlacementSession {
             let score = ((range.min + range.max) / 2 * 100).rounded() / 100
             return .done(finalRank: st.mid, finalScore: score)
         }
-        guard let engine else { return nil }
-        do {
-            let result = try engine.skip()
-            if case .comparison(let c) = result { current = c }
-            return result
-        } catch {
-            return nil
-        }
+        return nil
     }
 
     // MARK: small-tier internals
