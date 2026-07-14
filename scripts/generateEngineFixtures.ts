@@ -63,12 +63,12 @@ const specs: CaseSpec[] = [
   { name: 'small-20-anchor-alternating', tier: Tier.B, item: newItem('Action', 6.0), allItems: mkTier(Tier.B, 20), choices: alternating() },
   { name: 'small-8-anchor-middle-walk', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 8), choices: middleWalk() },
   { name: 'small-20-anchor-middle-walk', tier: Tier.B, item: newItem('Action', 6.0), allItems: mkTier(Tier.B, 20), choices: middleWalk() },
-  { name: 'engine-25-always-new', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: always('new') },
-  { name: 'engine-25-always-existing', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: always('existing') },
-  { name: 'engine-25-alternating', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: alternating() },
-  { name: 'engine-25-skip-after-two', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: ['new', 'existing', 'skip'] },
-  { name: 'engine-25-offgenre-item', tier: Tier.A, item: newItem('Horror', 8.2), allItems: mkTier(Tier.A, 25), choices: alternating() },
-  { name: 'engine-40-cross-tiers', tier: Tier.A, item: newItem(), allItems: [...mkTier(Tier.A, 25), ...mkTier(Tier.B, 15).map((it, i) => ({ ...it, id: `b${i}` }))], choices: alternating() },
+  { name: 'large-25-anchor-always-new', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: always('new') },
+  { name: 'large-25-anchor-always-existing', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: always('existing') },
+  { name: 'large-25-anchor-middle-walk', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: middleWalk() },
+  { name: 'large-25-anchor-skip-in-quartile', tier: Tier.A, item: newItem(), allItems: mkTier(Tier.A, 25), choices: ['existing', 'new', 'skip'] },
+  { name: 'large-25-anchor-offgenre-item', tier: Tier.A, item: newItem('Horror', 8.2), allItems: mkTier(Tier.A, 25), choices: middleWalk() },
+  { name: 'large-40-anchor-cross-tiers', tier: Tier.A, item: newItem(), allItems: [...mkTier(Tier.A, 25), ...mkTier(Tier.B, 15).map((it, i) => ({ ...it, id: `b${i}` }))], choices: middleWalk() },
 ];
 
 function runCase(spec: CaseSpec) {

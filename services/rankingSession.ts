@@ -4,22 +4,24 @@
  * Strategy by target-tier size:
  *   0      → immediate insert at rank 0
  *   1–5    → compare_all sequential walk         (advanceSmallTier)
- *   6–20   → anchor poles + quartile narrowing   (advanceSmallTier)
- *   21+    → 5-phase genre-anchored engine       (SpoolRankingEngine)
+ *   6+     → anchor poles + quartile narrowing   (advanceSmallTier)
+ *
+ * The 21+ five-phase SpoolRankingEngine was RETIRED from placement (owner,
+ * 2026-07-14): its probe/settlement openers picked genre-anchored films that
+ * read as random in the ceremony ("The Green Inferno vs #16 then #20"), and
+ * the owner's anchor spec (best → worst → 25% rule) has no size ceiling. The
+ * engine module remains for its standalone consumers/tests; placement no
+ * longer calls it.
  *
  * Replaces the inline smallTierRef/engineRef copies previously duplicated
  * across RankingFlowModal, AddMediaModal, AddTVSeasonModal, and
- * MovieOnboardingPage. finalScore is null on small-tier/empty paths
- * (rank-only insertion; scores are recomputed by computeAllScores at
- * persist time) and numeric on the engine path.
+ * MovieOnboardingPage. finalScore is always null on these paths (rank-only
+ * insertion; scores are recomputed by computeAllScores at persist time).
  */
 
-import { Tier, RankedItem, ComparisonRequest, EngineResult } from '../types';
-import { SpoolRankingEngine } from './spoolRankingEngine';
-import { computePredictionSignals } from './spoolPrediction';
+import { Tier, RankedItem, ComparisonRequest } from '../types';
 import {
   advanceSmallTier,
-  classifyBracket,
   SmallTierState,
 } from './rankingAlgorithm';
 
@@ -41,7 +43,6 @@ export class RankingSession {
   private readonly tier: Tier;
   private readonly allItems: RankedItem[];
 
-  private engine: SpoolRankingEngine | null = null;
   private small: SmallTierState | null = null;
   private tierItems: RankedItem[] = [];
   private smallHistory: SmallSnapshot[] = [];
@@ -56,7 +57,6 @@ export class RankingSession {
   start(): SessionResult {
     // Reset all session state so re-entrant start() calls never leak
     // history or an active strategy from a previous run.
-    this.engine = null;
     this.small = null;
     this.smallHistory = [];
     this.current = null;
@@ -82,38 +82,23 @@ export class RankingSession {
       return this.emitSmallComparison();
     }
 
-    if (this.tierItems.length <= 20) {
-      // Anchor-first ceremony (owner, 2026-07-13): round 1 vs the tier's very
-      // best, round 2 vs the very worst, then 25%-rule quartile narrowing.
-      this.small = {
-        mode: 'anchor_best',
-        tierCount: this.tierItems.length,
-        low: 0,
-        high: this.tierItems.length,
-        mid: 0,
-        round: 1,
-        seedIdx: 0,
-      };
-      return this.emitSmallComparison();
-    }
-
-    this.engine = new SpoolRankingEngine();
-    const bracket = this.newItem.bracket ?? classifyBracket(this.newItem.genres);
-    const signals = computePredictionSignals(
-      this.allItems,
-      this.newItem.genres[0] ?? '',
-      bracket,
-      this.newItem.globalScore,
-      this.tier,
-    );
-    return this.mapEngineResult(
-      this.engine.start(this.newItem, this.tier, this.allItems, signals),
-    );
+    // Anchor-first ceremony for EVERY tier of 6+ (owner, 2026-07-13/14):
+    // round 1 vs the tier's very best, round 2 vs the very worst, then
+    // 25%-rule quartile narrowing. No size ceiling.
+    this.small = {
+      mode: 'anchor_best',
+      tierCount: this.tierItems.length,
+      low: 0,
+      high: this.tierItems.length,
+      mid: 0,
+      round: 1,
+      seedIdx: 0,
+    };
+    return this.emitSmallComparison();
   }
 
   submit(choice: SessionChoice): SessionResult {
     if (this.small) return this.submitSmall(choice);
-    if (this.engine) return this.submitEngine(choice);
     // Reached before start() or after done — either way there is no active
     // comparison to resolve.
     throw new Error('RankingSession.submit: no active comparison');
@@ -126,12 +111,6 @@ export class RankingSession {
       this.small = snap.state;
       this.current = snap.comparison;
       return { type: 'comparison', comparison: snap.comparison };
-    }
-    if (this.engine) {
-      const r = this.engine.undo();
-      if (!r || !r.comparison) return null;
-      this.current = r.comparison;
-      return { type: 'comparison', comparison: r.comparison };
     }
     return null;
   }
@@ -169,33 +148,5 @@ export class RankingSession {
     };
     this.current = comparison;
     return { type: 'comparison', comparison };
-  }
-
-  // ── engine path ──────────────────────────────────────────────────────
-
-  private submitEngine(choice: SessionChoice): SessionResult {
-    const engine = this.engine!;
-    if (choice === 'too_tough' || choice === 'skip') {
-      return this.mapEngineResult(engine.skip());
-    }
-    if (!this.current) {
-      // An empty-string winnerId would silently mean "movieB wins" —
-      // surface the programming error instead.
-      throw new Error('RankingSession.submit: no active comparison');
-    }
-    const winnerId = choice === 'new' ? this.newItem.id : this.current.movieB.id;
-    return this.mapEngineResult(engine.submitChoice(winnerId));
-  }
-
-  private mapEngineResult(r: EngineResult): SessionResult {
-    if (r.type === 'done') {
-      // Clear the strategy so a stray post-done submit() fails with this
-      // session's own error instead of leaking into the finished engine.
-      this.engine = null;
-      this.current = null;
-      return { type: 'done', finalRank: r.finalRank!, finalScore: r.finalScore! };
-    }
-    this.current = r.comparison!;
-    return { type: 'comparison', comparison: r.comparison! };
   }
 }

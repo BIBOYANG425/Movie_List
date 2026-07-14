@@ -39,21 +39,20 @@ describe('RankingSession — strategy selection', () => {
     expect(r.comparison.round).toBe(1);
   });
 
-  it('6–20 items → seed mode pivots via computeSeedIndex', () => {
+  it('6–20 items → anchor mode opens against the tier BEST', () => {
     const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 8));
     const r = s.start();
     if (r.type !== 'comparison') throw new Error('expected comparison');
-    // newItem.globalScore = 7.5 is inside A range [7.0, 8.9] → aligned seed,
-    // closest tier score to 7.5. Just assert it's a valid index and phase.
     expect(r.comparison.phase).toBe('binary_search');
-    expect(Number(r.comparison.movieB.id.slice(1))).toBeGreaterThanOrEqual(0);
+    expect(r.comparison.movieB.id).toBe('m0'); // the very best, always
   });
 
-  it('>20 items → engine mode (phase is an engine phase, not binary_search)', () => {
+  it('>20 items → SAME anchor mode (the five-phase engine is retired; no size ceiling)', () => {
     const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
     const r = s.start();
     if (r.type !== 'comparison') throw new Error('expected comparison');
-    expect(['probe', 'escalation', 'cross_genre', 'settlement']).toContain(r.comparison.phase);
+    expect(r.comparison.phase).toBe('binary_search');
+    expect(r.comparison.movieB.id).toBe('m0');
   });
 });
 
@@ -117,17 +116,8 @@ describe('RankingSession — start() re-entrancy', () => {
   });
 });
 
-describe('RankingSession — engine flow', () => {
-  it('throws if a winner choice arrives with no active comparison', () => {
-    const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
-    s.start();
-    // Force the invariant violation: engine active but no current comparison.
-    // An empty-string winnerId would silently mean "movieB wins" — must throw.
-    (s as unknown as { current: null }).current = null;
-    expect(() => s.submit('existing')).toThrow('no active comparison');
-  });
-
-  it('delegates to the engine and completes with a numeric score', () => {
+describe('RankingSession — large-tier anchor flow (engine retired)', () => {
+  it('a 25-item tier converges through anchors + quartiles with null score', () => {
     const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
     let r = s.start();
     let guard = 0;
@@ -135,12 +125,14 @@ describe('RankingSession — engine flow', () => {
       r = s.submit('new');
       guard++;
     }
-    if (r.type !== 'done') throw new Error('engine did not converge');
-    expect(typeof r.finalScore).toBe('number');
-    expect(r.finalRank).toBeGreaterThanOrEqual(0);
+    if (r.type !== 'done') throw new Error('anchor flow did not converge');
+    // Always-new beats the best at round 1 → rank 0. Scores are recomputed
+    // at persist time (computeAllScores); the session reports null.
+    expect(r.finalRank).toBe(0);
+    expect(r.finalScore).toBeNull();
   });
 
-  it('after engine-path done, submit throws the session error, not the engine error', () => {
+  it('after done, submit throws the session error', () => {
     const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
     let r = s.start();
     let guard = 0;
@@ -148,15 +140,15 @@ describe('RankingSession — engine flow', () => {
       r = s.submit('new');
       guard++;
     }
-    if (r.type !== 'done') throw new Error('engine did not converge');
+    if (r.type !== 'done') throw new Error('anchor flow did not converge');
     expect(() => s.submit('existing')).toThrow('RankingSession.submit: no active comparison');
   });
 
-  it('skip on engine path finalizes at tentative score', () => {
+  it('skip on a large tier finalizes at the current cursor', () => {
     const s = new RankingSession(newItem(), Tier.A, mkTier(Tier.A, 25));
     s.start();
     const r = s.submit('skip');
     if (r.type !== 'done') throw new Error('expected done after skip');
-    expect(typeof r.finalScore).toBe('number');
+    expect(r.finalScore).toBeNull();
   });
 });
