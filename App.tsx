@@ -10,6 +10,7 @@ import PublicProfilePage from './pages/PublicProfilePage';
 import MovieOnboardingPage from './pages/MovieOnboardingPage';
 import AgentRankPage from './pages/AgentRankPage';
 import AgentShowtimesPage from './pages/AgentShowtimesPage';
+import AgentSeatsPage from './pages/AgentSeatsPage';
 import AgentLoginPage from './pages/AgentLoginPage';
 import { useAuth } from './contexts/AuthContext';
 import { Grain } from './components/shared/Grain';
@@ -66,6 +67,7 @@ const App = () => {
           fragment (#c=<uuid>). Plain web route — does not touch /u/* or AASA.
         */}
         <Route path="/agent-showtimes" element={<AgentShowtimesPage />} />
+        <Route path="/agent-seats" element={<AgentSeatsPage />} />
         {/*
           Agent-initiated web login (P4, Slice B2). Chris texts an UNLINKED user
           a rich link with a single-use login token in the fragment (#lt=<token>).

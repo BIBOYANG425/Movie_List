@@ -481,6 +481,22 @@ const zh = {
   'agentShowtimes.nearbyHeading': '你附近正在放的',
   'agentShowtimes.empty': '你附近现在没有场次。',
   'agentShowtimes.asOf': '场次更新于 {time}',
+  // agent-seats (座位抢购)
+  'agentSeats.loading': '正在载入你的座位…',
+  'agentSeats.expired': '这个座位保留已过期。发消息让 chris 再抢一次。',
+  'agentSeats.hunting': 'chris 正在帮你抢 {n} 个最好的座位…',
+  'agentSeats.yourSeats': '你的座位',
+  'agentSeats.holdCountdown': '保留 {time}',
+  'agentSeats.splitNote': '没有连在一起的，这是最好的分开座位。',
+  'agentSeats.total': '合计',
+  'agentSeats.payButton': '在手机上付款 →',
+  'agentSeats.payNote': '打开 amc。用 paypal、venmo、google pay 或银行卡付款。chris 看不到。',
+  'agentSeats.paid': '搞定，你订上了。',
+  'agentSeats.confirmation': '确认号 #{number}',
+  'agentSeats.lapsed': '这些座位在结账前被放掉了。发消息让 chris 再抢一对。',
+  'agentSeats.failed': '没能自动抢到。',
+  'agentSeats.tryTheseSeats': '如果还开着，试试 {seats}。',
+  'agentSeats.grabYourself': '自己去抢 →',
 
   // ── Agent login (/agent-login, P4 / Slice B2) ─────────────────────────────
   'agentLogin.title': '关联你的账号',

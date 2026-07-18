@@ -479,6 +479,22 @@ const en = {
   'agentShowtimes.nearbyHeading': "what's playing near you",
   'agentShowtimes.empty': 'nothing showing near you right now.',
   'agentShowtimes.asOf': 'times as of {time}',
+  // agent-seats (seat hunt)
+  'agentSeats.loading': 'pulling up your seats…',
+  'agentSeats.expired': 'this hold expired. text chris to grab seats again.',
+  'agentSeats.hunting': "chris is grabbing your {n} best seats…",
+  'agentSeats.yourSeats': 'your seats',
+  'agentSeats.holdCountdown': 'held for {time}',
+  'agentSeats.splitNote': "couldn't find them together, so these are the best split pair.",
+  'agentSeats.total': 'total',
+  'agentSeats.payButton': 'pay on your phone →',
+  'agentSeats.payNote': 'opens amc. pay with paypal, venmo, google pay, or card. chris never sees it.',
+  'agentSeats.paid': "you're in.",
+  'agentSeats.confirmation': 'confirmation #{number}',
+  'agentSeats.lapsed': 'those seats lapsed before checkout. text chris to grab a fresh pair.',
+  'agentSeats.failed': "couldn't grab those automatically.",
+  'agentSeats.tryTheseSeats': 'try {seats} if they are still open.',
+  'agentSeats.grabYourself': 'grab them yourself →',
 
   // ── Agent login (/agent-login, P4 / Slice B2) ─────────────────────────────
   'agentLogin.title': 'link your account',
