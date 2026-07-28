@@ -13,6 +13,11 @@ export const CASE_SPACING = 1.15;
 export const ROOM_TAIL = 2.0;
 export const ARCH_DEPTH = 1.2;
 export const TIER_ANCHOR_SCALE = 1.15;
+// Cases angle partway toward the corridor entrance so they read while
+// walking (a flat ±90° hang is edge-on and invisible from the walk line —
+// confirmed by headless smoke test). Stops stand ~2.4m before each pair.
+export const CASE_FACE_BIAS = 0.42;
+export const STOP_LEAD = 2.4;
 
 export interface CaseSlot {
   itemId: string;
@@ -93,12 +98,15 @@ export function buildCorridorLayout(
         x: side === 'left' ? -WALL_X : WALL_X,
         y: CASE_Y + jitterY(i),
         z,
-        yawY: side === 'left' ? Math.PI / 2 : -Math.PI / 2,
+        yawY:
+          side === 'left'
+            ? Math.PI / 2 - CASE_FACE_BIAS
+            : -(Math.PI / 2 - CASE_FACE_BIAS),
         scale: (i === 0 ? TIER_ANCHOR_SCALE : 1) * jitterScale(i),
         isTierAnchor: i === 0,
       };
-      // Camera stop: stand a little before the case so it is in view.
-      walkStops.push(z + CASE_SPACING * 0.5);
+      // Camera stop: stand back from the case so it sits in the frustum.
+      walkStops.push(z + STOP_LEAD);
       return slot;
     });
 

@@ -126,7 +126,9 @@ export class GalleryEngine {
   private inspectPosterTexture: THREE.Texture | null = null;
 
   private loadQueue: CaseRuntime[] = [];
+  private currentKeep = new Set<string>();
   private loadsInFlight = 0;
+  private lookX = 0;
   private lastWindowUpdate = 0;
   private textureLoader = new THREE.TextureLoader();
 
@@ -151,6 +153,9 @@ export class GalleryEngine {
         powerPreference: 'high-performance',
       });
     } catch {
+      // Mark disposed BEFORE reporting: setItems/dispose on the half-built
+      // engine become no-ops instead of TypeErrors on missing fields.
+      this.isDisposed = true;
       this.callbacks.onFatal('init-failed');
       return;
     }
@@ -166,7 +171,8 @@ export class GalleryEngine {
     );
 
     this.setupScene();
-    this.setItems(options.items);
+    // No corridor build here: GalleryView's [items] effect performs the
+    // first setItems on mount, so the corridor is built exactly once.
     this.bindEvents();
 
     this.resizeObserver = new ResizeObserver(this.handleResize);
@@ -188,8 +194,9 @@ export class GalleryEngine {
     this.scene.fog = new THREE.Fog(HALL_BG, FOG_NEAR, FOG_FAR);
 
     // Exactly 4 global lights; the per-case "glow" is emissive fakery.
-    this.scene.add(new THREE.HemisphereLight('#20242c', '#000000', 0.35));
-    const key = new THREE.DirectionalLight('#fff2e0', 0.5);
+    // Intensities raised after the headless smoke test read near-black.
+    this.scene.add(new THREE.HemisphereLight('#20242c', '#000000', 0.55));
+    const key = new THREE.DirectionalLight('#fff2e0', 0.65);
     key.position.set(1.5, 6, 4);
     this.scene.add(key);
     const rim = new THREE.DirectionalLight('#8fa3bf', 0.3);
@@ -213,7 +220,7 @@ export class GalleryEngine {
     this.archGlowMaterial = new THREE.MeshBasicMaterial({
       color: '#e9dfc8',
       transparent: true,
-      opacity: 0.16,
+      opacity: 0.22,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -294,7 +301,7 @@ export class GalleryEngine {
     canvas.width = 342;
     canvas.height = 513;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#14141a';
+    ctx.fillStyle = '#191922';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = 'rgba(233,223,200,0.28)';
     ctx.strokeRect(14, 14, canvas.width - 28, canvas.height - 28);
@@ -328,31 +335,59 @@ export class GalleryEngine {
 
   // ── Corridor construction ────────────────────────────────────────────────
 
-  setItems(items: RankedItem[]) {
-    if (this.isDisposed) return;
-    const previousFocusId =
-      this.cases[this.focusIndex]?.item.id ?? null;
-
-    // Tear down current corridor contents (textures keyed per case).
-    this.cases.forEach((c) => this.disposeCaseTexture(c));
-    this.caseGroup.clear();
-    this.roomGroup.children.forEach((child) => {
+  private disposeGroupDeep(group: THREE.Group) {
+    group.children.forEach((child) => {
       child.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.geometry.dispose();
-          const material = obj.material as THREE.Material & {
-            map?: THREE.Texture | null;
-          };
-          // Shared materials are disposed in dispose(); only label planes own
-          // their material + texture.
-          if (material.userData?.owned) {
-            material.map?.dispose();
-            material.dispose();
-          }
+        if (!(obj instanceof THREE.Mesh || obj instanceof THREE.Sprite)) {
+          return;
+        }
+        if (obj instanceof THREE.Mesh) obj.geometry.dispose();
+        const material = obj.material as THREE.Material & {
+          map?: THREE.Texture | null;
+        };
+        // Shared materials (walls/floor/glow/frame) are disposed in
+        // dispose(); everything flagged `owned` is per-object.
+        if (material.userData?.owned) {
+          // Case poster maps are tracked on the runtime and disposed via
+          // disposeCaseTexture; label textures are owned by their material.
+          material.map?.dispose();
+          material.dispose();
         }
       });
     });
-    this.roomGroup.clear();
+    group.clear();
+  }
+
+  setItems(items: RankedItem[]) {
+    if (this.isDisposed) return;
+
+    // An in-flight inspect can't survive a corridor rebuild: hang the state
+    // machine back to 'hall' first, or a stale selectedIndex crashes the
+    // frame loop against the new, possibly shorter, case list.
+    if (this.mode !== 'hall') {
+      if (this.inspectPosterTexture) {
+        this.inspectPosterTexture.dispose();
+        this.inspectPosterTexture = null;
+      }
+      this.disposeBackdrop();
+      this.backdropForItemId = null;
+      this.selectedIndex = null;
+      this.focusProgress = 0;
+      this.mode = 'hall';
+      this.dimQuad.visible = false;
+      (this.dimQuad.material as THREE.MeshBasicMaterial).opacity = 0;
+      this.camera.clearViewOffset();
+      this.callbacks.onModeChange('hall', null);
+    }
+
+    const previousFocusId =
+      this.cases[this.focusIndex]?.item.id ?? null;
+
+    // Tear down current corridor contents. Poster textures first (tracked on
+    // runtimes), then geometries + owned materials in both groups.
+    this.cases.forEach((c) => this.disposeCaseTexture(c));
+    this.disposeGroupDeep(this.caseGroup);
+    this.disposeGroupDeep(this.roomGroup);
     this.cases = [];
     this.caseByItemId.clear();
     this.pickTargets = [];
@@ -487,21 +522,21 @@ export class GalleryEngine {
     rightStrip.position.set(CASE_W / 2 + stripThickness / 2, 0, stripDepth);
     swayGroup.add(top, bottom, leftStrip, rightStrip);
 
-    const glow = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: this.glowTexture,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        opacity: slot.isTierAnchor ? 0.42 : 0.28,
-      }),
-    );
+    const glowMaterial = new THREE.SpriteMaterial({
+      map: this.glowTexture,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: slot.isTierAnchor ? 0.6 : 0.38,
+    });
+    glowMaterial.userData.owned = true;
+    const glow = new THREE.Sprite(glowMaterial);
     glow.scale.setScalar(slot.isTierAnchor ? 2.0 : 1.45);
     glow.position.z = -0.03;
     swayGroup.add(glow);
 
     const pickProxy = new THREE.Mesh(
-      new THREE.PlaneGeometry(CASE_W * 1.12, CASE_H * 1.12),
+      new THREE.PlaneGeometry(CASE_W * 1.3, CASE_H * 1.3),
       new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0,
@@ -574,6 +609,7 @@ export class GalleryEngine {
       loaded,
     });
 
+    this.currentKeep = keep;
     this.cases.forEach((runtime) => {
       const inspected = this.selectedIndex !== null &&
         this.cases[this.selectedIndex] === runtime;
@@ -587,24 +623,41 @@ export class GalleryEngine {
         ) {
           this.loadQueue.push(runtime);
         }
-      } else if (runtime.texture) {
-        this.disposeCaseTexture(runtime);
+      } else {
+        if (runtime.texture) this.disposeCaseTexture(runtime);
+        // Evicted while still queued: don't download a poster we'd discard.
+        const queued = this.loadQueue.indexOf(runtime);
+        if (queued >= 0) this.loadQueue.splice(queued, 1);
       }
     });
     this.pumpLoadQueue();
   }
 
   private pumpLoadQueue() {
+    if (this.isDisposed) return;
     while (this.loadsInFlight < LOAD_CONCURRENCY && this.loadQueue.length > 0) {
       const runtime = this.loadQueue.shift()!;
       if (runtime.texture || runtime.loadFailed) continue;
+      // Window may have moved (or the corridor rebuilt) since queueing.
+      if (
+        !this.currentKeep.has(runtime.item.id) ||
+        this.caseByItemId.get(runtime.item.id) !== runtime
+      ) {
+        continue;
+      }
       this.loadsInFlight += 1;
       const url = runtime.item.posterUrl
         ? tmdbImageAtSize(runtime.item.posterUrl, 'w342')
         : null;
 
       const applyTexture = (texture: THREE.Texture, sourceUrl: string | null) => {
-        if (this.isDisposed) {
+        // Stale guard: the corridor may have been rebuilt (setItems) while
+        // this load was in flight — applying to an orphaned runtime would
+        // leak the texture into the GL context.
+        if (
+          this.isDisposed ||
+          this.caseByItemId.get(runtime.item.id) !== runtime
+        ) {
           texture.dispose();
           return;
         }
@@ -933,6 +986,11 @@ export class GalleryEngine {
     this.selectedIndex = runtime.slot.flatIndex;
     this.focusProgress = 0;
     this.mode = 'focusing';
+    // Lift the case above the dim quad (renderOrder 90) so the hero poster
+    // isn't darkened with the hall behind it.
+    runtime.group.traverse((obj) => {
+      obj.renderOrder = 95;
+    });
     // Swap the inspected poster to the sharper w780 bucket.
     this.loadInspectPoster(runtime);
     this.emitFocus(this.focusIndex);
@@ -1026,6 +1084,9 @@ export class GalleryEngine {
     runtime.group.scale.setScalar(slot.scale);
     runtime.swayGroup.position.set(0, 0, 0);
     runtime.swayGroup.rotation.set(0, 0, 0);
+    runtime.group.traverse((obj) => {
+      obj.renderOrder = 0;
+    });
   }
 
   private smooth(value: number): number {
@@ -1158,14 +1219,16 @@ export class GalleryEngine {
         if (this.selectedIndex !== null) {
           const runtime = this.cases[this.selectedIndex];
           this.restoreSlot(runtime);
-          // Drop the pinned w780 poster back to the windowed w342.
+          // Drop the pinned w780 and restore the still-tracked w342 —
+          // disposing only the w780 and re-pointing the map avoids both the
+          // GPU leak and a re-download of the hall texture.
           if (this.inspectPosterTexture) {
             this.inspectPosterTexture.dispose();
             this.inspectPosterTexture = null;
-            runtime.texture = null;
-            runtime.textureUrl = null;
-            runtime.poster.material.map = null;
-            runtime.poster.material.color.set('#101012');
+            runtime.poster.material.map = runtime.texture;
+            runtime.poster.material.color.set(
+              runtime.texture ? '#ffffff' : '#101012',
+            );
             runtime.poster.material.needsUpdate = true;
           }
         }
@@ -1191,7 +1254,7 @@ export class GalleryEngine {
 
       this.dimQuad.visible = true;
       const dimMaterial = this.dimQuad.material as THREE.MeshBasicMaterial;
-      dimMaterial.opacity = 0.85 * eased;
+      dimMaterial.opacity = 0.78 * eased;
       if (this.backdropPlane) {
         const material = this.backdropPlane
           .material as THREE.MeshBasicMaterial;
@@ -1211,11 +1274,17 @@ export class GalleryEngine {
       );
     }
 
-    // Camera: eye-height walk along the corridor; asymmetric frustum while
-    // inspecting so the case centers in the half beside the placard.
+    // Camera: eye-height walk along the corridor, gaze biased toward the
+    // focused case's wall so it reads (and is tappable) from the walk line;
+    // asymmetric frustum while inspecting so the case centers beside the
+    // placard.
     const camZ = this.walkZ();
+    const focusSlot = this.cases[this.focusIndex]?.slot;
+    const lookTargetX =
+      this.mode === 'hall' && focusSlot ? focusSlot.x * 0.35 : 0;
+    this.lookX = damp(this.lookX, lookTargetX, 5, delta);
     this.camera.position.set(0, EYE_Y, camZ + ROOM_TAIL * 0.4);
-    this.camera.lookAt(0, EYE_Y + 0.03, camZ - LOOK_AHEAD);
+    this.camera.lookAt(this.lookX, EYE_Y + 0.03, camZ - LOOK_AHEAD);
     this.applyViewOffset();
   }
 
@@ -1282,6 +1351,7 @@ export class GalleryEngine {
     cancelAnimationFrame(this.animationFrame);
     this.resizeObserver?.disconnect();
 
+    this.loadQueue = [];
     this.canvas.removeEventListener('wheel', this.handleWheel);
     this.canvas.removeEventListener('pointerdown', this.handlePointerDown);
     this.canvas.removeEventListener('pointermove', this.handlePointerMove);
