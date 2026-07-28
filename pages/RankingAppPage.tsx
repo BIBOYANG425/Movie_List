@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { RotateCcw, Tv, Film, BookOpen } from 'lucide-react';
 import { Tier, RankedItem, WatchlistItem, MediaType, Bracket, ComparisonLogEntry } from '../types';
@@ -35,6 +35,11 @@ import {
 import { TMDBMovie, TMDBTVShow } from '../services/tmdbService';
 import { OpenLibraryBook } from '../services/openLibraryService';
 import { useLocalizedItems, useLocalizedWatchlist } from '../hooks/useLocalizedItems';
+import { useGalleryViewMode } from '../hooks/useGalleryViewMode';
+import { GalleryModeToggle } from '../components/gallery/GalleryModeToggle';
+
+// Lazy so the three.js chunk is fetched only when someone enters gallery mode.
+const GalleryView = React.lazy(() => import('../components/gallery/GalleryView'));
 
 const SCORE_MAX = 10.0;
 const SCORE_MIN = 0.1;
@@ -1588,6 +1593,34 @@ const RankingAppPage = () => {
   const scoreMap = useMemo(() => computeScores(localizedItems), [localizedItems]);
   const showScores = localizedItems.length >= MIN_MOVIES_FOR_SCORES;
 
+  const { viewMode, setViewMode, gallerySupported, suppressGalleryForSession } =
+    useGalleryViewMode();
+
+  // B2/B3: non-destructive re-rank at ALL three verticals — do NOT delete
+  // first. Completion upserts the existing (user_id,tmdb_id) row in place and
+  // compacts both tiers; cancel = zero persistence. B3 title-locale contract:
+  // TierRow/GalleryView pass LOCALIZED items, so resolve the RAW item from the
+  // *_Items collection by id — the persisted title must be the
+  // TMDB/OpenLibrary default-locale title, never the zh one.
+  const handleRerankItem = (item: RankedItem) => {
+    if (mediaMode === 'books') {
+      const rawItem = bookItems.find((i) => i.id === item.id) ?? item;
+      setBookRerankState(rawItem);
+      setBookItemToRank(rawItem);
+      setIsBookModalOpen(true);
+    } else if (mediaMode === 'tv') {
+      const rawItem = tvItems.find((i) => i.id === item.id) ?? item;
+      setTvRerankState(rawItem);
+      setPreselectedTVItem(rawItem);
+      setIsTVModalOpen(true);
+    } else {
+      const rawItem = items.find((i) => i.id === item.id) ?? item;
+      setRerankState(rawItem);
+      setPreselectedForRank(rawItem);
+      setIsModalOpen(true);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1693,6 +1726,13 @@ const RankingAppPage = () => {
             <p className="text-xs text-muted-foreground/60 hidden sm:block">{t('ranking.subtitle')}</p>
           </div>
           <div className="flex items-center gap-3">
+            {activeTab === 'ranking' && (
+              <GalleryModeToggle
+                mode={viewMode}
+                onChange={setViewMode}
+                supported={gallerySupported}
+              />
+            )}
             <div className="flex bg-card/50 rounded-lg p-1 border border-border/30">
               <button
                 onClick={() => setMediaMode('movies')}
@@ -1802,6 +1842,25 @@ const RankingAppPage = () => {
           }} />
         )}
         {activeTab === 'ranking' && localizedItems.length > 0 && (
+          viewMode === 'gallery' && gallerySupported ? (
+            <ErrorBoundary>
+              <Suspense
+                fallback={
+                  <div className="w-full h-[calc(100dvh-230px)] min-h-[480px] rounded-2xl bg-[#050505] flex items-center justify-center">
+                    <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+                  </div>
+                }
+              >
+                <GalleryView
+                  items={localizedItems}
+                  scoreMap={scoreMap}
+                  showScores={showScores}
+                  onRerank={handleRerankItem}
+                  onFallbackToGrid={() => suppressGalleryForSession()}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          ) : (
           <ErrorBoundary>
           <div className="space-y-4">
             {TIERS.map((tier, tierIndex) => (
@@ -1820,35 +1879,12 @@ const RankingAppPage = () => {
                   const ranked = items.find(i => i.id === movieId) ?? tvItems.find(i => i.id === movieId) ?? bookItems.find(i => i.id === movieId);
                   if (ranked) setJournalSheetItem(ranked);
                 }}
-                onRerank={(item) => {
-                  // B2/B3: non-destructive re-rank at ALL three verticals — do NOT
-                  // delete first. Completion upserts the existing (user_id,tmdb_id)
-                  // row in place and compacts both tiers; cancel = zero persistence.
-                  // B3 title-locale contract: TierRow passes LOCALIZED items, so
-                  // resolve the RAW item from the *_Items collection by id — the
-                  // persisted title must be the TMDB/OpenLibrary default-locale
-                  // title, never the zh one.
-                  if (mediaMode === 'books') {
-                    const rawItem = bookItems.find((i) => i.id === item.id) ?? item;
-                    setBookRerankState(rawItem);
-                    setBookItemToRank(rawItem);
-                    setIsBookModalOpen(true);
-                  } else if (mediaMode === 'tv') {
-                    const rawItem = tvItems.find((i) => i.id === item.id) ?? item;
-                    setTvRerankState(rawItem);
-                    setPreselectedTVItem(rawItem);
-                    setIsTVModalOpen(true);
-                  } else {
-                    const rawItem = items.find((i) => i.id === item.id) ?? item;
-                    setRerankState(rawItem);
-                    setPreselectedForRank(rawItem);
-                    setIsModalOpen(true);
-                  }
-                }}
+                onRerank={handleRerankItem}
               />
             ))}
           </div>
           </ErrorBoundary>
+          )
         )}
 
         {activeTab === 'watchlist' && (
