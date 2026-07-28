@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Spool Gallery — wireframe v5 (minimalist)</title>
+<style>
+  /* Intentionally rough: grayscale, thin borders. Sketch, not mockup. */
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, "Segoe UI", system-ui, sans-serif; }
+  body { background: #fafafa; color: #333; padding: 24px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .note { font-size: 12px; color: #888; margin-bottom: 20px; }
+  .frames { display: flex; gap: 24px; flex-wrap: wrap; }
+  .frame { border: 1.5px solid #999; background: #fff; width: 620px; }
+  .frame h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #666; padding: 8px 12px; border-bottom: 1px dashed #bbb; }
+  .stage { position: relative; height: 400px; background: repeating-linear-gradient(45deg,#f4f4f4,#f4f4f4 12px,#efefef 12px,#efefef 24px); overflow: hidden; }
+  .annot { position: absolute; font-size: 10px; color: #444; background: #fff; border: 1px solid #aaa; padding: 2px 5px; z-index: 6; }
+  .hint { font-size: 11px; color: #777; padding: 8px 12px; border-top: 1px dashed #bbb; }
+
+  /* minimalist edge-lit case: single thin frame + soft glow (shadow stands in for glow) */
+  .case { background: #fff; border: 1px solid #777; padding: 5px; box-shadow: 0 0 10px 2px rgba(0,0,0,0.10); }
+  .case .poster { border: 1px solid #999; background: #ddd; width: 100%; aspect-ratio: 2/3; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #666; text-align: center; }
+
+  /* --- Frame 1: minimalist hall --- */
+  .tierlabel { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); font-family: Georgia, serif; font-size: 11px; letter-spacing: 5px; color: #555; z-index: 4; }
+  .wall-l { position: absolute; left: 0; top: 60px; bottom: 84px; width: 44%; transform: perspective(600px) rotateY(38deg); transform-origin: left center; border: 1px solid #bbb; background: #f2f2f2; display: flex; gap: 16px; align-items: center; justify-content: space-around; padding: 0 16px; }
+  .wall-r { position: absolute; right: 0; top: 60px; bottom: 84px; width: 44%; transform: perspective(600px) rotateY(-38deg); transform-origin: right center; border: 1px solid #bbb; background: #f2f2f2; display: flex; gap: 16px; align-items: center; justify-content: space-around; padding: 0 16px; }
+  .wall-l .case, .wall-r .case { width: 26%; }
+  .wall-l .case.featured, .wall-r .case.featured { width: 31%; transform: translateY(-4px); box-shadow: 0 0 16px 4px rgba(0,0,0,0.14); }
+  .endwall { position: absolute; left: 44%; right: 44%; top: 120px; bottom: 150px; border: 1px solid #bbb; background: #ededed; display:flex; align-items:center; justify-content:center; font-size:10px; color:#999; text-align:center; }
+  .tiernav { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; font-size: 10px; z-index: 5; color:#777; }
+  .tiernav span { padding: 2px 4px; border-bottom: 1px solid transparent; }
+  .tiernav .cur { border-bottom: 1px solid #555; color: #333; }
+
+  /* --- Frame 2: minimalist big inspect --- */
+  .backdrop { position: absolute; inset: 0; background: repeating-linear-gradient(-45deg,#ececec,#ececec 10px,#e4e4e4 10px,#e4e4e4 20px); }
+  .backdrop-label { position:absolute; top:6px; right:8px; font-size:9px; color:#aaa; }
+  .bigpiece { position: absolute; left: 50%; top: 45%; transform: translate(-50%,-50%) rotateY(-4deg); width: 230px; }
+  .bigpiece .poster { font-size: 12px; }
+  .bigpiece .case { box-shadow: 0 0 26px 6px rgba(0,0,0,0.15); }
+  .placard { position: absolute; right: 24px; bottom: 46px; width: 235px; border: 1px solid #888; background: #fff; padding: 10px 12px; font-size: 10.5px; line-height: 1.55; }
+  .placard .title { font-family: Georgia, serif; font-size: 15px; font-style: italic; }
+  .placard .artist { font-size: 10px; color: #555; margin-bottom: 4px; }
+  .placard .medium { font-size: 9.5px; color: #777; font-style: italic; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-bottom: 5px; }
+  .placard .curator { font-size: 9.5px; color: #444; }
+  .placard .acq { font-size: 8.5px; color: #999; margin-top: 5px; }
+  .actions { position: absolute; left: 24px; bottom: 46px; display: flex; gap: 10px; font-size: 10px; color:#555; }
+  .actions span { border-bottom: 1px solid #888; padding: 2px 1px; }
+  .orbitbar { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 10px; color:#999; }
+</style>
+</head>
+<body>
+  <h1>Spool — Minimalist Gallery (v5: no marquee, quiet halls, edge-lit cases)</h1>
+  <p class="note">Rough wireframe. Real version: near-black halls; each poster in a thin edge-lit glass case whose soft glow is the only light. Grayscale on purpose.</p>
+  <div class="frames">
+
+    <div class="frame">
+      <h2>State 1 — quiet hall, one room per tier</h2>
+      <div class="stage">
+        <div class="tierlabel">S&nbsp;&nbsp;TIER</div>
+        <div class="wall-l">
+          <div class="case featured"><div class="poster">#1<br>slightly larger,<br>brighter glow</div></div>
+          <div class="case"><div class="poster">#2</div></div>
+          <div class="case"><div class="poster">#3</div></div>
+        </div>
+        <div class="wall-r">
+          <div class="case"><div class="poster">#4</div></div>
+          <div class="case"><div class="poster">#5</div></div>
+          <div class="case"><div class="poster">#6</div></div>
+        </div>
+        <div class="endwall">archway →<br>next room's glow<br>(A TIER)</div>
+        <div class="annot" style="top: 8px; left: 8px">scroll / drag / swipe = walk the hall</div>
+        <div class="annot" style="bottom: 92px; right: 8px">tap a case → state 2</div>
+        <div class="tiernav">
+          <span class="cur">S</span><span>A</span><span>B</span><span>C</span><span>D</span><span>WATCHLIST</span>
+        </div>
+      </div>
+      <div class="hint">Everything ornamental is gone: no marquee, no bulbs, no bench, no per-poster placard on the wall. Just dark walls, thin edge-lit cases, one small serif tier label, and an understated text tier nav. #1 reads as featured purely through size and glow. Empty tier = one unlit case. Titles appear only on hover/press.</div>
+    </div>
+
+    <div class="frame">
+      <h2>State 2 — big inspect: case + placard, minimal chrome</h2>
+      <div class="stage">
+        <div class="backdrop"></div>
+        <div class="backdrop-label">movie backdrop, blurred + dimmed</div>
+        <div class="bigpiece">
+          <div class="case"><div class="poster">POSTER<br>(huge, centered, soft glow)<br>drag = orbit/tilt</div></div>
+        </div>
+        <div class="placard">
+          <div class="title">Movie Title</div>
+          <div class="artist">Director Name, 2024</div>
+          <div class="medium">Feature film, 148 min. · Sci-Fi, Drama</div>
+          <div class="curator"><b>Curator’s note:</b> your journal entry / review excerpt…</div>
+          <div class="acq">Acquired Mar 2026 · S Tier, No. 2 of 41 · ★ 9.1</div>
+        </div>
+        <div class="actions">
+          <span>▶ Trailer</span><span>Re-rank</span><span>Share</span>
+        </div>
+        <div class="orbitbar">drag orbit · pinch zoom · Esc back</div>
+        <div class="annot" style="top: 8px; left: 8px">case drifts off the wall toward you</div>
+      </div>
+      <div class="hint">Placard unchanged (it's already minimal). Action buttons become quiet text links; the orbit hints fade out after first use. The poster and your words are the only loud things on screen.</div>
+    </div>
+
+  </div>
+</body>
+</html>
