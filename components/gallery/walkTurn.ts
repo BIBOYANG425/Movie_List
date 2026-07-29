@@ -6,7 +6,12 @@
 // centerline mid-gap (weight ≈ 0.02) instead of overlapping into the next
 // station. TURN_NEAR is an absolute distance because it describes how close
 // "standing at the stop" is, independent of how far apart the stops sit.
-import { CorridorLayout, EYE_Y, CASE_SPACING } from './galleryLayout';
+import { CorridorLayout, EYE_Y, CASE_SPACING, DRIFT_X } from './galleryLayout';
+
+// Re-exported for API stability: DRIFT_X is defined in galleryLayout (STOP_LEAD's
+// frontal-consistency derivation needs it) but is conceptually a walk-turn
+// camera constant, so callers keep importing it from here.
+export { DRIFT_X };
 
 /**
  * Camera fully faces the case within this distance of its walk stop. Absolute
@@ -19,10 +24,10 @@ export const TURN_NEAR = 0.35;
  * ≈ 0.02, so the camera effectively straightens between stops.
  */
 export const TURN_FAR = CASE_SPACING * 0.52;
-/** How far the camera steps toward the opposite wall for a full turn. */
-export const DRIFT_X = 1.05;
-/** How far ahead the camera looks while simply walking. */
-export const LOOK_AHEAD = 6;
+/** How far ahead the camera looks while simply walking. Scaled with the
+ *  human-scale corridor (station pacing grew ~3×) so the gaze still reaches
+ *  several cases down the hall rather than stopping short. */
+export const LOOK_AHEAD = 18;
 /** Station weight at which the head starts turning toward the case. */
 export const LOOK_BLEND_START = 0.12;
 /** Station weight at which the look locks fully onto the case. */

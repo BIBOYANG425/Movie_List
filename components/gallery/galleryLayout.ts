@@ -2,26 +2,41 @@ import { Tier, RankedItem } from '../../types';
 
 // Corridor geometry. The camera walks x = 0 along −Z at eye height; each
 // non-empty tier is one room, S→D, separated by an archway segment. All
-// distances are world units (~meters). Values tuned during the perf spike.
-export const WALL_X = 2.1;
-export const EYE_Y = 1.42;
-export const CASE_Y = 1.5;
-export const CASE_W = 0.62; // poster plane, 2:3
-export const CASE_H = 0.93;
-export const ROOM_LEAD = 1.6;
-// Single-file station pacing ≈ 1.35× case height, scaled from the design
-// prototype (spacing 2.7 at case height 2.0 → 1.25 at CASE_H 0.93).
-export const CASE_SPACING = 1.25;
-export const ROOM_TAIL = 2.0;
-export const ARCH_DEPTH = 1.2;
+// distances are world units (1 unit = 1 m). Human-scale pass: posters stand
+// ~60% taller than a 1.75 m adult (owner ask); the corridor width and station
+// pacing were rescaled with them so the big poster frames cleanly and adjacent
+// cases don't crowd. Eye/case *heights* stay human-referenced (the world is
+// metric) — only the poster size and horizontal/depth spacing grew.
+export const WALL_X = 2.9; // half corridor width; a case hangs on the wall at ±WALL_X
+export const EYE_Y = 1.42; // human eye height — unchanged
+export const CASE_W = 1.87; // poster plane, 2:3 (= CASE_H × 2/3)
+export const CASE_H = 2.8; // ≈1.6× a 1.75 m adult
+export const CASE_Y = 1.7; // case center; bottom edge (1.7 − 1.4) hangs 0.3 m above the floor
+// How far the eye steps toward the far wall at a full turn (consumed by
+// walkTurn.cameraPose, re-exported from there). Lives here because STOP_LEAD's
+// frontal-consistency derivation below needs the eye↔case x-separation, and
+// the layout module must not import the camera module (that would be a cycle).
+export const DRIFT_X = 1.45;
+export const ROOM_LEAD = 4.8;
+// Single-file station pacing ≈ 1.35× case height (3.8 ≈ 1.35 × 2.8), scaled
+// coherently from the pre-human-scale 1.25 at CASE_H 0.93.
+export const CASE_SPACING = 3.8;
+export const ROOM_TAIL = 6.0;
+export const ARCH_DEPTH = 3.6;
 export const TIER_ANCHOR_SCALE = 1.15;
-// Cases hang nearly square to their wall; a small bias toward the corridor
-// entrance keeps them from reading as a pure ±90° edge-on plane. The camera's
-// turn-to-face mechanic (walkTurn.ts) does the heavy lifting of presenting
-// each case, so the case itself no longer needs a steep entrance angle.
-// Stops stand ~2.4m before each case.
-export const CASE_FACE_BIAS = 0.22;
-export const STOP_LEAD = 2.4;
+// Cases yaw toward the corridor entrance by this bias so they read as a
+// three-quarter face while the camera walks past (the owner saw edge-on
+// slivers at the old 0.22). The frontal moment is guaranteed at the stop by
+// STOP_LEAD below, so the bias is free to favor walk readability.
+export const CASE_FACE_BIAS = 0.3;
+// Frontal-consistency lead. At a full turn the eye drifts to ±DRIFT_X off a
+// ∓WALL_X case, so the eye↔case x-separation is (WALL_X + DRIFT_X); the case's
+// normal is tilted CASE_FACE_BIAS toward the entrance. Standing the stop this
+// far up-corridor puts the eye exactly on the case's normal line, so the 90°
+// turn lands perpendicular — square-on, poster filling the frame. The old flat
+// 2.4 was uncoupled from the bias and stood the eye far down-corridor, viewing
+// every case obliquely (the "does not focus / half the poster" bug).
+export const STOP_LEAD = (WALL_X + DRIFT_X) * Math.tan(CASE_FACE_BIAS);
 
 export interface CaseSlot {
   itemId: string;
@@ -111,7 +126,8 @@ export function buildCorridorLayout(
         scale: (i === 0 ? TIER_ANCHOR_SCALE : 1) * jitterScale(i),
         isTierAnchor: i === 0,
       };
-      // Camera stop: stand back from the case so it sits in the frustum.
+      // Camera stop: lead the case up-corridor by STOP_LEAD so the turned eye
+      // stands on its normal line and faces it square-on (see STOP_LEAD).
       walkStops.push(z + STOP_LEAD);
       return slot;
     });

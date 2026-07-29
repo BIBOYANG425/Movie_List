@@ -34,6 +34,8 @@
 import * as THREE from 'three';
 import { GalleryEngine } from '../../components/gallery/GalleryEngine';
 import { GalleryMode } from '../../components/gallery/galleryTypes';
+import { CorridorLayout } from '../../components/gallery/galleryLayout';
+import { cameraPose } from '../../components/gallery/walkTurn';
 import { Tier, RankedItem } from '../../types';
 
 const TIER_LABELS: Record<Tier, string> = {
@@ -74,6 +76,8 @@ type SmokeApi = {
   walkTo: (stopIndex: number) => void;
   travelTo: (stopIndex: number) => void;
   walkState: () => { walk: number; targetWalk: number };
+  pump: (frames?: number) => void;
+  snapshot: () => string;
   travelToSecondTier: () => number;
   sample: (
     blockSize?: number,
@@ -87,6 +91,12 @@ type SmokeApi = {
     blockSize: number;
     cameraX: number;
     slotX: number;
+    corners: {
+      tl: { x: number; y: number };
+      tr: { x: number; y: number };
+      bl: { x: number; y: number };
+      br: { x: number; y: number };
+    };
   };
 };
 
@@ -106,10 +116,22 @@ const api: SmokeApi = {
       walk: number;
       targetWalk: number;
       lastInputTime: number;
+      driftX: number;
+      lookSmoothed: THREE.Vector3;
+      layout: CorridorLayout;
     };
     eng.walk = stopIndex;
     eng.targetWalk = stopIndex;
     eng.lastInputTime = performance.now() - 10000;
+    // Seed the smoothed eye-drift and gaze at their CONVERGED values for this
+    // stop. Headless rAF is heavily throttled, so the per-frame damp toward the
+    // turned pose can lag for seconds — a screenshot then catches a half-turned
+    // (oblique) frame that misrepresents the real 60 fps app. Seeding makes the
+    // very first rendered frame the settled, square-on pose the user sees.
+    const camZ = eng.layout.walkStops[stopIndex] ?? 0;
+    const pose = cameraPose(camZ, eng.layout);
+    eng.driftX = pose.x;
+    eng.lookSmoothed.set(pose.look.x, pose.look.y, pose.look.z);
   },
   travelTo: (stopIndex) => {
     // Mirrors GalleryEngine.travelToTier: move ONLY the target and back-date
@@ -126,6 +148,57 @@ const api: SmokeApi = {
   walkState: () => {
     const eng = engine as unknown as { walk: number; targetWalk: number };
     return { walk: eng.walk, targetWalk: eng.targetWalk };
+  },
+  pump: (frames = 90) => {
+    // Deterministically advance the engine and present a frame. Headless rAF is
+    // throttled, so between an input and a page.screenshot no animate frame may
+    // run — the composited canvas then shows a stale, half-converged camera.
+    // Stepping updateState directly (fixed 60 fps delta) settles the damped
+    // drift/gaze and renders, so the screenshot matches what the sample() probe
+    // measures (and what the real 60 fps app shows).
+    const eng = engine as unknown as {
+      updateState: (d: number, ts: number, el: number) => void;
+      renderer: THREE.WebGLRenderer;
+      scene: THREE.Scene;
+      camera: THREE.PerspectiveCamera;
+    };
+    const base = performance.now();
+    for (let i = 0; i < frames; i++) {
+      const ts = base + i * (1000 / 60);
+      eng.updateState(1 / 60, ts, ts / 1000);
+    }
+    eng.renderer.render(eng.scene, eng.camera);
+  },
+  snapshot: () => {
+    // Ground-truth frame: read the WebGL drawing buffer straight after a render
+    // and re-encode it as a PNG data URL. page.screenshot() captures the
+    // browser compositor's frame, which (preserveDrawingBuffer: false) does not
+    // reflect the harness's out-of-rAF render — so the composited hall shot can
+    // lag the settled camera. This returns exactly what the engine drew.
+    const eng = engine as unknown as {
+      renderer: THREE.WebGLRenderer;
+      scene: THREE.Scene;
+      camera: THREE.PerspectiveCamera;
+    };
+    eng.renderer.render(eng.scene, eng.camera);
+    const gl = eng.renderer.getContext();
+    const w = gl.drawingBufferWidth;
+    const h = gl.drawingBufferHeight;
+    const pixels = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    const out = document.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    const ctx = out.getContext('2d')!;
+    const img = ctx.createImageData(w, h);
+    // readPixels is bottom-up; flip into the top-down 2D canvas.
+    for (let y = 0; y < h; y++) {
+      const src = (h - 1 - y) * w * 4;
+      const dst = y * w * 4;
+      img.data.set(pixels.subarray(src, src + w * 4), dst);
+    }
+    ctx.putImageData(img, 0, 0);
+    return out.toDataURL('image/png');
   },
   travelToSecondTier: () => {
     // Drive the REAL public control: travelToTier does the room lookup, the
@@ -189,6 +262,23 @@ const api: SmokeApi = {
       sum += luminance;
       if (luminance > max) max = luminance;
     }
+    // Project the poster's four local corners to screen px so phase 3 can
+    // assert square-on (left/right edge heights equal) vs. an oblique view.
+    const geo = poster.geometry as THREE.PlaneGeometry;
+    const pw = geo.parameters.width / 2;
+    const ph = geo.parameters.height / 2;
+    const proj = (lx: number, ly: number) => {
+      const v = new THREE.Vector3(lx, ly, 0);
+      poster.localToWorld(v);
+      v.project(eng.camera);
+      return { x: Math.round((v.x * 0.5 + 0.5) * w), y: Math.round((v.y * 0.5 + 0.5) * h) };
+    };
+    const corners = {
+      tl: proj(-pw, ph),
+      tr: proj(pw, ph),
+      bl: proj(-pw, -ph),
+      br: proj(pw, -ph),
+    };
     return {
       mode: eng.mode,
       mean: sum / (bw * bh),
@@ -198,6 +288,7 @@ const api: SmokeApi = {
       blockSize,
       cameraX: eng.camera.position.x,
       slotX: eng.cases[posterIndex].slot.x,
+      corners,
     };
   },
 };
