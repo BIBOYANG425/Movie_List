@@ -16,6 +16,8 @@ interface GalleryViewProps {
   onRerank: (item: RankedItem) => void;
   /** Fatal engine failure → parent flips this session back to the grid. */
   onFallbackToGrid: () => void;
+  /** Hall-mode Esc / overlay ✕ → parent exits the fullscreen portal. */
+  onExitRequest?: () => void;
 }
 
 function mediumLine(item: RankedItem, runtimeMinutes: number | null, episodeCount: number | null, genres: string[]): string {
@@ -43,6 +45,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({
   showScores,
   onRerank,
   onFallbackToGrid,
+  onExitRequest,
 }) => {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -128,6 +131,19 @@ const GalleryView: React.FC<GalleryViewProps> = ({
     );
   }, [inspectItem, details.backdropUrl, details.loading]);
 
+  // Hall-mode Esc exits the fullscreen overlay. The engine's own canvas
+  // keydown owns Esc for inspect→hall (closeInspect no-ops in 'hall'), so we
+  // only fire onExitRequest when already in the hall — never stealing the
+  // inspect Esc. Re-subscribes on mode change so the closure's mode is current.
+  useEffect(() => {
+    if (!onExitRequest) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && mode === 'hall') onExitRequest();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mode, onExitRequest]);
+
   const closeInspect = () => engineRef.current?.closeInspect();
 
   const tierCount = inspectItem
@@ -143,7 +159,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-[calc(100dvh-230px)] min-h-[480px] rounded-2xl overflow-hidden bg-[#050505] select-none"
+      className="relative w-full h-full overflow-hidden bg-[#050505] select-none"
     >
       <canvas
         ref={canvasRef}

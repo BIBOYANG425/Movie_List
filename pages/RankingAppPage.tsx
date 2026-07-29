@@ -37,6 +37,7 @@ import { OpenLibraryBook } from '../services/openLibraryService';
 import { useLocalizedItems, useLocalizedWatchlist } from '../hooks/useLocalizedItems';
 import { useGalleryViewMode } from '../hooks/useGalleryViewMode';
 import { GalleryModeToggle } from '../components/gallery/GalleryModeToggle';
+import { GalleryOverlay } from '../components/gallery/GalleryOverlay';
 
 // Lazy so the three.js chunk is fetched only when someone enters gallery mode.
 const GalleryView = React.lazy(() => import('../components/gallery/GalleryView'));
@@ -1842,11 +1843,13 @@ const RankingAppPage = () => {
           }} />
         )}
         {activeTab === 'ranking' && localizedItems.length > 0 && (
-          viewMode === 'gallery' && gallerySupported ? (
+          <>
+          {viewMode === 'gallery' && gallerySupported && (
+            <GalleryOverlay onExit={() => setViewMode('grid')}>
             <ErrorBoundary>
               <Suspense
                 fallback={
-                  <div className="w-full h-[calc(100dvh-230px)] min-h-[480px] rounded-2xl bg-[#050505] flex items-center justify-center">
+                  <div className="w-full h-full bg-[#050505] flex items-center justify-center">
                     <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
                   </div>
                 }
@@ -1856,11 +1859,13 @@ const RankingAppPage = () => {
                   scoreMap={scoreMap}
                   showScores={showScores}
                   onRerank={handleRerankItem}
+                  onExitRequest={() => setViewMode('grid')}
                   onFallbackToGrid={() => suppressGalleryForSession()}
                 />
               </Suspense>
             </ErrorBoundary>
-          ) : (
+            </GalleryOverlay>
+          )}
           <ErrorBoundary>
           <div className="space-y-4">
             {TIERS.map((tier, tierIndex) => (
@@ -1884,7 +1889,7 @@ const RankingAppPage = () => {
             ))}
           </div>
           </ErrorBoundary>
-          )
+          </>
         )}
 
         {activeTab === 'watchlist' && (

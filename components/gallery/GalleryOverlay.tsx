@@ -1,0 +1,39 @@
+// Fullscreen portal for the Curator's Walk. The gallery is a place you enter,
+// not a panel in the page: body scroll locks while mounted, and a ✕ (plus
+// hall-mode Esc, wired inside GalleryView so it never steals inspect's Esc)
+// exits back to the grid. Rendered into document.body so page chrome
+// (header/search/filter chips) is fully covered.
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
+
+interface GalleryOverlayProps {
+  onExit: () => void;
+  children: React.ReactNode;
+}
+
+export const GalleryOverlay: React.FC<GalleryOverlayProps> = ({ onExit, children }) => {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // z-[70]: above page chrome and the z-50 modals/tier-fullscreen, but below
+  // the z-[100] toasts so status toasts stay visible over the Walk.
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-background animate-fade-in-up">
+      {children}
+      <button
+        onClick={onExit}
+        aria-label="Exit gallery"
+        className="absolute top-5 right-5 z-10 p-2 text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <X size={20} />
+      </button>
+    </div>,
+    document.body,
+  );
+};
