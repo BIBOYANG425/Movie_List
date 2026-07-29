@@ -1,23 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { Tier, RankedItem } from '../../../types';
+import { Tier } from '../../../types';
 import {
   buildCorridorLayout,
   roomIndexAtZ,
   TIER_ANCHOR_SCALE,
 } from '../galleryLayout';
-
-function makeItem(id: string, tier: Tier, rank: number): RankedItem {
-  return {
-    id,
-    title: `Movie ${id}`,
-    year: '2024',
-    posterUrl: `https://image.tmdb.org/t/p/w500/${id}.jpg`,
-    type: 'movie',
-    genres: [],
-    tier,
-    rank,
-  };
-}
+import { makeItem } from './fixtures';
 
 const TIERS = [Tier.S, Tier.A, Tier.B, Tier.C, Tier.D];
 

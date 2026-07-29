@@ -19,6 +19,7 @@ import {
   WALL_X,
 } from './galleryLayout';
 import { computeWantedTextures, tmdbImageAtSize } from './textureWindow';
+import { cameraPose, dominantStation } from './walkTurn';
 
 // Scene constants. Spike-tunable values live here so the phone pass can
 // adjust them in one place (technique: reference keeps a constants block).
@@ -130,6 +131,14 @@ export class GalleryEngine {
   private currentKeep = new Set<string>();
   private loadsInFlight = 0;
   private lookX = 0;
+  // Hall walk-turn state: the drifting eye x and the smoothed look target the
+  // camera lerps toward each frame so the head turns to face the dominant case
+  // (see walkTurn.cameraPose). driftX is a standalone field so the inspect
+  // flight can read the settled hall drift without the per-frame damp being
+  // corrupted by the inspect blend that overwrites camera.position.x.
+  private driftX = 0;
+  private lookTarget = new THREE.Vector3();
+  private lookSmoothed = new THREE.Vector3(0, EYE_Y, -LOOK_AHEAD);
   private lastWindowUpdate = 0;
   private textureLoader = new THREE.TextureLoader();
 
@@ -1191,9 +1200,17 @@ export class GalleryEngine {
 
     if (this.mode === 'hall') {
       if (!this.pointerDown && timestamp - this.lastInputTime > SNAP_IDLE_MS) {
+        // Snap to the station the turn mechanic considers dominant so an idle
+        // camera settles fully turned (weight → 1) rather than mid-gap. In the
+        // single-file layout walk is a flat slot index, so the dominant
+        // station index is also the snap target in walk-space.
+        const snapIndex = dominantStation(
+          this.walkZ(),
+          this.layout.walkStops,
+        ).index;
         this.targetWalk = damp(
           this.targetWalk,
-          Math.round(this.targetWalk),
+          snapIndex,
           8.5 * lambdaBoost,
           delta,
         );
@@ -1302,17 +1319,42 @@ export class GalleryEngine {
       );
     }
 
-    // Camera: eye-height walk along the corridor, gaze biased toward the
-    // focused case's wall so it reads (and is tappable) from the walk line;
-    // asymmetric frustum while inspecting so the case centers beside the
-    // placard.
+    // Camera. Hall/travel: the eye drifts toward the far wall and the head
+    // turns to face the dominant case (walkTurn.cameraPose) — the Curator's
+    // Walk. Inspect/return: the eye recentres on the corridor and stands back
+    // so the flown case sits beside the placard, with an asymmetric frustum
+    // (applyViewOffset). The hall pose is blended out by the focus progress so
+    // tapping a turned case doesn't pop the camera. Travel is just hall with an
+    // animated targetWalk, so it rides the hall branch.
     const camZ = this.walkZ();
-    const focusSlot = this.cases[this.focusIndex]?.slot;
-    const lookTargetX =
-      this.mode === 'hall' && focusSlot ? focusSlot.x * 0.35 : 0;
-    this.lookX = damp(this.lookX, lookTargetX, 5, delta);
-    this.camera.position.set(0, EYE_Y, camZ + ROOM_TAIL * 0.4);
-    this.camera.lookAt(this.lookX, EYE_Y + 0.03, camZ - LOOK_AHEAD);
+    const pose = cameraPose(camZ, this.layout);
+    this.driftX = damp(this.driftX, pose.x, 6, delta);
+    this.lookTarget.set(pose.look.x, pose.look.y, pose.look.z);
+    this.lookSmoothed.lerp(this.lookTarget, 1 - Math.exp(-6 * delta));
+
+    if (this.mode === 'hall') {
+      this.camera.position.set(this.driftX, EYE_Y, camZ);
+      this.camera.lookAt(this.lookSmoothed);
+    } else {
+      const eased =
+        this.mode === 'returning'
+          ? this.focusProgress
+          : this.smooth(this.focusProgress);
+      this.lookX = damp(this.lookX, 0, 5, delta);
+      this.camera.position.set(
+        THREE.MathUtils.lerp(this.driftX, 0, eased),
+        EYE_Y,
+        THREE.MathUtils.lerp(camZ, camZ + ROOM_TAIL * 0.4, eased),
+      );
+      // Blend the hall gaze (lookSmoothed) into the centred inspect look as
+      // the flight progresses: eased 0 ⇒ hall, eased 1 ⇒ inspect.
+      const inspectLook = new THREE.Vector3(
+        this.lookX,
+        EYE_Y + 0.03,
+        camZ - LOOK_AHEAD,
+      );
+      this.camera.lookAt(inspectLook.lerp(this.lookSmoothed, 1 - eased));
+    }
     this.applyViewOffset();
   }
 

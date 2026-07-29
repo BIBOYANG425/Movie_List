@@ -1,13 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { dominantStation, cameraPose, TURN_NEAR, TURN_FAR } from '../walkTurn';
 import { buildCorridorLayout, EYE_Y } from '../galleryLayout';
-import { Tier, RankedItem } from '../../../types';
-
-const item = (id: string, tier: Tier, rank: number): RankedItem =>
-  ({ id, tier, rank, title: id, genres: [] } as unknown as RankedItem);
+import { Tier } from '../../../types';
+import { makeItem } from './fixtures';
 
 const layout = buildCorridorLayout(
-  [item('a', Tier.S, 0), item('b', Tier.S, 1), item('c', Tier.S, 2)],
+  [makeItem('a', Tier.S, 0), makeItem('b', Tier.S, 1), makeItem('c', Tier.S, 2)],
   [Tier.S],
 );
 
@@ -32,9 +30,9 @@ describe('dominantStation', () => {
   });
 
   it('weight decays monotonically with distance from the stop', () => {
-    // Anchor at the FIRST stop and step in +z (back toward the entrance):
-    // stations sit 1.25 apart, so a −z offset of TURN_FAR − 0.05 would land
-    // nearer the next station and hand dominance to it.
+    // Anchor at the FIRST stop and step in +z (back toward the entrance) so
+    // station 0 stays the nearest stop at every sample — stepping in −z would
+    // eventually hand dominance to the next station down the corridor.
     const z = layout.walkStops[0];
     const w0 = dominantStation(z, layout.walkStops).weight;
     const w1 = dominantStation(z + TURN_NEAR + 0.2, layout.walkStops).weight;

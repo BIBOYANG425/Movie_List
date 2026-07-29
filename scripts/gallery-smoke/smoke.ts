@@ -10,9 +10,14 @@
  *   __smoke.fatal          — engine reported onFatal (headless WebGL missing)
  *   __smoke.mode           — current GalleryMode (mirrors onModeChange)
  *   __smoke.inspectFirst() — fly the first case to the inspect anchor
- *   __smoke.sample(n)      — render synchronously, then read an n×n pixel
- *                            block centered on the inspected poster and
- *                            return its mean/max luminance (0-1).
+ *   __smoke.walkTo(i)      — set the hall walk target to walk stop i and let
+ *                            the animate loop settle the camera at that stop
+ *                            (fully turned to face the case).
+ *   __smoke.sample(n, i?)  — render synchronously, then read an n×n pixel
+ *                            block centered on a poster and return its
+ *                            mean/max luminance (0-1) plus the camera x. With
+ *                            i given, samples case i (hall walk-turn check);
+ *                            without it, samples the inspected case.
  */
 import * as THREE from 'three';
 import { GalleryEngine } from '../../components/gallery/GalleryEngine';
@@ -54,13 +59,18 @@ type SmokeApi = {
   fatal: string | null;
   mode: GalleryMode;
   inspectFirst: () => void;
-  sample: (blockSize?: number) => {
+  walkTo: (stopIndex: number) => void;
+  sample: (
+    blockSize?: number,
+    caseIndex?: number,
+  ) => {
     mode: GalleryMode;
     mean: number;
     max: number;
     centerX: number;
     centerY: number;
     blockSize: number;
+    cameraX: number;
   };
 };
 
@@ -72,7 +82,20 @@ const api: SmokeApi = {
   fatal: null,
   mode: 'hall',
   inspectFirst: () => engine.inspect(items[0].id),
-  sample: (blockSize = 60) => {
+  walkTo: (stopIndex) => {
+    // TS `private` is compile-time only — jump the hall walk target to the
+    // requested stop and back-date lastInputTime so the idle-snap engages and
+    // the animate loop settles the camera fully turned at that station.
+    const eng = engine as unknown as {
+      walk: number;
+      targetWalk: number;
+      lastInputTime: number;
+    };
+    eng.walk = stopIndex;
+    eng.targetWalk = stopIndex;
+    eng.lastInputTime = performance.now() - 10000;
+  },
+  sample: (blockSize = 60, caseIndex) => {
     // TS `private` is compile-time only — the harness reaches into the
     // engine to render synchronously (readPixels is only valid in the same
     // task as the draw; the drawing buffer is cleared after compositing).
@@ -84,12 +107,15 @@ const api: SmokeApi = {
       selectedIndex: number | null;
       mode: GalleryMode;
     };
-    if (eng.selectedIndex === null) {
-      throw new Error('sample() called with no inspected case');
+    // Explicit caseIndex samples any case (hall walk-turn check); otherwise
+    // fall back to the inspected case.
+    const posterIndex = caseIndex ?? eng.selectedIndex;
+    if (posterIndex === null || posterIndex === undefined) {
+      throw new Error('sample() called with no case index and none inspected');
     }
     eng.renderer.render(eng.scene, eng.camera);
 
-    const poster = eng.cases[eng.selectedIndex].poster;
+    const poster = eng.cases[posterIndex].poster;
     const center = new THREE.Vector3();
     poster.getWorldPosition(center);
     center.project(eng.camera);
@@ -126,6 +152,7 @@ const api: SmokeApi = {
       centerX: cx,
       centerY: cy,
       blockSize,
+      cameraX: eng.camera.position.x,
     };
   },
 };

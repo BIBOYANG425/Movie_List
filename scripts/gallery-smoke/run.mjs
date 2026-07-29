@@ -3,12 +3,17 @@
  * inspected poster).
  *
  * Boots the smoke.html harness under vite, drives it with puppeteer-core
- * against the system Chrome, flies the first fixture case to the inspect
- * anchor, and asserts that the brightest pixel in a 60×60 block at the
- * poster's center reads > 0.35 luminance (0-1). The fixture posters are the
- * engine's procedural fallback (bright serif text on the poster center), so
- * a healthy inspect pass is far above the threshold while a dim-layer-over-
- * poster regression lands far below it.
+ * against the system Chrome, and runs two checks against the fixture posters
+ * (the engine's procedural fallback — bright serif text on the poster center):
+ *
+ *   1. Curator's Walk turn — stand at a right-wall stop and assert the poster
+ *      reads bright/frontal (max luminance > 0.35) AND the camera drifted
+ *      toward the opposite wall (camera.x < 0 for a right-wall case). This is
+ *      the Task 3 turn-to-face guard.
+ *   2. Inspect brightness — fly the first case to the inspect anchor and
+ *      assert the brightest pixel in a 60×60 block at the poster's center
+ *      reads > 0.35 luminance. A dim-layer-over-poster regression lands far
+ *      below the threshold.
  *
  * Usage:
  *   node scripts/gallery-smoke/run.mjs [--label before|after]
@@ -121,6 +126,45 @@ async function main() {
       }
     }
 
+    // ── Curator's Walk turn ────────────────────────────────────────────────
+    // Stand at a right-wall stop and confirm the camera turns to face it. The
+    // fixture side pattern per tier is L, R, L, … so walk stop index 1 (the
+    // second stop) is a right-wall case (slot.x > 0). A correct turn drifts the
+    // eye toward the opposite (left) wall — camera.x < 0 — and points it at the
+    // poster so its bright text projects near screen center.
+    const RIGHT_WALL_STOP = 1;
+    await page.evaluate((i) => window.__smoke.walkTo(i), RIGHT_WALL_STOP);
+    await new Promise((r) => setTimeout(r, SETTLE_MS));
+
+    const turnShot = path.join(HERE, 'artifacts', `${label}-stop.png`);
+    await page.screenshot({ path: turnShot });
+    const turn = await page.evaluate(
+      (i) => window.__smoke.sample(60, i),
+      RIGHT_WALL_STOP,
+    );
+    console.log(
+      `stop ${RIGHT_WALL_STOP} (right wall) poster center ` +
+        `(${turn.centerX}, ${turn.centerY}) — max luminance ` +
+        `${turn.max.toFixed(3)}, camera.x ${turn.cameraX.toFixed(3)}`,
+    );
+    console.log(`screenshot: ${turnShot}`);
+
+    const turnBright = turn.max > LUMINANCE_THRESHOLD;
+    const turnDrift = turn.cameraX < -0.2; // drifted toward the far (left) wall
+    if (turnBright && turnDrift) {
+      console.log(
+        `PASS — walk-turn: poster frontal (max ${turn.max.toFixed(3)} > ` +
+          `${LUMINANCE_THRESHOLD}) and eye drifted to x ${turn.cameraX.toFixed(3)}`,
+      );
+    } else {
+      console.error(
+        `FAIL — walk-turn: bright=${turnBright} (max ${turn.max.toFixed(3)}), ` +
+          `drift=${turnDrift} (camera.x ${turn.cameraX.toFixed(3)} — expected < -0.2)`,
+      );
+      process.exitCode = 1;
+    }
+
+    // ── Inspect brightness ─────────────────────────────────────────────────
     // Fly the first fixture case to the inspect anchor and let it settle.
     await page.evaluate(() => window.__smoke.inspectFirst());
     await page.waitForFunction(() => window.__smoke.mode === 'inspect', {

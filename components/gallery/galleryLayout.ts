@@ -15,10 +15,12 @@ export const CASE_SPACING = 1.25;
 export const ROOM_TAIL = 2.0;
 export const ARCH_DEPTH = 1.2;
 export const TIER_ANCHOR_SCALE = 1.15;
-// Cases angle partway toward the corridor entrance so they read while
-// walking (a flat ±90° hang is edge-on and invisible from the walk line —
-// confirmed by headless smoke test). Stops stand ~2.4m before each case.
-export const CASE_FACE_BIAS = 0.42;
+// Cases hang nearly square to their wall; a small bias toward the corridor
+// entrance keeps them from reading as a pure ±90° edge-on plane. The camera's
+// turn-to-face mechanic (walkTurn.ts) does the heavy lifting of presenting
+// each case, so the case itself no longer needs a steep entrance angle.
+// Stops stand ~2.4m before each case.
+export const CASE_FACE_BIAS = 0.22;
 export const STOP_LEAD = 2.4;
 
 export interface CaseSlot {

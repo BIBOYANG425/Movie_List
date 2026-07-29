@@ -1,15 +1,23 @@
 // The Curator's Walk turn mechanic. Pure math — no three.js imports so it
 // stays unit-testable. Constants derived from the design-session prototype
-// (docs/plans/2026-07-28-curators-walk-design.md). NOTE: TURN_NEAR/TURN_FAR
-// were NOT rescaled when CASE_SPACING dropped to 1.25 (single-file corridor),
-// so adjacent influence zones overlap — mid-gap weight ≈ 0.83. Pending
-// feel-tuning in Task 3.
-import { CorridorLayout, EYE_Y } from './galleryLayout';
+// (docs/plans/2026-07-28-curators-walk-design.md). The turn window is scoped
+// to the case spacing: TURN_FAR is a fraction of CASE_SPACING so adjacent
+// influence zones stay disjoint — the camera returns most of the way to the
+// centerline mid-gap (weight ≈ 0.02) instead of overlapping into the next
+// station. TURN_NEAR is an absolute distance because it describes how close
+// "standing at the stop" is, independent of how far apart the stops sit.
+import { CorridorLayout, EYE_Y, CASE_SPACING } from './galleryLayout';
 
-/** Camera fully faces the case within this distance of its walk stop. */
+/**
+ * Camera fully faces the case within this distance of its walk stop. Absolute
+ * (not a spacing ratio): it is about arriving at the stop, not about the gap.
+ */
 export const TURN_NEAR = 0.35;
-/** No turn influence beyond this distance. */
-export const TURN_FAR = 1.4;
+/**
+ * No turn influence beyond this distance. Kept below half of CASE_SPACING so
+ * neighbouring turn zones never overlap (mid-gap weight stays near zero).
+ */
+export const TURN_FAR = CASE_SPACING * 0.52;
 /** How far the camera steps toward the opposite wall for a full turn. */
 export const DRIFT_X = 1.05;
 /** How far ahead the camera looks while simply walking. */
