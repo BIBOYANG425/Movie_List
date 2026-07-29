@@ -1,3 +1,18 @@
+/**
+ * GalleryEngine — the three.js renderer behind the Curator's Walk.
+ *
+ * Lays out a single-file corridor (one room per non-empty tier, S→D) that the
+ * camera walks along x=0 down −Z. At each walk stop the camera turns to face
+ * that case on the wall (walkTurn.ts) rather than sliding past it. Selecting a
+ * case pulls it forward to an inspect anchor; the inspected poster stays bright
+ * while the rest of the world dims, via a transparent-list swap that renders
+ * the selection outside the dim pass. The whole canvas is hosted fullscreen by
+ * GalleryOverlay (a React portal); this class owns only the scene and camera.
+ *
+ * Interaction patterns (continuous walk pacing, pull-forward inspect,
+ * click-vs-drag threshold) studied from "The Complete Shelf" by Mint
+ * (github.com/mintdotgg/mint-playground, MIT). Implementation is original.
+ */
 import * as THREE from 'three';
 import { Tier, RankedItem } from '../../types';
 import {
@@ -19,6 +34,7 @@ import {
   WALL_X,
 } from './galleryLayout';
 import { computeWantedTextures, tmdbImageAtSize } from './textureWindow';
+import { cameraPose, snapTargetFor } from './walkTurn';
 
 // Scene constants. Spike-tunable values live here so the phone pass can
 // adjust them in one place (technique: reference keeps a constants block).
@@ -28,6 +44,8 @@ const FOG_FAR = 26;
 const CAMERA_NEAR = 0.1;
 const CAMERA_FAR = 60;
 const LOOK_AHEAD = 4;
+// Damp/lerp rate for the walk-turn eye drift and smoothed gaze (walkTurn).
+const TURN_DAMP_LAMBDA = 6;
 const WHEEL_GAIN = 0.0024;
 const CLICK_MAX_TRAVEL = 7; // px — under this, a pointerup is a tap
 const SNAP_IDLE_MS = 150;
@@ -112,6 +130,7 @@ export class GalleryEngine {
 
   private glowTexture!: THREE.Texture;
   private frameMaterial!: THREE.MeshBasicMaterial;
+  private frameInspectMaterial!: THREE.MeshBasicMaterial;
   private placeholderMaterial!: THREE.MeshBasicMaterial;
   private wallMaterial!: THREE.MeshStandardMaterial;
   private floorMaterial!: THREE.MeshStandardMaterial;
@@ -128,7 +147,15 @@ export class GalleryEngine {
   private loadQueue: CaseRuntime[] = [];
   private currentKeep = new Set<string>();
   private loadsInFlight = 0;
-  private lookX = 0;
+  // Hall walk-turn state: the drifting eye x and the smoothed look target the
+  // camera lerps toward each frame so the head turns to face the dominant case
+  // (see walkTurn.cameraPose). driftX is a standalone field so the inspect
+  // flight can read the settled hall drift without the per-frame damp being
+  // corrupted by the inspect blend that overwrites camera.position.x.
+  private driftX = 0;
+  private lookTarget = new THREE.Vector3();
+  private lookSmoothed = new THREE.Vector3(0, EYE_Y, -LOOK_AHEAD);
+  private inspectLook = new THREE.Vector3(); // scratch, inspect gaze per frame
   private lastWindowUpdate = 0;
   private textureLoader = new THREE.TextureLoader();
 
@@ -225,6 +252,15 @@ export class GalleryEngine {
       depthWrite: false,
     });
     this.frameMaterial = new THREE.MeshBasicMaterial({ color: '#e8e0d0' });
+    // Transparent-pass twin of frameMaterial: the inspected case's frame
+    // strips swap onto this during the inspect flight so they join the
+    // poster in the transparent render list, above the dim layer (see
+    // beginInspect). Shared frameMaterial must not be mutated — every other
+    // case on the wall uses it.
+    this.frameInspectMaterial = new THREE.MeshBasicMaterial({
+      color: '#e8e0d0',
+      transparent: true,
+    });
     this.placeholderMaterial = new THREE.MeshBasicMaterial({
       color: '#101012',
     });
@@ -986,11 +1022,21 @@ export class GalleryEngine {
     this.selectedIndex = runtime.slot.flatIndex;
     this.focusProgress = 0;
     this.mode = 'focusing';
-    // Lift the case above the dim quad (renderOrder 90) so the hero poster
-    // isn't darkened with the hall behind it.
+    // Lift the case above the dim layer. renderOrder alone is NOT enough:
+    // three renders the whole opaque list before the transparent list, and
+    // renderOrder only sorts within each list — so the opaque poster/strips
+    // were drawn first and the transparent dimQuad (90, depthTest: false)
+    // then dimmed them along with the world. The case's meshes must join the
+    // transparent list for renderOrder 95 to beat dimQuad (90) and backdrop
+    // (91). restoreSlot undoes all of this.
     runtime.group.traverse((obj) => {
       obj.renderOrder = 95;
+      if (obj instanceof THREE.Mesh && obj.material === this.frameMaterial) {
+        obj.material = this.frameInspectMaterial;
+      }
     });
+    runtime.poster.material.transparent = true;
+    runtime.poster.material.needsUpdate = true;
     // Swap the inspected poster to the sharper w780 bucket.
     this.loadInspectPoster(runtime);
     this.emitFocus(this.focusIndex);
@@ -1086,12 +1132,27 @@ export class GalleryEngine {
     runtime.swayGroup.rotation.set(0, 0, 0);
     runtime.group.traverse((obj) => {
       obj.renderOrder = 0;
+      if (
+        obj instanceof THREE.Mesh &&
+        obj.material === this.frameInspectMaterial
+      ) {
+        obj.material = this.frameMaterial;
+      }
     });
+    runtime.poster.material.transparent = false;
+    runtime.poster.material.needsUpdate = true;
   }
 
   private smooth(value: number): number {
     const t = clamp(value, 0, 1);
     return t * t * (3 - 2 * t);
+  }
+
+  /** Eased inspect-flight amount: linear on the way out, smoothstepped in. */
+  private easedFocus(): number {
+    return this.mode === 'returning'
+      ? this.focusProgress
+      : this.smooth(this.focusProgress);
   }
 
   // ── Frame loop ───────────────────────────────────────────────────────────
@@ -1163,9 +1224,14 @@ export class GalleryEngine {
 
     if (this.mode === 'hall') {
       if (!this.pointerDown && timestamp - this.lastInputTime > SNAP_IDLE_MS) {
+        // Snap toward the station the walk is HEADING for (round of targetWalk),
+        // never the one it is currently leaving — anchoring to the current
+        // position would drag an in-flight travel/arrow/fling back to its start
+        // and stall mid-corridor. walk then damps onto targetWalk, so the idle
+        // camera settles at a station fully turned (weight → 1).
         this.targetWalk = damp(
           this.targetWalk,
-          Math.round(this.targetWalk),
+          snapTargetFor(this.targetWalk),
           8.5 * lambdaBoost,
           delta,
         );
@@ -1246,10 +1312,7 @@ export class GalleryEngine {
     // Flight + environment for the selected case.
     if (this.selectedIndex !== null && this.mode !== 'hall') {
       const runtime = this.cases[this.selectedIndex];
-      const eased =
-        this.mode === 'returning'
-          ? this.focusProgress
-          : this.smooth(this.focusProgress);
+      const eased = this.easedFocus();
       this.applyFlight(runtime, eased);
 
       this.dimQuad.visible = true;
@@ -1274,27 +1337,46 @@ export class GalleryEngine {
       );
     }
 
-    // Camera: eye-height walk along the corridor, gaze biased toward the
-    // focused case's wall so it reads (and is tappable) from the walk line;
-    // asymmetric frustum while inspecting so the case centers beside the
-    // placard.
+    // Camera. Hall/travel: the eye drifts toward the far wall and the head
+    // turns to face the dominant case (walkTurn.cameraPose) — the Curator's
+    // Walk. Inspect/return: the eye recentres on the corridor and stands back
+    // so the flown case sits beside the placard, with an asymmetric frustum
+    // (applyViewOffset). The hall pose is blended out by the focus progress so
+    // tapping a turned case doesn't pop the camera. Travel is just hall with an
+    // animated targetWalk, so it rides the hall branch.
     const camZ = this.walkZ();
-    const focusSlot = this.cases[this.focusIndex]?.slot;
-    const lookTargetX =
-      this.mode === 'hall' && focusSlot ? focusSlot.x * 0.35 : 0;
-    this.lookX = damp(this.lookX, lookTargetX, 5, delta);
-    this.camera.position.set(0, EYE_Y, camZ + ROOM_TAIL * 0.4);
-    this.camera.lookAt(this.lookX, EYE_Y + 0.03, camZ - LOOK_AHEAD);
+    const pose = cameraPose(camZ, this.layout);
+    this.driftX = damp(this.driftX, pose.x, TURN_DAMP_LAMBDA, delta);
+    this.lookTarget.set(pose.look.x, pose.look.y, pose.look.z);
+    this.lookSmoothed.lerp(
+      this.lookTarget,
+      1 - Math.exp(-TURN_DAMP_LAMBDA * delta),
+    );
+
+    if (this.mode === 'hall') {
+      this.camera.position.set(this.driftX, EYE_Y, camZ);
+      this.camera.lookAt(this.lookSmoothed);
+    } else {
+      const eased = this.easedFocus();
+      this.camera.position.set(
+        THREE.MathUtils.lerp(this.driftX, 0, eased),
+        EYE_Y,
+        THREE.MathUtils.lerp(camZ, camZ + ROOM_TAIL * 0.4, eased),
+      );
+      // Blend the hall gaze (lookSmoothed) into the centred inspect look as
+      // the flight progresses: eased 0 ⇒ hall, eased 1 ⇒ inspect. The inspect
+      // gaze is dead-centre in x (the placard offset is an asymmetric frustum,
+      // not a turned eye).
+      this.inspectLook.set(0, EYE_Y + 0.03, camZ - LOOK_AHEAD);
+      this.camera.lookAt(this.inspectLook.lerp(this.lookSmoothed, 1 - eased));
+    }
     this.applyViewOffset();
   }
 
   private applyViewOffset() {
     const width = Math.max(1, this.canvas.clientWidth);
     const height = Math.max(1, this.canvas.clientHeight);
-    const progress =
-      this.mode === 'returning'
-        ? this.focusProgress
-        : this.smooth(this.focusProgress);
+    const progress = this.easedFocus();
     const active = this.selectedIndex !== null && progress > 0.001;
     if (!active) {
       this.camera.clearViewOffset();
@@ -1388,6 +1470,9 @@ export class GalleryEngine {
       });
     });
     this.glowTexture.dispose();
+    // Not scene-attached while no case is inspected, so the traverse above
+    // can miss it; dispose is idempotent when it was attached.
+    this.frameInspectMaterial.dispose();
     this.renderer.dispose();
     if (import.meta.env.DEV) {
       delete (window as unknown as Record<string, unknown>).__SPOOL_GALLERY__;

@@ -1,23 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { Tier, RankedItem } from '../../../types';
+import { Tier } from '../../../types';
 import {
   buildCorridorLayout,
   roomIndexAtZ,
   TIER_ANCHOR_SCALE,
 } from '../galleryLayout';
-
-function makeItem(id: string, tier: Tier, rank: number): RankedItem {
-  return {
-    id,
-    title: `Movie ${id}`,
-    year: '2024',
-    posterUrl: `https://image.tmdb.org/t/p/w500/${id}.jpg`,
-    type: 'movie',
-    genres: [],
-    tier,
-    rank,
-  };
-}
+import { makeItem } from './fixtures';
 
 const TIERS = [Tier.S, Tier.A, Tier.B, Tier.C, Tier.D];
 
@@ -50,9 +38,9 @@ describe('buildCorridorLayout', () => {
       'right',
       'left',
     ]);
-    // pairs share a z; successive pairs advance down the corridor (−Z)
-    expect(layout.slots[0].z).toBeCloseTo(layout.slots[1].z);
-    expect(layout.slots[2].z).toBeLessThan(layout.slots[0].z);
+    // single file: every case has its own station, advancing down −Z
+    expect(layout.slots[1].z).toBeLessThan(layout.slots[0].z);
+    expect(layout.slots[2].z).toBeLessThan(layout.slots[1].z);
   });
 
   it('flags only the first item of each tier as anchor with the larger case', () => {
@@ -103,7 +91,7 @@ describe('buildCorridorLayout', () => {
     const layout = buildCorridorLayout(items, TIERS);
     expect(layout.slots).toHaveLength(150);
     expect(layout.walkStops).toHaveLength(150);
-    expect(layout.totalLength).toBeGreaterThan(80); // 75 pairs × 1.15 spacing
+    expect(layout.totalLength).toBeGreaterThan(80); // 150 stations × 1.25 spacing
     expect(layout.totalLength).toBeLessThan(200);
   });
 
