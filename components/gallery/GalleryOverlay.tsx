@@ -16,8 +16,28 @@ export const GalleryOverlay: React.FC<GalleryOverlayProps> = ({ onExit, children
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
+    // Fullscreen takeover: mark the app root inert so the covered grid drops
+    // out of the tab order and the accessibility tree. The overlay portals to
+    // document.body (a sibling of #root), so it stays interactive. This is the
+    // inert-background equivalent of the FocusTrap the other modals use.
+    const appRoot = document.getElementById('root');
+    appRoot?.setAttribute('inert', '');
+
+    // Remember what had focus on entry (the GalleryModeToggle button) so we can
+    // hand focus back on exit; GalleryView focuses the canvas for us.
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
     return () => {
       document.body.style.overflow = prev;
+      appRoot?.removeAttribute('inert');
+      if (
+        previouslyFocused &&
+        previouslyFocused.isConnected &&
+        typeof previouslyFocused.focus === 'function'
+      ) {
+        previouslyFocused.focus({ preventScroll: true });
+      }
     };
   }, []);
 

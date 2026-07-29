@@ -105,6 +105,10 @@ const GalleryView: React.FC<GalleryViewProps> = ({
     };
     reducedMotionQuery.addEventListener('change', handleMotionChange);
 
+    // Enter the Walk keyboard-ready: focus the canvas so arrow-key travel
+    // works immediately, without a click, on portal entry.
+    canvas.focus({ preventScroll: true });
+
     return () => {
       reducedMotionQuery.removeEventListener('change', handleMotionChange);
       engine.onCrossfade(null);
@@ -138,6 +142,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({
   useEffect(() => {
     if (!onExitRequest) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape' && mode === 'hall') onExitRequest();
     };
     window.addEventListener('keydown', onKeyDown);

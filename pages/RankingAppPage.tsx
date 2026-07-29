@@ -1604,6 +1604,9 @@ const RankingAppPage = () => {
   // *_Items collection by id — the persisted title must be the
   // TMDB/OpenLibrary default-locale title, never the zh one.
   const handleRerankItem = (item: RankedItem) => {
+    // The ceremony is a work surface — leave the Walk; modals stack z-50 under
+    // the z-[70] overlay by design, so re-ranking from gallery must exit first.
+    if (viewMode === 'gallery') setViewMode('grid');
     if (mediaMode === 'books') {
       const rawItem = bookItems.find((i) => i.id === item.id) ?? item;
       setBookRerankState(rawItem);
@@ -1844,28 +1847,28 @@ const RankingAppPage = () => {
         )}
         {activeTab === 'ranking' && localizedItems.length > 0 && (
           <>
-          {viewMode === 'gallery' && gallerySupported && (
-            <GalleryOverlay onExit={() => setViewMode('grid')}>
-            <ErrorBoundary>
-              <Suspense
-                fallback={
-                  <div className="w-full h-full bg-[#050505] flex items-center justify-center">
-                    <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
-                  </div>
-                }
-              >
-                <GalleryView
-                  items={localizedItems}
-                  scoreMap={scoreMap}
-                  showScores={showScores}
-                  onRerank={handleRerankItem}
-                  onExitRequest={() => setViewMode('grid')}
-                  onFallbackToGrid={() => suppressGalleryForSession()}
-                />
-              </Suspense>
-            </ErrorBoundary>
-            </GalleryOverlay>
-          )}
+            {viewMode === 'gallery' && gallerySupported && (
+              <GalleryOverlay onExit={() => setViewMode('grid')}>
+                <ErrorBoundary>
+                  <Suspense
+                    fallback={
+                      <div className="w-full h-full bg-[#050505] flex items-center justify-center">
+                        <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    }
+                  >
+                    <GalleryView
+                      items={localizedItems}
+                      scoreMap={scoreMap}
+                      showScores={showScores}
+                      onRerank={handleRerankItem}
+                      onExitRequest={() => setViewMode('grid')}
+                      onFallbackToGrid={() => suppressGalleryForSession()}
+                    />
+                  </Suspense>
+                </ErrorBoundary>
+              </GalleryOverlay>
+            )}
           <ErrorBoundary>
           <div className="space-y-4">
             {TIERS.map((tier, tierIndex) => (
