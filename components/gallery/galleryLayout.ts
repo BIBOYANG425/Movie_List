@@ -9,13 +9,15 @@ export const CASE_Y = 1.5;
 export const CASE_W = 0.62; // poster plane, 2:3
 export const CASE_H = 0.93;
 export const ROOM_LEAD = 1.6;
-export const CASE_SPACING = 1.15;
+// Single-file station pacing ≈ 1.35× case height, scaled from the design
+// prototype (spacing 2.7 at case height 2.0 → 1.25 at CASE_H 0.93).
+export const CASE_SPACING = 1.25;
 export const ROOM_TAIL = 2.0;
 export const ARCH_DEPTH = 1.2;
 export const TIER_ANCHOR_SCALE = 1.15;
 // Cases angle partway toward the corridor entrance so they read while
 // walking (a flat ±90° hang is edge-on and invisible from the walk line —
-// confirmed by headless smoke test). Stops stand ~2.4m before each pair.
+// confirmed by headless smoke test). Stops stand ~2.4m before each case.
 export const CASE_FACE_BIAS = 0.42;
 export const STOP_LEAD = 2.4;
 
@@ -82,13 +84,15 @@ export function buildCorridorLayout(
 
     const roomIndex = rooms.length;
     const startZ = cursorZ;
-    const pairCount = Math.ceil(tierItems.length / 2);
-    const endZ = startZ - (ROOM_LEAD + pairCount * CASE_SPACING + ROOM_TAIL);
+    const endZ =
+      startZ - (ROOM_LEAD + tierItems.length * CASE_SPACING + ROOM_TAIL);
 
+    // Single file: one station per case, side alternating L/R, each at its
+    // own z (a shared-z pair would make left/right stops indistinguishable
+    // to the walk-turn mechanic).
     const roomSlots: CaseSlot[] = tierItems.map((item, i) => {
       const side: 'left' | 'right' = i % 2 === 0 ? 'left' : 'right';
-      const pair = Math.floor(i / 2);
-      const z = startZ - ROOM_LEAD - pair * CASE_SPACING;
+      const z = startZ - ROOM_LEAD - i * CASE_SPACING;
       const slot: CaseSlot = {
         itemId: item.id,
         tier,
