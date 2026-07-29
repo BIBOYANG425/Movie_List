@@ -19,6 +19,10 @@
  *                            corridor through the real idle-snap path. This is
  *                            the regression drive for "snap fights the target".
  *   __smoke.walkState()    — { walk, targetWalk } read of the walk animator.
+ *   __smoke.tierFirstStops() — first walk-stop (flatIndex) of each non-empty
+ *                            tier room, in corridor order. Lets the driver
+ *                            derive a tier fast-travel target from the fixture
+ *                            layout instead of hardcoding a magic index.
  *   __smoke.sample(n, i?)  — render synchronously, then read an n×n pixel
  *                            block centered on a poster and return its
  *                            mean/max luminance (0-1), the camera x, and the
@@ -69,6 +73,7 @@ type SmokeApi = {
   walkTo: (stopIndex: number) => void;
   travelTo: (stopIndex: number) => void;
   walkState: () => { walk: number; targetWalk: number };
+  tierFirstStops: () => number[];
   sample: (
     blockSize?: number,
     caseIndex?: number,
@@ -120,6 +125,17 @@ const api: SmokeApi = {
   walkState: () => {
     const eng = engine as unknown as { walk: number; targetWalk: number };
     return { walk: eng.walk, targetWalk: eng.targetWalk };
+  },
+  tierFirstStops: () => {
+    // Corridor rooms are built one per non-empty tier in tier order (S→D);
+    // each slot carries its walk-stop flatIndex. Reading room[n].slots[0]
+    // gives the first stop of the n-th tier straight from the built layout,
+    // so the driver's fast-travel target tracks the fixture instead of a
+    // hardcoded number.
+    const eng = engine as unknown as {
+      layout: { rooms: Array<{ slots: Array<{ flatIndex: number }> }> };
+    };
+    return eng.layout.rooms.map((room) => room.slots[0].flatIndex);
   },
   sample: (blockSize = 60, caseIndex) => {
     // TS `private` is compile-time only — the harness reaches into the

@@ -1,7 +1,7 @@
 # The Curator's Walk — Gallery Redesign (Design)
 
 **Date:** 2026-07-28
-**Status:** Approved direction (prototype validated in session; see scratchpad `concepts/walk3d.html`)
+**Status:** Implemented (Tasks 1-5) — pending live pass (Task 6)
 
 ## What
 

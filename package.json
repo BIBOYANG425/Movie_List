@@ -8,7 +8,8 @@
     "start": "node server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "fixtures:engine": "tsx scripts/generateEngineFixtures.ts"
+    "fixtures:engine": "tsx scripts/generateEngineFixtures.ts",
+    "smoke:gallery": "node scripts/gallery-smoke/run.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",

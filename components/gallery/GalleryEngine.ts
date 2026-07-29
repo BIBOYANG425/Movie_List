@@ -1,3 +1,18 @@
+/**
+ * GalleryEngine — the three.js renderer behind the Curator's Walk.
+ *
+ * Lays out a single-file corridor (one room per non-empty tier, S→D) that the
+ * camera walks along x=0 down −Z. At each walk stop the camera turns to face
+ * that case on the wall (walkTurn.ts) rather than sliding past it. Selecting a
+ * case pulls it forward to an inspect anchor; the inspected poster stays bright
+ * while the rest of the world dims, via a transparent-list swap that renders
+ * the selection outside the dim pass. The whole canvas is hosted fullscreen by
+ * GalleryOverlay (a React portal); this class owns only the scene and camera.
+ *
+ * Interaction patterns (continuous walk pacing, pull-forward inspect,
+ * click-vs-drag threshold) studied from "The Complete Shelf" by Mint
+ * (github.com/mintdotgg/mint-playground, MIT). Implementation is original.
+ */
 import * as THREE from 'three';
 import { Tier, RankedItem } from '../../types';
 import {

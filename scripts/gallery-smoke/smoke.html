@@ -3,6 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <title>Gallery smoke harness</title>
+    <!-- Inline empty icon: stops the browser's automatic /favicon.ico request,
+         which vite doesn't serve — its 404 would otherwise trip run.mjs's
+         zero-console-errors guard. -->
+    <link rel="icon" href="data:," />
     <style>
       html,
       body {

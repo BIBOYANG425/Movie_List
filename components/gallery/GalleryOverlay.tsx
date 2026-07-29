@@ -3,7 +3,7 @@
 // hall-mode Esc, wired inside GalleryView so it never steals inspect's Esc)
 // exits back to the grid. Rendered into document.body so page chrome
 // (header/search/filter chips) is fully covered.
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -13,6 +13,16 @@ interface GalleryOverlayProps {
 }
 
 export const GalleryOverlay: React.FC<GalleryOverlayProps> = ({ onExit, children }) => {
+  // Remember what had focus on entry (the GalleryModeToggle button) so we can
+  // hand focus back on exit; GalleryView focuses the canvas for us. Captured at
+  // render time, not in the mount effect: the child GalleryView's canvas-focus
+  // effect runs before this parent effect (children mount first), so an
+  // effect-time read on warm re-entry would capture the canvas instead of the
+  // toggle. Render-time capture happens before any child effect fires.
+  const [previouslyFocused] = useState(
+    () => document.activeElement as HTMLElement | null,
+  );
+
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -23,10 +33,6 @@ export const GalleryOverlay: React.FC<GalleryOverlayProps> = ({ onExit, children
     // inert-background equivalent of the FocusTrap the other modals use.
     const appRoot = document.getElementById('root');
     appRoot?.setAttribute('inert', '');
-
-    // Remember what had focus on entry (the GalleryModeToggle button) so we can
-    // hand focus back on exit; GalleryView focuses the canvas for us.
-    const previouslyFocused = document.activeElement as HTMLElement | null;
 
     return () => {
       document.body.style.overflow = prev;

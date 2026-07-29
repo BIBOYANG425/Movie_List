@@ -1,31 +1,40 @@
 /**
- * Gallery inspect-brightness smoke test (regression guard for the near-black
- * inspected poster).
+ * Gallery full-cycle smoke test (regression guard for the Curator's Walk).
  *
  * Boots the smoke.html harness under vite, drives it with puppeteer-core
- * against the system Chrome, and runs three checks against the fixture posters
- * (the engine's procedural fallback — bright serif text on the poster center):
+ * against the system Chrome, and walks the engine through a complete cycle,
+ * screenshotting each phase into artifacts/ (gitignored). Every phase asserts;
+ * any console 'error' or uncaught page error across the whole run fails it.
  *
- *   1. Idle-snap target — drive a full-corridor travel (target-only, the
- *      travelToTier way) and assert it settles at the destination station, not
- *      stalled mid-corridor. Guards the snap-anchors-to-target fix.
- *   2. Curator's Walk turn — stand at a right-wall stop (self-verified via
+ * Phases (fixture posters render the engine's procedural fallback — bright
+ * serif title text, a stable luminance target):
+ *
+ *   1. Hall start — settle at stop 0.
+ *   2. Idle-snap travel — drive a full-corridor travel the travelToTier way
+ *      (target-only, back-dated input) and assert it settles at the far
+ *      destination, not stalled mid-corridor. Guards the snap-anchors-to-target
+ *      fix.
+ *   3. Curator's Walk turn — stand at a right-wall stop (self-verified via
  *      slot.x > 0) and assert the poster reads bright/frontal (max luminance
  *      > 0.35) AND the camera drifted toward the opposite wall (camera.x < 0).
  *      The Task 3 turn-to-face guard.
- *   3. Inspect brightness — fly the first case to the inspect anchor and
- *      assert the brightest pixel in a 60×60 block at the poster's center
- *      reads > 0.35 luminance. A dim-layer-over-poster regression lands far
- *      below the threshold.
+ *   4. Inspect brightness — fly the first case to the inspect anchor and assert
+ *      the brightest pixel in a 60×60 block at the poster's center reads > 0.35.
+ *      A dim-layer-over-poster regression lands far below the threshold.
+ *   5. Esc → hall — dispatch a real Escape keydown on the canvas and assert the
+ *      engine's mode machine returns to 'hall'.
+ *   6. Tier fast-travel — travel to the first stop of the second tier (derived
+ *      from the fixture layout via __smoke.tierFirstStops()) and assert arrival.
  *
  * Usage:
  *   node scripts/gallery-smoke/run.mjs [--label before|after]
+ *   SMOKE_CHROME=/path/to/chromium node scripts/gallery-smoke/run.mjs
  *
  * Screenshots land in scripts/gallery-smoke/artifacts/ (gitignored).
- * Exit code 0 = PASS, 1 = FAIL, 2 = harness error (WebGL unavailable etc).
+ * Exit code 0 = PASS, 1 = FAIL, 2 = harness error (Chrome/WebGL unavailable).
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
@@ -35,6 +44,7 @@ const REPO = path.resolve(HERE, '..', '..');
 const PORT = 5199;
 const URL = `http://localhost:${PORT}/smoke.html`;
 const CHROME =
+  process.env.SMOKE_CHROME ??
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const LUMINANCE_THRESHOLD = 0.35;
 const SETTLE_MS = 900;
@@ -43,6 +53,20 @@ const label =
   process.argv.includes('--label')
     ? process.argv[process.argv.indexOf('--label') + 1]
     : 'run';
+
+// Collected across the whole run; any entry fails the smoke (Three.js perf
+// warnings arrive as 'warning'/'log' and are ignored — only 'error' counts).
+const consoleErrors = [];
+
+function attachErrorCollector(page) {
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(`console.error: ${msg.text()}`);
+  });
+  page.on('pageerror', (err) => {
+    consoleErrors.push(`pageerror: ${err.message}`);
+    console.error('[page]', err.message);
+  });
+}
 
 function startVite() {
   const vite = spawn(
@@ -83,7 +107,7 @@ async function launchBrowser(extraArgs) {
 
 async function tryHarness(browser) {
   const page = await browser.newPage();
-  page.on('pageerror', (err) => console.error('[page]', err.message));
+  attachErrorCollector(page);
   await page.goto(URL, { waitUntil: 'networkidle0', timeout: 30000 });
   try {
     await page.waitForFunction(
@@ -102,7 +126,19 @@ async function tryHarness(browser) {
   return { page, fatal: null };
 }
 
+const shot = (page, name) =>
+  page.screenshot({ path: path.join(HERE, 'artifacts', `${label}-${name}.png`) });
+
 async function main() {
+  if (!existsSync(CHROME)) {
+    console.error(
+      `FATAL: Chrome not found at ${CHROME}\n` +
+        'set SMOKE_CHROME to your Chrome/Chromium binary',
+    );
+    process.exitCode = 2;
+    return;
+  }
+
   mkdirSync(path.join(HERE, 'artifacts'), { recursive: true });
   const vite = startVite();
   let browser = null;
@@ -117,6 +153,7 @@ async function main() {
         `plain headless WebGL unavailable (${fatal}) — retrying with SwiftShader`,
       );
       await browser.close();
+      consoleErrors.length = 0; // discard the failed page's noise
       browser = await launchBrowser([
         '--use-angle=swiftshader',
         '--enable-unsafe-swiftshader',
@@ -129,17 +166,26 @@ async function main() {
       }
     }
 
-    // ── Idle-snap anchors to the walk target (regression) ──────────────────
-    // Drive a full-corridor travel the travelToTier way — set ONLY the target
-    // and back-date input — then let it settle through the real damp+snap loop.
-    // The bug this guards: snapping to the CURRENT station drags targetWalk back
-    // toward the start, stalling the travel mid-corridor. The 10-item fixture
-    // has stops 0…9; travelling 0 → 9 must actually arrive at 9.
+    // ── Phase 1: hall start ────────────────────────────────────────────────
+    await page.evaluate(() => window.__smoke.walkTo(0));
+    await new Promise((r) => setTimeout(r, SETTLE_MS));
+    await shot(page, '01-hall');
+    const hallMode = await page.evaluate(() => window.__smoke.mode);
+    if (hallMode === 'hall') {
+      console.log('PASS — phase 1: settled in hall at stop 0');
+    } else {
+      console.error(`FAIL — phase 1: expected mode 'hall', got '${hallMode}'`);
+      process.exitCode = 1;
+    }
+
+    // ── Phase 2: idle-snap travel (target-only, must reach the far stop) ────
+    // The bug this guards: snapping to the CURRENT station drags targetWalk
+    // back toward the start, stalling the travel mid-corridor. The 10-item
+    // fixture has stops 0…9; travelling 0 → 9 must actually arrive at 9.
     const TRAVEL_TARGET = 9;
-    await page.evaluate(() => window.__smoke.walkTo(0)); // known start
-    await new Promise((r) => setTimeout(r, 200));
     await page.evaluate((i) => window.__smoke.travelTo(i), TRAVEL_TARGET);
     await new Promise((r) => setTimeout(r, 1600));
+    await shot(page, '02-travel');
     const travel = await page.evaluate(() => window.__smoke.walkState());
     const arrived = Math.round(travel.walk);
     console.log(
@@ -148,17 +194,17 @@ async function main() {
     );
     if (arrived === TRAVEL_TARGET) {
       console.log(
-        `PASS — travel reached station ${TRAVEL_TARGET} (snap follows the target)`,
+        `PASS — phase 2: travel reached station ${TRAVEL_TARGET} (snap follows the target)`,
       );
     } else {
       console.error(
-        `FAIL — travel stalled at station ${arrived}, expected ${TRAVEL_TARGET} ` +
+        `FAIL — phase 2: travel stalled at station ${arrived}, expected ${TRAVEL_TARGET} ` +
           '(idle snap is dragging the target back toward the current station)',
       );
       process.exitCode = 1;
     }
 
-    // ── Curator's Walk turn ────────────────────────────────────────────────
+    // ── Phase 3: Curator's Walk turn ───────────────────────────────────────
     // Stand at a right-wall stop and confirm the camera turns to face it. The
     // fixture side pattern per tier is L, R, L, … so walk stop index 1 (the
     // second stop) is a right-wall case. A correct turn drifts the eye toward
@@ -168,9 +214,7 @@ async function main() {
     const RIGHT_WALL_STOP = 1;
     await page.evaluate((i) => window.__smoke.walkTo(i), RIGHT_WALL_STOP);
     await new Promise((r) => setTimeout(r, SETTLE_MS));
-
-    const turnShot = path.join(HERE, 'artifacts', `${label}-stop.png`);
-    await page.screenshot({ path: turnShot });
+    await shot(page, '03-stop');
     const turn = await page.evaluate(
       (i) => window.__smoke.sample(60, i),
       RIGHT_WALL_STOP,
@@ -180,36 +224,33 @@ async function main() {
         `(${turn.centerX}, ${turn.centerY}) — max luminance ` +
         `${turn.max.toFixed(3)}, camera.x ${turn.cameraX.toFixed(3)}`,
     );
-    console.log(`screenshot: ${turnShot}`);
 
     const rightWall = turn.slotX > 0; // self-check: is this actually a right case?
     const turnBright = turn.max > LUMINANCE_THRESHOLD;
     const turnDrift = turn.cameraX < -0.2; // drifted toward the far (left) wall
     if (rightWall && turnBright && turnDrift) {
       console.log(
-        `PASS — walk-turn: right-wall case (slot.x ${turn.slotX.toFixed(2)}), ` +
+        `PASS — phase 3: walk-turn right-wall case (slot.x ${turn.slotX.toFixed(2)}), ` +
           `poster frontal (max ${turn.max.toFixed(3)} > ${LUMINANCE_THRESHOLD}), ` +
           `eye drifted to x ${turn.cameraX.toFixed(3)}`,
       );
     } else {
       console.error(
-        `FAIL — walk-turn: rightWall=${rightWall} (slot.x ${turn.slotX.toFixed(2)}), ` +
+        `FAIL — phase 3: rightWall=${rightWall} (slot.x ${turn.slotX.toFixed(2)}), ` +
           `bright=${turnBright} (max ${turn.max.toFixed(3)}), ` +
           `drift=${turnDrift} (camera.x ${turn.cameraX.toFixed(3)} — expected < -0.2)`,
       );
       process.exitCode = 1;
     }
 
-    // ── Inspect brightness ─────────────────────────────────────────────────
+    // ── Phase 4: inspect brightness ────────────────────────────────────────
     // Fly the first fixture case to the inspect anchor and let it settle.
     await page.evaluate(() => window.__smoke.inspectFirst());
     await page.waitForFunction(() => window.__smoke.mode === 'inspect', {
       timeout: 5000,
     });
     await new Promise((r) => setTimeout(r, SETTLE_MS));
-
-    const screenshotPath = path.join(HERE, 'artifacts', `${label}.png`);
-    await page.screenshot({ path: screenshotPath });
+    await shot(page, '04-inspect');
 
     const sample = await page.evaluate(() => window.__smoke.sample(60));
     console.log(
@@ -217,18 +258,90 @@ async function main() {
         `${sample.blockSize}×${sample.blockSize}px — ` +
         `mean luminance ${sample.mean.toFixed(3)}, max ${sample.max.toFixed(3)}`,
     );
-    console.log(`screenshot: ${screenshotPath}`);
-
     if (sample.max > LUMINANCE_THRESHOLD) {
       console.log(
-        `PASS — max luminance ${sample.max.toFixed(3)} > ${LUMINANCE_THRESHOLD}`,
+        `PASS — phase 4: max luminance ${sample.max.toFixed(3)} > ${LUMINANCE_THRESHOLD}`,
       );
     } else {
       console.error(
-        `FAIL — max luminance ${sample.max.toFixed(3)} <= ${LUMINANCE_THRESHOLD} ` +
+        `FAIL — phase 4: max luminance ${sample.max.toFixed(3)} <= ${LUMINANCE_THRESHOLD} ` +
           '(inspected poster is being dimmed with the world)',
       );
       process.exitCode = 1;
+    }
+
+    // ── Phase 5: Esc → hall ────────────────────────────────────────────────
+    // Dispatch a real Escape keydown on the canvas (the engine's own handler
+    // wiring, not the React GalleryView layer) and assert the mode machine
+    // damps all the way back to 'hall'.
+    await page.evaluate(() => {
+      const canvas = document.getElementById('stage');
+      canvas.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    try {
+      await page.waitForFunction(() => window.__smoke.mode === 'hall', {
+        timeout: 5000,
+      });
+    } catch {
+      // fall through to the assertion below for a descriptive failure
+    }
+    await new Promise((r) => setTimeout(r, SETTLE_MS));
+    await shot(page, '05-hall-return');
+    const returnedMode = await page.evaluate(() => window.__smoke.mode);
+    if (returnedMode === 'hall') {
+      console.log("PASS — phase 5: Esc returned the engine to mode 'hall'");
+    } else {
+      console.error(
+        `FAIL — phase 5: expected mode 'hall' after Esc, got '${returnedMode}'`,
+      );
+      process.exitCode = 1;
+    }
+
+    // ── Phase 6: tier fast-travel ──────────────────────────────────────────
+    // travelToTier jumps to the first case of a tier's room. Derive the second
+    // tier's first stop from the built layout (tierFirstStops()[1]) rather than
+    // hardcoding it — the fixture's first tier (S) holds 3 items, so this is
+    // flatIndex 3, but computed from the corridor so it tracks the fixture.
+    const tierStops = await page.evaluate(() => window.__smoke.tierFirstStops());
+    if (tierStops.length < 2) {
+      console.error(
+        `FAIL — phase 6: fixture has ${tierStops.length} tier room(s), need >= 2`,
+      );
+      process.exitCode = 1;
+    } else {
+      const secondTierStop = tierStops[1];
+      await page.evaluate((i) => window.__smoke.travelTo(i), secondTierStop);
+      await new Promise((r) => setTimeout(r, 1600));
+      await shot(page, '06-tier');
+      const tierTravel = await page.evaluate(() => window.__smoke.walkState());
+      const tierArrived = Math.round(tierTravel.walk);
+      console.log(
+        `tier fast-travel → stop ${secondTierStop} (second tier's first case): ` +
+          `settled walk ${tierTravel.walk.toFixed(3)} → station ${tierArrived}`,
+      );
+      if (tierArrived === secondTierStop) {
+        console.log(
+          `PASS — phase 6: reached second tier's first stop ${secondTierStop}`,
+        );
+      } else {
+        console.error(
+          `FAIL — phase 6: tier travel settled at ${tierArrived}, expected ${secondTierStop}`,
+        );
+        process.exitCode = 1;
+      }
+    }
+
+    // ── Console-error guard ────────────────────────────────────────────────
+    if (consoleErrors.length > 0) {
+      console.error(
+        `FAIL — ${consoleErrors.length} console error(s) during the run:`,
+      );
+      for (const e of consoleErrors) console.error(`  • ${e}`);
+      process.exitCode = 1;
+    } else {
+      console.log('PASS — zero console errors across the run');
     }
   } catch (err) {
     console.error('harness error:', err);
