@@ -112,6 +112,7 @@ export class GalleryEngine {
 
   private glowTexture!: THREE.Texture;
   private frameMaterial!: THREE.MeshBasicMaterial;
+  private frameInspectMaterial!: THREE.MeshBasicMaterial;
   private placeholderMaterial!: THREE.MeshBasicMaterial;
   private wallMaterial!: THREE.MeshStandardMaterial;
   private floorMaterial!: THREE.MeshStandardMaterial;
@@ -225,6 +226,15 @@ export class GalleryEngine {
       depthWrite: false,
     });
     this.frameMaterial = new THREE.MeshBasicMaterial({ color: '#e8e0d0' });
+    // Transparent-pass twin of frameMaterial: the inspected case's frame
+    // strips swap onto this during the inspect flight so they join the
+    // poster in the transparent render list, above the dim layer (see
+    // beginInspect). Shared frameMaterial must not be mutated — every other
+    // case on the wall uses it.
+    this.frameInspectMaterial = new THREE.MeshBasicMaterial({
+      color: '#e8e0d0',
+      transparent: true,
+    });
     this.placeholderMaterial = new THREE.MeshBasicMaterial({
       color: '#101012',
     });
@@ -986,11 +996,21 @@ export class GalleryEngine {
     this.selectedIndex = runtime.slot.flatIndex;
     this.focusProgress = 0;
     this.mode = 'focusing';
-    // Lift the case above the dim quad (renderOrder 90) so the hero poster
-    // isn't darkened with the hall behind it.
+    // Lift the case above the dim layer. renderOrder alone is NOT enough:
+    // three renders the whole opaque list before the transparent list, and
+    // renderOrder only sorts within each list — so the opaque poster/strips
+    // were drawn first and the transparent dimQuad (90, depthTest: false)
+    // then dimmed them along with the world. The case's meshes must join the
+    // transparent list for renderOrder 95 to beat dimQuad (90) and backdrop
+    // (91). restoreSlot undoes all of this.
     runtime.group.traverse((obj) => {
       obj.renderOrder = 95;
+      if (obj instanceof THREE.Mesh && obj.material === this.frameMaterial) {
+        obj.material = this.frameInspectMaterial;
+      }
     });
+    runtime.poster.material.transparent = true;
+    runtime.poster.material.needsUpdate = true;
     // Swap the inspected poster to the sharper w780 bucket.
     this.loadInspectPoster(runtime);
     this.emitFocus(this.focusIndex);
@@ -1086,7 +1106,15 @@ export class GalleryEngine {
     runtime.swayGroup.rotation.set(0, 0, 0);
     runtime.group.traverse((obj) => {
       obj.renderOrder = 0;
+      if (
+        obj instanceof THREE.Mesh &&
+        obj.material === this.frameInspectMaterial
+      ) {
+        obj.material = this.frameMaterial;
+      }
     });
+    runtime.poster.material.transparent = false;
+    runtime.poster.material.needsUpdate = true;
   }
 
   private smooth(value: number): number {
@@ -1388,6 +1416,9 @@ export class GalleryEngine {
       });
     });
     this.glowTexture.dispose();
+    // Not scene-attached while no case is inspected, so the traverse above
+    // can miss it; dispose is idempotent when it was attached.
+    this.frameInspectMaterial.dispose();
     this.renderer.dispose();
     if (import.meta.env.DEV) {
       delete (window as unknown as Record<string, unknown>).__SPOOL_GALLERY__;
