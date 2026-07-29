@@ -1,7 +1,10 @@
 // The Curator's Walk turn mechanic. Pure math — no three.js imports so it
-// stays unit-testable. Constants validated in the design-session prototype
-// (docs/plans/2026-07-28-curators-walk-design.md).
-import { CorridorLayout } from './galleryLayout';
+// stays unit-testable. Constants derived from the design-session prototype
+// (docs/plans/2026-07-28-curators-walk-design.md). NOTE: TURN_NEAR/TURN_FAR
+// were NOT rescaled when CASE_SPACING dropped to 1.25 (single-file corridor),
+// so adjacent influence zones overlap — mid-gap weight ≈ 0.83. Pending
+// feel-tuning in Task 3.
+import { CorridorLayout, EYE_Y } from './galleryLayout';
 
 /** Camera fully faces the case within this distance of its walk stop. */
 export const TURN_NEAR = 0.35;
@@ -11,6 +14,13 @@ export const TURN_FAR = 1.4;
 export const DRIFT_X = 1.05;
 /** How far ahead the camera looks while simply walking. */
 export const LOOK_AHEAD = 6;
+/** Station weight at which the head starts turning toward the case. */
+export const LOOK_BLEND_START = 0.12;
+/** Station weight at which the look locks fully onto the case. */
+export const LOOK_BLEND_END = 0.9;
+/** Fraction of the body drift the walking look inherits (keeps the
+ *  corridor-ahead gaze from swinging as fast as the feet). */
+export const AHEAD_X_DAMP = 0.3;
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
@@ -48,10 +58,9 @@ export function cameraPose(camZ: number, layout: CorridorLayout): CameraPose {
 
   // Blend look: corridor-ahead → case center. The look blend leads the
   // drift (smoothstep re-shaping) so the head turns before the feet plant.
-  // look.y of 0 means "eye height" to the caller (the engine substitutes
-  // EYE_Y); slot.y is the real case height.
-  const lookBlend = smoothstep(0.12, 0.9, w);
-  const ahead = { x: x * 0.3, y: 0, z: camZ - LOOK_AHEAD };
+  // The walking look sits at eye height; slot.y is the real case height.
+  const lookBlend = smoothstep(LOOK_BLEND_START, LOOK_BLEND_END, w);
+  const ahead = { x: x * AHEAD_X_DAMP, y: EYE_Y, z: camZ - LOOK_AHEAD };
   const look = slot
     ? {
         x: ahead.x + (slot.x - ahead.x) * lookBlend,

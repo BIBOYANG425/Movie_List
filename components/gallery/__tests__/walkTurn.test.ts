@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { dominantStation, cameraPose, TURN_NEAR, TURN_FAR } from '../walkTurn';
-import { buildCorridorLayout } from '../galleryLayout';
+import { buildCorridorLayout, EYE_Y } from '../galleryLayout';
 import { Tier, RankedItem } from '../../../types';
 
 const item = (id: string, tier: Tier, rank: number): RankedItem =>
@@ -18,12 +18,17 @@ describe('dominantStation', () => {
     expect(weight).toBeCloseTo(1, 5);
   });
 
-  it('returns zero weight when between stops beyond TURN_FAR', () => {
+  it('returns zero weight beyond TURN_FAR', () => {
+    expect(dominantStation(TURN_FAR + 0.01, [0]).weight).toBe(0);
+  });
+
+  it('never reaches full weight mid-gap in the real layout', () => {
     const midpoint = (layout.walkStops[0] + layout.walkStops[1]) / 2;
-    const gap = Math.abs(layout.walkStops[0] - layout.walkStops[1]) / 2;
-    const { weight } = dominantStation(midpoint, layout.walkStops);
-    if (gap >= TURN_FAR) expect(weight).toBe(0);
-    else expect(weight).toBeLessThan(1);
+    expect(dominantStation(midpoint, layout.walkStops).weight).toBeLessThan(1);
+  });
+
+  it('returns index 0 with zero weight when there are no stops', () => {
+    expect(dominantStation(3.7, [])).toEqual({ index: 0, weight: 0 });
   });
 
   it('weight decays monotonically with distance from the stop', () => {
@@ -40,9 +45,10 @@ describe('dominantStation', () => {
 });
 
 describe('cameraPose', () => {
-  it('stays on the centerline with a forward look when no station dominates', () => {
+  it('stays on the centerline with a forward eye-height look when no station dominates', () => {
     const pose = cameraPose(layout.walkStops[0] + 40, layout);
     expect(pose.x).toBeCloseTo(0, 3);
+    expect(pose.look.y).toBeCloseTo(EYE_Y, 5);
     expect(pose.look.z).toBeLessThan(layout.walkStops[0] + 40);
   });
 
@@ -57,5 +63,14 @@ describe('cameraPose', () => {
   it('is symmetric for a right-wall case', () => {
     const pose = cameraPose(layout.walkStops[1], layout);
     expect(pose.x).toBeLessThan(-0.5);
+  });
+
+  it('returns centerline and a forward look for an empty layout', () => {
+    const empty = buildCorridorLayout([], [Tier.S]);
+    const pose = cameraPose(-3, empty);
+    expect(pose.x).toBe(0);
+    expect(pose.look.x).toBe(0);
+    expect(pose.look.y).toBeCloseTo(EYE_Y, 5);
+    expect(pose.look.z).toBeLessThan(-3);
   });
 });
