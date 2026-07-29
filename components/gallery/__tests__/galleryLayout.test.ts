@@ -91,8 +91,9 @@ describe('buildCorridorLayout', () => {
     const layout = buildCorridorLayout(items, TIERS);
     expect(layout.slots).toHaveLength(150);
     expect(layout.walkStops).toHaveLength(150);
-    expect(layout.totalLength).toBeGreaterThan(80); // 150 stations × 1.25 spacing
-    expect(layout.totalLength).toBeLessThan(200);
+    // ROOM_LEAD 4.8 + 150 × CASE_SPACING 3.8 + ROOM_TAIL 6.0 + ARCH_DEPTH 3.6 ≈ 584
+    expect(layout.totalLength).toBeGreaterThan(400);
+    expect(layout.totalLength).toBeLessThan(900);
   });
 
   it('maps camera z back to the correct room', () => {

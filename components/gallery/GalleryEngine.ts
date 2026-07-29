@@ -39,11 +39,25 @@ import { cameraPose, snapTargetFor } from './walkTurn';
 // Scene constants. Spike-tunable values live here so the phone pass can
 // adjust them in one place (technique: reference keeps a constants block).
 const HALL_BG = '#050505';
-const FOG_NEAR = 8;
-const FOG_FAR = 26;
+// Fog/clip pushed out for the human-scale corridor (station pacing grew ~3×);
+// FOG keeps a few cases of depth before the hall fades to black.
+const FOG_NEAR = 13;
+const FOG_FAR = 52;
 const CAMERA_NEAR = 0.1;
-const CAMERA_FAR = 60;
-const LOOK_AHEAD = 4;
+const CAMERA_FAR = 160;
+const LOOK_AHEAD = 12;
+// Wall/archway geometry for the taller room (poster top now at 3.1 m; the wall
+// must clear it plus the tier label above).
+const WALL_HEIGHT = 5.4;
+const ARCH_OPENING = 3.6; // archway opening height between rooms
+const ARCH_HALF = 1.0; // half-width of the archway opening
+// Stand the side walls this far behind the case plane. A case hangs at ±WALL_X
+// and yaws toward the entrance by CASE_FACE_BIAS, so its far edge swings
+// (CASE_W/2)·sin(bias) ≈ 0.29 m in x toward the wall. Without a standoff the
+// wall (formerly WALL_X + 0.01) clipped that far half of every poster — the
+// occluded-right-half bug. 0.35 clears the swing with margin; the poster then
+// reads as art hung proud of the wall.
+const WALL_STANDOFF = 0.35;
 // Damp/lerp rate for the walk-turn eye drift and smoothed gaze (walkTurn).
 const TURN_DAMP_LAMBDA = 6;
 const WHEEL_GAIN = 0.0024;
@@ -53,8 +67,11 @@ const MAX_DELTA = 0.05; // s — background tabs can't produce a giant step
 const FOCUS_IN_DURATION = 0.46;
 const FOCUS_OUT_DURATION = 0.34;
 const REDUCED_FOCUS_DURATION = 0.08;
-const INSPECT_DISTANCE = 1.35;
-const IDLE_LIFT = 0.014;
+// Pull-forward inspect distance. Effective camera↔poster gap is this plus the
+// inspect step-back (ROOM_TAIL·0.4), tuned so the presented poster fills ~75%
+// of the frame height at the human scale (see applyFlight inspectScale).
+const INSPECT_DISTANCE = 2.1;
+const IDLE_LIFT = 0.04;
 const IDLE_PITCH = THREE.MathUtils.degToRad(0.28);
 const IDLE_YAW = THREE.MathUtils.degToRad(0.48);
 const IDLE_ROLL = THREE.MathUtils.degToRad(0.22);
@@ -229,8 +246,8 @@ export class GalleryEngine {
     const rim = new THREE.DirectionalLight('#8fa3bf', 0.3);
     rim.position.set(0, 2.5, -12);
     this.scene.add(rim);
-    this.bounceLight = new THREE.PointLight('#d7b072', 0.25, 18, 2);
-    this.bounceLight.position.set(0, 1.2, 0);
+    this.bounceLight = new THREE.PointLight('#d7b072', 0.25, 40, 2);
+    this.bounceLight.position.set(0, 1.7, 0);
     this.scene.add(this.bounceLight);
 
     // Shared materials — draw-call and memory discipline.
@@ -456,20 +473,21 @@ export class GalleryEngine {
   private buildRoom(room: (typeof this.layout.rooms)[number]) {
     const length = room.startZ - room.endZ;
     const centerZ = (room.startZ + room.endZ) / 2;
-    const wallGeometry = new THREE.PlaneGeometry(length, 4.2);
+    const wallGeometry = new THREE.PlaneGeometry(length, WALL_HEIGHT);
+    const wallY = WALL_HEIGHT / 2;
 
     const left = new THREE.Mesh(wallGeometry, this.wallMaterial);
-    left.position.set(-WALL_X - 0.01, 2.1, centerZ);
+    left.position.set(-WALL_X - WALL_STANDOFF, wallY, centerZ);
     left.rotation.y = Math.PI / 2;
     this.roomGroup.add(left);
 
     const right = new THREE.Mesh(wallGeometry, this.wallMaterial);
-    right.position.set(WALL_X + 0.01, 2.1, centerZ);
+    right.position.set(WALL_X + WALL_STANDOFF, wallY, centerZ);
     right.rotation.y = -Math.PI / 2;
     this.roomGroup.add(right);
 
     const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(WALL_X * 2 + 0.4, length + ARCH_DEPTH),
+      new THREE.PlaneGeometry((WALL_X + WALL_STANDOFF) * 2 + 0.2, length + ARCH_DEPTH),
       this.floorMaterial,
     );
     floor.rotation.x = -Math.PI / 2;
@@ -477,33 +495,37 @@ export class GalleryEngine {
     this.roomGroup.add(floor);
 
     // End wall with archway: two side panels + lintel; warm glow behind.
-    const archHalf = 0.75;
-    const panelWidth = WALL_X - archHalf;
-    const panelGeometry = new THREE.PlaneGeometry(panelWidth, 4.2);
+    // Panels reach the standoff walls so the end wall closes the corners.
+    const panelWidth = WALL_X + WALL_STANDOFF - ARCH_HALF;
+    const panelGeometry = new THREE.PlaneGeometry(panelWidth, WALL_HEIGHT);
     const leftPanel = new THREE.Mesh(panelGeometry, this.wallMaterial);
-    leftPanel.position.set(-(archHalf + panelWidth / 2), 2.1, room.archwayZ);
+    leftPanel.position.set(-(ARCH_HALF + panelWidth / 2), wallY, room.archwayZ);
     this.roomGroup.add(leftPanel);
     const rightPanel = new THREE.Mesh(panelGeometry, this.wallMaterial);
-    rightPanel.position.set(archHalf + panelWidth / 2, 2.1, room.archwayZ);
+    rightPanel.position.set(ARCH_HALF + panelWidth / 2, wallY, room.archwayZ);
     this.roomGroup.add(rightPanel);
     const lintel = new THREE.Mesh(
-      new THREE.PlaneGeometry(archHalf * 2, 4.2 - 2.6),
+      new THREE.PlaneGeometry(ARCH_HALF * 2, WALL_HEIGHT - ARCH_OPENING),
       this.wallMaterial,
     );
-    lintel.position.set(0, 2.6 + (4.2 - 2.6) / 2, room.archwayZ);
+    lintel.position.set(
+      0,
+      ARCH_OPENING + (WALL_HEIGHT - ARCH_OPENING) / 2,
+      room.archwayZ,
+    );
     this.roomGroup.add(lintel);
 
     const isLastRoom = room.roomIndex === this.layout.rooms.length - 1;
     if (!isLastRoom) {
       const glow = new THREE.Mesh(
-        new THREE.PlaneGeometry(archHalf * 2, 2.6),
+        new THREE.PlaneGeometry(ARCH_HALF * 2, ARCH_OPENING),
         this.archGlowMaterial,
       );
-      glow.position.set(0, 1.3, room.archwayZ - 0.5);
+      glow.position.set(0, ARCH_OPENING / 2, room.archwayZ - 1.0);
       this.roomGroup.add(glow);
     }
 
-    // Serif tier label high on the entry wall.
+    // Serif tier label high on the entry wall, above the poster top (3.1 m).
     const labelTexture = this.makeLabelTexture(
       `${room.tier} TIER`,
     );
@@ -514,10 +536,10 @@ export class GalleryEngine {
     });
     labelMaterial.userData.owned = true;
     const label = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.6, 0.4),
+      new THREE.PlaneGeometry(3.2, 0.8),
       labelMaterial,
     );
-    label.position.set(0, 3.1, room.labelZ - 0.4);
+    label.position.set(0, 4.6, room.labelZ - 0.8);
     this.roomGroup.add(label);
   }
 
@@ -537,9 +559,10 @@ export class GalleryEngine {
     poster.material.userData.owned = true;
     swayGroup.add(poster);
 
-    // Thin edge-light strips framing the poster (emissive fake).
-    const stripThickness = 0.014;
-    const stripDepth = 0.002;
+    // Thin edge-light strips framing the poster (emissive fake). Scaled with
+    // the human-scale poster so the frame reads as a slim border, not a hairline.
+    const stripThickness = 0.04;
+    const stripDepth = 0.006;
     const horizontal = new THREE.PlaneGeometry(
       CASE_W + stripThickness * 2,
       stripThickness,
@@ -567,8 +590,9 @@ export class GalleryEngine {
     });
     glowMaterial.userData.owned = true;
     const glow = new THREE.Sprite(glowMaterial);
-    glow.scale.setScalar(slot.isTierAnchor ? 2.0 : 1.45);
-    glow.position.z = -0.03;
+    // Halo roughly the poster's footprint (scaled up with the human-scale case).
+    glow.scale.setScalar(slot.isTierAnchor ? 5.6 : 4.0);
+    glow.position.z = -0.09;
     swayGroup.add(glow);
 
     const pickProxy = new THREE.Mesh(
@@ -580,7 +604,7 @@ export class GalleryEngine {
       }),
     );
     pickProxy.material.userData.owned = true;
-    pickProxy.position.z = 0.01;
+    pickProxy.position.z = 0.03;
     pickProxy.userData.flatIndex = slot.flatIndex;
     swayGroup.add(pickProxy);
     this.pickTargets.push(pickProxy);
@@ -1092,7 +1116,7 @@ export class GalleryEngine {
 
     const slot = runtime.slot;
     const wallNormalX = slot.side === 'left' ? 1 : -1;
-    const clearDistance = 0.55;
+    const clearDistance = 1.2; // pull the case off its wall (scaled with WALL_X)
 
     // Inspect anchor in world space, in front of the camera.
     const camZ = this.walkZ();
@@ -1117,7 +1141,9 @@ export class GalleryEngine {
       0,
       presentation,
     );
-    const inspectScale = isMobile ? 1.05 : 1.25;
+    // Present the poster at ~2.5 m apparent height (CASE_H 2.8 × scale) — the
+    // human-scale equivalent of the old 0.93-case inspect size.
+    const inspectScale = isMobile ? 0.8 : 0.92;
     runtime.group.scale.setScalar(
       THREE.MathUtils.lerp(slot.scale, inspectScale, presentation),
     );
@@ -1196,7 +1222,7 @@ export class GalleryEngine {
         // Bounce light travels to the current room (one light, never per case).
         this.bounceLight.position.set(
           0,
-          1.2,
+          1.7,
           (room.startZ + room.endZ) / 2,
         );
       }

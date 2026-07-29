@@ -15,9 +15,11 @@
  *      destination, not stalled mid-corridor. Guards the snap-anchors-to-target
  *      fix.
  *   3. Curator's Walk turn — stand at a right-wall stop (self-verified via
- *      slot.x > 0) and assert the poster reads bright/frontal (max luminance
- *      > 0.35) AND the camera drifted toward the opposite wall (camera.x < 0).
- *      The Task 3 turn-to-face guard.
+ *      slot.x > 0) and assert the poster reads bright (max luminance > 0.35),
+ *      the camera drifted toward the opposite wall (camera.x < 0), AND the turn
+ *      lands square-on: the poster's left/right edges project to equal heights
+ *      (frontal, not oblique) and its center sits near frame center. Guards both
+ *      the turn-to-face mechanic and the STOP_LEAD frontal-consistency fix.
  *   4. Inspect brightness — fly the first case to the inspect anchor and assert
  *      the brightest pixel in a 60×60 block at the poster's center reads > 0.35.
  *      A dim-layer-over-poster regression lands far below the threshold.
@@ -37,7 +39,7 @@
  * Exit code 0 = PASS, 1 = FAIL, 2 = harness error (Chrome/WebGL unavailable).
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
@@ -132,6 +134,18 @@ async function tryHarness(browser) {
 const shot = (page, name) =>
   page.screenshot({ path: path.join(HERE, 'artifacts', `${label}-${name}.png`) });
 
+// Ground-truth capture straight from the WebGL drawing buffer (see
+// __smoke.snapshot). Faithful to what the engine drew, unlike the compositor
+// screenshot, whose hall frame can lag the settled camera under throttled rAF.
+async function grabTrue(page, name) {
+  const dataUrl = await page.evaluate(() => window.__smoke.snapshot());
+  const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+  writeFileSync(
+    path.join(HERE, 'artifacts', `${label}-${name}.png`),
+    Buffer.from(base64, 'base64'),
+  );
+}
+
 async function main() {
   if (!existsSync(CHROME)) {
     console.error(
@@ -219,7 +233,12 @@ async function main() {
     const RIGHT_WALL_STOP = 1;
     await page.evaluate((i) => window.__smoke.walkTo(i), RIGHT_WALL_STOP);
     await new Promise((r) => setTimeout(r, SETTLE_MS));
+    // Force a settled, presented frame before the screenshot — headless rAF is
+    // throttled and would otherwise composite a stale, half-turned camera.
+    await page.evaluate(() => window.__smoke.pump());
     await shot(page, '03-stop');
+    await grabTrue(page, "03-stop-true");
+
     const turn = await page.evaluate(
       (i) => window.__smoke.sample(60, i),
       RIGHT_WALL_STOP,
@@ -229,13 +248,29 @@ async function main() {
         `(${turn.centerX}, ${turn.centerY}) — max luminance ` +
         `${turn.max.toFixed(3)}, camera.x ${turn.cameraX.toFixed(3)}`,
     );
+    console.log(
+      `  poster corners tl${JSON.stringify(turn.corners.tl)} tr${JSON.stringify(turn.corners.tr)} ` +
+        `bl${JSON.stringify(turn.corners.bl)} br${JSON.stringify(turn.corners.br)} ` +
+        `| L-edge h=${turn.corners.bl.y - turn.corners.tl.y} R-edge h=${turn.corners.br.y - turn.corners.tr.y}`,
+    );
 
     const rightWall = turn.slotX > 0; // self-check: is this actually a right case?
     const turnBright = turn.max > LUMINANCE_THRESHOLD;
     const turnDrift = turn.cameraX < -0.2; // drifted toward the far (left) wall
-    if (rightWall && turnBright && turnDrift) {
+    // Square-on guard (the owner's "does not focus / half poster" bug): at the
+    // stop the turned eye must stand on the case's normal line, so the poster's
+    // left and right edges project to equal heights (frontal, no foreshorten)
+    // and its center lands near frame center. A residual oblique view (old
+    // uncoupled STOP_LEAD) skews the edge heights and pushes the center aside.
+    const lH = turn.corners.bl.y - turn.corners.tl.y;
+    const rH = turn.corners.br.y - turn.corners.tr.y;
+    const edgeSkew = Math.abs(Math.abs(lH) - Math.abs(rH));
+    const centerOff = Math.abs(turn.centerX - 640);
+    const frontal = edgeSkew <= 10 && centerOff <= 40;
+    if (rightWall && turnBright && turnDrift && frontal) {
       console.log(
         `PASS — phase 3: walk-turn right-wall case (slot.x ${turn.slotX.toFixed(2)}), ` +
+          `square-on (edge skew ${edgeSkew}px ≤ 10, center off ${centerOff}px ≤ 40), ` +
           `poster frontal (max ${turn.max.toFixed(3)} > ${LUMINANCE_THRESHOLD}), ` +
           `eye drifted to x ${turn.cameraX.toFixed(3)}`,
       );
@@ -243,7 +278,8 @@ async function main() {
       console.error(
         `FAIL — phase 3: rightWall=${rightWall} (slot.x ${turn.slotX.toFixed(2)}), ` +
           `bright=${turnBright} (max ${turn.max.toFixed(3)}), ` +
-          `drift=${turnDrift} (camera.x ${turn.cameraX.toFixed(3)} — expected < -0.2)`,
+          `drift=${turnDrift} (camera.x ${turn.cameraX.toFixed(3)} — expected < -0.2), ` +
+          `frontal=${frontal} (edge skew ${edgeSkew}px, center off ${centerOff}px)`,
       );
       process.exitCode = 1;
     }
@@ -255,7 +291,9 @@ async function main() {
       timeout: 5000,
     });
     await new Promise((r) => setTimeout(r, SETTLE_MS));
+    await page.evaluate(() => window.__smoke.pump());
     await shot(page, '04-inspect');
+    await grabTrue(page, '04-inspect-true');
 
     const sample = await page.evaluate(() => window.__smoke.sample(60));
     console.log(
