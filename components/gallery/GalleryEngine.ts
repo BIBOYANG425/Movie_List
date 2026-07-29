@@ -19,7 +19,7 @@ import {
   WALL_X,
 } from './galleryLayout';
 import { computeWantedTextures, tmdbImageAtSize } from './textureWindow';
-import { cameraPose, dominantStation } from './walkTurn';
+import { cameraPose, snapTargetFor } from './walkTurn';
 
 // Scene constants. Spike-tunable values live here so the phone pass can
 // adjust them in one place (technique: reference keeps a constants block).
@@ -29,6 +29,8 @@ const FOG_FAR = 26;
 const CAMERA_NEAR = 0.1;
 const CAMERA_FAR = 60;
 const LOOK_AHEAD = 4;
+// Damp/lerp rate for the walk-turn eye drift and smoothed gaze (walkTurn).
+const TURN_DAMP_LAMBDA = 6;
 const WHEEL_GAIN = 0.0024;
 const CLICK_MAX_TRAVEL = 7; // px — under this, a pointerup is a tap
 const SNAP_IDLE_MS = 150;
@@ -130,7 +132,6 @@ export class GalleryEngine {
   private loadQueue: CaseRuntime[] = [];
   private currentKeep = new Set<string>();
   private loadsInFlight = 0;
-  private lookX = 0;
   // Hall walk-turn state: the drifting eye x and the smoothed look target the
   // camera lerps toward each frame so the head turns to face the dominant case
   // (see walkTurn.cameraPose). driftX is a standalone field so the inspect
@@ -139,6 +140,7 @@ export class GalleryEngine {
   private driftX = 0;
   private lookTarget = new THREE.Vector3();
   private lookSmoothed = new THREE.Vector3(0, EYE_Y, -LOOK_AHEAD);
+  private inspectLook = new THREE.Vector3(); // scratch, inspect gaze per frame
   private lastWindowUpdate = 0;
   private textureLoader = new THREE.TextureLoader();
 
@@ -1131,6 +1133,13 @@ export class GalleryEngine {
     return t * t * (3 - 2 * t);
   }
 
+  /** Eased inspect-flight amount: linear on the way out, smoothstepped in. */
+  private easedFocus(): number {
+    return this.mode === 'returning'
+      ? this.focusProgress
+      : this.smooth(this.focusProgress);
+  }
+
   // ── Frame loop ───────────────────────────────────────────────────────────
 
   private walkZ(): number {
@@ -1200,17 +1209,14 @@ export class GalleryEngine {
 
     if (this.mode === 'hall') {
       if (!this.pointerDown && timestamp - this.lastInputTime > SNAP_IDLE_MS) {
-        // Snap to the station the turn mechanic considers dominant so an idle
-        // camera settles fully turned (weight → 1) rather than mid-gap. In the
-        // single-file layout walk is a flat slot index, so the dominant
-        // station index is also the snap target in walk-space.
-        const snapIndex = dominantStation(
-          this.walkZ(),
-          this.layout.walkStops,
-        ).index;
+        // Snap toward the station the walk is HEADING for (round of targetWalk),
+        // never the one it is currently leaving — anchoring to the current
+        // position would drag an in-flight travel/arrow/fling back to its start
+        // and stall mid-corridor. walk then damps onto targetWalk, so the idle
+        // camera settles at a station fully turned (weight → 1).
         this.targetWalk = damp(
           this.targetWalk,
-          snapIndex,
+          snapTargetFor(this.targetWalk),
           8.5 * lambdaBoost,
           delta,
         );
@@ -1291,10 +1297,7 @@ export class GalleryEngine {
     // Flight + environment for the selected case.
     if (this.selectedIndex !== null && this.mode !== 'hall') {
       const runtime = this.cases[this.selectedIndex];
-      const eased =
-        this.mode === 'returning'
-          ? this.focusProgress
-          : this.smooth(this.focusProgress);
+      const eased = this.easedFocus();
       this.applyFlight(runtime, eased);
 
       this.dimQuad.visible = true;
@@ -1328,32 +1331,29 @@ export class GalleryEngine {
     // animated targetWalk, so it rides the hall branch.
     const camZ = this.walkZ();
     const pose = cameraPose(camZ, this.layout);
-    this.driftX = damp(this.driftX, pose.x, 6, delta);
+    this.driftX = damp(this.driftX, pose.x, TURN_DAMP_LAMBDA, delta);
     this.lookTarget.set(pose.look.x, pose.look.y, pose.look.z);
-    this.lookSmoothed.lerp(this.lookTarget, 1 - Math.exp(-6 * delta));
+    this.lookSmoothed.lerp(
+      this.lookTarget,
+      1 - Math.exp(-TURN_DAMP_LAMBDA * delta),
+    );
 
     if (this.mode === 'hall') {
       this.camera.position.set(this.driftX, EYE_Y, camZ);
       this.camera.lookAt(this.lookSmoothed);
     } else {
-      const eased =
-        this.mode === 'returning'
-          ? this.focusProgress
-          : this.smooth(this.focusProgress);
-      this.lookX = damp(this.lookX, 0, 5, delta);
+      const eased = this.easedFocus();
       this.camera.position.set(
         THREE.MathUtils.lerp(this.driftX, 0, eased),
         EYE_Y,
         THREE.MathUtils.lerp(camZ, camZ + ROOM_TAIL * 0.4, eased),
       );
       // Blend the hall gaze (lookSmoothed) into the centred inspect look as
-      // the flight progresses: eased 0 ⇒ hall, eased 1 ⇒ inspect.
-      const inspectLook = new THREE.Vector3(
-        this.lookX,
-        EYE_Y + 0.03,
-        camZ - LOOK_AHEAD,
-      );
-      this.camera.lookAt(inspectLook.lerp(this.lookSmoothed, 1 - eased));
+      // the flight progresses: eased 0 ⇒ hall, eased 1 ⇒ inspect. The inspect
+      // gaze is dead-centre in x (the placard offset is an asymmetric frustum,
+      // not a turned eye).
+      this.inspectLook.set(0, EYE_Y + 0.03, camZ - LOOK_AHEAD);
+      this.camera.lookAt(this.inspectLook.lerp(this.lookSmoothed, 1 - eased));
     }
     this.applyViewOffset();
   }
@@ -1361,10 +1361,7 @@ export class GalleryEngine {
   private applyViewOffset() {
     const width = Math.max(1, this.canvas.clientWidth);
     const height = Math.max(1, this.canvas.clientHeight);
-    const progress =
-      this.mode === 'returning'
-        ? this.focusProgress
-        : this.smooth(this.focusProgress);
+    const progress = this.easedFocus();
     const active = this.selectedIndex !== null && progress > 0.001;
     if (!active) {
       this.camera.clearViewOffset();

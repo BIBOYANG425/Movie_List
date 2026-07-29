@@ -41,6 +41,19 @@ export interface StationHit {
   weight: number; // 0 walking … 1 standing at the stop, fully turned
 }
 
+/**
+ * Idle-snap target in walk-space. Anchors to the *target* walk position, not
+ * the camera's current position, so an in-flight walk — arrow-key nav, a
+ * travelToTier jump, a wheel fling — settles at the station it is heading for
+ * instead of being dragged back toward the station it is currently leaving.
+ * Stations are integer flat-slot indices, so the nearest station to the target
+ * is a plain round. Depends only on the target by construction: there is no
+ * current-position input to fight the destination.
+ */
+export function snapTargetFor(targetWalk: number): number {
+  return Math.round(targetWalk);
+}
+
 export function dominantStation(camZ: number, walkStops: number[]): StationHit {
   let index = 0;
   let best = Infinity;

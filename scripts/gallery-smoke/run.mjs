@@ -3,14 +3,17 @@
  * inspected poster).
  *
  * Boots the smoke.html harness under vite, drives it with puppeteer-core
- * against the system Chrome, and runs two checks against the fixture posters
+ * against the system Chrome, and runs three checks against the fixture posters
  * (the engine's procedural fallback — bright serif text on the poster center):
  *
- *   1. Curator's Walk turn — stand at a right-wall stop and assert the poster
- *      reads bright/frontal (max luminance > 0.35) AND the camera drifted
- *      toward the opposite wall (camera.x < 0 for a right-wall case). This is
- *      the Task 3 turn-to-face guard.
- *   2. Inspect brightness — fly the first case to the inspect anchor and
+ *   1. Idle-snap target — drive a full-corridor travel (target-only, the
+ *      travelToTier way) and assert it settles at the destination station, not
+ *      stalled mid-corridor. Guards the snap-anchors-to-target fix.
+ *   2. Curator's Walk turn — stand at a right-wall stop (self-verified via
+ *      slot.x > 0) and assert the poster reads bright/frontal (max luminance
+ *      > 0.35) AND the camera drifted toward the opposite wall (camera.x < 0).
+ *      The Task 3 turn-to-face guard.
+ *   3. Inspect brightness — fly the first case to the inspect anchor and
  *      assert the brightest pixel in a 60×60 block at the poster's center
  *      reads > 0.35 luminance. A dim-layer-over-poster regression lands far
  *      below the threshold.
@@ -126,12 +129,42 @@ async function main() {
       }
     }
 
+    // ── Idle-snap anchors to the walk target (regression) ──────────────────
+    // Drive a full-corridor travel the travelToTier way — set ONLY the target
+    // and back-date input — then let it settle through the real damp+snap loop.
+    // The bug this guards: snapping to the CURRENT station drags targetWalk back
+    // toward the start, stalling the travel mid-corridor. The 10-item fixture
+    // has stops 0…9; travelling 0 → 9 must actually arrive at 9.
+    const TRAVEL_TARGET = 9;
+    await page.evaluate(() => window.__smoke.walkTo(0)); // known start
+    await new Promise((r) => setTimeout(r, 200));
+    await page.evaluate((i) => window.__smoke.travelTo(i), TRAVEL_TARGET);
+    await new Promise((r) => setTimeout(r, 1600));
+    const travel = await page.evaluate(() => window.__smoke.walkState());
+    const arrived = Math.round(travel.walk);
+    console.log(
+      `travel 0 → ${TRAVEL_TARGET}: settled walk ${travel.walk.toFixed(3)} ` +
+        `(target ${travel.targetWalk.toFixed(3)}) → station ${arrived}`,
+    );
+    if (arrived === TRAVEL_TARGET) {
+      console.log(
+        `PASS — travel reached station ${TRAVEL_TARGET} (snap follows the target)`,
+      );
+    } else {
+      console.error(
+        `FAIL — travel stalled at station ${arrived}, expected ${TRAVEL_TARGET} ` +
+          '(idle snap is dragging the target back toward the current station)',
+      );
+      process.exitCode = 1;
+    }
+
     // ── Curator's Walk turn ────────────────────────────────────────────────
     // Stand at a right-wall stop and confirm the camera turns to face it. The
     // fixture side pattern per tier is L, R, L, … so walk stop index 1 (the
-    // second stop) is a right-wall case (slot.x > 0). A correct turn drifts the
-    // eye toward the opposite (left) wall — camera.x < 0 — and points it at the
-    // poster so its bright text projects near screen center.
+    // second stop) is a right-wall case. A correct turn drifts the eye toward
+    // the opposite (left) wall — camera.x < 0 — and points it at the poster so
+    // its bright text projects near screen center. The slot.x > 0 check makes
+    // the "right wall" claim self-verifying instead of comment-enforced.
     const RIGHT_WALL_STOP = 1;
     await page.evaluate((i) => window.__smoke.walkTo(i), RIGHT_WALL_STOP);
     await new Promise((r) => setTimeout(r, SETTLE_MS));
@@ -143,22 +176,25 @@ async function main() {
       RIGHT_WALL_STOP,
     );
     console.log(
-      `stop ${RIGHT_WALL_STOP} (right wall) poster center ` +
+      `stop ${RIGHT_WALL_STOP} (slot.x ${turn.slotX.toFixed(2)}) poster center ` +
         `(${turn.centerX}, ${turn.centerY}) — max luminance ` +
         `${turn.max.toFixed(3)}, camera.x ${turn.cameraX.toFixed(3)}`,
     );
     console.log(`screenshot: ${turnShot}`);
 
+    const rightWall = turn.slotX > 0; // self-check: is this actually a right case?
     const turnBright = turn.max > LUMINANCE_THRESHOLD;
     const turnDrift = turn.cameraX < -0.2; // drifted toward the far (left) wall
-    if (turnBright && turnDrift) {
+    if (rightWall && turnBright && turnDrift) {
       console.log(
-        `PASS — walk-turn: poster frontal (max ${turn.max.toFixed(3)} > ` +
-          `${LUMINANCE_THRESHOLD}) and eye drifted to x ${turn.cameraX.toFixed(3)}`,
+        `PASS — walk-turn: right-wall case (slot.x ${turn.slotX.toFixed(2)}), ` +
+          `poster frontal (max ${turn.max.toFixed(3)} > ${LUMINANCE_THRESHOLD}), ` +
+          `eye drifted to x ${turn.cameraX.toFixed(3)}`,
       );
     } else {
       console.error(
-        `FAIL — walk-turn: bright=${turnBright} (max ${turn.max.toFixed(3)}), ` +
+        `FAIL — walk-turn: rightWall=${rightWall} (slot.x ${turn.slotX.toFixed(2)}), ` +
+          `bright=${turnBright} (max ${turn.max.toFixed(3)}), ` +
           `drift=${turnDrift} (camera.x ${turn.cameraX.toFixed(3)} — expected < -0.2)`,
       );
       process.exitCode = 1;

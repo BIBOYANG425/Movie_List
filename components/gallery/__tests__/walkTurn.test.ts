@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { dominantStation, cameraPose, TURN_NEAR, TURN_FAR } from '../walkTurn';
+import {
+  dominantStation,
+  cameraPose,
+  snapTargetFor,
+  TURN_NEAR,
+  TURN_FAR,
+} from '../walkTurn';
 import { buildCorridorLayout, EYE_Y } from '../galleryLayout';
 import { Tier } from '../../../types';
 import { makeItem } from './fixtures';
@@ -39,6 +45,26 @@ describe('dominantStation', () => {
     const w2 = dominantStation(z + TURN_FAR - 0.05, layout.walkStops).weight;
     expect(w0).toBeGreaterThan(w1);
     expect(w1).toBeGreaterThan(w2);
+  });
+});
+
+describe('snapTargetFor', () => {
+  it('rounds to the station the target is heading for, not the current one', () => {
+    // A travel from 0 → 12 that is only partway there (target already 12)
+    // must resolve to 12, never back toward 0.
+    expect(snapTargetFor(12)).toBe(12);
+    expect(snapTargetFor(11.6)).toBe(12);
+    expect(snapTargetFor(6.4)).toBe(6);
+  });
+
+  it('is a fixed point at every station so a settled idle target never drifts', () => {
+    for (const station of [0, 1, 5, 12, 42]) {
+      expect(snapTargetFor(station)).toBe(station);
+    }
+  });
+
+  it('depends only on the target — no current-position argument to fight it', () => {
+    expect(snapTargetFor.length).toBe(1);
   });
 });
 

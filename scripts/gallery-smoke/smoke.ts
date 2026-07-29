@@ -10,14 +10,21 @@
  *   __smoke.fatal          — engine reported onFatal (headless WebGL missing)
  *   __smoke.mode           — current GalleryMode (mirrors onModeChange)
  *   __smoke.inspectFirst() — fly the first case to the inspect anchor
- *   __smoke.walkTo(i)      — set the hall walk target to walk stop i and let
- *                            the animate loop settle the camera at that stop
- *                            (fully turned to face the case).
+ *   __smoke.walkTo(i)      — teleport BOTH walk and target to stop i and let
+ *                            the animate loop settle the camera there (fully
+ *                            turned). Use to place the camera before a sample.
+ *   __smoke.travelTo(i)    — set ONLY the walk target to stop i (walk keeps
+ *                            its current value) and back-date lastInputTime,
+ *                            mirroring travelToTier — so walk damps across the
+ *                            corridor through the real idle-snap path. This is
+ *                            the regression drive for "snap fights the target".
+ *   __smoke.walkState()    — { walk, targetWalk } read of the walk animator.
  *   __smoke.sample(n, i?)  — render synchronously, then read an n×n pixel
  *                            block centered on a poster and return its
- *                            mean/max luminance (0-1) plus the camera x. With
- *                            i given, samples case i (hall walk-turn check);
- *                            without it, samples the inspected case.
+ *                            mean/max luminance (0-1), the camera x, and the
+ *                            sampled case's slot x. With i given, samples case
+ *                            i (hall walk-turn check); without it, the
+ *                            inspected case.
  */
 import * as THREE from 'three';
 import { GalleryEngine } from '../../components/gallery/GalleryEngine';
@@ -60,6 +67,8 @@ type SmokeApi = {
   mode: GalleryMode;
   inspectFirst: () => void;
   walkTo: (stopIndex: number) => void;
+  travelTo: (stopIndex: number) => void;
+  walkState: () => { walk: number; targetWalk: number };
   sample: (
     blockSize?: number,
     caseIndex?: number,
@@ -71,6 +80,7 @@ type SmokeApi = {
     centerY: number;
     blockSize: number;
     cameraX: number;
+    slotX: number;
   };
 };
 
@@ -95,6 +105,22 @@ const api: SmokeApi = {
     eng.targetWalk = stopIndex;
     eng.lastInputTime = performance.now() - 10000;
   },
+  travelTo: (stopIndex) => {
+    // Mirrors GalleryEngine.travelToTier: move ONLY the target and back-date
+    // lastInputTime; walk keeps its current value and must damp across the
+    // corridor through the idle-snap path. Does NOT teleport walk, so the
+    // snap-anchors-to-target fix is actually exercised.
+    const eng = engine as unknown as {
+      targetWalk: number;
+      lastInputTime: number;
+    };
+    eng.targetWalk = stopIndex;
+    eng.lastInputTime = performance.now() - 10000;
+  },
+  walkState: () => {
+    const eng = engine as unknown as { walk: number; targetWalk: number };
+    return { walk: eng.walk, targetWalk: eng.targetWalk };
+  },
   sample: (blockSize = 60, caseIndex) => {
     // TS `private` is compile-time only — the harness reaches into the
     // engine to render synchronously (readPixels is only valid in the same
@@ -103,7 +129,7 @@ const api: SmokeApi = {
       renderer: THREE.WebGLRenderer;
       scene: THREE.Scene;
       camera: THREE.PerspectiveCamera;
-      cases: Array<{ poster: THREE.Mesh }>;
+      cases: Array<{ poster: THREE.Mesh; slot: { x: number } }>;
       selectedIndex: number | null;
       mode: GalleryMode;
     };
@@ -153,6 +179,7 @@ const api: SmokeApi = {
       centerY: cy,
       blockSize,
       cameraX: eng.camera.position.x,
+      slotX: eng.cases[posterIndex].slot.x,
     };
   },
 };
