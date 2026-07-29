@@ -994,14 +994,16 @@ export class GalleryEngine {
         ) {
           return;
         }
-        // Blur + darken on an offscreen canvas — cheap, done once.
+        // Blur + heavily darken on an offscreen canvas — cheap, done once. The
+        // heavy darken plus the 0.15 opacity cap (updateState) keep the
+        // backdrop a faint museum-wall texture, not a legible movie still.
         const canvas = document.createElement('canvas');
         canvas.width = 512;
         canvas.height = Math.round(
           (image.height / image.width) * 512,
         ) || 288;
         const ctx = canvas.getContext('2d')!;
-        ctx.filter = 'blur(14px) brightness(0.4)';
+        ctx.filter = 'blur(18px) brightness(0.28)';
         ctx.drawImage(image, -24, -24, canvas.width + 48, canvas.height + 48);
         const texture = new THREE.CanvasTexture(canvas);
         texture.colorSpace = THREE.SRGBColorSpace;
@@ -1347,7 +1349,11 @@ export class GalleryEngine {
       if (this.backdropPlane) {
         const material = this.backdropPlane
           .material as THREE.MeshBasicMaterial;
-        material.opacity = damp(material.opacity, 0.9 * eased, 4, delta);
+        // Museum inspect: the backdrop is only a faint suggestion behind the
+        // dark room, never a movie-still wash. Capped at 0.15 (was 0.9) so the
+        // dimQuad's darkness dominates and the inspected poster reads as art on
+        // a dark wall. The poster (renderOrder 95) still draws over it.
+        material.opacity = damp(material.opacity, 0.15 * eased, 4, delta);
       }
 
       // Multi-frequency idle sway — inspect only, never under reduced motion.
