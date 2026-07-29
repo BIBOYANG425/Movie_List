@@ -23,8 +23,11 @@
  *      A dim-layer-over-poster regression lands far below the threshold.
  *   5. Esc → hall — dispatch a real Escape keydown on the canvas and assert the
  *      engine's mode machine returns to 'hall'.
- *   6. Tier fast-travel — travel to the first stop of the second tier (derived
- *      from the fixture layout via __smoke.tierFirstStops()) and assert arrival.
+ *   6. Tier fast-travel — call the real GalleryEngine.travelToTier for the
+ *      fixture's second tier (via __smoke.travelToSecondTier()) and assert it
+ *      arrives at the stop that control targeted. Skipped (as a failure) if
+ *      phase 5 left the engine out of 'hall', so a phase-5 miss can't masquerade
+ *      as a phase-6 miss.
  *
  * Usage:
  *   node scripts/gallery-smoke/run.mjs [--label before|after]
@@ -132,8 +135,10 @@ const shot = (page, name) =>
 async function main() {
   if (!existsSync(CHROME)) {
     console.error(
-      `FATAL: Chrome not found at ${CHROME}\n` +
-        'set SMOKE_CHROME to your Chrome/Chromium binary',
+      process.env.SMOKE_CHROME
+        ? `FATAL: SMOKE_CHROME is set but no binary exists there: ${CHROME}`
+        : `FATAL: Chrome not found at the default path: ${CHROME}\n` +
+            'set SMOKE_CHROME to your Chrome/Chromium binary',
     );
     process.exitCode = 2;
     return;
@@ -300,19 +305,21 @@ async function main() {
     }
 
     // ── Phase 6: tier fast-travel ──────────────────────────────────────────
-    // travelToTier jumps to the first case of a tier's room. Derive the second
-    // tier's first stop from the built layout (tierFirstStops()[1]) rather than
-    // hardcoding it — the fixture's first tier (S) holds 3 items, so this is
-    // flatIndex 3, but computed from the corridor so it tracks the fixture.
-    const tierStops = await page.evaluate(() => window.__smoke.tierFirstStops());
-    if (tierStops.length < 2) {
+    // Drive the real GalleryEngine.travelToTier (room lookup + hall-mode guard
+    // + reducedMotion branch) for the fixture's second tier and assert we land
+    // on the stop it targeted. travelToTier no-ops unless the engine is in
+    // 'hall', so if phase 5 failed to return there this would silently target
+    // nothing — skip with an explicit failure rather than mis-diagnose it.
+    if (returnedMode !== 'hall') {
       console.error(
-        `FAIL — phase 6: fixture has ${tierStops.length} tier room(s), need >= 2`,
+        `SKIP — phase 6: engine not in hall (mode '${returnedMode}' from phase 5); ` +
+          'cannot exercise tier fast-travel',
       );
       process.exitCode = 1;
     } else {
-      const secondTierStop = tierStops[1];
-      await page.evaluate((i) => window.__smoke.travelTo(i), secondTierStop);
+      const secondTierStop = await page.evaluate(() =>
+        window.__smoke.travelToSecondTier(),
+      );
       await new Promise((r) => setTimeout(r, 1600));
       await shot(page, '06-tier');
       const tierTravel = await page.evaluate(() => window.__smoke.walkState());
@@ -323,7 +330,7 @@ async function main() {
       );
       if (tierArrived === secondTierStop) {
         console.log(
-          `PASS — phase 6: reached second tier's first stop ${secondTierStop}`,
+          `PASS — phase 6: travelToTier reached the second tier at stop ${secondTierStop}`,
         );
       } else {
         console.error(

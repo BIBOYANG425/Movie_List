@@ -19,10 +19,11 @@
  *                            corridor through the real idle-snap path. This is
  *                            the regression drive for "snap fights the target".
  *   __smoke.walkState()    — { walk, targetWalk } read of the walk animator.
- *   __smoke.tierFirstStops() — first walk-stop (flatIndex) of each non-empty
- *                            tier room, in corridor order. Lets the driver
- *                            derive a tier fast-travel target from the fixture
- *                            layout instead of hardcoding a magic index.
+ *   __smoke.travelToSecondTier() — call the real GalleryEngine.travelToTier for
+ *                            the fixture's second non-empty tier and return the
+ *                            walk stop it targeted. Exercises the actual room
+ *                            lookup / hall-mode guard / reducedMotion branch,
+ *                            not a re-simulation of it.
  *   __smoke.sample(n, i?)  — render synchronously, then read an n×n pixel
  *                            block centered on a poster and return its
  *                            mean/max luminance (0-1), the camera x, and the
@@ -73,7 +74,7 @@ type SmokeApi = {
   walkTo: (stopIndex: number) => void;
   travelTo: (stopIndex: number) => void;
   walkState: () => { walk: number; targetWalk: number };
-  tierFirstStops: () => number[];
+  travelToSecondTier: () => number;
   sample: (
     blockSize?: number,
     caseIndex?: number,
@@ -126,16 +127,17 @@ const api: SmokeApi = {
     const eng = engine as unknown as { walk: number; targetWalk: number };
     return { walk: eng.walk, targetWalk: eng.targetWalk };
   },
-  tierFirstStops: () => {
-    // Corridor rooms are built one per non-empty tier in tier order (S→D);
-    // each slot carries its walk-stop flatIndex. Reading room[n].slots[0]
-    // gives the first stop of the n-th tier straight from the built layout,
-    // so the driver's fast-travel target tracks the fixture instead of a
-    // hardcoded number.
-    const eng = engine as unknown as {
-      layout: { rooms: Array<{ slots: Array<{ flatIndex: number }> }> };
-    };
-    return eng.layout.rooms.map((room) => room.slots[0].flatIndex);
+  travelToSecondTier: () => {
+    // Drive the REAL public control: travelToTier does the room lookup, the
+    // hall-mode guard, and the reducedMotion branch itself. We just hand it the
+    // fixture's second non-empty tier (canonical S→D order; the fixture's first
+    // tier is S with 3 items, so this resolves to A — derived, not hardcoded)
+    // and read back the stop it targeted as the expected arrival.
+    const canonical = [Tier.S, Tier.A, Tier.B, Tier.C, Tier.D];
+    const present = canonical.filter((t) => items.some((it) => it.tier === t));
+    engine.travelToTier(present[1]);
+    const eng = engine as unknown as { targetWalk: number };
+    return eng.targetWalk;
   },
   sample: (blockSize = 60, caseIndex) => {
     // TS `private` is compile-time only — the harness reaches into the
