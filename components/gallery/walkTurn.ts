@@ -14,8 +14,9 @@ import { CorridorLayout, EYE_Y, CASE_SPACING } from './galleryLayout';
  */
 export const TURN_NEAR = 0.35;
 /**
- * No turn influence beyond this distance. Kept below half of CASE_SPACING so
- * neighbouring turn zones never overlap (mid-gap weight stays near zero).
+ * No turn influence beyond this distance. Slightly over half of CASE_SPACING
+ * (0.52) — adjacent turn zones overlap by a hair, leaving mid-gap weight
+ * ≈ 0.02, so the camera effectively straightens between stops.
  */
 export const TURN_FAR = CASE_SPACING * 0.52;
 /** How far the camera steps toward the opposite wall for a full turn. */
